@@ -19,3 +19,17 @@ first release ships.
   `test`.
 - Tracking issues for the remaining implementation order from
   `docs/architecture.md` (#1-#7).
+- `TagEngine::read`/`write` wired up to `lofty` (#1): the ten first-class
+  `TagField`s map to `lofty` `ItemKey`s in both directions, `Custom` fields
+  round-trip through `ItemKey::Unknown`.
+- `read_tags` example (`cargo run -p tagrex-core --example read_tags --
+  <path>`): read-only manual check of what `TagEngine` sees in a real file,
+  no GUI required.
+
+### Fixed
+
+- `TagEngine::read` now also recognizes `RecordingDate` (ID3v2.4 `TDRC`) as
+  `TagField::Year`, not just the legacy `Year` (`TYER`). Verified against
+  TagScanner-tagged files, which write the year exclusively through
+  `RecordingDate` — without this, `Year` was silently empty for most
+  real-world files.
