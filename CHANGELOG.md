@@ -70,6 +70,14 @@ first release ships.
   and unit-tested against fixture JSON (no network); a `discogs_search` example
   exercises the live API with a token.
 
+- Application command layer (#7, partial): the `tagrex` crate is now a library
+  exposing `App` — the thin, GUI-agnostic surface a shell forwards intent to
+  (open library, list tracks, preview a mask rename, apply, undo, history,
+  Discogs search/fetch). Data crosses the boundary as serde DTOs so
+  `tagrex-core` stays serialization-free. The library root doubles as the
+  executor's `allowed_root`. The actual Tauri webview + frontend is a separate
+  dev-machine step (no display in CI); the placeholder binary documents it.
+
 ### Changed
 
 - `UndoJournal::record` now returns the journal-assigned `BatchId` instead of

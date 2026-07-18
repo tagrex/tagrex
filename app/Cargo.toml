@@ -10,4 +10,9 @@ publish = false
 
 [dependencies]
 tagrex-core.workspace = true
-# The Tauri shell is initialized separately (cargo tauri init) — see app/src/main.rs.
+tagrex-providers-discogs = { path = "../crates/providers-discogs" }
+serde = { version = "1", features = ["derive"] }
+thiserror.workspace = true
+# The Tauri shell (webview + frontend) is initialized separately on a machine
+# with a display (cargo tauri init) — see app/src/lib.rs for the command layer
+# it forwards to, and app/src/main.rs.
