@@ -8,6 +8,7 @@
 //! of plans. **No module writes tags or renames files directly; all writes go
 //! through [`Executor`].** This is an invariant, not a preference.
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -69,20 +70,23 @@ pub trait PlanSource {
 /// applied batch in the journal so it can be rolled back — including after
 /// an application restart.
 ///
-/// Rename execution is deliberately not here yet: tag writing and renaming
-/// are separate user operations (like TagScanner's separate tabs), so this
-/// increment handles tag writes only and rejects any plan carrying a
-/// `rename_to`. Rename lands as its own increment.
+/// Within a single file, tag writes happen before the rename: once a file is
+/// renamed, the plan's path no longer points at it, so keeping the move last
+/// means every tag write uses the original path and a failure mid-move leaves
+/// the file at its old path with new tags — a recoverable state. Tag writing
+/// and renaming are still separate *user* operations (like TagScanner's
+/// separate tabs); a plan can carry either or both.
 pub struct Executor;
 
 impl Executor {
-    /// Apply a plan's tag changes to disk, then record the batch so it can be
-    /// rolled back.
+    /// Apply a plan's tag changes and renames to disk, then record the batch
+    /// so it can be rolled back.
     ///
-    /// Every write is confined to `allowed_root`: a plan touching a path that
-    /// resolves outside it is rejected wholesale before anything is written.
-    /// The entire plan is validated up front (root containment + staleness)
-    /// so a bad file cannot leave the batch half-applied.
+    /// Every write and every rename target is confined to `allowed_root`: a
+    /// plan touching a path that resolves outside it is rejected wholesale
+    /// before anything is written. The entire plan is validated up front
+    /// (root containment + staleness + rename collisions) so a bad file
+    /// cannot leave the batch half-applied.
     pub fn apply(
         plan: &ChangePlan,
         journal: &mut dyn UndoJournal,
@@ -90,18 +94,33 @@ impl Executor {
     ) -> Result<AppliedBatch, PlanError> {
         let root = canonical_root(allowed_root)?;
 
-        // Pre-flight: validate the WHOLE plan before touching disk.
+        // Pre-flight: validate the WHOLE plan before touching disk. Rename
+        // targets are collected so two files can't be planned onto the same
+        // destination.
+        let mut planned_targets = HashSet::new();
         for change in &plan.changes {
-            if change.rename_to.is_some() {
-                return Err(PlanError::RenameNotSupported(change.path.clone()));
-            }
             ensure_within_root(&change.path, &root)?;
             ensure_not_stale(change)?;
+            if let Some(target) = effective_rename(change) {
+                let canonical_target = resolve_target_within_root(target, &root)?;
+                if canonical_target.exists() {
+                    return Err(PlanError::RenameCollision(canonical_target));
+                }
+                if !planned_targets.insert(canonical_target.clone()) {
+                    return Err(PlanError::RenameCollision(canonical_target));
+                }
+            }
         }
 
-        // Apply: write the `new` values.
+        // Apply tags first (all files, at their original paths)...
         for change in &plan.changes {
             write_tag_changes(change, Direction::Apply)?;
+        }
+        // ...then renames.
+        for change in &plan.changes {
+            if let Some(target) = effective_rename(change) {
+                std::fs::rename(&change.path, target).map_err(PlanError::Io)?;
+            }
         }
 
         let mut batch = AppliedBatch {
@@ -116,11 +135,14 @@ impl Executor {
         Ok(batch)
     }
 
-    /// Roll a previously applied batch back, restoring every field's `old`
-    /// value, then remove it from the journal.
+    /// Roll a previously applied batch back: move every renamed file back to
+    /// its original path, restore every field's `old` value, then remove the
+    /// batch from the journal.
     ///
-    /// Restoration goes through the same `TagEngine`-only write path as
-    /// [`apply`](Self::apply) and is confined to `allowed_root` the same way.
+    /// Renames are reversed *before* tag restoration, mirroring apply in
+    /// reverse: the file lives at its rename target now, so it has to move
+    /// back before the original-path tag write can find it. Everything is
+    /// confined to `allowed_root` the same way apply is.
     pub fn undo(
         journal: &mut dyn UndoJournal,
         batch_id: BatchId,
@@ -134,8 +156,25 @@ impl Executor {
             .find(|batch| batch.id == batch_id)
             .ok_or(PlanError::Journal(JournalError::UnknownBatch(batch_id)))?;
 
+        // Validate before touching disk: the file's current location (rename
+        // target if it was renamed, else its path) and the restore
+        // destination must both sit within root.
         for change in &batch.plan.changes {
-            ensure_within_root(&change.path, &root)?;
+            match effective_rename(change) {
+                Some(target) => {
+                    ensure_within_root(target, &root)?;
+                    resolve_target_within_root(&change.path, &root)?;
+                }
+                None => ensure_within_root(&change.path, &root)?,
+            }
+        }
+
+        // Reverse renames first, so tag restoration finds each file back at
+        // its original path.
+        for change in &batch.plan.changes {
+            if let Some(target) = effective_rename(change) {
+                std::fs::rename(target, &change.path).map_err(PlanError::Io)?;
+            }
         }
         for change in &batch.plan.changes {
             write_tag_changes(change, Direction::Undo)?;
@@ -160,7 +199,8 @@ fn canonical_root(allowed_root: &Path) -> Result<PathBuf, PlanError> {
 
 /// Resolve `path` (following symlinks, collapsing `..`) and require the result
 /// to sit inside `root`. This is what stops a crafted mask literal like
-/// `../../etc` from steering a write outside the scanned library.
+/// `../../etc` from steering a write outside the scanned library. Requires the
+/// path to exist, since it canonicalizes the file itself.
 fn ensure_within_root(path: &Path, root: &Path) -> Result<(), PlanError> {
     let canonical = std::fs::canonicalize(path).map_err(PlanError::Io)?;
     if canonical.starts_with(root) {
@@ -168,6 +208,34 @@ fn ensure_within_root(path: &Path, root: &Path) -> Result<(), PlanError> {
     } else {
         Err(PlanError::OutsideRoot(canonical))
     }
+}
+
+/// A rename destination that doesn't exist yet can't be canonicalized
+/// directly, so resolve it via its (existing) parent directory and require
+/// *that* to sit inside `root`. Returns the resolved absolute target path.
+/// Directories are not created here — a target whose parent is missing is an
+/// I/O error.
+fn resolve_target_within_root(target: &Path, root: &Path) -> Result<PathBuf, PlanError> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| PlanError::OutsideRoot(target.to_path_buf()))?;
+    let file_name = target
+        .file_name()
+        .ok_or_else(|| PlanError::OutsideRoot(target.to_path_buf()))?;
+    let canonical_parent = std::fs::canonicalize(parent).map_err(PlanError::Io)?;
+    if !canonical_parent.starts_with(root) {
+        return Err(PlanError::OutsideRoot(target.to_path_buf()));
+    }
+    Ok(canonical_parent.join(file_name))
+}
+
+/// The rename this change actually performs, if any: `rename_to` unless it's
+/// a no-op (equal to the current path).
+fn effective_rename(change: &FileChange) -> Option<&Path> {
+    change
+        .rename_to
+        .as_deref()
+        .filter(|target| *target != change.path)
 }
 
 /// Guard against TOCTOU: if the file's current on-disk value for any changed
@@ -219,8 +287,6 @@ pub enum PlanError {
     RenameCollision(PathBuf),
     #[error("path resolves outside the allowed root: {0}")]
     OutsideRoot(PathBuf),
-    #[error("renames are not supported yet (planned for a later increment): {0}")]
-    RenameNotSupported(PathBuf),
     #[error("journal error: {0}")]
     Journal(#[from] JournalError),
     #[error("tag I/O error: {0}")]

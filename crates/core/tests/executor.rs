@@ -148,15 +148,101 @@ fn rejects_a_stale_plan_without_writing() {
 }
 
 #[test]
-fn rejects_a_plan_carrying_a_rename() {
+fn applies_tags_then_rename_and_undo_reverses_both() {
     let dir = TempDir::new("rename");
     let track = dir.flac("track.flac");
+    let renamed = dir.path().join("renamed.flac");
+    let mut journal = VecJournal::new();
+
+    let mut plan = set_artist(&track, None, Some("New Artist"));
+    plan.changes[0].rename_to = Some(renamed.clone());
+    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+
+    // File moved, tags written at the new location.
+    assert!(!track.exists());
+    assert!(renamed.exists());
+    assert_eq!(
+        TagEngine::read(&renamed)
+            .unwrap()
+            .tags
+            .get(&TagField::Artist)
+            .map(String::as_str),
+        Some("New Artist")
+    );
+
+    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+
+    // Moved back, tags restored (Artist was absent originally).
+    assert!(track.exists());
+    assert!(!renamed.exists());
+    assert!(!TagEngine::read(&track)
+        .unwrap()
+        .tags
+        .contains_key(&TagField::Artist));
+}
+
+#[test]
+fn rejects_a_rename_target_that_already_exists() {
+    let dir = TempDir::new("rename-collision");
+    let track = dir.flac("track.flac");
+    let occupied = dir.flac("occupied.flac");
     let mut journal = VecJournal::new();
 
     let mut plan = set_artist(&track, None, Some("New"));
-    plan.changes[0].rename_to = Some(dir.path().join("renamed.flac"));
+    plan.changes[0].rename_to = Some(occupied.clone());
     let err = Executor::apply(&plan, &mut journal, dir.path()).unwrap_err();
 
-    assert!(matches!(err, PlanError::RenameNotSupported(_)));
+    assert!(matches!(err, PlanError::RenameCollision(_)));
+    // Nothing applied: source untouched, no tags written.
+    assert!(track.exists());
+    assert!(!TagEngine::read(&track)
+        .unwrap()
+        .tags
+        .contains_key(&TagField::Artist));
+    assert!(journal.batches().unwrap().is_empty());
+}
+
+#[test]
+fn rejects_two_files_renamed_onto_the_same_target() {
+    let dir = TempDir::new("rename-dup");
+    let a = dir.flac("a.flac");
+    let b = dir.flac("b.flac");
+    let target = dir.path().join("merged.flac");
+    let mut journal = VecJournal::new();
+
+    let plan = ChangePlan {
+        description: "collide".to_string(),
+        changes: vec![
+            FileChange {
+                path: a,
+                tag_changes: vec![],
+                rename_to: Some(target.clone()),
+            },
+            FileChange {
+                path: b,
+                tag_changes: vec![],
+                rename_to: Some(target),
+            },
+        ],
+    };
+    let err = Executor::apply(&plan, &mut journal, dir.path()).unwrap_err();
+
+    assert!(matches!(err, PlanError::RenameCollision(_)));
+    assert!(journal.batches().unwrap().is_empty());
+}
+
+#[test]
+fn rejects_a_rename_target_outside_the_root() {
+    let root = TempDir::new("rename-root");
+    let outside = TempDir::new("rename-outside");
+    let track = root.flac("track.flac");
+    let mut journal = VecJournal::new();
+
+    let mut plan = set_artist(&track, None, Some("New"));
+    plan.changes[0].rename_to = Some(outside.path().join("escaped.flac"));
+    let err = Executor::apply(&plan, &mut journal, root.path()).unwrap_err();
+
+    assert!(matches!(err, PlanError::OutsideRoot(_)));
+    assert!(track.exists());
     assert!(journal.batches().unwrap().is_empty());
 }

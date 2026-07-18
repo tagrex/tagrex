@@ -52,6 +52,15 @@ first release ships.
   autoincrement) rather than a process-local counter, so they stay unique
   across restarts.
 
+- Rename execution in `Executor` (#8): a plan's `rename_to` moves are now
+  applied (and reversed on undo). Within a file, tags are written before the
+  rename so a mid-move failure leaves the file at its old path with new tags;
+  undo reverses the move first, then restores tags. The whole plan is
+  pre-flighted for rename safety — targets must resolve inside `allowed_root`,
+  must not already exist on disk, and two files may not target the same path
+  (`PlanError::RenameCollision`). Chained/cyclic renames (a target that is
+  another file's source) are conservatively rejected for now.
+
 ### Changed
 
 - `UndoJournal::record` now returns the journal-assigned `BatchId` instead of
