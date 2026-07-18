@@ -44,6 +44,19 @@ first release ships.
   the persistent SQLite journal (#5) lands. Tag writing and renaming are
   separate operations (like TagScanner's separate tabs); this increment does
   tag writes only, rename tracked separately.
+- Persistent SQLite journal (#5): `SqliteJournal` (via `rusqlite`, bundled
+  SQLite) durably records batches across three normalized tables so an
+  applied batch survives an application restart — the "renamed 8,000 files,
+  closed the app, realized the mask was wrong" scenario is now recoverable
+  after reopening. Batch ids are assigned by the journal (database
+  autoincrement) rather than a process-local counter, so they stay unique
+  across restarts.
+
+### Changed
+
+- `UndoJournal::record` now returns the journal-assigned `BatchId` instead of
+  `()`; the journal owns id assignment so ids survive restarts. `TagField`
+  gains a lossless `to_storage_key`/`from_storage_key` codec for persistence.
 
 ### Fixed
 

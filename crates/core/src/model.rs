@@ -58,6 +58,51 @@ pub enum TagField {
     Custom(String),
 }
 
+impl TagField {
+    /// Lossless string encoding for persistence (the journal). Distinct from
+    /// the `lofty` `ItemKey` mapping and the mask placeholder names: those can
+    /// be lossy or format-specific, this must round-trip exactly. `Custom`
+    /// values are prefixed so a `Custom("artist")` can never collide with the
+    /// first-class `Artist`.
+    pub fn to_storage_key(&self) -> String {
+        match self {
+            Self::Artist => "artist".to_string(),
+            Self::Title => "title".to_string(),
+            Self::Album => "album".to_string(),
+            Self::AlbumArtist => "albumartist".to_string(),
+            Self::TrackNumber => "track".to_string(),
+            Self::TrackTotal => "tracktotal".to_string(),
+            Self::DiscNumber => "disc".to_string(),
+            Self::Year => "year".to_string(),
+            Self::Genre => "genre".to_string(),
+            Self::Comment => "comment".to_string(),
+            Self::Custom(name) => format!("custom:{name}"),
+        }
+    }
+
+    /// Inverse of [`to_storage_key`](Self::to_storage_key).
+    pub fn from_storage_key(key: &str) -> Self {
+        if let Some(name) = key.strip_prefix("custom:") {
+            return Self::Custom(name.to_string());
+        }
+        match key {
+            "artist" => Self::Artist,
+            "title" => Self::Title,
+            "album" => Self::Album,
+            "albumartist" => Self::AlbumArtist,
+            "track" => Self::TrackNumber,
+            "tracktotal" => Self::TrackTotal,
+            "disc" => Self::DiscNumber,
+            "year" => Self::Year,
+            "genre" => Self::Genre,
+            "comment" => Self::Comment,
+            // Only reachable if the database holds a key this build didn't
+            // write; preserve it verbatim rather than losing it.
+            other => Self::Custom(other.to_string()),
+        }
+    }
+}
+
 /// Field -> value map. BTreeMap keeps a stable, predictable field order for
 /// previews and diffs.
 pub type TagMap = BTreeMap<TagField, String>;

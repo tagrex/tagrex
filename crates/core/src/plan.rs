@@ -9,7 +9,6 @@
 //! through [`Executor`].** This is an invariant, not a preference.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
@@ -105,13 +104,15 @@ impl Executor {
             write_tag_changes(change, Direction::Apply)?;
         }
 
-        let batch = AppliedBatch {
-            id: next_batch_id(),
+        let mut batch = AppliedBatch {
+            // Placeholder: the journal assigns the real id on record so ids
+            // stay unique across restarts.
+            id: BatchId(0),
             description: plan.description.clone(),
             applied_at: now_unix_secs(),
             plan: plan.clone(),
         };
-        journal.record(&batch)?;
+        batch.id = journal.record(&batch)?;
         Ok(batch)
     }
 
@@ -201,14 +202,6 @@ fn write_tag_changes(change: &FileChange, direction: Direction) -> Result<(), Pl
     }
     TagEngine::write(&track)?;
     Ok(())
-}
-
-/// Monotonic within a process. The persistent [`SqliteJournal`] will source
-/// batch ids from the database instead once it lands (see the journal module).
-static NEXT_BATCH_ID: AtomicI64 = AtomicI64::new(1);
-
-fn next_batch_id() -> BatchId {
-    BatchId(NEXT_BATCH_ID.fetch_add(1, Ordering::Relaxed))
 }
 
 fn now_unix_secs() -> i64 {
