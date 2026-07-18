@@ -25,6 +25,10 @@ first release ships.
 - `read_tags` example (`cargo run -p tagrex-core --example read_tags --
   <path>`): read-only manual check of what `TagEngine` sees in a real file,
   no GUI required.
+- Directory scanner (#2): `scan` walks a tree with `walkdir` and lazily
+  yields supported audio files instead of collecting them up front, per the
+  50k+ files requirement in `docs/architecture.md`. `scan` example for
+  manually checking it against a real library.
 
 ### Fixed
 
