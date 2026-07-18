@@ -3,6 +3,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
+use lofty::config::WriteOptions;
+use lofty::file::{FileType, TaggedFileExt};
+use lofty::probe::Probe;
+use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
 use thiserror::Error;
 
 /// Audio container formats supported at launch (see architecture.md).
@@ -12,6 +16,28 @@ pub enum AudioFormat {
     Flac,
     OggVorbis,
     M4a,
+}
+
+impl AudioFormat {
+    fn from_lofty(file_type: FileType) -> Result<Self, TagIoError> {
+        match file_type {
+            FileType::Mpeg => Ok(Self::Mp3),
+            FileType::Flac => Ok(Self::Flac),
+            FileType::Vorbis => Ok(Self::OggVorbis),
+            FileType::Mp4 => Ok(Self::M4a),
+            other => Err(TagIoError::UnsupportedFormat(format!("{other:?}"))),
+        }
+    }
+
+    /// The tag type each format is written and read through, matching
+    /// [`lofty::file::FileType::primary_tag_type`] for the formats above.
+    fn primary_tag_type(self) -> TagType {
+        match self {
+            Self::Mp3 => TagType::Id3v2,
+            Self::Flac | Self::OggVorbis => TagType::VorbisComments,
+            Self::M4a => TagType::Mp4Ilst,
+        }
+    }
 }
 
 /// A tag field. Well-known fields are first-class variants so the table UI,
@@ -51,16 +77,86 @@ pub struct TagEngine;
 
 impl TagEngine {
     /// Read tags from a file on disk.
-    pub fn read(_path: &Path) -> Result<TrackFile, TagIoError> {
-        todo!("wire up lofty: detect format, map primary tag into TagMap")
+    pub fn read(path: &Path) -> Result<TrackFile, TagIoError> {
+        let tagged_file = Probe::open(path)?.guess_file_type()?.read()?;
+        let format = AudioFormat::from_lofty(tagged_file.file_type())?;
+
+        let mut tags = TagMap::new();
+        if let Some(tag) = tagged_file
+            .primary_tag()
+            .or_else(|| tagged_file.first_tag())
+        {
+            for item in tag.items() {
+                if let Some(text) = item.value().text() {
+                    tags.insert(item_key_to_tag_field(item.key()), text.to_string());
+                }
+            }
+        }
+
+        Ok(TrackFile {
+            path: path.to_path_buf(),
+            format,
+            tags,
+        })
     }
 
     /// Write the tags of `file` back to disk.
     ///
     /// Only [`plan::Executor`](crate::plan::Executor) is allowed to call this —
     /// see the crate-level invariant.
-    pub fn write(_file: &TrackFile) -> Result<(), TagIoError> {
-        todo!("wire up lofty: map TagMap back into the format-specific tag")
+    pub fn write(file: &TrackFile) -> Result<(), TagIoError> {
+        let mut tag = Tag::new(file.format.primary_tag_type());
+        for (field, value) in &file.tags {
+            // `insert_text`/`insert` silently drop `ItemKey::Unknown` (Custom
+            // fields) since they refuse to write keys without a known mapping
+            // for the tag type. `insert_unchecked` is the documented escape
+            // hatch for exactly this case.
+            tag.insert_unchecked(TagItem::new(
+                tag_field_to_item_key(field),
+                ItemValue::Text(value.clone()),
+            ));
+        }
+        tag.save_to_path(&file.path, WriteOptions::default())?;
+        Ok(())
+    }
+}
+
+fn tag_field_to_item_key(field: &TagField) -> ItemKey {
+    match field {
+        TagField::Artist => ItemKey::TrackArtist,
+        TagField::Title => ItemKey::TrackTitle,
+        TagField::Album => ItemKey::AlbumTitle,
+        TagField::AlbumArtist => ItemKey::AlbumArtist,
+        TagField::TrackNumber => ItemKey::TrackNumber,
+        TagField::TrackTotal => ItemKey::TrackTotal,
+        TagField::DiscNumber => ItemKey::DiscNumber,
+        TagField::Year => ItemKey::Year,
+        TagField::Genre => ItemKey::Genre,
+        TagField::Comment => ItemKey::Comment,
+        TagField::Custom(key) => ItemKey::Unknown(key.clone()),
+    }
+}
+
+// Only `ItemKey::Unknown` round-trips as the literal string a caller put
+// into `TagField::Custom`. Any other recognized-but-unmapped `ItemKey`
+// variant (e.g. `Composer`, `Mood` — lofty recognizes far more keys than the
+// ten modeled here) falls back to its Rust `Debug` name instead, since we
+// have no per-format key text to recover once lofty has already parsed it
+// into a variant.
+fn item_key_to_tag_field(key: &ItemKey) -> TagField {
+    match key {
+        ItemKey::TrackArtist => TagField::Artist,
+        ItemKey::TrackTitle => TagField::Title,
+        ItemKey::AlbumTitle => TagField::Album,
+        ItemKey::AlbumArtist => TagField::AlbumArtist,
+        ItemKey::TrackNumber => TagField::TrackNumber,
+        ItemKey::TrackTotal => TagField::TrackTotal,
+        ItemKey::DiscNumber => TagField::DiscNumber,
+        ItemKey::Year => TagField::Year,
+        ItemKey::Genre => TagField::Genre,
+        ItemKey::Comment => TagField::Comment,
+        ItemKey::Unknown(key) => TagField::Custom(key.clone()),
+        other => TagField::Custom(format!("{other:?}")),
     }
 }
 
@@ -72,4 +168,42 @@ pub enum TagIoError {
     Malformed(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("tag backend error: {0}")]
+    Backend(#[from] lofty::error::LoftyError),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn known_fields() -> Vec<TagField> {
+        vec![
+            TagField::Artist,
+            TagField::Title,
+            TagField::Album,
+            TagField::AlbumArtist,
+            TagField::TrackNumber,
+            TagField::TrackTotal,
+            TagField::DiscNumber,
+            TagField::Year,
+            TagField::Genre,
+            TagField::Comment,
+        ]
+    }
+
+    #[test]
+    fn known_fields_round_trip_through_item_key() {
+        for field in known_fields() {
+            let key = tag_field_to_item_key(&field);
+            assert_eq!(item_key_to_tag_field(&key), field);
+        }
+    }
+
+    #[test]
+    fn custom_field_round_trips_through_unknown_item_key() {
+        let field = TagField::Custom("MOOD".to_string());
+        let key = tag_field_to_item_key(&field);
+        assert_eq!(key, ItemKey::Unknown("MOOD".to_string()));
+        assert_eq!(item_key_to_tag_field(&key), field);
+    }
 }

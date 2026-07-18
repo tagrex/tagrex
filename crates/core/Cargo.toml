@@ -9,5 +9,5 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+lofty = "0.22.2"
 thiserror.workspace = true
-# lofty will back the tag engine (model::TagEngine); added when read/write is implemented.
