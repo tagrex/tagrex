@@ -9,5 +9,7 @@ rust-version.workspace = true
 publish = false
 
 [dependencies]
+serde_json = "1.0.150"
 tagrex-core.workspace = true
+ureq = "3.2.1"
 # HTTP client (blocking, worker-thread model) added when requests are implemented.

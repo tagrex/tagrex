@@ -61,6 +61,15 @@ first release ships.
   (`PlanError::RenameCollision`). Chained/cyclic renames (a target that is
   another file's source) are conservatively rejected for now.
 
+- Discogs metadata provider (#6): `DiscogsProvider::search`/`fetch_release`
+  over a blocking `ureq` client (personal-token auth, required User-Agent).
+  429 responses surface as `ProviderError::RateLimited` with the `Retry-After`
+  value; auth/not-found/other statuses are mapped too. Discogs' numeric artist
+  disambiguation (`Artist (3)`) is stripped through a core transform-pipeline
+  step (`StripDiscogsSuffix`). Response mapping is factored into pure functions
+  and unit-tested against fixture JSON (no network); a `discogs_search` example
+  exercises the live API with a token.
+
 ### Changed
 
 - `UndoJournal::record` now returns the journal-assigned `BatchId` instead of
