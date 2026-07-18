@@ -1,0 +1,13 @@
+[package]
+name = "tagrex-core"
+description = "TagRex core: tag model, bidirectional masks, transforms, transactional change pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+thiserror.workspace = true
+# lofty will back the tag engine (model::TagEngine); added when read/write is implemented.

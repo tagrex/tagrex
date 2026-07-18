@@ -1,0 +1,13 @@
+[package]
+name = "tagrex"
+description = "Cross-platform audio tag editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+tagrex-core.workspace = true
+# The Tauri shell is initialized separately (cargo tauri init) — see app/src/main.rs.

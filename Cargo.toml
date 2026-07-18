@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/providers-discogs", "app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+repository = "https://github.com/tagrex/tagrex"
+# Verified minimum toolchain. Bumping edition to 2024 requires rust-version >= 1.85.
+rust-version = "1.75"
+
+[workspace.dependencies]
+thiserror = "1"
+tagrex-core = { path = "crates/core" }

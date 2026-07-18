@@ -1,0 +1,13 @@
+[package]
+name = "tagrex-providers-discogs"
+description = "Discogs metadata provider for TagRex (personal user token)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+tagrex-core.workspace = true
+# HTTP client (blocking, worker-thread model) added when requests are implemented.
