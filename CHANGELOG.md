@@ -35,6 +35,15 @@ first release ships.
   second matcher to drift out of sync with `render`. Placeholders are
   limited to the ten first-class `TagField`s for now; `Custom` fields aren't
   addressable from a mask yet.
+- Transaction pipeline (#4): `Executor::apply`/`undo` — the only writers in
+  the codebase. `apply` takes an `allowed_root` and rejects the whole plan
+  (before writing anything) if any path resolves outside it, if the on-disk
+  state is stale relative to the plan, or if the plan carries a rename.
+  Applied batches are recorded so `undo` can restore each field's previous
+  value. `VecJournal`, an in-memory `UndoJournal`, backs the pipeline until
+  the persistent SQLite journal (#5) lands. Tag writing and renaming are
+  separate operations (like TagScanner's separate tabs); this increment does
+  tag writes only, rename tracked separately.
 
 ### Fixed
 

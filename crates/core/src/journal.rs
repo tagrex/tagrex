@@ -38,6 +38,44 @@ pub trait UndoJournal {
     fn rollback(&mut self, id: BatchId) -> Result<(), JournalError>;
 }
 
+/// In-memory journal: keeps recorded batches in a `Vec` for the lifetime of
+/// the process, nothing more. It exists so the transaction pipeline
+/// ([`Executor`](crate::plan::Executor)) can be built and tested end to end
+/// before the persistent [`SqliteJournal`] lands. It deliberately does **not**
+/// satisfy the cross-restart durability requirement in architecture.md — that
+/// is `SqliteJournal`'s job.
+#[derive(Debug, Default)]
+pub struct VecJournal {
+    batches: Vec<AppliedBatch>,
+}
+
+impl VecJournal {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl UndoJournal for VecJournal {
+    fn record(&mut self, batch: &AppliedBatch) -> Result<(), JournalError> {
+        self.batches.push(batch.clone());
+        Ok(())
+    }
+
+    fn batches(&self) -> Result<Vec<AppliedBatch>, JournalError> {
+        // Newest first, per the trait contract.
+        Ok(self.batches.iter().rev().cloned().collect())
+    }
+
+    fn rollback(&mut self, id: BatchId) -> Result<(), JournalError> {
+        let before = self.batches.len();
+        self.batches.retain(|batch| batch.id != id);
+        if self.batches.len() == before {
+            return Err(JournalError::UnknownBatch(id));
+        }
+        Ok(())
+    }
+}
+
 /// SQLite-backed journal, stored next to the application config.
 pub struct SqliteJournal;
 
