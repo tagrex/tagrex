@@ -10,5 +10,6 @@ publish = false
 
 [dependencies]
 lofty = "0.22.2"
+regex = "1.13.1"
 thiserror.workspace = true
 walkdir = "2.5.0"

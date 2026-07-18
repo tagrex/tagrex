@@ -29,6 +29,12 @@ first release ships.
   yields supported audio files instead of collecting them up front, per the
   50k+ files requirement in `docs/architecture.md`. `scan` example for
   manually checking it against a real library.
+- Mask engine (#3): `Mask::parse`/`render`/`extract`. Both directions are
+  derived from the same parsed segment list — `render` substitutes it,
+  `extract` compiles it into one anchored, escaped regex — so there's no
+  second matcher to drift out of sync with `render`. Placeholders are
+  limited to the ten first-class `TagField`s for now; `Custom` fields aren't
+  addressable from a mask yet.
 
 ### Fixed
 
