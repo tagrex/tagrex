@@ -394,6 +394,14 @@ button.icon {
   font-weight: 600;
 }
 
+.release-cover {
+  height: 48px;
+  width: 48px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
 .release-actions {
   display: flex;
   align-items: center;

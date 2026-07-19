@@ -58,6 +58,21 @@ pub struct Release {
     pub year: Option<u16>,
     pub genres: Vec<String>,
     pub tracks: Vec<ReleaseTrack>,
+    /// URL of the release's primary image (full resolution), if it has one.
+    /// The bytes still have to be downloaded with the provider's auth + User-
+    /// Agent headers — the webview can't load it directly — so this is only a
+    /// handle, fetched on demand via the provider's image download.
+    pub cover_image_url: Option<String>,
+}
+
+/// An image downloaded from a provider: raw bytes plus the MIME type reported
+/// by the server. The provider boundary's counterpart to
+/// [`crate::model::CoverArt`], kept separate so the network layer doesn't reach
+/// into the plan model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FetchedImage {
+    pub mime: String,
+    pub data: Vec<u8>,
 }
 
 pub trait MetadataProvider: Send + Sync {

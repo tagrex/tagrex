@@ -10,6 +10,11 @@ first release ships.
 
 ### Added
 
+- Fetch cover art from Discogs (#24): the release detail view now shows the
+  release's primary image (downloaded through the backend, since Discogs image
+  URLs need the token + User-Agent the webview can't send) with an "Embed
+  cover" action that embeds it into the selected files. The fetched bytes reuse
+  the same preview/apply/undo cover path as a locally chosen image.
 - Cover art embed (#18, core): embed a front cover from a local image file
   into the selected tracks, previewed with a thumbnail and applied through the
   same journaled/undoable path as tags (a new cover change kind in the plan,

@@ -125,6 +125,18 @@ fn fetch_discogs_release(
 }
 
 #[tauri::command]
+fn fetch_discogs_image(
+    state: State<AppState>,
+    token: String,
+    url: String,
+) -> Result<CoverArtDto, String> {
+    with_app(&state, |app| {
+        app.fetch_discogs_image(&token, &url)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn preview_import(
     state: State<AppState>,
     paths: Vec<String>,
@@ -176,6 +188,7 @@ fn main() {
             history,
             search_discogs,
             fetch_discogs_release,
+            fetch_discogs_image,
             preview_import,
             saved_discogs_token,
             save_discogs_token

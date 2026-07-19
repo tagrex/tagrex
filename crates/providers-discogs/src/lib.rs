@@ -19,8 +19,8 @@
 
 use serde_json::Value;
 use tagrex_core::provider::{
-    MetadataProvider, ProviderError, Release, ReleaseCandidate, ReleaseId, ReleaseTrack,
-    SearchQuery,
+    FetchedImage, MetadataProvider, ProviderError, Release, ReleaseCandidate, ReleaseId,
+    ReleaseTrack, SearchQuery,
 };
 use tagrex_core::transform::{TransformChain, TransformStep};
 
@@ -77,6 +77,51 @@ impl DiscogsProvider {
             .body_mut()
             .read_to_string()
             .map_err(|err| ProviderError::Network(err.to_string()))
+    }
+
+    /// Download binary content (an image) from a Discogs URL, returning the
+    /// bytes and the server-reported MIME type. Sends the same auth + User-Agent
+    /// headers as [`get`](Self::get): Discogs serves release images from a CDN
+    /// that rejects requests without them.
+    ///
+    /// Not on [`MetadataProvider`]: image fetching is Discogs-specific plumbing,
+    /// and the app instantiates `DiscogsProvider` directly rather than through
+    /// the trait object, so keeping it inherent avoids forcing it on every
+    /// future provider.
+    pub fn fetch_image(&self, url: &str) -> Result<FetchedImage, ProviderError> {
+        let mut response = self
+            .agent
+            .get(url)
+            .header("Authorization", &format!("Discogs token={}", self.token))
+            .header("User-Agent", USER_AGENT)
+            .call()
+            .map_err(|err| ProviderError::Network(err.to_string()))?;
+
+        let status = response.status().as_u16();
+        if !(200..300).contains(&status) {
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok());
+            return Err(status_to_error(status, retry_after));
+        }
+
+        // Prefer the server's Content-Type; fall back to JPEG, which is what
+        // Discogs serves for essentially all release art.
+        let mime = response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.split(';').next().unwrap_or(value).trim().to_string())
+            .filter(|value| value.starts_with("image/"))
+            .unwrap_or_else(|| "image/jpeg".to_string());
+
+        let data = response
+            .body_mut()
+            .read_to_vec()
+            .map_err(|err| ProviderError::Network(err.to_string()))?;
+
+        Ok(FetchedImage { mime, data })
     }
 }
 
@@ -256,7 +301,25 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         year: root.get("year").and_then(value_to_year),
         genres,
         tracks,
+        cover_image_url: primary_image_url(root.get("images")),
     })
+}
+
+/// The full-resolution URL of a release's primary image. Discogs marks one
+/// image `type: "primary"`; when none is flagged (older releases just list
+/// images), fall back to the first. Uses `uri` (full size) rather than `uri150`
+/// (the 150px thumbnail) since this is what gets embedded.
+fn primary_image_url(images: Option<&Value>) -> Option<String> {
+    let images = images?.as_array()?;
+    let primary = images
+        .iter()
+        .find(|image| image.get("type").and_then(Value::as_str) == Some("primary"))
+        .or_else(|| images.first())?;
+    primary
+        .get("uri")
+        .and_then(Value::as_str)
+        .filter(|uri| !uri.is_empty())
+        .map(str::to_string)
 }
 
 /// Tracklist entries can be headings or index tracks, not just playable
@@ -372,6 +435,10 @@ mod tests {
             "artists": [{"name": "Rick Astley (2)"}],
             "genres": ["Electronic"],
             "styles": ["Synth-pop"],
+            "images": [
+                {"type": "secondary", "uri": "https://img.discogs.com/back.jpg"},
+                {"type": "primary", "uri": "https://img.discogs.com/front.jpg", "uri150": "https://img.discogs.com/front-150.jpg"}
+            ],
             "tracklist": [
                 {"type_": "heading", "position": "", "title": "Side A"},
                 {"type_": "track", "position": "A", "title": "Never Gonna Give You Up"},
@@ -384,6 +451,11 @@ mod tests {
         assert_eq!(release.artist, "Rick Astley"); // suffix stripped
         assert_eq!(release.year, Some(1987));
         assert_eq!(release.genres, vec!["Electronic", "Synth-pop"]);
+        // Primary image picked (full-res `uri`), not the secondary/back one.
+        assert_eq!(
+            release.cover_image_url.as_deref(),
+            Some("https://img.discogs.com/front.jpg")
+        );
         // Heading filtered out; two real tracks remain.
         assert_eq!(release.tracks.len(), 2);
         assert_eq!(release.tracks[0].position, "A");
@@ -391,6 +463,23 @@ mod tests {
             release.tracks[1].title,
             "Never Gonna Give You Up (Instrumental)"
         );
+    }
+
+    #[test]
+    fn primary_image_falls_back_to_first_and_absent_when_empty() {
+        // No image flagged "primary" -> first image wins.
+        let images = serde_json::json!([
+            {"type": "secondary", "uri": "https://img.discogs.com/a.jpg"},
+            {"type": "secondary", "uri": "https://img.discogs.com/b.jpg"}
+        ]);
+        assert_eq!(
+            primary_image_url(Some(&images)).as_deref(),
+            Some("https://img.discogs.com/a.jpg")
+        );
+
+        // No images at all -> None.
+        assert_eq!(primary_image_url(None), None);
+        assert_eq!(primary_image_url(Some(&serde_json::json!([]))), None);
     }
 
     #[test]

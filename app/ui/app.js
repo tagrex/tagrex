@@ -53,7 +53,12 @@ const discogsModal = el("discogs-modal");
 const discogsResults = el("discogs-results");
 const discogsEmpty = el("discogs-empty");
 const releaseTracksBody = el("release-tracks");
+const releaseCoverImg = el("release-cover");
+const coverEmbedBtn = el("cover-embed");
 let currentRelease = null;
+// The fetched cover of the currently open release, as a CoverArtDto ({ mime,
+// data_base64 }), or null if the release has no image / it failed to load.
+let currentReleaseCover = null;
 
 // ---- helpers ----
 function toast(message, isError) {
@@ -477,6 +482,51 @@ async function openRelease(releaseId) {
     const year = currentRelease.year ? ` (${currentRelease.year})` : "";
     el("release-title").textContent = `${currentRelease.artist} — ${currentRelease.title}${year}`;
     showDiscogsView("release");
+    loadReleaseCover(token, currentRelease.cover_image_url);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// Fetch the release's cover (bytes come through the backend, since the image
+// URL needs Discogs auth headers the webview can't send) and show it. Failure
+// is non-fatal: the tracklist import still works without a cover.
+async function loadReleaseCover(token, url) {
+  currentReleaseCover = null;
+  releaseCoverImg.hidden = true;
+  releaseCoverImg.removeAttribute("src");
+  coverEmbedBtn.hidden = true;
+  if (!url) return;
+  try {
+    const cover = await invoke("fetch_discogs_image", { token, url });
+    currentReleaseCover = cover;
+    releaseCoverImg.src = `data:${cover.mime};base64,${cover.data_base64}`;
+    releaseCoverImg.hidden = false;
+    coverEmbedBtn.hidden = false;
+  } catch (e) {
+    // Leave the cover hidden; the import flow is unaffected.
+  }
+}
+
+// Embed the fetched release cover into the files selected in the main table,
+// routing through the same preview/apply/undo path as a locally chosen image.
+async function embedReleaseCover() {
+  if (!currentReleaseCover) return;
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to embed the cover into first", true);
+    return;
+  }
+  try {
+    previewPlan = await invoke("preview_cover_embed", { paths, cover: currentReleaseCover });
+    previewSource = "cover";
+    closeDiscogs();
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing cover on ${previewPlan.changes.length} file(s) — click Apply`
+        : "Selected files already have this cover"
+    );
   } catch (e) {
     toast(String(e), true);
   }
@@ -555,6 +605,7 @@ el("discogs-search").addEventListener("click", discogsSearch);
 el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
 el("discogs-back").addEventListener("click", () => showDiscogsView("search"));
 el("import-apply").addEventListener("click", applyImport);
+coverEmbedBtn.addEventListener("click", embedReleaseCover);
 el("tracks-all").addEventListener("click", () => toggleReleaseTracks(true));
 el("tracks-none").addEventListener("click", () => toggleReleaseTracks(false));
 discogsModal.addEventListener("click", (e) => {
@@ -763,6 +814,14 @@ function mockInvoke(cmd, args) {
           { position: "2", artist: "Wish Mountain", title: "Radio" },
           { position: "3", artist: "West Coast Connection", title: "Voodoo Rhythm" },
         ],
+        cover_image_url: "https://img.discogs.com/mock/front.jpg",
+      });
+    case "fetch_discogs_image":
+      // A tiny solid-color PNG so the release-view cover has something to show.
+      return Promise.resolve({
+        mime: "image/png",
+        data_base64:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
       });
     case "preview_import": {
       const changes = args.paths.map((p, i) => {

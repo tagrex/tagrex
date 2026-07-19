@@ -130,6 +130,9 @@ pub struct ReleaseDto {
     pub year: Option<u16>,
     pub genres: Vec<String>,
     pub tracks: Vec<ReleaseTrackDto>,
+    /// URL of the release's primary image, if any. Fetch its bytes with
+    /// [`App::fetch_discogs_image`] to preview or embed it.
+    pub cover_image_url: Option<String>,
 }
 
 /// One release track the user chose to import, as sent back from the UI.
@@ -334,6 +337,19 @@ impl App {
         let provider = DiscogsProvider::new(token);
         let release = provider.fetch_release(&ReleaseId(id.to_string()))?;
         Ok(ReleaseDto::from(&release))
+    }
+
+    /// Download a Discogs image (e.g. a release's cover) and return it as a
+    /// cover DTO, ready to feed straight into [`App::preview_cover_embed`] — the
+    /// same shape a locally chosen file produces, so the fetched art flows
+    /// through the identical preview/apply/undo path.
+    pub fn fetch_discogs_image(&self, token: &str, url: &str) -> Result<CoverArtDto, AppError> {
+        let provider = DiscogsProvider::new(token);
+        let image = provider.fetch_image(url)?;
+        Ok(CoverArtDto {
+            mime: image.mime,
+            data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),
+        })
     }
 
     /// Preview importing a user-resolved release selection onto `paths`,
@@ -546,6 +562,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                     title: track.title.clone(),
                 })
                 .collect(),
+            cover_image_url: release.cover_image_url.clone(),
         }
     }
 }
