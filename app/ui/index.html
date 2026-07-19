@@ -35,6 +35,7 @@
             <thead>
               <tr>
                 <th class="sel"><input id="select-all" type="checkbox" /></th>
+                <th class="play"></th>
                 <th data-sort="file" class="sortable">File<span class="sort-ind"></span></th>
                 <th data-sort="artist" class="sortable">Artist<span class="sort-ind"></span></th>
                 <th data-sort="title" class="sortable">Title<span class="sort-ind"></span></th>
@@ -150,6 +151,15 @@
         </div>
       </div>
     </div>
+
+    <footer id="player" hidden>
+      <button id="pl-toggle" class="icon" title="Play / pause">▶</button>
+      <button id="pl-stop" class="icon" title="Stop">■</button>
+      <span id="pl-title" class="mono" title=""></span>
+      <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" />
+      <span id="pl-time" class="muted">0:00 / 0:00</span>
+    </footer>
+    <audio id="audio" preload="metadata"></audio>
 
     <div id="toast" class="toast" hidden></div>
 

@@ -470,3 +470,72 @@ tr.drop-below td {
   background: var(--del);
   color: #fff;
 }
+
+/* ---- preview player ---- */
+th.play,
+td.play {
+  width: 30px;
+  text-align: center;
+  padding: 0;
+}
+
+button.play-btn {
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: none;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+button.play-btn:hover {
+  color: var(--accent);
+  border-color: var(--border);
+}
+
+/* The row whose track is loaded in the player. */
+tr.playing td {
+  background: var(--row-hover);
+}
+
+tr.playing td.play button.play-btn {
+  color: var(--accent);
+}
+
+#player {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  z-index: 15;
+}
+
+#player[hidden] {
+  display: none;
+}
+
+#pl-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 320px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#pl-seek {
+  flex: 1 1 auto;
+  min-width: 80px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#pl-time {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}

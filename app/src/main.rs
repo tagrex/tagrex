@@ -99,6 +99,15 @@ fn export_cover(
 }
 
 #[tauri::command]
+fn read_audio(state: State<AppState>, path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = with_app(&state, |app| {
+        app.read_audio_bytes(&PathBuf::from(&path))
+            .map_err(|e| e.to_string())
+    })?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+#[tauri::command]
 fn apply_plan(state: State<AppState>, plan: PlanDto) -> Result<BatchDto, String> {
     with_app_mut(&state, |app| app.apply(&plan).map_err(|e| e.to_string()))
 }
@@ -197,6 +206,7 @@ fn main() {
             preview_tag_edits,
             preview_cover_embed,
             export_cover,
+            read_audio,
             apply_plan,
             undo,
             history,

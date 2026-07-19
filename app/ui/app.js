@@ -53,6 +53,18 @@ const discogsOpenBtn = el("discogs-open");
 const discogsModal = el("discogs-modal");
 const discogsResults = el("discogs-results");
 const discogsEmpty = el("discogs-empty");
+const audioEl = el("audio");
+const playerBar = el("player");
+const plToggle = el("pl-toggle");
+const plStop = el("pl-stop");
+const plTitle = el("pl-title");
+const plSeek = el("pl-seek");
+const plTime = el("pl-time");
+// Object URL of the track currently loaded in the player (revoked on swap), and
+// the path it came from so re-clicking the same row toggles instead of reloads.
+let audioObjectUrl = null;
+let playingPath = null;
+
 const releaseTracksBody = el("release-tracks");
 const releaseCoverImg = el("release-cover");
 const coverEmbedBtn = el("cover-embed");
@@ -139,8 +151,11 @@ function renderTracks() {
     const pending = edits.get(track.path);
     const tr = document.createElement("tr");
     tr.dataset.path = track.path;
+    if (track.path === playingPath) tr.classList.add("playing");
+    const playGlyph = track.path === playingPath && !audioEl.paused ? "❚❚" : "▶";
     tr.innerHTML = `
       <td class="sel"><input type="checkbox" checked data-path="${escapeHtml(track.path)}" /></td>
+      <td class="play"><button class="play-btn" data-path="${escapeHtml(track.path)}" title="Preview">${playGlyph}</button></td>
       <td class="mono file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
     for (const field of EDIT_FIELDS) {
       const original = tag(track, field);
@@ -434,6 +449,120 @@ async function exportCover() {
     toast(String(e), true);
   }
 }
+
+// ---- preview player ----
+// Advisory MIME for the Blob from the file extension. The webview sniffs the
+// actual bytes anyway, but a correct hint helps codec selection.
+function mimeForPath(path) {
+  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+  return (
+    {
+      mp3: "audio/mpeg",
+      m4a: "audio/mp4",
+      mp4: "audio/mp4",
+      aac: "audio/aac",
+      flac: "audio/flac",
+      wav: "audio/wav",
+      aif: "audio/aiff",
+      aiff: "audio/aiff",
+      ogg: "audio/ogg",
+      oga: "audio/ogg",
+    }[ext] || "audio/*"
+  );
+}
+
+function fmtTime(seconds) {
+  if (!isFinite(seconds) || seconds < 0) seconds = 0;
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// Load `path` into the player and start playing. Clicking the already-loaded
+// track toggles play/pause instead of reloading.
+async function playTrack(path) {
+  if (path === playingPath && audioEl.src) {
+    togglePlay();
+    return;
+  }
+  try {
+    const data = await invoke("read_audio", { path });
+    // Tauri returns raw bytes as an ArrayBuffer; the mock returns one too.
+    const blob = new Blob([data], { type: mimeForPath(path) });
+    if (audioObjectUrl) URL.revokeObjectURL(audioObjectUrl);
+    audioObjectUrl = URL.createObjectURL(blob);
+    playingPath = path;
+    audioEl.src = audioObjectUrl;
+    plTitle.textContent = fileName(path);
+    plTitle.title = path;
+    playerBar.hidden = false;
+    await audioEl.play();
+    markPlayingRow();
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+function togglePlay() {
+  if (audioEl.paused) audioEl.play().catch((e) => toast(String(e), true));
+  else audioEl.pause();
+}
+
+function stopPlayback() {
+  audioEl.pause();
+  audioEl.removeAttribute("src");
+  audioEl.load();
+  if (audioObjectUrl) {
+    URL.revokeObjectURL(audioObjectUrl);
+    audioObjectUrl = null;
+  }
+  playingPath = null;
+  playerBar.hidden = true;
+  markPlayingRow();
+}
+
+// Reflect the active track + play/pause state in the table without a full
+// re-render (which would drop pending edits mid-typing).
+function markPlayingRow() {
+  tracksBody.querySelectorAll("tr").forEach((tr) => {
+    const isPlaying = tr.dataset.path === playingPath;
+    tr.classList.toggle("playing", isPlaying);
+    const btn = tr.querySelector("td.play button");
+    if (btn) btn.textContent = isPlaying && !audioEl.paused ? "❚❚" : "▶";
+  });
+  plToggle.textContent = playingPath && !audioEl.paused ? "❚❚" : "▶";
+}
+
+audioEl.addEventListener("loadedmetadata", () => {
+  plTime.textContent = `${fmtTime(0)} / ${fmtTime(audioEl.duration)}`;
+});
+audioEl.addEventListener("timeupdate", () => {
+  const dur = audioEl.duration || 0;
+  plSeek.value = dur ? String(Math.round((audioEl.currentTime / dur) * 1000)) : "0";
+  plTime.textContent = `${fmtTime(audioEl.currentTime)} / ${fmtTime(dur)}`;
+});
+audioEl.addEventListener("play", markPlayingRow);
+audioEl.addEventListener("pause", markPlayingRow);
+audioEl.addEventListener("ended", () => {
+  plSeek.value = "0";
+  markPlayingRow();
+});
+audioEl.addEventListener("error", () => {
+  if (!playingPath) return; // stop() clears src, which also fires 'error'
+  toast("Can't preview this file (format may be unsupported)", true);
+  stopPlayback();
+});
+
+plToggle.addEventListener("click", togglePlay);
+plStop.addEventListener("click", stopPlayback);
+plSeek.addEventListener("input", () => {
+  if (audioEl.duration) audioEl.currentTime = (Number(plSeek.value) / 1000) * audioEl.duration;
+});
+// Play buttons live in dynamically-rendered rows — delegate.
+tracksBody.addEventListener("click", (e) => {
+  const btn = e.target.closest("td.play button");
+  if (btn) playTrack(btn.dataset.path);
+});
 
 // ---- Discogs import ----
 function openDiscogs() {
@@ -757,6 +886,33 @@ tracksBody.addEventListener("keydown", (e) => {
 
 loadSavedToken();
 
+// Build a silent 8kHz/8-bit mono WAV of `seconds` length; returns an
+// ArrayBuffer, mirroring the raw bytes the real `read_audio` command returns.
+function makeSilentWav(seconds) {
+  const rate = 8000;
+  const samples = Math.floor(rate * seconds);
+  const buf = new ArrayBuffer(44 + samples);
+  const view = new DataView(buf);
+  const writeStr = (off, s) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + samples, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true); // fmt chunk size
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, rate, true);
+  view.setUint32(28, rate, true); // byte rate (1 byte/sample)
+  view.setUint16(32, 1, true); // block align
+  view.setUint16(34, 8, true); // bits per sample
+  writeStr(36, "data");
+  view.setUint32(40, samples, true);
+  for (let i = 0; i < samples; i++) view.setUint8(44 + i, 128); // 8-bit silence
+  return buf;
+}
+
 // ---- browser-only mock (no effect inside Tauri) ----
 function mockInvoke(cmd, args) {
   mockInvoke.state = mockInvoke.state || {
@@ -848,6 +1004,10 @@ function mockInvoke(cmd, args) {
       });
       return Promise.resolve({ written, skipped_no_cover });
     }
+    case "read_audio":
+      // Return a short silent WAV as an ArrayBuffer so the player UI can be
+      // exercised in a plain browser (the real backend returns file bytes).
+      return Promise.resolve(makeSilentWav(1.5));
     case "saved_discogs_token":
       return Promise.resolve("");
     case "save_discogs_token":

@@ -368,6 +368,21 @@ impl App {
         })
     }
 
+    /// Read the raw bytes of an audio file for in-app preview playback. The
+    /// webview plays these via a Blob URL (see the frontend player). Read-only
+    /// and independent of the tag-write pipeline; confined to the opened library
+    /// defensively, like every other path this layer touches.
+    pub fn read_audio_bytes(&self, path: &Path) -> Result<Vec<u8>, AppError> {
+        let root = std::fs::canonicalize(&self.library_root)?;
+        let canonical = std::fs::canonicalize(path)?;
+        if !canonical.starts_with(&root) {
+            return Err(AppError::OutsideRoot(
+                canonical.to_string_lossy().into_owned(),
+            ));
+        }
+        Ok(std::fs::read(&canonical)?)
+    }
+
     /// Apply a previewed plan to disk and record it for undo.
     pub fn apply(&mut self, plan: &PlanDto) -> Result<BatchDto, AppError> {
         let change_plan = plan.to_change_plan();

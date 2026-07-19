@@ -10,6 +10,12 @@ first release ships.
 
 ### Added
 
+- Built-in preview player (#28): a ▶ button on each track row auditions the
+  file in an in-app player bar (play/pause, stop, seek, elapsed/total time) — no
+  external player, no leaving the app. The backend streams the file's bytes to
+  the webview as a Blob, which plays the formats WKWebView supports (MP3, M4A,
+  FLAC); unsupported files (e.g. OGG) surface a friendly message instead of
+  failing silently. Preview-only: reads bytes, never touches the tag pipeline.
 - Genre tag from Discogs Style, not Genre (#26): a Discogs import now fills the
   genre tag from the release's `styles` (e.g. `Trance/Tribal/Techno`) rather
   than the coarse `genres` (e.g. `Electronic`), which is closer to what a genre
