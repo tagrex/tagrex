@@ -87,7 +87,7 @@ function renderTracks() {
     tr.dataset.path = track.path;
     tr.innerHTML = `
       <td class="sel"><input type="checkbox" checked data-path="${escapeHtml(track.path)}" /></td>
-      <td class="mono file" draggable="true" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
+      <td class="mono file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
     for (const field of EDIT_FIELDS) {
       const td = document.createElement("td");
       td.className = "editable";
@@ -396,44 +396,48 @@ function toggleReleaseTracks(on) {
   releaseTracksBody.querySelectorAll(".sel input").forEach((cb) => (cb.checked = on));
 }
 
-// ---- drag-to-reorder files in the main table ----
+// ---- reorder files by dragging the File cell ----
+// Implemented with mouse events (not HTML5 drag-and-drop) because WKWebView,
+// the macOS Tauri webview, doesn't drive native DnD reliably. Mouse events
+// behave identically everywhere.
 let dragPath = null;
-tracksBody.addEventListener("dragstart", (e) => {
+
+function rowUnder(clientX, clientY) {
+  const el = document.elementFromPoint(clientX, clientY);
+  return el && el.closest("#tracks-body tr");
+}
+
+tracksBody.addEventListener("mousedown", (e) => {
   const cell = e.target.closest("td.file");
   if (!cell) return;
+  e.preventDefault(); // don't start a text selection
   dragPath = cell.closest("tr").dataset.path;
   cell.closest("tr").classList.add("dragging");
-  // WKWebView (the macOS Tauri webview) won't start a drag unless some data is
-  // set on the transfer — Chromium is lenient, WebKit is not.
-  if (e.dataTransfer) {
-    e.dataTransfer.setData("text/plain", dragPath);
-    e.dataTransfer.effectAllowed = "move";
-  }
+  document.addEventListener("mousemove", onDragMove);
+  document.addEventListener("mouseup", onDragUp);
 });
-tracksBody.addEventListener("dragend", (e) => {
-  tracksBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("dragging", "drop-target"));
-  dragPath = null;
-});
-tracksBody.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
-  const row = e.target.closest("tr");
+
+function onDragMove(e) {
+  const row = rowUnder(e.clientX, e.clientY);
   tracksBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("drop-target"));
   if (row && row.dataset.path !== dragPath) row.classList.add("drop-target");
-});
-tracksBody.addEventListener("drop", (e) => {
-  e.preventDefault();
-  const row = e.target.closest("tr");
-  if (!row || dragPath === null) return;
-  const targetPath = row.dataset.path;
-  if (targetPath === dragPath) return;
-  const from = tracks.findIndex((t) => t.path === dragPath);
-  const to = tracks.findIndex((t) => t.path === targetPath);
+}
+
+function onDragUp(e) {
+  document.removeEventListener("mousemove", onDragMove);
+  document.removeEventListener("mouseup", onDragUp);
+  const row = rowUnder(e.clientX, e.clientY);
+  tracksBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("dragging", "drop-target"));
+  const source = dragPath;
+  dragPath = null;
+  if (!row || !source || row.dataset.path === source) return;
+  const from = tracks.findIndex((t) => t.path === source);
+  const to = tracks.findIndex((t) => t.path === row.dataset.path);
   if (from < 0 || to < 0) return;
   const [moved] = tracks.splice(from, 1);
   tracks.splice(to, 0, moved);
   renderTracks();
-});
+}
 rootInput.addEventListener("keydown", (e) => e.key === "Enter" && openLibrary());
 selectAll.addEventListener("change", () => {
   tracksBody
