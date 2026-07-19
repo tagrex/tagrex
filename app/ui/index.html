@@ -24,6 +24,7 @@
           <h2>Tracks <span id="track-count" class="muted"></span></h2>
           <span class="hint muted edit-hint">Double-click a cell to edit</span>
           <div class="spacer"></div>
+          <input id="filter" type="search" placeholder="Filter…" spellcheck="false" />
           <button id="preview-edits" disabled>Preview edits</button>
         </div>
         <div class="table-wrap">
@@ -31,11 +32,11 @@
             <thead>
               <tr>
                 <th class="sel"><input id="select-all" type="checkbox" /></th>
-                <th>File</th>
-                <th>Artist</th>
-                <th>Title</th>
-                <th>Album</th>
-                <th>Year</th>
+                <th data-sort="file" class="sortable">File<span class="sort-ind"></span></th>
+                <th data-sort="artist" class="sortable">Artist<span class="sort-ind"></span></th>
+                <th data-sort="title" class="sortable">Title<span class="sort-ind"></span></th>
+                <th data-sort="album" class="sortable">Album<span class="sort-ind"></span></th>
+                <th data-sort="year" class="sortable">Year<span class="sort-ind"></span></th>
               </tr>
             </thead>
             <tbody id="tracks-body"></tbody>

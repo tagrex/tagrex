@@ -25,6 +25,13 @@ const edits = new Map();
 // Fields shown as editable columns, in table order.
 const EDIT_FIELDS = ["artist", "title", "album", "year"];
 
+// View state (does not change what's on disk). Sorting reorders the `tracks`
+// array itself so position-based mapping (rename masks, Discogs import) follows
+// the visible order; filtering only hides rows.
+let sortKey = null; // "file" | one of EDIT_FIELDS
+let sortDir = 1; // 1 asc, -1 desc
+let filterText = "";
+
 // ---- elements ----
 const el = (id) => document.getElementById(id);
 const rootInput = el("root");
@@ -83,12 +90,44 @@ function escapeHtml(s) {
 // Renders the table, overlaying any pending edits on top of the on-disk
 // values (edited cells shown and marked dirty). Does NOT clear `edits` — call
 // `resetEdits()` for that when loading fresh disk state.
+function sortValue(track, key) {
+  return (key === "file" ? fileName(track.path) : track.tags[key] || "").toLowerCase();
+}
+
+function matchesFilter(track) {
+  if (!filterText) return true;
+  const hay = [
+    fileName(track.path),
+    track.tags.artist,
+    track.tags.title,
+    track.tags.album,
+    track.tags.year,
+  ]
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(filterText);
+}
+
+function updateSortIndicators() {
+  document.querySelectorAll("th.sortable").forEach((th) => {
+    const ind = th.querySelector(".sort-ind");
+    ind.textContent = th.dataset.sort === sortKey ? (sortDir > 0 ? "▲" : "▼") : "";
+  });
+}
+
 function renderTracks() {
   tracksBody.innerHTML = "";
-  trackCount.textContent = tracks.length ? `(${tracks.length})` : "";
+  updateSortIndicators();
+
+  const visible = tracks.filter(matchesFilter);
+  trackCount.textContent = tracks.length
+    ? filterText
+      ? `(${visible.length}/${tracks.length})`
+      : `(${tracks.length})`
+    : "";
   tracksEmpty.hidden = tracks.length > 0;
 
-  for (const track of tracks) {
+  for (const track of visible) {
     const pending = edits.get(track.path);
     const tr = document.createElement("tr");
     tr.dataset.path = track.path;
@@ -212,6 +251,10 @@ async function openLibrary() {
     tracks = await invoke("list_tracks", {});
     previewPlan = null;
     resetEdits();
+    sortKey = null;
+    sortDir = 1;
+    filterText = "";
+    el("filter").value = "";
     renderTracks();
     await refreshHistory();
     toast(`Opened ${root} — ${tracks.length} tracks`);
@@ -517,6 +560,7 @@ function onDragUp() {
     return;
   }
   tracks.splice(drop.below ? targetIndex + 1 : targetIndex, 0, moved);
+  sortKey = null; // manual order supersedes any column sort
   renderTracks();
 }
 rootInput.addEventListener("keydown", (e) => e.key === "Enter" && openLibrary());
@@ -524,6 +568,30 @@ selectAll.addEventListener("change", () => {
   tracksBody
     .querySelectorAll(".sel input[type=checkbox]")
     .forEach((cb) => (cb.checked = selectAll.checked));
+});
+
+// Sort by clicking a column header (toggles direction). Reorders `tracks`
+// itself so position-based mapping follows the visible order.
+function sortBy(key) {
+  if (sortKey === key) sortDir = -sortDir;
+  else {
+    sortKey = key;
+    sortDir = 1;
+  }
+  tracks.sort(
+    (a, b) =>
+      sortValue(a, key).localeCompare(sortValue(b, key), undefined, { numeric: true }) * sortDir,
+  );
+  renderTracks();
+}
+
+document.querySelectorAll("th.sortable").forEach((th) => {
+  th.addEventListener("click", () => sortBy(th.dataset.sort));
+});
+
+el("filter").addEventListener("input", (e) => {
+  filterText = e.target.value.trim().toLowerCase();
+  renderTracks();
 });
 // Track edits on any editable cell (event delegation).
 tracksBody.addEventListener("input", (e) => {

@@ -233,6 +233,36 @@ td.sel {
   text-align: center;
 }
 
+th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+th.sortable:hover {
+  color: var(--text);
+}
+
+.sort-ind {
+  display: inline-block;
+  width: 0.9em;
+  color: var(--accent);
+}
+
+#filter {
+  width: 180px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+#filter:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .mask-row {
   display: flex;
   gap: 6px;

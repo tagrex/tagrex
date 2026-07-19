@@ -10,6 +10,15 @@ first release ships.
 
 ### Added
 
+- Sort the track table by column (#21): click a header (File/Artist/Title/
+  Album/Year) to sort, click again to reverse; an arrow marks the active
+  column. Sorting reorders the underlying list so position-based mapping
+  (rename masks, Discogs import) follows the visible order; a manual
+  drag-reorder supersedes the column sort.
+- Filter the track table (#22): a search box hides rows that don't match a
+  substring across the filename and tag columns; the count shows shown/total.
+  Filtering is view-only — selection and mapping operate on the visible rows.
+
 - Unified pending-edits model (#23): inline cell edits and Discogs import now
   feed one buffer, so they compose into a single preview and Apply instead of
   two disconnected flows. Import merges into pending edits without overwriting
