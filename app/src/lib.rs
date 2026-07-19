@@ -136,7 +136,11 @@ pub struct ReleaseDto {
     pub artist: String,
     pub title: String,
     pub year: Option<u16>,
+    /// Broad Discogs genres (e.g. `Electronic`).
     pub genres: Vec<String>,
+    /// Specific Discogs styles (e.g. `Trance`, `Tribal`, `Techno`) — what the
+    /// import writes to the genre tag by preference (#26).
+    pub styles: Vec<String>,
     pub tracks: Vec<ReleaseTrackDto>,
     /// URL of the release's primary image, if any. Fetch its bytes with
     /// [`App::fetch_discogs_image`] to preview or embed it.
@@ -634,6 +638,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
             title: release.title.clone(),
             year: release.year,
             genres: release.genres.clone(),
+            styles: release.styles.clone(),
             tracks: release
                 .tracks
                 .iter()

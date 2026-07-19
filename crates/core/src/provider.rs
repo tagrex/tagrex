@@ -56,7 +56,13 @@ pub struct Release {
     pub artist: String,
     pub title: String,
     pub year: Option<u16>,
+    /// Broad, coarse genres (Discogs `genres`, e.g. `Electronic`). Kept
+    /// separate from [`styles`](Self::styles) so the caller can choose which to
+    /// write to the genre tag — for Discogs, `styles` is the more meaningful
+    /// value (#26).
     pub genres: Vec<String>,
+    /// Specific styles (Discogs `styles`, e.g. `Trance`, `Tribal`, `Techno`).
+    pub styles: Vec<String>,
     pub tracks: Vec<ReleaseTrack>,
     /// URL of the release's primary image (full resolution), if it has one.
     /// The bytes still have to be downloaded with the provider's auth + User-

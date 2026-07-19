@@ -582,11 +582,17 @@ function enabledReleaseTracks() {
 
 async function applyImport() {
   const paths = selectedPaths();
+  // Prefer Discogs "styles" (e.g. Trance/Tribal/Techno) over the coarse
+  // "genres" (e.g. Electronic) for the genre tag — styles are closer to what a
+  // genre tag usually means (#26). Fall back to genres when a release has no
+  // styles. Multiple values are joined with "/" (no spaces), matching the
+  // existing convention in the user's library.
+  const genreValues = currentRelease.styles.length ? currentRelease.styles : currentRelease.genres;
   const selection = {
     album: currentRelease.title,
     album_artist: currentRelease.artist,
     year: currentRelease.year ? String(currentRelease.year) : null,
-    genre: currentRelease.genres[0] || null,
+    genre: genreValues.join("/") || null,
     tracks: enabledReleaseTracks(),
   };
   try {
@@ -858,6 +864,7 @@ function mockInvoke(cmd, args) {
         title: "La Bush - Music From The Temple Of House",
         year: 1996,
         genres: ["Electronic"],
+        styles: ["Trance", "Tribal", "Techno"],
         tracks: [
           { position: "1", artist: "The X Factor", title: "Desert Rain" },
           { position: "2", artist: "Wish Mountain", title: "Radio" },
@@ -879,6 +886,9 @@ function mockInvoke(cmd, args) {
         const tag_changes = [
           { field: "album", old: t ? t.tags.album || null : null, new: args.selection.album },
         ];
+        if (args.selection.genre) {
+          tag_changes.push({ field: "genre", old: t ? t.tags.genre || null : null, new: args.selection.genre });
+        }
         if (rt) {
           tag_changes.push({ field: "title", old: t ? t.tags.title || null : null, new: rt.title });
           tag_changes.push({ field: "artist", old: t ? t.tags.artist || null : null, new: rt.artist });

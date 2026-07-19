@@ -10,6 +10,12 @@ first release ships.
 
 ### Added
 
+- Genre tag from Discogs Style, not Genre (#26): a Discogs import now fills the
+  genre tag from the release's `styles` (e.g. `Trance/Tribal/Techno`) rather
+  than the coarse `genres` (e.g. `Electronic`), which is closer to what a genre
+  tag usually means. Multiple styles are joined with `/` (matching the common
+  library convention); releases with no styles fall back to their genres. The
+  provider now exposes `genres` and `styles` separately instead of merging them.
 - Export embedded cover art to disk (#25): an "Export cover" toolbar action
   saves the embedded front cover of the selected files as a `cover.<ext>`
   sidecar next to each one (extension from the cover's MIME type). Read-only for

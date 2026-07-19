@@ -66,6 +66,7 @@ fn main() {
                     .unwrap_or_else(|| "?".to_string())
             );
             println!("genres: {}", release.genres.join(", "));
+            println!("styles: {}", release.styles.join(", "));
             for track in &release.tracks {
                 let artist = track.artist.as_deref().unwrap_or(&release.artist);
                 println!("  {:>4}  {} - {}", track.position, artist, track.title);

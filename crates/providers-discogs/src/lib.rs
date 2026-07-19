@@ -264,11 +264,11 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         .unwrap_or_default()
         .to_string();
 
-    // Discogs splits broad "genres" from specific "styles"; a tagger usually
-    // wants both, styles being the more specific (e.g. genre Electronic, style
-    // House). Keep genres first, then styles.
-    let mut genres = string_array(root.get("genres"));
-    genres.extend(string_array(root.get("styles")));
+    // Discogs splits broad "genres" (e.g. Electronic) from specific "styles"
+    // (e.g. House). Kept separate here so the app can prefer styles for the
+    // genre tag (#26); the coarse genres remain available as a fallback.
+    let genres = string_array(root.get("genres"));
+    let styles = string_array(root.get("styles"));
 
     let tracks = root
         .get("tracklist")
@@ -300,6 +300,7 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         title,
         year: root.get("year").and_then(value_to_year),
         genres,
+        styles,
         tracks,
         cover_image_url: primary_image_url(root.get("images")),
     })
@@ -450,7 +451,9 @@ mod tests {
         assert_eq!(release.id, ReleaseId("249504".to_string()));
         assert_eq!(release.artist, "Rick Astley"); // suffix stripped
         assert_eq!(release.year, Some(1987));
-        assert_eq!(release.genres, vec!["Electronic", "Synth-pop"]);
+        // Genres and styles are kept separate (#26).
+        assert_eq!(release.genres, vec!["Electronic"]);
+        assert_eq!(release.styles, vec!["Synth-pop"]);
         // Primary image picked (full-res `uri`), not the secondary/back one.
         assert_eq!(
             release.cover_image_url.as_deref(),
