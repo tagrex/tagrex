@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- Unified pending-edits model (#23): inline cell edits and Discogs import now
+  feed one buffer, so they compose into a single preview and Apply instead of
+  two disconnected flows. Import merges into pending edits without overwriting
+  a field the user already edited by hand (manual wins), edited/imported
+  values both show as dirty cells, and pending tag edits survive a rename
+  (remapped to the new paths) rather than being silently lost.
+
 - Discogs release import in the GUI (#10): a Discogs panel (token + search →
   candidate list → release tracklist) imports metadata onto the selected
   files, previewed and applied through the same journaled/undoable path.

@@ -14,7 +14,12 @@ async function invoke(cmd, args) {
 // ---- state ----
 let tracks = [];
 let previewPlan = null;
-// path -> { field -> newValue } for cells edited but not yet applied
+// What the current previewPlan came from, so apply() knows whether to clear
+// pending tag edits ("edits") or remap them across a rename ("rename").
+let previewSource = null;
+// path -> Map(field -> newValue): pending tag changes not yet applied. Both
+// inline cell edits and Discogs import feed this one buffer, so they compose
+// into a single preview/apply. A value of "" means "clear the field".
 const edits = new Map();
 
 // Fields shown as editable columns, in table order.
@@ -75,37 +80,60 @@ function escapeHtml(s) {
 }
 
 // ---- rendering ----
+// Renders the table, overlaying any pending edits on top of the on-disk
+// values (edited cells shown and marked dirty). Does NOT clear `edits` — call
+// `resetEdits()` for that when loading fresh disk state.
 function renderTracks() {
   tracksBody.innerHTML = "";
-  edits.clear();
-  updateEditsButton();
   trackCount.textContent = tracks.length ? `(${tracks.length})` : "";
   tracksEmpty.hidden = tracks.length > 0;
 
   for (const track of tracks) {
+    const pending = edits.get(track.path);
     const tr = document.createElement("tr");
     tr.dataset.path = track.path;
     tr.innerHTML = `
       <td class="sel"><input type="checkbox" checked data-path="${escapeHtml(track.path)}" /></td>
       <td class="mono file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
     for (const field of EDIT_FIELDS) {
+      const original = tag(track, field);
+      const edited = pending && pending.has(field);
+      const value = edited ? pending.get(field) : original;
       const td = document.createElement("td");
       td.className = "editable";
       td.contentEditable = "true";
       td.spellcheck = false;
       td.dataset.path = track.path;
       td.dataset.field = field;
-      td.dataset.original = tag(track, field);
-      td.textContent = tag(track, field);
+      td.dataset.original = original;
+      td.textContent = value;
+      if (edited && value !== original) td.classList.add("dirty");
       tr.appendChild(td);
     }
     tracksBody.appendChild(tr);
   }
   previewBtn.disabled = tracks.length === 0;
   discogsOpenBtn.disabled = tracks.length === 0;
+  updateEditsButton();
   applyBtn.disabled = true;
   previewTable.hidden = true;
   previewEmpty.hidden = true;
+}
+
+function resetEdits() {
+  edits.clear();
+  updateEditsButton();
+}
+
+// Move pending edits from old paths to new paths after a rename is applied, so
+// tag edits survive a rename instead of being orphaned by the path change.
+function remapEditsAfterRename(plan) {
+  for (const change of plan.changes) {
+    if (change.rename_to && edits.has(change.path)) {
+      edits.set(change.rename_to, edits.get(change.path));
+      edits.delete(change.path);
+    }
+  }
 }
 
 function onCellEdit(td) {
@@ -183,6 +211,7 @@ async function openLibrary() {
     await invoke("open_library", { root });
     tracks = await invoke("list_tracks", {});
     previewPlan = null;
+    resetEdits();
     renderTracks();
     await refreshHistory();
     toast(`Opened ${root} — ${tracks.length} tracks`);
@@ -199,6 +228,7 @@ async function preview() {
   }
   try {
     previewPlan = await invoke("preview_rename", { mask: el("mask").value, paths });
+    previewSource = "rename";
     renderPreview(previewPlan);
   } catch (e) {
     toast(String(e), true);
@@ -212,9 +242,16 @@ async function previewEdits() {
       list.push({ path, field, value });
     }
   }
-  if (list.length === 0) return;
+  if (list.length === 0) {
+    previewEmpty.hidden = false;
+    previewEmpty.textContent = "No pending edits.";
+    previewTable.hidden = true;
+    applyBtn.disabled = true;
+    return;
+  }
   try {
     previewPlan = await invoke("preview_tag_edits", { edits: list });
+    previewSource = "edits";
     renderPreview(previewPlan);
   } catch (e) {
     toast(String(e), true);
@@ -223,11 +260,18 @@ async function previewEdits() {
 
 async function apply() {
   if (!previewPlan || previewPlan.changes.length === 0) return;
+  const wasRename = previewSource === "rename";
+  const appliedPlan = previewPlan;
   try {
-    await invoke("apply_plan", { plan: previewPlan });
-    const n = previewPlan.changes.length;
-    toast(`Applied changes to ${n} file(s)`);
+    await invoke("apply_plan", { plan: appliedPlan });
+    toast(`Applied changes to ${appliedPlan.changes.length} file(s)`);
     previewPlan = null;
+    previewSource = null;
+    if (wasRename) {
+      remapEditsAfterRename(appliedPlan); // keep pending tag edits, new paths
+    } else {
+      resetEdits(); // tag edits are now on disk
+    }
     tracks = await invoke("list_tracks", {});
     renderTracks();
     await refreshHistory();
@@ -242,6 +286,9 @@ async function undo() {
     if (batches.length === 0) return;
     await invoke("undo", { batchId: batches[0].id });
     toast("Undid last batch");
+    previewPlan = null;
+    previewSource = null;
+    resetEdits();
     tracks = await invoke("list_tracks", {});
     renderTracks();
     await refreshHistory();
@@ -352,22 +399,37 @@ function enabledReleaseTracks() {
 
 async function applyImport() {
   const paths = selectedPaths();
-  const tracks = enabledReleaseTracks();
   const selection = {
     album: currentRelease.title,
     album_artist: currentRelease.artist,
     year: currentRelease.year ? String(currentRelease.year) : null,
     genre: currentRelease.genres[0] || null,
-    tracks,
+    tracks: enabledReleaseTracks(),
   };
   try {
-    previewPlan = await invoke("preview_import", { paths, selection });
+    const plan = await invoke("preview_import", { paths, selection });
+    // Merge the import into the pending-edits buffer instead of replacing the
+    // preview. A field the user already edited by hand wins (we don't
+    // overwrite an existing entry), so manual edits aren't clobbered.
+    let merged = 0;
+    for (const change of plan.changes) {
+      if (!edits.has(change.path)) edits.set(change.path, new Map());
+      const fields = edits.get(change.path);
+      for (const tc of change.tag_changes) {
+        if (!fields.has(tc.field)) {
+          fields.set(tc.field, tc.new ?? "");
+          merged += 1;
+        }
+      }
+      if (fields.size === 0) edits.delete(change.path);
+    }
     closeDiscogs();
-    renderPreview(previewPlan);
+    renderTracks(); // imported values now show as pending edits in the table
+    await previewEdits(); // one unified preview of all pending edits
     toast(
-      previewPlan.changes.length
-        ? `Previewing import onto ${previewPlan.changes.length} file(s)`
-        : "Nothing to change from this release"
+      merged
+        ? `Merged ${merged} field change(s) from Discogs into pending edits`
+        : "Nothing new to import from this release"
     );
   } catch (e) {
     toast(String(e), true);
