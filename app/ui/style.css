@@ -283,6 +283,12 @@ td.sel {
   z-index: 20;
 }
 
+/* `display: flex` above outranks the UA `[hidden] { display: none }`, so the
+   attribute alone wouldn't hide the modal — this makes `hidden` win. */
+.modal[hidden] {
+  display: none;
+}
+
 .modal-box {
   width: min(640px, 92vw);
   max-height: 82vh;
