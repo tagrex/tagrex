@@ -175,7 +175,11 @@ fn tag_field_to_item_key(field: &TagField) -> ItemKey {
         TagField::TrackNumber => ItemKey::TrackNumber,
         TagField::TrackTotal => ItemKey::TrackTotal,
         TagField::DiscNumber => ItemKey::DiscNumber,
-        TagField::Year => ItemKey::Year,
+        // Write the year through `RecordingDate` (ID3v2.4 TDRC, Vorbis DATE,
+        // MP4 ©day), not `ItemKey::Year`: ID3v2.4 has no plain "year" frame, so
+        // lofty silently drops `ItemKey::Year` there — which lost the year on
+        // every write. `read` maps both back to `Year`, so this round-trips.
+        TagField::Year => ItemKey::RecordingDate,
         TagField::Genre => ItemKey::Genre,
         TagField::Comment => ItemKey::Comment,
         TagField::Custom(key) => ItemKey::Unknown(key.clone()),

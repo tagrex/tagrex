@@ -49,6 +49,9 @@ fn write_then_read_round_trips_known_and_custom_fields() {
     let mut tags = BTreeMap::new();
     tags.insert(TagField::Artist, "Test Artist".to_string());
     tags.insert(TagField::Title, "Test Title".to_string());
+    // Year must survive a write: it's stored via RecordingDate, since a plain
+    // "year" isn't a real ID3v2.4 frame (regression guard).
+    tags.insert(TagField::Year, "1996".to_string());
     // Deliberately not a key lofty recognizes for Vorbis Comments (unlike,
     // say, "MOOD" or "COMPOSER") — a recognized key would round-trip back as
     // its matching `ItemKey` variant, not as this literal `Custom` string.
@@ -76,6 +79,10 @@ fn write_then_read_round_trips_known_and_custom_fields() {
     assert_eq!(
         read_back.tags.get(&TagField::Title).map(String::as_str),
         Some("Test Title")
+    );
+    assert_eq!(
+        read_back.tags.get(&TagField::Year).map(String::as_str),
+        Some("1996")
     );
     assert_eq!(
         read_back
