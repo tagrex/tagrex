@@ -379,9 +379,15 @@ button.icon {
   height: 15px;
 }
 
-/* Drag handle on the File cell of the main table. */
+/* Drag handle on the File cell of the main table. WebKit (the macOS Tauri
+   webview) needs `-webkit-user-drag: element` to let a non-anchor/img element
+   start a drag, plus suppressed text selection so the grip drags instead of
+   selecting the filename. */
 td.file {
   cursor: grab;
+  -webkit-user-drag: element;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 tr.dragging {

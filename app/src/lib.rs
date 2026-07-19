@@ -316,11 +316,23 @@ impl App {
             if let Some(track) = selection.tracks.get(index) {
                 let artist = non_empty(Some(track.artist.clone()))
                     .or_else(|| non_empty(selection.album_artist.clone()));
-                let track_number = track_number_from_position(&track.position)
-                    .unwrap_or_else(|| (index + 1).to_string());
                 desired.push((TagField::Title, non_empty(Some(track.title.clone()))));
                 desired.push((TagField::Artist, artist));
-                desired.push((TagField::TrackNumber, Some(track_number)));
+
+                // Track number from the release position, but leave the file's
+                // existing number alone if it already means the same thing --
+                // so an aligned "01" isn't reformatted to "1". Compare
+                // numerically (both normalized) and only change on a real
+                // difference.
+                let position_number = track_number_from_position(&track.position)
+                    .unwrap_or_else(|| (index + 1).to_string());
+                let current_number = current
+                    .tags
+                    .get(&TagField::TrackNumber)
+                    .and_then(|value| track_number_from_position(value));
+                if current_number.as_deref() != Some(position_number.as_str()) {
+                    desired.push((TagField::TrackNumber, Some(position_number)));
+                }
             }
 
             let mut tag_changes = Vec::new();
@@ -685,6 +697,37 @@ mod tests {
         assert_eq!(second.get("artist").map(String::as_str), Some("Guest"));
         // Position 5, not selection index 2.
         assert_eq!(second.get("track").map(String::as_str), Some("5"));
+    }
+
+    #[test]
+    fn import_leaves_a_matching_track_number_untouched() {
+        let dir = TempDir::new("import-track");
+        let path = dir.tagged_flac("t.flac", "Artist", "Title");
+        // Give the file a zero-padded track number.
+        let mut track = TagEngine::read(&path).unwrap();
+        track.tags.insert(TagField::TrackNumber, "05".into());
+        TagEngine::write(&track).unwrap();
+        let app = open_app(&dir);
+
+        let selection = ImportSelectionDto {
+            album: Some("Album".into()),
+            tracks: vec![ImportTrackDto {
+                position: "5".into(),
+                artist: "Artist".into(),
+                title: "Title".into(),
+            }],
+            ..ImportSelectionDto::default()
+        };
+        let plan = app.preview_import(&[path], &selection).unwrap();
+        let changed_fields: Vec<&str> = plan.changes[0]
+            .tag_changes
+            .iter()
+            .map(|fc| fc.field.as_str())
+            .collect();
+        // Album changes; the track number ("05" vs position "5") must NOT,
+        // since they mean the same number.
+        assert!(changed_fields.contains(&"album"));
+        assert!(!changed_fields.contains(&"track"));
     }
 
     #[test]
