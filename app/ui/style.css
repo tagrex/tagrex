@@ -390,12 +390,19 @@ td.file {
   -webkit-user-select: none;
 }
 
-tr.dragging {
-  opacity: 0.4;
+tr.dragging td {
+  opacity: 0.35;
 }
 
-tr.drop-target td {
-  border-top: 2px solid var(--accent);
+/* Crisp insertion line showing exactly where the row will land — above or
+   below the hovered row depending on which half the cursor is over. `inset`
+   box-shadow draws it without shifting the layout. */
+tr.drop-above td {
+  box-shadow: inset 0 3px 0 0 var(--accent);
+}
+
+tr.drop-below td {
+  box-shadow: inset 0 -3px 0 0 var(--accent);
 }
 
 .toast {
