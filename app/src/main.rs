@@ -96,6 +96,20 @@ fn search_discogs(
     })
 }
 
+#[tauri::command]
+fn preview_release_import(
+    state: State<AppState>,
+    token: String,
+    release_id: String,
+    paths: Vec<String>,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_release_import(&token, &release_id, &paths)
+            .map_err(|e| e.to_string())
+    })
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
@@ -107,7 +121,8 @@ fn main() {
             apply_plan,
             undo,
             history,
-            search_discogs
+            search_discogs,
+            preview_release_import
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -14,6 +14,7 @@
         <button id="open">Open</button>
       </div>
       <div class="spacer"></div>
+      <button id="discogs-open" disabled title="Import metadata from Discogs">Discogs…</button>
       <button id="undo" disabled title="Undo the last applied batch">Undo last</button>
     </header>
 
@@ -77,6 +78,38 @@
         </div>
       </section>
     </main>
+
+    <div id="discogs-modal" class="modal" hidden>
+      <div class="modal-box">
+        <div class="modal-head">
+          <h2>Discogs import</h2>
+          <div class="spacer"></div>
+          <button id="discogs-close" class="icon" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <input
+            id="discogs-token"
+            type="password"
+            placeholder="Personal Discogs token"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <div class="mask-row" style="padding: 0">
+            <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
+            <button id="discogs-search">Search</button>
+          </div>
+          <p class="hint muted" style="padding: 0">
+            Click a result to map its tracklist onto the selected tracks (in table order) and preview.
+          </p>
+          <div class="table-wrap" style="max-height: 320px; border-top: 1px solid var(--border)">
+            <table>
+              <tbody id="discogs-results"></tbody>
+            </table>
+            <p id="discogs-empty" class="empty">Search Discogs to see releases.</p>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div id="toast" class="toast" hidden></div>
 

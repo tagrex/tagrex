@@ -258,6 +258,84 @@ impl App {
         let release = provider.fetch_release(&ReleaseId(id.to_string()))?;
         Ok(ReleaseDto::from(&release))
     }
+
+    /// Fetch a Discogs release and preview applying its metadata to `paths`
+    /// (in the given table order), without writing. Reads current values for
+    /// each change's `old` and drops no-op edits, so it flows through the same
+    /// preview/apply/undo path as manual edits.
+    pub fn preview_release_import(
+        &self,
+        token: &str,
+        release_id: &str,
+        paths: &[PathBuf],
+    ) -> Result<PlanDto, AppError> {
+        let provider = DiscogsProvider::new(token);
+        let release = provider.fetch_release(&ReleaseId(release_id.to_string()))?;
+        map_release_onto(paths, &release)
+    }
+}
+
+/// Map a fetched release onto local files by position: album-level fields
+/// (album, album artist, year, genre) go to every file; per-track fields
+/// (title, track artist, track number) go to files that line up with a
+/// release track. Only fields that actually differ from the file's current
+/// value become changes.
+fn map_release_onto(
+    paths: &[PathBuf],
+    release: &tagrex_core::provider::Release,
+) -> Result<PlanDto, AppError> {
+    let mut changes = Vec::new();
+    for (index, path) in paths.iter().enumerate() {
+        let current = TagEngine::read(path)?;
+
+        // (field, desired new value) — album-level first, then per-track.
+        let mut desired: Vec<(TagField, Option<String>)> = vec![
+            (TagField::Album, non_empty(release.title.clone())),
+            (TagField::AlbumArtist, non_empty(release.artist.clone())),
+            (TagField::Year, release.year.map(|y| y.to_string())),
+            (TagField::Genre, release.genres.first().cloned()),
+        ];
+        if let Some(track) = release.tracks.get(index) {
+            let artist = track
+                .artist
+                .clone()
+                .unwrap_or_else(|| release.artist.clone());
+            desired.push((TagField::Title, non_empty(track.title.clone())));
+            desired.push((TagField::Artist, non_empty(artist)));
+            desired.push((TagField::TrackNumber, Some((index + 1).to_string())));
+        }
+
+        let mut tag_changes = Vec::new();
+        for (field, new) in desired {
+            let new = new.filter(|value| !value.is_empty());
+            let old = current.tags.get(&field).cloned();
+            if new.is_some() && old != new {
+                tag_changes.push(FieldChangeDto {
+                    field: field.to_storage_key(),
+                    old,
+                    new,
+                });
+            }
+        }
+        if !tag_changes.is_empty() {
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes,
+            });
+        }
+    }
+    Ok(PlanDto {
+        description: format!(
+            "Import Discogs release: {} - {}",
+            release.artist, release.title
+        ),
+        changes,
+    })
+}
+
+fn non_empty(value: String) -> Option<String> {
+    (!value.is_empty()).then_some(value)
 }
 
 impl From<tagrex_core::model::TrackFile> for TrackDto {
@@ -514,6 +592,65 @@ mod tests {
                 .map(String::as_str),
             Some("Old Artist")
         );
+    }
+
+    #[test]
+    fn maps_a_release_onto_files_by_position() {
+        use tagrex_core::provider::{Release, ReleaseId, ReleaseTrack};
+
+        let dir = TempDir::new("import");
+        let a = dir.tagged_flac("a.flac", "Old A", "Old Title A");
+        let b = dir.tagged_flac("b.flac", "Old B", "Old Title B");
+
+        let release = Release {
+            id: ReleaseId("123".into()),
+            artist: "Various".into(),
+            title: "Some Compilation".into(),
+            year: Some(1996),
+            genres: vec!["House".into()],
+            tracks: vec![
+                ReleaseTrack {
+                    position: "A1".into(),
+                    artist: None,
+                    title: "First".into(),
+                },
+                ReleaseTrack {
+                    position: "A2".into(),
+                    artist: Some("Guest".into()),
+                    title: "Second".into(),
+                },
+            ],
+        };
+
+        let plan = map_release_onto(&[a.clone(), b.clone()], &release).unwrap();
+        assert_eq!(plan.changes.len(), 2);
+
+        let fields = |c: &FileChangeDto| {
+            c.tag_changes
+                .iter()
+                .map(|fc| (fc.field.clone(), fc.new.clone().unwrap()))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        };
+        let first = fields(&plan.changes[0]);
+        assert_eq!(
+            first.get("album").map(String::as_str),
+            Some("Some Compilation")
+        );
+        assert_eq!(
+            first.get("albumartist").map(String::as_str),
+            Some("Various")
+        );
+        assert_eq!(first.get("year").map(String::as_str), Some("1996"));
+        assert_eq!(first.get("genre").map(String::as_str), Some("House"));
+        assert_eq!(first.get("title").map(String::as_str), Some("First"));
+        // Track 1 has no track-artist, so it falls back to the release artist.
+        assert_eq!(first.get("artist").map(String::as_str), Some("Various"));
+        assert_eq!(first.get("track").map(String::as_str), Some("1"));
+
+        // Track 2 carries its own artist.
+        let second = fields(&plan.changes[1]);
+        assert_eq!(second.get("artist").map(String::as_str), Some("Guest"));
+        assert_eq!(second.get("track").map(String::as_str), Some("2"));
     }
 
     #[test]

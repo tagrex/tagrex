@@ -273,6 +273,71 @@ td.sel {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
 }
 
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+.modal-box {
+  width: min(640px, 92vw);
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  min-height: 0;
+}
+
+.modal-body input {
+  width: 100%;
+}
+
+button.icon {
+  padding: 4px 9px;
+  box-shadow: none;
+}
+
+#discogs-results td {
+  cursor: pointer;
+  white-space: normal;
+}
+
+#discogs-results tr:hover {
+  background: var(--row-hover);
+}
+
+.cand-title {
+  font-weight: 600;
+}
+
+.cand-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .toast {
   position: fixed;
   bottom: 16px;

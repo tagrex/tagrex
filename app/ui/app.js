@@ -34,6 +34,10 @@ const previewBtn = el("preview");
 const previewEditsBtn = el("preview-edits");
 const undoBtn = el("undo");
 const selectAll = el("select-all");
+const discogsOpenBtn = el("discogs-open");
+const discogsModal = el("discogs-modal");
+const discogsResults = el("discogs-results");
+const discogsEmpty = el("discogs-empty");
 
 // ---- helpers ----
 function toast(message, isError) {
@@ -95,6 +99,7 @@ function renderTracks() {
     tracksBody.appendChild(tr);
   }
   previewBtn.disabled = tracks.length === 0;
+  discogsOpenBtn.disabled = tracks.length === 0;
   applyBtn.disabled = true;
   previewTable.hidden = true;
   previewEmpty.hidden = true;
@@ -242,12 +247,86 @@ async function undo() {
   }
 }
 
+// ---- Discogs import ----
+function openDiscogs() {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to import onto first", true);
+    return;
+  }
+  discogsModal.hidden = false;
+  el("discogs-query").focus();
+}
+
+function closeDiscogs() {
+  discogsModal.hidden = true;
+}
+
+async function discogsSearch() {
+  const token = el("discogs-token").value.trim();
+  const query = el("discogs-query").value.trim();
+  if (!token) {
+    toast("Enter your Discogs token", true);
+    return;
+  }
+  try {
+    const candidates = await invoke("search_discogs", { token, query: { album: query } });
+    renderCandidates(candidates);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+function renderCandidates(candidates) {
+  discogsResults.innerHTML = "";
+  discogsEmpty.hidden = candidates.length > 0;
+  if (candidates.length === 0) {
+    discogsEmpty.textContent = "No releases found.";
+    return;
+  }
+  for (const c of candidates) {
+    const tr = document.createElement("tr");
+    const year = c.year ? ` · ${c.year}` : "";
+    const artist = c.artist ? `${escapeHtml(c.artist)} — ` : "";
+    tr.innerHTML = `<td>
+        <div class="cand-title">${artist}${escapeHtml(c.title)}</div>
+        <div class="cand-meta">Discogs #${escapeHtml(c.id)}${year}</div>
+      </td>`;
+    tr.addEventListener("click", () => importRelease(c.id));
+    discogsResults.appendChild(tr);
+  }
+}
+
+async function importRelease(releaseId) {
+  const token = el("discogs-token").value.trim();
+  const paths = selectedPaths();
+  try {
+    previewPlan = await invoke("preview_release_import", { token, releaseId, paths });
+    closeDiscogs();
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing import onto ${previewPlan.changes.length} file(s)`
+        : "Nothing to change from this release"
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 // ---- wire up ----
 el("open").addEventListener("click", openLibrary);
 previewBtn.addEventListener("click", preview);
 previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
+discogsOpenBtn.addEventListener("click", openDiscogs);
+el("discogs-close").addEventListener("click", closeDiscogs);
+el("discogs-search").addEventListener("click", discogsSearch);
+el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
+discogsModal.addEventListener("click", (e) => {
+  if (e.target === discogsModal) closeDiscogs();
+});
 rootInput.addEventListener("keydown", (e) => e.key === "Enter" && openLibrary());
 selectAll.addEventListener("change", () => {
   tracksBody
@@ -328,6 +407,23 @@ function mockInvoke(cmd, args) {
     case "undo":
       s.history.shift();
       return Promise.resolve();
+    case "search_discogs":
+      return Promise.resolve([
+        { id: "316795", artist: "Various", title: "La Bush - Music From The Temple Of House", year: 1996, score: 1.0 },
+        { id: "764414", artist: "Various", title: "La Bush Vol. 4", year: 1997, score: 0.9 },
+      ]);
+    case "preview_release_import": {
+      const changes = args.paths.map((p, i) => {
+        const t = findTrack(p);
+        const tag_changes = [
+          { field: "album", old: t ? t.tags.album || null : null, new: "La Bush - Music From The Temple Of House" },
+          { field: "year", old: t ? t.tags.year || null : null, new: "1996" },
+          { field: "track", old: null, new: String(i + 1) },
+        ];
+        return { path: p, rename_to: null, tag_changes };
+      });
+      return Promise.resolve({ description: "Import Discogs release", changes });
+    }
     default:
       return Promise.reject(`unknown command: ${cmd}`);
   }

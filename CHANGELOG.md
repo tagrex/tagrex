@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- Discogs release import in the GUI (#10): a Discogs panel (token + search →
+  candidate list) maps a chosen release's tracklist onto the selected tracks
+  and previews the resulting tag changes, applied through the same journaled/
+  undoable path. `App::preview_release_import` fetches the release and maps it
+  by table order — album/albumartist/year/genre to every file, title/artist/
+  track number to files that line up with a release track — dropping no-op
+  edits; the position mapping is a pure function unit-tested offline.
 - Inline tag editing in the GUI (#9): artist/title/album/year cells in the
   track table are editable; edited cells are highlighted, "Preview edits"
   shows a field-level current→new diff, and Apply writes through the same
