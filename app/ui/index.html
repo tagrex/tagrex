@@ -87,25 +87,59 @@
           <button id="discogs-close" class="icon" title="Close">✕</button>
         </div>
         <div class="modal-body">
-          <input
-            id="discogs-token"
-            type="password"
-            placeholder="Personal Discogs token"
-            spellcheck="false"
-            autocomplete="off"
-          />
-          <div class="mask-row" style="padding: 0">
-            <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
-            <button id="discogs-search">Search</button>
+          <!-- Search view -->
+          <div id="discogs-search-view">
+            <input
+              id="discogs-token"
+              type="password"
+              placeholder="Personal Discogs token"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <div class="mask-row" style="padding: 6px 0 0">
+              <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
+              <button id="discogs-search">Search</button>
+            </div>
+            <p class="hint muted" style="padding: 6px 0 0">
+              Click a release to see its tracklist, then choose which tracks to import.
+            </p>
+            <div class="table-wrap" style="max-height: 300px; border-top: 1px solid var(--border); margin-top: 8px">
+              <table>
+                <tbody id="discogs-results"></tbody>
+              </table>
+              <p id="discogs-empty" class="empty">Search Discogs to see releases.</p>
+            </div>
           </div>
-          <p class="hint muted" style="padding: 0">
-            Click a result to map its tracklist onto the selected tracks (in table order) and preview.
-          </p>
-          <div class="table-wrap" style="max-height: 320px; border-top: 1px solid var(--border)">
-            <table>
-              <tbody id="discogs-results"></tbody>
-            </table>
-            <p id="discogs-empty" class="empty">Search Discogs to see releases.</p>
+
+          <!-- Release detail view -->
+          <div id="discogs-release-view" hidden>
+            <div class="release-head">
+              <button id="discogs-back" class="icon">← results</button>
+              <div id="release-title" class="release-title"></div>
+            </div>
+            <div class="release-actions">
+              <button id="tracks-all">Enable all</button>
+              <button id="tracks-none">Disable all</button>
+              <div class="spacer"></div>
+              <button id="import-apply" class="primary">Import to selected files</button>
+            </div>
+            <p class="hint muted" style="padding: 0 0 6px">
+              Enabled tracks map onto your selected files in order. Reorder files by dragging their
+              File cell in the main table so they line up.
+            </p>
+            <div class="table-wrap" style="max-height: 300px; border-top: 1px solid var(--border)">
+              <table>
+                <thead>
+                  <tr>
+                    <th class="sel"></th>
+                    <th>#</th>
+                    <th>Artist</th>
+                    <th>Title</th>
+                  </tr>
+                </thead>
+                <tbody id="release-tracks"></tbody>
+              </table>
+            </div>
           </div>
         </div>
       </div>

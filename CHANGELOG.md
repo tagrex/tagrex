@@ -11,12 +11,23 @@ first release ships.
 ### Added
 
 - Discogs release import in the GUI (#10): a Discogs panel (token + search →
-  candidate list) maps a chosen release's tracklist onto the selected tracks
-  and previews the resulting tag changes, applied through the same journaled/
-  undoable path. `App::preview_release_import` fetches the release and maps it
-  by table order — album/albumartist/year/genre to every file, title/artist/
-  track number to files that line up with a release track — dropping no-op
-  edits; the position mapping is a pure function unit-tested offline.
+  candidate list → release tracklist) imports metadata onto the selected
+  files, previewed and applied through the same journaled/undoable path.
+  Following the TagScanner model, the user resolves the mapping explicitly:
+  each release track has a checkbox (with Enable/Disable all), and files can
+  be drag-reordered in the main table so they line up. Enabled tracks map onto
+  the selected files in order; the track number comes from the release track's
+  own position (so an aligned file keeps its real number), and files with no
+  matching track get only album-level fields. `App::preview_import` builds the
+  plan from the user's resolved selection.
+
+### Fixed
+
+- Discogs import no longer scrambles tags: the previous version mapped release
+  tracks onto files by scan order (unrelated to the tracklist), silently
+  writing wrong artist/title/track to a partial selection. Import is now
+  user-resolved (see above), and the track number is never invented from the
+  selection index.
 - Inline tag editing in the GUI (#9): artist/title/album/year cells in the
   track table are editable; edited cells are highlighted, "Preview edits"
   shows a field-level current→new diff, and Apply writes through the same

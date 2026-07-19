@@ -38,6 +38,8 @@ const discogsOpenBtn = el("discogs-open");
 const discogsModal = el("discogs-modal");
 const discogsResults = el("discogs-results");
 const discogsEmpty = el("discogs-empty");
+const releaseTracksBody = el("release-tracks");
+let currentRelease = null;
 
 // ---- helpers ----
 function toast(message, isError) {
@@ -82,9 +84,10 @@ function renderTracks() {
 
   for (const track of tracks) {
     const tr = document.createElement("tr");
+    tr.dataset.path = track.path;
     tr.innerHTML = `
       <td class="sel"><input type="checkbox" checked data-path="${escapeHtml(track.path)}" /></td>
-      <td class="mono" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
+      <td class="mono file" draggable="true" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
     for (const field of EDIT_FIELDS) {
       const td = document.createElement("td");
       td.className = "editable";
@@ -254,6 +257,7 @@ function openDiscogs() {
     toast("Select the tracks to import onto first", true);
     return;
   }
+  showDiscogsView("search");
   discogsModal.hidden = false;
   el("discogs-query").focus();
 }
@@ -292,16 +296,61 @@ function renderCandidates(candidates) {
         <div class="cand-title">${artist}${escapeHtml(c.title)}</div>
         <div class="cand-meta">Discogs #${escapeHtml(c.id)}${year}</div>
       </td>`;
-    tr.addEventListener("click", () => importRelease(c.id));
+    tr.addEventListener("click", () => openRelease(c.id));
     discogsResults.appendChild(tr);
   }
 }
 
-async function importRelease(releaseId) {
+function showDiscogsView(which) {
+  el("discogs-search-view").hidden = which !== "search";
+  el("discogs-release-view").hidden = which !== "release";
+}
+
+async function openRelease(releaseId) {
   const token = el("discogs-token").value.trim();
-  const paths = selectedPaths();
   try {
-    previewPlan = await invoke("preview_release_import", { token, releaseId, paths });
+    currentRelease = await invoke("fetch_discogs_release", { token, releaseId });
+    renderReleaseTracks();
+    const year = currentRelease.year ? ` (${currentRelease.year})` : "";
+    el("release-title").textContent = `${currentRelease.artist} — ${currentRelease.title}${year}`;
+    showDiscogsView("release");
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+function renderReleaseTracks() {
+  releaseTracksBody.innerHTML = "";
+  currentRelease.tracks.forEach((t, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="sel"><input type="checkbox" checked data-i="${i}" /></td>
+      <td class="mono">${escapeHtml(t.position)}</td>
+      <td>${escapeHtml(t.artist || currentRelease.artist)}</td>
+      <td title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</td>`;
+    releaseTracksBody.appendChild(tr);
+  });
+}
+
+function enabledReleaseTracks() {
+  return [...releaseTracksBody.querySelectorAll(".sel input:checked")].map((cb) => {
+    const t = currentRelease.tracks[Number(cb.dataset.i)];
+    return { position: t.position, artist: t.artist || currentRelease.artist, title: t.title };
+  });
+}
+
+async function applyImport() {
+  const paths = selectedPaths();
+  const tracks = enabledReleaseTracks();
+  const selection = {
+    album: currentRelease.title,
+    album_artist: currentRelease.artist,
+    year: currentRelease.year ? String(currentRelease.year) : null,
+    genre: currentRelease.genres[0] || null,
+    tracks,
+  };
+  try {
+    previewPlan = await invoke("preview_import", { paths, selection });
     closeDiscogs();
     renderPreview(previewPlan);
     toast(
@@ -324,8 +373,48 @@ discogsOpenBtn.addEventListener("click", openDiscogs);
 el("discogs-close").addEventListener("click", closeDiscogs);
 el("discogs-search").addEventListener("click", discogsSearch);
 el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
+el("discogs-back").addEventListener("click", () => showDiscogsView("search"));
+el("import-apply").addEventListener("click", applyImport);
+el("tracks-all").addEventListener("click", () => toggleReleaseTracks(true));
+el("tracks-none").addEventListener("click", () => toggleReleaseTracks(false));
 discogsModal.addEventListener("click", (e) => {
   if (e.target === discogsModal) closeDiscogs();
+});
+
+function toggleReleaseTracks(on) {
+  releaseTracksBody.querySelectorAll(".sel input").forEach((cb) => (cb.checked = on));
+}
+
+// ---- drag-to-reorder files in the main table ----
+let dragPath = null;
+tracksBody.addEventListener("dragstart", (e) => {
+  const cell = e.target.closest("td.file");
+  if (!cell) return;
+  dragPath = cell.closest("tr").dataset.path;
+  cell.closest("tr").classList.add("dragging");
+});
+tracksBody.addEventListener("dragend", (e) => {
+  tracksBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("dragging", "drop-target"));
+  dragPath = null;
+});
+tracksBody.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  const row = e.target.closest("tr");
+  tracksBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("drop-target"));
+  if (row && row.dataset.path !== dragPath) row.classList.add("drop-target");
+});
+tracksBody.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const row = e.target.closest("tr");
+  if (!row || dragPath === null) return;
+  const targetPath = row.dataset.path;
+  if (targetPath === dragPath) return;
+  const from = tracks.findIndex((t) => t.path === dragPath);
+  const to = tracks.findIndex((t) => t.path === targetPath);
+  if (from < 0 || to < 0) return;
+  const [moved] = tracks.splice(from, 1);
+  tracks.splice(to, 0, moved);
+  renderTracks();
 });
 rootInput.addEventListener("keydown", (e) => e.key === "Enter" && openLibrary());
 selectAll.addEventListener("change", () => {
@@ -412,14 +501,31 @@ function mockInvoke(cmd, args) {
         { id: "316795", artist: "Various", title: "La Bush - Music From The Temple Of House", year: 1996, score: 1.0 },
         { id: "764414", artist: "Various", title: "La Bush Vol. 4", year: 1997, score: 0.9 },
       ]);
-    case "preview_release_import": {
+    case "fetch_discogs_release":
+      return Promise.resolve({
+        id: args.releaseId,
+        artist: "Various",
+        title: "La Bush - Music From The Temple Of House",
+        year: 1996,
+        genres: ["Electronic"],
+        tracks: [
+          { position: "1", artist: "The X Factor", title: "Desert Rain" },
+          { position: "2", artist: "Wish Mountain", title: "Radio" },
+          { position: "3", artist: "West Coast Connection", title: "Voodoo Rhythm" },
+        ],
+      });
+    case "preview_import": {
       const changes = args.paths.map((p, i) => {
         const t = findTrack(p);
+        const rt = args.selection.tracks[i];
         const tag_changes = [
-          { field: "album", old: t ? t.tags.album || null : null, new: "La Bush - Music From The Temple Of House" },
-          { field: "year", old: t ? t.tags.year || null : null, new: "1996" },
-          { field: "track", old: null, new: String(i + 1) },
+          { field: "album", old: t ? t.tags.album || null : null, new: args.selection.album },
         ];
+        if (rt) {
+          tag_changes.push({ field: "title", old: t ? t.tags.title || null : null, new: rt.title });
+          tag_changes.push({ field: "artist", old: t ? t.tags.artist || null : null, new: rt.artist });
+          tag_changes.push({ field: "track", old: t ? t.tags.track || null : null, new: rt.position });
+        }
         return { path: p, rename_to: null, tag_changes };
       });
       return Promise.resolve({ description: "Import Discogs release", changes });

@@ -11,7 +11,10 @@ use std::sync::Mutex;
 
 use tauri::{Manager, State};
 
-use tagrex::{App, BatchDto, CandidateDto, PlanDto, SearchQueryDto, TagEditDto, TrackDto};
+use tagrex::{
+    App, BatchDto, CandidateDto, ImportSelectionDto, PlanDto, ReleaseDto, SearchQueryDto,
+    TagEditDto, TrackDto,
+};
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
 /// the non-`Sync` journal usable as shared Tauri state.
@@ -97,15 +100,26 @@ fn search_discogs(
 }
 
 #[tauri::command]
-fn preview_release_import(
+fn fetch_discogs_release(
     state: State<AppState>,
     token: String,
     release_id: String,
+) -> Result<ReleaseDto, String> {
+    with_app(&state, |app| {
+        app.fetch_discogs_release(&token, &release_id)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn preview_import(
+    state: State<AppState>,
     paths: Vec<String>,
+    selection: ImportSelectionDto,
 ) -> Result<PlanDto, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
-        app.preview_release_import(&token, &release_id, &paths)
+        app.preview_import(&paths, &selection)
             .map_err(|e| e.to_string())
     })
 }
@@ -122,7 +136,8 @@ fn main() {
             undo,
             history,
             search_discogs,
-            preview_release_import
+            fetch_discogs_release,
+            preview_import
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

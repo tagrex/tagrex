@@ -344,6 +344,44 @@ button.icon {
   font-size: 11px;
 }
 
+.release-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.release-title {
+  font-weight: 600;
+}
+
+.release-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+#release-tracks td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+/* Drag handle on the File cell of the main table. */
+td.file {
+  cursor: grab;
+}
+
+tr.dragging {
+  opacity: 0.4;
+}
+
+tr.drop-target td {
+  border-top: 2px solid var(--accent);
+}
+
 .toast {
   position: fixed;
   bottom: 16px;

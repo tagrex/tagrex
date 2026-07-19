@@ -114,6 +114,26 @@ pub struct ReleaseDto {
     pub tracks: Vec<ReleaseTrackDto>,
 }
 
+/// One release track the user chose to import, as sent back from the UI.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ImportTrackDto {
+    pub position: String,
+    pub artist: String,
+    pub title: String,
+}
+
+/// A user-resolved import: the album-level fields plus the ordered list of
+/// enabled release tracks to map onto the selected files (see
+/// [`App::preview_import`]).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ImportSelectionDto {
+    pub album: Option<String>,
+    pub album_artist: Option<String>,
+    pub year: Option<String>,
+    pub genre: Option<String>,
+    pub tracks: Vec<ImportTrackDto>,
+}
+
 /// A tagging session rooted at one library directory. The root doubles as the
 /// [`Executor`] `allowed_root`, so every write is confined to the opened
 /// library.
@@ -259,83 +279,91 @@ impl App {
         Ok(ReleaseDto::from(&release))
     }
 
-    /// Fetch a Discogs release and preview applying its metadata to `paths`
-    /// (in the given table order), without writing. Reads current values for
-    /// each change's `old` and drops no-op edits, so it flows through the same
-    /// preview/apply/undo path as manual edits.
-    pub fn preview_release_import(
+    /// Preview importing a user-resolved release selection onto `paths`,
+    /// without writing. The frontend decides the mapping (TagScanner-style):
+    /// the user toggles which release tracks participate and orders the files
+    /// to match, so here the i-th enabled track simply maps onto the i-th
+    /// file. Album-level fields go to every file; per-track fields
+    /// (title/artist/track number) to files that line up with a selected
+    /// track. The track number comes from the release track's own position,
+    /// not the selection index, so an aligned file keeps its real number.
+    /// Reads current values for `old` and drops no-op edits, flowing through
+    /// the same preview/apply/undo path as manual edits.
+    pub fn preview_import(
         &self,
-        token: &str,
-        release_id: &str,
         paths: &[PathBuf],
+        selection: &ImportSelectionDto,
     ) -> Result<PlanDto, AppError> {
-        let provider = DiscogsProvider::new(token);
-        let release = provider.fetch_release(&ReleaseId(release_id.to_string()))?;
-        map_release_onto(paths, &release)
-    }
-}
+        let mut changes = Vec::new();
+        for (index, path) in paths.iter().enumerate() {
+            let current = TagEngine::read(path)?;
 
-/// Map a fetched release onto local files by position: album-level fields
-/// (album, album artist, year, genre) go to every file; per-track fields
-/// (title, track artist, track number) go to files that line up with a
-/// release track. Only fields that actually differ from the file's current
-/// value become changes.
-fn map_release_onto(
-    paths: &[PathBuf],
-    release: &tagrex_core::provider::Release,
-) -> Result<PlanDto, AppError> {
-    let mut changes = Vec::new();
-    for (index, path) in paths.iter().enumerate() {
-        let current = TagEngine::read(path)?;
+            // (field, desired new value) — album-level first, then per-track.
+            let mut desired: Vec<(TagField, Option<String>)> = vec![
+                (TagField::Album, non_empty(selection.album.clone())),
+                (
+                    TagField::AlbumArtist,
+                    non_empty(selection.album_artist.clone()),
+                ),
+                (TagField::Year, non_empty(selection.year.clone())),
+                (TagField::Genre, non_empty(selection.genre.clone())),
+            ];
+            if let Some(track) = selection.tracks.get(index) {
+                let artist = non_empty(Some(track.artist.clone()))
+                    .or_else(|| non_empty(selection.album_artist.clone()));
+                let track_number = track_number_from_position(&track.position)
+                    .unwrap_or_else(|| (index + 1).to_string());
+                desired.push((TagField::Title, non_empty(Some(track.title.clone()))));
+                desired.push((TagField::Artist, artist));
+                desired.push((TagField::TrackNumber, Some(track_number)));
+            }
 
-        // (field, desired new value) — album-level first, then per-track.
-        let mut desired: Vec<(TagField, Option<String>)> = vec![
-            (TagField::Album, non_empty(release.title.clone())),
-            (TagField::AlbumArtist, non_empty(release.artist.clone())),
-            (TagField::Year, release.year.map(|y| y.to_string())),
-            (TagField::Genre, release.genres.first().cloned()),
-        ];
-        if let Some(track) = release.tracks.get(index) {
-            let artist = track
-                .artist
-                .clone()
-                .unwrap_or_else(|| release.artist.clone());
-            desired.push((TagField::Title, non_empty(track.title.clone())));
-            desired.push((TagField::Artist, non_empty(artist)));
-            desired.push((TagField::TrackNumber, Some((index + 1).to_string())));
-        }
-
-        let mut tag_changes = Vec::new();
-        for (field, new) in desired {
-            let new = new.filter(|value| !value.is_empty());
-            let old = current.tags.get(&field).cloned();
-            if new.is_some() && old != new {
-                tag_changes.push(FieldChangeDto {
-                    field: field.to_storage_key(),
-                    old,
-                    new,
+            let mut tag_changes = Vec::new();
+            for (field, new) in desired {
+                let new = new.filter(|value| !value.is_empty());
+                let old = current.tags.get(&field).cloned();
+                if new.is_some() && old != new {
+                    tag_changes.push(FieldChangeDto {
+                        field: field.to_storage_key(),
+                        old,
+                        new,
+                    });
+                }
+            }
+            if !tag_changes.is_empty() {
+                changes.push(FileChangeDto {
+                    path: path.to_string_lossy().into_owned(),
+                    rename_to: None,
+                    tag_changes,
                 });
             }
         }
-        if !tag_changes.is_empty() {
-            changes.push(FileChangeDto {
-                path: path.to_string_lossy().into_owned(),
-                rename_to: None,
-                tag_changes,
-            });
-        }
+        Ok(PlanDto {
+            description: "Import Discogs release".to_string(),
+            changes,
+        })
     }
-    Ok(PlanDto {
-        description: format!(
-            "Import Discogs release: {} - {}",
-            release.artist, release.title
-        ),
-        changes,
-    })
 }
 
-fn non_empty(value: String) -> Option<String> {
-    (!value.is_empty()).then_some(value)
+/// Extract a track number from a Discogs position: take the *trailing* run of
+/// digits, so "5" -> 5, "A1" -> 1, "1-05" -> 5, "12" -> 12. Returns `None` for
+/// positions with no trailing digits (e.g. a heading), letting the caller fall
+/// back to the selection index.
+fn track_number_from_position(position: &str) -> Option<String> {
+    let digits: String = position
+        .chars()
+        .rev()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    // Normalize leading zeros ("05" -> "5") via a round-trip through u32.
+    digits.parse::<u32>().ok().map(|n| n.to_string())
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|v| !v.is_empty())
 }
 
 impl From<tagrex_core::model::TrackFile> for TrackDto {
@@ -595,34 +623,34 @@ mod tests {
     }
 
     #[test]
-    fn maps_a_release_onto_files_by_position() {
-        use tagrex_core::provider::{Release, ReleaseId, ReleaseTrack};
-
+    fn preview_import_maps_selected_tracks_onto_files() {
         let dir = TempDir::new("import");
         let a = dir.tagged_flac("a.flac", "Old A", "Old Title A");
         let b = dir.tagged_flac("b.flac", "Old B", "Old Title B");
+        let app = open_app(&dir);
 
-        let release = Release {
-            id: ReleaseId("123".into()),
-            artist: "Various".into(),
-            title: "Some Compilation".into(),
-            year: Some(1996),
-            genres: vec!["House".into()],
+        // User kept two release tracks whose positions are 1 and 5 (a subset),
+        // aligned onto the two files in order.
+        let selection = ImportSelectionDto {
+            album: Some("Some Compilation".into()),
+            album_artist: Some("Various".into()),
+            year: Some("1996".into()),
+            genre: Some("House".into()),
             tracks: vec![
-                ReleaseTrack {
-                    position: "A1".into(),
-                    artist: None,
+                ImportTrackDto {
+                    position: "1".into(),
+                    artist: String::new(),
                     title: "First".into(),
                 },
-                ReleaseTrack {
-                    position: "A2".into(),
-                    artist: Some("Guest".into()),
-                    title: "Second".into(),
+                ImportTrackDto {
+                    position: "5".into(),
+                    artist: "Guest".into(),
+                    title: "Fifth".into(),
                 },
             ],
         };
 
-        let plan = map_release_onto(&[a.clone(), b.clone()], &release).unwrap();
+        let plan = app.preview_import(&[a, b], &selection).unwrap();
         assert_eq!(plan.changes.len(), 2);
 
         let fields = |c: &FileChangeDto| {
@@ -643,14 +671,24 @@ mod tests {
         assert_eq!(first.get("year").map(String::as_str), Some("1996"));
         assert_eq!(first.get("genre").map(String::as_str), Some("House"));
         assert_eq!(first.get("title").map(String::as_str), Some("First"));
-        // Track 1 has no track-artist, so it falls back to the release artist.
+        // No track artist -> falls back to the album artist.
         assert_eq!(first.get("artist").map(String::as_str), Some("Various"));
+        // Track number comes from the release position (1), not the index.
         assert_eq!(first.get("track").map(String::as_str), Some("1"));
 
-        // Track 2 carries its own artist.
         let second = fields(&plan.changes[1]);
         assert_eq!(second.get("artist").map(String::as_str), Some("Guest"));
-        assert_eq!(second.get("track").map(String::as_str), Some("2"));
+        // Position 5, not selection index 2.
+        assert_eq!(second.get("track").map(String::as_str), Some("5"));
+    }
+
+    #[test]
+    fn track_number_parsing_handles_vinyl_and_padding() {
+        assert_eq!(track_number_from_position("5").as_deref(), Some("5"));
+        assert_eq!(track_number_from_position("A1").as_deref(), Some("1"));
+        assert_eq!(track_number_from_position("1-05").as_deref(), Some("5"));
+        assert_eq!(track_number_from_position("12").as_deref(), Some("12"));
+        assert_eq!(track_number_from_position(""), None);
     }
 
     #[test]
