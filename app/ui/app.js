@@ -403,6 +403,12 @@ tracksBody.addEventListener("dragstart", (e) => {
   if (!cell) return;
   dragPath = cell.closest("tr").dataset.path;
   cell.closest("tr").classList.add("dragging");
+  // WKWebView (the macOS Tauri webview) won't start a drag unless some data is
+  // set on the transfer — Chromium is lenient, WebKit is not.
+  if (e.dataTransfer) {
+    e.dataTransfer.setData("text/plain", dragPath);
+    e.dataTransfer.effectAllowed = "move";
+  }
 });
 tracksBody.addEventListener("dragend", (e) => {
   tracksBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("dragging", "drop-target"));
@@ -410,6 +416,7 @@ tracksBody.addEventListener("dragend", (e) => {
 });
 tracksBody.addEventListener("dragover", (e) => {
   e.preventDefault();
+  if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
   const row = e.target.closest("tr");
   tracksBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("drop-target"));
   if (row && row.dataset.path !== dragPath) row.classList.add("drop-target");

@@ -154,13 +154,18 @@ impl App {
 
     /// Scan the library and read each file's tags. Files that can't be read
     /// (unsupported, corrupt, or walk errors like a permission-denied dir) are
-    /// skipped rather than failing the whole scan.
+    /// skipped rather than failing the whole scan. Results are sorted by path
+    /// so the table has a stable order (the scanner yields filesystem order,
+    /// which isn't alphabetical) — this order is also what mapping-by-position
+    /// (rename masks, release import) lines up against.
     pub fn list_tracks(&self) -> Vec<TrackDto> {
-        scanner::scan(&self.library_root, &ScanOptions::default())
+        let mut tracks: Vec<TrackDto> = scanner::scan(&self.library_root, &ScanOptions::default())
             .filter_map(Result::ok)
             .filter_map(|path| TagEngine::read(&path).ok())
             .map(TrackDto::from)
-            .collect()
+            .collect();
+        tracks.sort_by(|a, b| a.path.cmp(&b.path));
+        tracks
     }
 
     /// Build a rename plan from a mask over the given files, without writing.

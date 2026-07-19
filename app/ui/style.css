@@ -362,11 +362,21 @@ button.icon {
   margin-bottom: 6px;
 }
 
-#release-tracks td {
+#release-tracks td:not(.sel) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
+}
+
+#release-tracks td.sel {
+  width: 34px;
+  text-align: center;
+}
+
+#release-tracks input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
 }
 
 /* Drag handle on the File cell of the main table. */
