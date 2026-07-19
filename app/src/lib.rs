@@ -86,6 +86,14 @@ pub struct TagEditDto {
     pub value: Option<String>,
 }
 
+/// Result of exporting embedded covers to disk: the image files written, and
+/// the audio files skipped because they carried no embedded cover.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoverExportDto {
+    pub written: Vec<String>,
+    pub skipped_no_cover: Vec<String>,
+}
+
 /// A recorded batch, for the history/undo UI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BatchDto {
@@ -303,6 +311,59 @@ impl App {
         })
     }
 
+    /// Export the embedded front cover of each `paths` file to an image file
+    /// next to it (`<basename>.<ext>`, the extension derived from the cover's
+    /// MIME type — e.g. `cover.jpg`). Read-only for the audio files: this never
+    /// goes through the [`Executor`], since it only reads embedded art and
+    /// writes sidecar image files, so there is nothing to undo. Files with no
+    /// embedded cover are reported in `skipped_no_cover` rather than failing the
+    /// batch. Each target directory is the audio file's own, so writes stay
+    /// within the opened library by construction; a target is still confined to
+    /// the library root defensively.
+    ///
+    /// The sidecar name (`cover.jpg`) is per-directory, so selecting many tracks
+    /// from one album folder yields a single file, not one write per track. The
+    /// first selected file that resolves to a given target wins; later files
+    /// resolving to the same path are not rewritten and don't inflate the count.
+    pub fn export_cover(
+        &self,
+        paths: &[PathBuf],
+        basename: &str,
+    ) -> Result<CoverExportDto, AppError> {
+        let root = std::fs::canonicalize(&self.library_root)?;
+        let mut written = Vec::new();
+        let mut skipped_no_cover = Vec::new();
+        let mut seen_targets = std::collections::HashSet::new();
+        for path in paths {
+            match TagEngine::read_cover(path)? {
+                Some(cover) => {
+                    let ext = extension_for_mime(&cover.mime);
+                    let target = path.with_file_name(format!("{basename}.{ext}"));
+                    // Defensive containment: resolve the (existing) parent dir
+                    // and require it inside the library root before writing.
+                    let parent = target.parent().unwrap_or(Path::new("."));
+                    let canonical_parent = std::fs::canonicalize(parent)?;
+                    if !canonical_parent.starts_with(&root) {
+                        return Err(AppError::OutsideRoot(target.to_string_lossy().into_owned()));
+                    }
+                    // Collapse duplicate targets: N tracks in one folder share a
+                    // single `cover.jpg` rather than overwriting it N times.
+                    let canonical_target = canonical_parent.join(target.file_name().unwrap());
+                    if !seen_targets.insert(canonical_target) {
+                        continue;
+                    }
+                    std::fs::write(&target, &cover.data)?;
+                    written.push(target.to_string_lossy().into_owned());
+                }
+                None => skipped_no_cover.push(path.to_string_lossy().into_owned()),
+            }
+        }
+        Ok(CoverExportDto {
+            written,
+            skipped_no_cover,
+        })
+    }
+
     /// Apply a previewed plan to disk and record it for undo.
     pub fn apply(&mut self, plan: &PlanDto) -> Result<BatchDto, AppError> {
         let change_plan = plan.to_change_plan();
@@ -452,6 +513,26 @@ fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|v| !v.is_empty())
 }
 
+/// A file extension for an embedded cover's MIME type. Known image types map to
+/// their conventional extension; anything else falls back to the MIME subtype
+/// when it's a clean alphanumeric token, else `jpg` (the overwhelmingly common
+/// cover format).
+fn extension_for_mime(mime: &str) -> String {
+    match mime.trim().to_ascii_lowercase().as_str() {
+        "image/jpeg" | "image/jpg" => "jpg".to_string(),
+        "image/png" => "png".to_string(),
+        "image/gif" => "gif".to_string(),
+        "image/webp" => "webp".to_string(),
+        "image/bmp" => "bmp".to_string(),
+        "image/tiff" | "image/tif" => "tiff".to_string(),
+        other => other
+            .strip_prefix("image/")
+            .filter(|sub| !sub.is_empty() && sub.chars().all(|c| c.is_ascii_alphanumeric()))
+            .unwrap_or("jpg")
+            .to_string(),
+    }
+}
+
 fn cover_dto_to_art(dto: &CoverArtDto) -> Option<CoverArt> {
     let data = base64::engine::general_purpose::STANDARD
         .decode(dto.data_base64.as_bytes())
@@ -579,6 +660,10 @@ pub enum AppError {
     Journal(#[from] tagrex_core::journal::JournalError),
     #[error(transparent)]
     Provider(#[from] tagrex_core::provider::ProviderError),
+    #[error("path resolves outside the opened library: {0}")]
+    OutsideRoot(String),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
 }
 
 #[cfg(test)]
@@ -839,5 +924,69 @@ mod tests {
 
         let plan = app.preview_rename("%album% - %title%", &[track]).unwrap();
         assert!(plan.changes.is_empty());
+    }
+
+    #[test]
+    fn export_cover_writes_sidecar_and_skips_files_without_cover() {
+        let dir = TempDir::new("export");
+        let with_cover = dir.tagged_flac("a.flac", "Artist", "Has Cover");
+        let without_cover = dir.tagged_flac("b.flac", "Artist", "No Cover");
+        // Embed a distinctively-typed cover into the first file only.
+        let art = CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![1, 2, 3, 4, 5],
+        };
+        TagEngine::embed_cover(&with_cover, &art).unwrap();
+        let app = open_app(&dir);
+
+        let result = app
+            .export_cover(&[with_cover.clone(), without_cover.clone()], "cover")
+            .unwrap();
+
+        // The file with a cover produced `cover.png` next to it, byte-for-byte.
+        assert_eq!(result.written.len(), 1);
+        let expected = dir.0.join("cover.png");
+        assert_eq!(result.written[0], expected.to_string_lossy());
+        assert_eq!(std::fs::read(&expected).unwrap(), art.data);
+        // The audio files themselves were not modified (read-only, no journal).
+        assert!(app.history().unwrap().is_empty());
+        // The cover-less file is reported as skipped, not an error.
+        assert_eq!(
+            result.skipped_no_cover,
+            vec![without_cover.to_string_lossy()]
+        );
+    }
+
+    #[test]
+    fn export_cover_collapses_same_folder_targets_to_one_file() {
+        let dir = TempDir::new("export-dedup");
+        let a = dir.tagged_flac("a.flac", "Artist", "A");
+        let b = dir.tagged_flac("b.flac", "Artist", "B");
+        let art = CoverArt {
+            mime: "image/jpeg".to_string(),
+            data: vec![9, 8, 7],
+        };
+        TagEngine::embed_cover(&a, &art).unwrap();
+        TagEngine::embed_cover(&b, &art).unwrap();
+        let app = open_app(&dir);
+
+        // Both files sit in the same folder, so both resolve to the same
+        // `cover.jpg`: exactly one file is written, not two.
+        let result = app.export_cover(&[a, b], "cover").unwrap();
+        assert_eq!(result.written.len(), 1);
+        assert_eq!(result.written[0], dir.0.join("cover.jpg").to_string_lossy());
+        assert!(result.skipped_no_cover.is_empty());
+    }
+
+    #[test]
+    fn extension_for_mime_maps_known_and_falls_back() {
+        assert_eq!(extension_for_mime("image/jpeg"), "jpg");
+        assert_eq!(extension_for_mime("IMAGE/PNG"), "png");
+        assert_eq!(extension_for_mime("image/webp"), "webp");
+        // Unknown but clean subtype passes through.
+        assert_eq!(extension_for_mime("image/heic"), "heic");
+        // Garbage / non-image falls back to jpg.
+        assert_eq!(extension_for_mime("application/octet-stream"), "jpg");
+        assert_eq!(extension_for_mime(""), "jpg");
     }
 }

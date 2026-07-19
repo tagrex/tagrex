@@ -47,6 +47,7 @@ const previewEditsBtn = el("preview-edits");
 const undoBtn = el("undo");
 const selectAll = el("select-all");
 const coverOpenBtn = el("cover-open");
+const coverExportBtn = el("cover-export");
 const coverFileInput = el("cover-file");
 const discogsOpenBtn = el("discogs-open");
 const discogsModal = el("discogs-modal");
@@ -161,6 +162,7 @@ function renderTracks() {
   previewBtn.disabled = tracks.length === 0;
   discogsOpenBtn.disabled = tracks.length === 0;
   coverOpenBtn.disabled = tracks.length === 0;
+  coverExportBtn.disabled = tracks.length === 0;
   updateEditsButton();
   applyBtn.disabled = true;
   previewTable.hidden = true;
@@ -407,6 +409,32 @@ async function onCoverChosen() {
   }
 }
 
+// Export the embedded cover of the selected files to disk (cover.<ext> next to
+// each file). Read-only for the audio: no preview/apply, it just writes.
+async function exportCover() {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks whose cover to export first", true);
+    return;
+  }
+  try {
+    const result = await invoke("export_cover", { paths, basename: "cover" });
+    const wrote = result.written.length;
+    const skipped = result.skipped_no_cover.length;
+    if (wrote === 0) {
+      toast(
+        skipped ? "None of the selected files have an embedded cover" : "Nothing to export",
+        true
+      );
+      return;
+    }
+    const skipNote = skipped ? ` (${skipped} without a cover skipped)` : "";
+    toast(`Exported ${wrote} cover file(s)${skipNote}`);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 // ---- Discogs import ----
 function openDiscogs() {
   const paths = selectedPaths();
@@ -598,6 +626,7 @@ previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
 coverOpenBtn.addEventListener("click", chooseCover);
+coverExportBtn.addEventListener("click", exportCover);
 coverFileInput.addEventListener("change", onCoverChosen);
 discogsOpenBtn.addEventListener("click", openDiscogs);
 el("discogs-close").addEventListener("click", closeDiscogs);
@@ -792,6 +821,26 @@ function mockInvoke(cmd, args) {
         cover_change: { old: null, new: args.cover },
       }));
       return Promise.resolve({ description: "Embed cover art", changes });
+    }
+    case "export_cover": {
+      // Pretend odd-indexed files have no cover so the skip path is exercised;
+      // dedupe same-folder targets like the real backend does.
+      const written = [];
+      const seen = new Set();
+      const skipped_no_cover = [];
+      args.paths.forEach((p, i) => {
+        if (i % 2 !== 0) {
+          skipped_no_cover.push(p);
+          return;
+        }
+        const dir = p.slice(0, p.lastIndexOf("/") + 1);
+        const target = `${dir}${args.basename}.jpg`;
+        if (!seen.has(target)) {
+          seen.add(target);
+          written.push(target);
+        }
+      });
+      return Promise.resolve({ written, skipped_no_cover });
     }
     case "saved_discogs_token":
       return Promise.resolve("");

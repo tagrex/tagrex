@@ -12,8 +12,8 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 
 use tagrex::{
-    App, BatchDto, CandidateDto, CoverArtDto, ImportSelectionDto, PlanDto, ReleaseDto,
-    SearchQueryDto, TagEditDto, TrackDto,
+    App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, ImportSelectionDto, PlanDto,
+    ReleaseDto, SearchQueryDto, TagEditDto, TrackDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -81,6 +81,19 @@ fn preview_cover_embed(
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
         app.preview_cover_embed(&paths, &cover)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn export_cover(
+    state: State<AppState>,
+    paths: Vec<String>,
+    basename: String,
+) -> Result<CoverExportDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.export_cover(&paths, &basename)
             .map_err(|e| e.to_string())
     })
 }
@@ -183,6 +196,7 @@ fn main() {
             preview_rename,
             preview_tag_edits,
             preview_cover_embed,
+            export_cover,
             apply_plan,
             undo,
             history,

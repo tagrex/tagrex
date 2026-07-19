@@ -10,6 +10,12 @@ first release ships.
 
 ### Added
 
+- Export embedded cover art to disk (#25): an "Export cover" toolbar action
+  saves the embedded front cover of the selected files as a `cover.<ext>`
+  sidecar next to each one (extension from the cover's MIME type). Read-only for
+  the audio files — it never touches the tag-write/undo path. Tracks sharing a
+  folder collapse to a single `cover.jpg` (one write, not one per track), and
+  files without an embedded cover are reported as skipped rather than failing.
 - Fetch cover art from Discogs (#24): the release detail view now shows the
   release's primary image (downloaded through the backend, since Discogs image
   URLs need the token + User-Agent the webview can't send) with an "Embed
