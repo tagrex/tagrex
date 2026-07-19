@@ -59,6 +59,7 @@ fn set_artist(path: &Path, old: Option<&str>, new: Option<&str>) -> ChangePlan {
                 old: old.map(str::to_string),
                 new: new.map(str::to_string),
             }],
+            cover_change: None,
             rename_to: None,
         }],
     }
@@ -135,6 +136,7 @@ fn custom_field_round_trips_through_storage() {
                 old: None,
                 new: Some("Energetic".to_string()),
             }],
+            cover_change: None,
             rename_to: None,
         }],
     };

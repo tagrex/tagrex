@@ -303,6 +303,15 @@ th.sortable:hover {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
 }
 
+.cover-thumb {
+  height: 40px;
+  width: 40px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+
 .modal {
   position: fixed;
   inset: 0;

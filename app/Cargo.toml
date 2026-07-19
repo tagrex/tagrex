@@ -18,6 +18,7 @@ tagrex-providers-discogs = { path = "../crates/providers-discogs" }
 serde = { version = "1", features = ["derive"] }
 thiserror.workspace = true
 tauri = { version = "2", features = [] }
+base64 = "0.22.1"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

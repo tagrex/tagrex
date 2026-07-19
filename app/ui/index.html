@@ -14,9 +14,11 @@
         <button id="open">Open</button>
       </div>
       <div class="spacer"></div>
+      <button id="cover-open" disabled title="Embed a cover image into the selected files">Cover…</button>
       <button id="discogs-open" disabled title="Import metadata from Discogs">Discogs…</button>
       <button id="undo" disabled title="Undo the last applied batch">Undo last</button>
     </header>
+    <input id="cover-file" type="file" accept="image/*" hidden />
 
     <main>
       <section id="tracks-panel">

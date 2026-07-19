@@ -10,6 +10,18 @@ first release ships.
 
 ### Added
 
+- Cover art embed (#18, core): embed a front cover from a local image file
+  into the selected tracks, previewed with a thumbnail and applied through the
+  same journaled/undoable path as tags (a new cover change kind in the plan,
+  executor, and SQLite journal — undo restores the previous cover). Fetching
+  covers from Discogs (#24) and exporting them (#25) are tracked separately.
+
+### Fixed
+
+- Tag writes no longer strip embedded artwork: `TagEngine::write` rebuilt the
+  tag from the text fields only, so any edit/import/rename silently dropped the
+  cover. It now carries existing pictures over.
+
 - Sort the track table by column (#21): click a header (File/Artist/Title/
   Album/Year) to sort, click again to reverse; an arrow marks the active
   column. Sorting reorders the underlying list so position-based mapping

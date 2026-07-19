@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 use crate::journal::{AppliedBatch, BatchId, JournalError, UndoJournal};
-use crate::model::{TagEngine, TagField, TrackFile};
+use crate::model::{CoverArt, TagEngine, TagField, TrackFile};
 
 /// A change to a single tag field: `old` is what preview shows as "current",
 /// `new` is what will be written. `None` means the field is absent/removed.
@@ -26,11 +26,21 @@ pub struct FieldChange {
     pub new: Option<String>,
 }
 
+/// A change to a file's embedded front cover. `old` is restored on undo;
+/// `new` is embedded (or the cover removed when `None`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoverChange {
+    pub old: Option<CoverArt>,
+    pub new: Option<CoverArt>,
+}
+
 /// All changes planned for one file.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FileChange {
     pub path: PathBuf,
     pub tag_changes: Vec<FieldChange>,
+    /// Planned cover-art change, if any.
+    pub cover_change: Option<CoverChange>,
     /// Planned rename, if any.
     pub rename_to: Option<PathBuf>,
 }
@@ -115,6 +125,7 @@ impl Executor {
         // Apply tags first (all files, at their original paths)...
         for change in &plan.changes {
             write_tag_changes(change, Direction::Apply)?;
+            apply_cover_change(change, Direction::Apply)?;
         }
         // ...then renames.
         for change in &plan.changes {
@@ -178,6 +189,7 @@ impl Executor {
         }
         for change in &batch.plan.changes {
             write_tag_changes(change, Direction::Undo)?;
+            apply_cover_change(change, Direction::Undo)?;
         }
 
         journal.rollback(batch_id)?;
@@ -248,6 +260,28 @@ fn ensure_not_stale(change: &FileChange) -> Result<(), PlanError> {
         if on_disk != field_change.old.as_ref() {
             return Err(PlanError::Stale(change.path.clone()));
         }
+    }
+    if let Some(cover_change) = &change.cover_change {
+        if TagEngine::read_cover(&change.path)? != cover_change.old {
+            return Err(PlanError::Stale(change.path.clone()));
+        }
+    }
+    Ok(())
+}
+
+/// Embed the `new` cover (or the `old` one on undo), or remove it when the
+/// target side is `None`. No-op when the change carries no cover.
+fn apply_cover_change(change: &FileChange, direction: Direction) -> Result<(), PlanError> {
+    let Some(cover_change) = &change.cover_change else {
+        return Ok(());
+    };
+    let target = match direction {
+        Direction::Apply => &cover_change.new,
+        Direction::Undo => &cover_change.old,
+    };
+    match target {
+        Some(cover) => TagEngine::embed_cover(&change.path, cover)?,
+        None => TagEngine::remove_cover(&change.path)?,
     }
     Ok(())
 }

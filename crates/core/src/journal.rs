@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::model::TagField;
-use crate::plan::{ChangePlan, FieldChange, FileChange};
+use crate::model::{CoverArt, TagField};
+use crate::plan::{ChangePlan, CoverChange, FieldChange, FileChange};
 
 /// Identifier of an applied batch, stable across restarts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,6 +131,13 @@ impl SqliteJournal {
                  field          TEXT NOT NULL,
                  old_value      TEXT,
                  new_value      TEXT
+             );
+             CREATE TABLE IF NOT EXISTS cover_changes (
+                 file_change_id INTEGER NOT NULL REFERENCES file_changes(id) ON DELETE CASCADE,
+                 old_mime       TEXT,
+                 old_data       BLOB,
+                 new_mime       TEXT,
+                 new_data       BLOB
              );",
         )?;
         Ok(Self { conn })
@@ -169,6 +176,21 @@ impl UndoJournal for SqliteJournal {
                         field_change.field.to_storage_key(),
                         field_change.old,
                         field_change.new,
+                    ],
+                )?;
+            }
+
+            if let Some(cover) = &change.cover_change {
+                tx.execute(
+                    "INSERT INTO cover_changes \
+                     (file_change_id, old_mime, old_data, new_mime, new_data) \
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![
+                        file_change_id,
+                        cover.old.as_ref().map(|c| c.mime.clone()),
+                        cover.old.as_ref().map(|c| c.data.clone()),
+                        cover.new.as_ref().map(|c| c.mime.clone()),
+                        cover.new.as_ref().map(|c| c.data.clone()),
                     ],
                 )?;
             }
@@ -238,10 +260,38 @@ impl SqliteJournal {
             changes.push(FileChange {
                 path: PathBuf::from(path),
                 tag_changes: self.load_field_changes(file_change_id)?,
+                cover_change: self.load_cover_change(file_change_id)?,
                 rename_to: rename_to.map(PathBuf::from),
             });
         }
         Ok(changes)
+    }
+
+    fn load_cover_change(&self, file_change_id: i64) -> Result<Option<CoverChange>, JournalError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT old_mime, old_data, new_mime, new_data FROM cover_changes \
+             WHERE file_change_id = ?1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![file_change_id], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<Vec<u8>>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<Vec<u8>>>(3)?,
+            ))
+        })?;
+        let Some(row) = rows.next() else {
+            return Ok(None);
+        };
+        let (old_mime, old_data, new_mime, new_data) = row?;
+        let cover = |mime: Option<String>, data: Option<Vec<u8>>| match (mime, data) {
+            (Some(mime), Some(data)) => Some(CoverArt { mime, data }),
+            _ => None,
+        };
+        Ok(Some(CoverChange {
+            old: cover(old_mime, old_data),
+            new: cover(new_mime, new_data),
+        }))
     }
 
     fn load_field_changes(&self, file_change_id: i64) -> Result<Vec<FieldChange>, JournalError> {

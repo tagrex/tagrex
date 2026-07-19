@@ -8,7 +8,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use tagrex_core::model::{AudioFormat, TagEngine, TagField, TrackFile};
+use tagrex_core::model::{AudioFormat, CoverArt, TagEngine, TagField, TrackFile};
 
 /// `fLaC` + a non-last STREAMINFO block (34 bytes, all zeroed out except a
 /// plausible sample rate/channels/bit depth) + a trailing PADDING block.
@@ -91,4 +91,47 @@ fn write_then_read_round_trips_known_and_custom_fields() {
             .map(String::as_str),
         Some("Energetic")
     );
+}
+
+#[test]
+fn cover_embed_read_remove_and_survives_a_tag_write() {
+    let path = temp_flac_path("cover");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    // Arbitrary bytes stand in for image data (lofty stores them verbatim).
+    let cover = CoverArt {
+        mime: "image/png".to_string(),
+        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5],
+    };
+
+    // No cover initially.
+    assert_eq!(TagEngine::read_cover(&path).unwrap(), None);
+
+    // Embed, then read it back.
+    TagEngine::embed_cover(&path, &cover).unwrap();
+    let read = TagEngine::read_cover(&path)
+        .unwrap()
+        .expect("cover present");
+    assert_eq!(read.mime, "image/png");
+    assert_eq!(read.data, cover.data);
+
+    // A subsequent tag write must NOT strip the cover.
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Someone".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags,
+    })
+    .unwrap();
+    assert_eq!(
+        TagEngine::read_cover(&path).unwrap().map(|c| c.data),
+        Some(cover.data.clone())
+    );
+
+    // Remove it.
+    TagEngine::remove_cover(&path).unwrap();
+    assert_eq!(TagEngine::read_cover(&path).unwrap(), None);
+
+    std::fs::remove_file(&path).ok();
 }

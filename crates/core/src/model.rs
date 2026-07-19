@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use lofty::config::WriteOptions;
 use lofty::file::{FileType, TaggedFileExt};
+use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::probe::Probe;
 use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
 use thiserror::Error;
@@ -107,6 +108,15 @@ impl TagField {
 /// previews and diffs.
 pub type TagMap = BTreeMap<TagField, String>;
 
+/// An embedded front-cover image: raw bytes plus its MIME type. Kept out of
+/// [`TagMap`] (which is text-only) so binary art doesn't have to pretend to be
+/// a string.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CoverArt {
+    pub mime: String,
+    pub data: Vec<u8>,
+}
+
 /// A single audio file as seen by the table model.
 #[derive(Debug, Clone)]
 pub struct TrackFile {
@@ -161,9 +171,86 @@ impl TagEngine {
                 ItemValue::Text(value.clone()),
             ));
         }
+        // We rebuild the tag from the text `TagMap`, which doesn't carry
+        // pictures — so carry over any embedded artwork, or a tag edit would
+        // silently strip the cover.
+        for picture in existing_pictures(&file.path) {
+            tag.push_picture(picture);
+        }
         tag.save_to_path(&file.path, WriteOptions::default())?;
         Ok(())
     }
+
+    /// Read the file's front cover (or the first embedded image if there's no
+    /// explicit front cover), if any.
+    pub fn read_cover(path: &Path) -> Result<Option<CoverArt>, TagIoError> {
+        let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+        let cover = tagged
+            .primary_tag()
+            .or_else(|| tagged.first_tag())
+            .and_then(|tag| {
+                tag.get_picture_type(PictureType::CoverFront)
+                    .or_else(|| tag.pictures().first())
+            })
+            .map(|picture| CoverArt {
+                mime: picture
+                    .mime_type()
+                    .map(|mime| mime.as_str().to_string())
+                    .unwrap_or_default(),
+                data: picture.data().to_vec(),
+            });
+        Ok(cover)
+    }
+
+    /// Embed `cover` as the file's front cover, replacing any existing front
+    /// cover and preserving all text tags. Only [`Executor`](crate::plan::Executor)
+    /// should call this.
+    pub fn embed_cover(path: &Path, cover: &CoverArt) -> Result<(), TagIoError> {
+        let mut tag = load_or_new_tag(path)?;
+        tag.remove_picture_type(PictureType::CoverFront);
+        tag.push_picture(Picture::new_unchecked(
+            PictureType::CoverFront,
+            Some(MimeType::from_str(&cover.mime)),
+            None,
+            cover.data.clone(),
+        ));
+        tag.save_to_path(path, WriteOptions::default())?;
+        Ok(())
+    }
+
+    /// Remove the file's front cover, preserving all text tags.
+    pub fn remove_cover(path: &Path) -> Result<(), TagIoError> {
+        let mut tag = load_or_new_tag(path)?;
+        tag.remove_picture_type(PictureType::CoverFront);
+        tag.save_to_path(path, WriteOptions::default())?;
+        Ok(())
+    }
+}
+
+/// The pictures currently embedded in `path`, or an empty list if it can't be
+/// read (best-effort preservation).
+fn existing_pictures(path: &Path) -> Vec<Picture> {
+    let read = || -> Result<Vec<Picture>, TagIoError> {
+        let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+        Ok(tagged
+            .primary_tag()
+            .or_else(|| tagged.first_tag())
+            .map(|tag| tag.pictures().to_vec())
+            .unwrap_or_default())
+    };
+    read().unwrap_or_default()
+}
+
+/// Load the file's primary tag (cloned, owned) or a fresh empty one, so the
+/// caller can modify pictures and save it back without disturbing text tags.
+fn load_or_new_tag(path: &Path) -> Result<Tag, TagIoError> {
+    let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+    let tag_type = tagged.primary_tag_type();
+    Ok(tagged
+        .primary_tag()
+        .or_else(|| tagged.first_tag())
+        .cloned()
+        .unwrap_or_else(|| Tag::new(tag_type)))
 }
 
 fn tag_field_to_item_key(field: &TagField) -> ItemKey {

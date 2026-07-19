@@ -60,6 +60,7 @@ fn set_artist(path: &Path, old: Option<&str>, new: Option<&str>) -> ChangePlan {
                 old: old.map(str::to_string),
                 new: new.map(str::to_string),
             }],
+            cover_change: None,
             rename_to: None,
         }],
     }
@@ -216,11 +217,13 @@ fn rejects_two_files_renamed_onto_the_same_target() {
             FileChange {
                 path: a,
                 tag_changes: vec![],
+                cover_change: None,
                 rename_to: Some(target.clone()),
             },
             FileChange {
                 path: b,
                 tag_changes: vec![],
+                cover_change: None,
                 rename_to: Some(target),
             },
         ],
@@ -245,4 +248,40 @@ fn rejects_a_rename_target_outside_the_root() {
     assert!(matches!(err, PlanError::OutsideRoot(_)));
     assert!(track.exists());
     assert!(journal.batches().unwrap().is_empty());
+}
+
+#[test]
+fn embeds_cover_and_undo_removes_it() {
+    use tagrex_core::model::CoverArt;
+    use tagrex_core::plan::CoverChange;
+
+    let dir = TempDir::new("cover");
+    let track = dir.flac("track.flac");
+    let mut journal = VecJournal::new();
+
+    let cover = CoverArt {
+        mime: "image/png".to_string(),
+        data: vec![0x89, 0x50, 0x4e, 0x47, 9, 8, 7],
+    };
+    let plan = ChangePlan {
+        description: "embed cover".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            tag_changes: vec![],
+            cover_change: Some(CoverChange {
+                old: None,
+                new: Some(cover.clone()),
+            }),
+            rename_to: None,
+        }],
+    };
+
+    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+    assert_eq!(
+        TagEngine::read_cover(&track).unwrap().map(|c| c.data),
+        Some(cover.data.clone())
+    );
+
+    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+    assert_eq!(TagEngine::read_cover(&track).unwrap(), None);
 }

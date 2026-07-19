@@ -12,8 +12,8 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 
 use tagrex::{
-    App, BatchDto, CandidateDto, ImportSelectionDto, PlanDto, ReleaseDto, SearchQueryDto,
-    TagEditDto, TrackDto,
+    App, BatchDto, CandidateDto, CoverArtDto, ImportSelectionDto, PlanDto, ReleaseDto,
+    SearchQueryDto, TagEditDto, TrackDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -69,6 +69,19 @@ fn preview_rename(
 fn preview_tag_edits(state: State<AppState>, edits: Vec<TagEditDto>) -> Result<PlanDto, String> {
     with_app(&state, |app| {
         app.preview_tag_edits(&edits).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn preview_cover_embed(
+    state: State<AppState>,
+    paths: Vec<String>,
+    cover: CoverArtDto,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_cover_embed(&paths, &cover)
+            .map_err(|e| e.to_string())
     })
 }
 
@@ -157,6 +170,7 @@ fn main() {
             list_tracks,
             preview_rename,
             preview_tag_edits,
+            preview_cover_embed,
             apply_plan,
             undo,
             history,

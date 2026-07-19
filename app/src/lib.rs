@@ -17,10 +17,11 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use base64::Engine as _;
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::Mask;
-use tagrex_core::model::{TagEngine, TagField};
-use tagrex_core::plan::{ChangePlan, Executor, FieldChange, FileChange};
+use tagrex_core::model::{CoverArt, TagEngine, TagField};
+use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
 use tagrex_core::provider::{MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
 use tagrex_providers_discogs::DiscogsProvider;
@@ -43,12 +44,29 @@ pub struct FieldChangeDto {
     pub new: Option<String>,
 }
 
-/// A planned change to one file: tag edits and/or a rename.
+/// An embedded cover image crossing the IPC boundary: base64 data + MIME.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoverArtDto {
+    pub mime: String,
+    pub data_base64: String,
+}
+
+/// A planned cover-art change: `old` restored on undo, `new` embedded (or the
+/// cover removed when `None`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoverChangeDto {
+    pub old: Option<CoverArtDto>,
+    pub new: Option<CoverArtDto>,
+}
+
+/// A planned change to one file: tag edits, a cover change, and/or a rename.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FileChangeDto {
     pub path: String,
     pub rename_to: Option<String>,
     pub tag_changes: Vec<FieldChangeDto>,
+    #[serde(default)]
+    pub cover_change: Option<CoverChangeDto>,
 }
 
 /// A previewable plan, ready to render as a "current -> new" diff.
@@ -198,6 +216,7 @@ impl App {
                 path: path.to_string_lossy().into_owned(),
                 rename_to: Some(target.to_string_lossy().into_owned()),
                 tag_changes: Vec::new(),
+                cover_change: None,
             });
         }
         Ok(PlanDto {
@@ -239,11 +258,44 @@ impl App {
                     path: path.to_string(),
                     rename_to: None,
                     tag_changes,
+                    cover_change: None,
                 });
             }
         }
         Ok(PlanDto {
             description: "Edit tags".to_string(),
+            changes,
+        })
+    }
+
+    /// Preview embedding `cover` as the front cover of each `paths` file,
+    /// without writing. Reads each file's current cover as the change's `old`
+    /// (for undo and staleness) and skips files that already have exactly this
+    /// cover.
+    pub fn preview_cover_embed(
+        &self,
+        paths: &[PathBuf],
+        cover: &CoverArtDto,
+    ) -> Result<PlanDto, AppError> {
+        let new_art = cover_dto_to_art(cover);
+        let mut changes = Vec::new();
+        for path in paths {
+            let old = TagEngine::read_cover(path)?;
+            if old == new_art {
+                continue; // already this exact cover
+            }
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes: Vec::new(),
+                cover_change: Some(CoverChangeDto {
+                    old: old.as_ref().map(cover_art_to_dto),
+                    new: Some(cover.clone()),
+                }),
+            });
+        }
+        Ok(PlanDto {
+            description: "Embed cover art".to_string(),
             changes,
         })
     }
@@ -352,6 +404,7 @@ impl App {
                     path: path.to_string_lossy().into_owned(),
                     rename_to: None,
                     tag_changes,
+                    cover_change: None,
                 });
             }
         }
@@ -381,6 +434,23 @@ fn track_number_from_position(position: &str) -> Option<String> {
 
 fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|v| !v.is_empty())
+}
+
+fn cover_dto_to_art(dto: &CoverArtDto) -> Option<CoverArt> {
+    let data = base64::engine::general_purpose::STANDARD
+        .decode(dto.data_base64.as_bytes())
+        .ok()?;
+    Some(CoverArt {
+        mime: dto.mime.clone(),
+        data,
+    })
+}
+
+fn cover_art_to_dto(art: &CoverArt) -> CoverArtDto {
+    CoverArtDto {
+        mime: art.mime.clone(),
+        data_base64: base64::engine::general_purpose::STANDARD.encode(&art.data),
+    }
 }
 
 impl From<tagrex_core::model::TrackFile> for TrackDto {
@@ -416,6 +486,10 @@ impl PlanDto {
                             new: field_change.new.clone(),
                         })
                         .collect(),
+                    cover_change: change.cover_change.as_ref().map(|c| CoverChange {
+                        old: c.old.as_ref().and_then(cover_dto_to_art),
+                        new: c.new.as_ref().and_then(cover_dto_to_art),
+                    }),
                 })
                 .collect(),
         }

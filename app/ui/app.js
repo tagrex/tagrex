@@ -46,6 +46,8 @@ const previewBtn = el("preview");
 const previewEditsBtn = el("preview-edits");
 const undoBtn = el("undo");
 const selectAll = el("select-all");
+const coverOpenBtn = el("cover-open");
+const coverFileInput = el("cover-file");
 const discogsOpenBtn = el("discogs-open");
 const discogsModal = el("discogs-modal");
 const discogsResults = el("discogs-results");
@@ -153,6 +155,7 @@ function renderTracks() {
   }
   previewBtn.disabled = tracks.length === 0;
   discogsOpenBtn.disabled = tracks.length === 0;
+  coverOpenBtn.disabled = tracks.length === 0;
   updateEditsButton();
   applyBtn.disabled = true;
   previewTable.hidden = true;
@@ -214,6 +217,9 @@ function renderPreview(plan) {
       const label = `${fileName(change.path)} · ${tc.field}`;
       addPreviewRow(`${label}: ${tc.old || "∅"}`, tc.new || "∅");
     }
+    if (change.cover_change) {
+      addCoverPreviewRow(change);
+    }
   }
   previewTable.hidden = false;
   previewEmpty.hidden = true;
@@ -226,6 +232,20 @@ function addPreviewRow(oldText, newText) {
     <td class="mono old">${escapeHtml(oldText)}</td>
     <td class="arrow">→</td>
     <td class="mono new">${escapeHtml(newText)}</td>`;
+  previewBody.appendChild(tr);
+}
+
+function coverThumb(cover) {
+  return cover ? `<img class="cover-thumb" src="data:${cover.mime};base64,${cover.data_base64}" />` : "∅";
+}
+
+function addCoverPreviewRow(change) {
+  const cc = change.cover_change;
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td class="mono old">${escapeHtml(fileName(change.path))} · cover: ${coverThumb(cc.old)}</td>
+    <td class="arrow">→</td>
+    <td class="new">${coverThumb(cc.new)}</td>`;
   previewBody.appendChild(tr);
 }
 
@@ -304,6 +324,7 @@ async function previewEdits() {
 async function apply() {
   if (!previewPlan || previewPlan.changes.length === 0) return;
   const wasRename = previewSource === "rename";
+  const wasEdits = previewSource === "edits";
   const appliedPlan = previewPlan;
   try {
     await invoke("apply_plan", { plan: appliedPlan });
@@ -312,9 +333,10 @@ async function apply() {
     previewSource = null;
     if (wasRename) {
       remapEditsAfterRename(appliedPlan); // keep pending tag edits, new paths
-    } else {
+    } else if (wasEdits) {
       resetEdits(); // tag edits are now on disk
     }
+    // cover apply leaves the tag-edits buffer untouched (separate change kind)
     tracks = await invoke("list_tracks", {});
     renderTracks();
     await refreshHistory();
@@ -335,6 +357,46 @@ async function undo() {
     tracks = await invoke("list_tracks", {});
     renderTracks();
     await refreshHistory();
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// ---- cover art ----
+function chooseCover() {
+  if (selectedPaths().length === 0) {
+    toast("Select the tracks to embed the cover into first", true);
+    return;
+  }
+  coverFileInput.value = ""; // allow re-picking the same file
+  coverFileInput.click();
+}
+
+async function onCoverChosen() {
+  const file = coverFileInput.files[0];
+  if (!file) return;
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  // dataUrl is "data:<mime>;base64,<data>"
+  const comma = dataUrl.indexOf(",");
+  const mime = dataUrl.slice(5, dataUrl.indexOf(";"));
+  const data_base64 = dataUrl.slice(comma + 1);
+  try {
+    previewPlan = await invoke("preview_cover_embed", {
+      paths: selectedPaths(),
+      cover: { mime, data_base64 },
+    });
+    previewSource = "cover";
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing cover on ${previewPlan.changes.length} file(s)`
+        : "Selected files already have this cover"
+    );
   } catch (e) {
     toast(String(e), true);
   }
@@ -485,6 +547,8 @@ previewBtn.addEventListener("click", preview);
 previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
+coverOpenBtn.addEventListener("click", chooseCover);
+coverFileInput.addEventListener("change", onCoverChosen);
 discogsOpenBtn.addEventListener("click", openDiscogs);
 el("discogs-close").addEventListener("click", closeDiscogs);
 el("discogs-search").addEventListener("click", discogsSearch);
@@ -669,6 +733,15 @@ function mockInvoke(cmd, args) {
     case "undo":
       s.history.shift();
       return Promise.resolve();
+    case "preview_cover_embed": {
+      const changes = args.paths.map((p) => ({
+        path: p,
+        rename_to: null,
+        tag_changes: [],
+        cover_change: { old: null, new: args.cover },
+      }));
+      return Promise.resolve({ description: "Embed cover art", changes });
+    }
     case "saved_discogs_token":
       return Promise.resolve("");
     case "save_discogs_token":
