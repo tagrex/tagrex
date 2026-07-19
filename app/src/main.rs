@@ -124,6 +124,31 @@ fn preview_import(
     })
 }
 
+/// Path to the locally saved Discogs token (in the OS app-config dir, never in
+/// the repo). Convenience only, so the token isn't retyped each session.
+fn token_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join("discogs_token"))
+}
+
+#[tauri::command]
+fn saved_discogs_token(app: tauri::AppHandle) -> Result<String, String> {
+    let path = token_path(&app)?;
+    Ok(std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .trim()
+        .to_string())
+}
+
+#[tauri::command]
+fn save_discogs_token(app: tauri::AppHandle, token: String) -> Result<(), String> {
+    let path = token_path(&app)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(path, token.trim()).map_err(|e| e.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
@@ -137,7 +162,9 @@ fn main() {
             history,
             search_discogs,
             fetch_discogs_release,
-            preview_import
+            preview_import,
+            saved_discogs_token,
+            save_discogs_token
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -273,11 +273,22 @@ async function discogsSearch() {
     toast("Enter your Discogs token", true);
     return;
   }
+  // Remember the token locally so it's prefilled next time.
+  invoke("save_discogs_token", { token }).catch(() => {});
   try {
     const candidates = await invoke("search_discogs", { token, query: { album: query } });
     renderCandidates(candidates);
   } catch (e) {
     toast(String(e), true);
+  }
+}
+
+async function loadSavedToken() {
+  try {
+    const token = await invoke("saved_discogs_token", {});
+    if (token) el("discogs-token").value = token;
+  } catch (e) {
+    /* no saved token yet */
   }
 }
 
@@ -434,6 +445,8 @@ tracksBody.addEventListener("keydown", (e) => {
   }
 });
 
+loadSavedToken();
+
 // ---- browser-only mock (no effect inside Tauri) ----
 function mockInvoke(cmd, args) {
   mockInvoke.state = mockInvoke.state || {
@@ -495,6 +508,10 @@ function mockInvoke(cmd, args) {
       return Promise.resolve(s.history);
     case "undo":
       s.history.shift();
+      return Promise.resolve();
+    case "saved_discogs_token":
+      return Promise.resolve("");
+    case "save_discogs_token":
       return Promise.resolve();
     case "search_discogs":
       return Promise.resolve([
