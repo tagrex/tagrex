@@ -1,2 +1,4 @@
 /target
 .DS_Store
+# Tauri-generated ACL schemas (regenerated from tauri.conf.json + capabilities)
+/app/gen

@@ -1,0 +1,267 @@
+:root {
+  --bg: #ffffff;
+  --panel: #f6f7f9;
+  --border: #e2e5ea;
+  --text: #1a1d23;
+  --muted: #6b7280;
+  --accent: #c2410c;
+  --accent-text: #ffffff;
+  --add: #166534;
+  --del: #9a3412;
+  --row-hover: #eef1f5;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181d;
+    --panel: #1e2128;
+    --border: #2c313b;
+    --text: #e6e8ec;
+    --muted: #9aa1ac;
+    --accent: #ea580c;
+    --accent-text: #ffffff;
+    --add: #4ade80;
+    --del: #fb923c;
+    --row-hover: #242832;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+}
+
+.lib {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  max-width: 560px;
+}
+
+.lib input {
+  flex: 1;
+}
+
+.spacer {
+  flex: 1;
+}
+
+input[type="text"] {
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+button:hover:not(:disabled) {
+  background: var(--row-hover);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: transparent;
+}
+
+button.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  background: var(--accent);
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+#tracks-panel {
+  flex: 1;
+}
+
+#rename-panel {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  max-height: 45%;
+}
+
+.panel-head {
+  padding: 8px 14px;
+}
+
+h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.table-wrap {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  text-align: left;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+tbody td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+tbody tr:hover {
+  background: var(--row-hover);
+}
+
+th.sel,
+td.sel {
+  width: 28px;
+  text-align: center;
+}
+
+.mask-row {
+  display: flex;
+  gap: 6px;
+  padding: 4px 14px 6px;
+}
+
+.mask-row input {
+  flex: 1;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.hint {
+  padding: 0 14px 8px;
+  font-size: 11px;
+}
+
+.empty {
+  padding: 24px 14px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.arrow {
+  color: var(--muted);
+  text-align: center;
+  width: 28px;
+}
+
+.old {
+  color: var(--del);
+}
+
+.new {
+  color: var(--add);
+}
+
+.mono {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--text);
+  color: var(--bg);
+  padding: 9px 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  max-width: 80%;
+  z-index: 10;
+}
+
+.toast.error {
+  background: var(--del);
+  color: #fff;
+}

@@ -70,13 +70,20 @@ first release ships.
   and unit-tested against fixture JSON (no network); a `discogs_search` example
   exercises the live API with a token.
 
-- Application command layer (#7, partial): the `tagrex` crate is now a library
-  exposing `App` — the thin, GUI-agnostic surface a shell forwards intent to
-  (open library, list tracks, preview a mask rename, apply, undo, history,
-  Discogs search/fetch). Data crosses the boundary as serde DTOs so
-  `tagrex-core` stays serialization-free. The library root doubles as the
-  executor's `allowed_root`. The actual Tauri webview + frontend is a separate
-  dev-machine step (no display in CI); the placeholder binary documents it.
+- Application command layer (#7): the `tagrex` crate is a library exposing
+  `App` — the thin, GUI-agnostic surface the shell forwards intent to (open
+  library, list tracks, preview a mask rename, apply, undo, history, Discogs
+  search/fetch). Data crosses the boundary as serde DTOs so `tagrex-core`
+  stays serialization-free. The library root doubles as the executor's
+  `allowed_root`.
+- Tauri 2 desktop shell (#7): the `tagrex` binary is now a Tauri app — a thin
+  window whose `#[tauri::command]`s are one-line forwards into `App`, over a
+  static HTML/CSS/JS frontend (no npm/JS-framework build step) that renders
+  the track table and the current→new rename preview. Verified end to end on
+  the real native window: open a folder → preview by mask → apply (real
+  renames + a persisted batch in the SQLite journal) → undo (reverted on disk,
+  batch cleared). Only the GUI crate needs a modern toolchain (Tauri 2 raises
+  the MSRV to 1.82); the core crates stay at 1.75.
 
 ### Changed
 

@@ -5,7 +5,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-rust-version.workspace = true
+# The GUI shell needs a newer toolchain than the core crates: Tauri 2 raises
+# the minimum. Core (tagrex-core, providers) stays at the workspace's 1.75 so
+# the library half remains widely compatible; only this desktop shell requires
+# a modern rustc.
+rust-version = "1.82"
 publish = false
 
 [dependencies]
@@ -13,6 +17,10 @@ tagrex-core.workspace = true
 tagrex-providers-discogs = { path = "../crates/providers-discogs" }
 serde = { version = "1", features = ["derive"] }
 thiserror.workspace = true
+tauri = "2"
+
+[build-dependencies]
+tauri-build = "2"
 # The Tauri shell (webview + frontend) is initialized separately on a machine
 # with a display (cargo tauri init) — see app/src/lib.rs for the command layer
 # it forwards to, and app/src/main.rs.

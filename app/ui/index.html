@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TagRex</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand">/tagrex/</div>
+      <div class="lib">
+        <input id="root" type="text" placeholder="/path/to/music/library" spellcheck="false" />
+        <button id="open">Open</button>
+      </div>
+      <div class="spacer"></div>
+      <button id="undo" disabled title="Undo the last applied batch">Undo last</button>
+    </header>
+
+    <main>
+      <section id="tracks-panel">
+        <div class="panel-head">
+          <h2>Tracks <span id="track-count" class="muted"></span></h2>
+        </div>
+        <div class="table-wrap">
+          <table id="tracks">
+            <thead>
+              <tr>
+                <th class="sel"><input id="select-all" type="checkbox" /></th>
+                <th>File</th>
+                <th>Artist</th>
+                <th>Title</th>
+                <th>Album</th>
+                <th>Year</th>
+              </tr>
+            </thead>
+            <tbody id="tracks-body"></tbody>
+          </table>
+          <p id="tracks-empty" class="empty">Open a library to list its tracks.</p>
+        </div>
+      </section>
+
+      <section id="rename-panel">
+        <div class="panel-head">
+          <h2>Rename by mask</h2>
+        </div>
+        <div class="mask-row">
+          <input
+            id="mask"
+            type="text"
+            value="%artist% - %title%"
+            spellcheck="false"
+            placeholder="%artist% - %title%"
+          />
+          <button id="preview" disabled>Preview</button>
+          <button id="apply" class="primary" disabled>Apply</button>
+        </div>
+        <p class="hint muted">
+          Placeholders: %artist% %title% %album% %albumartist% %track% %year% %genre% …
+          Preview shows the change before anything is written.
+        </p>
+        <div class="table-wrap">
+          <table id="preview-table" hidden>
+            <thead>
+              <tr>
+                <th>Current</th>
+                <th></th>
+                <th>New</th>
+              </tr>
+            </thead>
+            <tbody id="preview-body"></tbody>
+          </table>
+          <p id="preview-empty" class="empty" hidden></p>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
