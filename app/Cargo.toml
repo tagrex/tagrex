@@ -17,10 +17,10 @@ tagrex-core.workspace = true
 tagrex-providers-discogs = { path = "../crates/providers-discogs" }
 serde = { version = "1", features = ["derive"] }
 thiserror.workspace = true
-tauri = "2"
+tauri = { version = "2", features = [] }
 
 [build-dependencies]
-tauri-build = "2"
-# The Tauri shell (webview + frontend) is initialized separately on a machine
-# with a display (cargo tauri init) — see app/src/lib.rs for the command layer
-# it forwards to, and app/src/main.rs.
+tauri-build = { version = "2", features = [] }
+# GUI shell: main.rs is the Tauri entry point (commands forward to the App
+# command layer in lib.rs); the frontend is static HTML/CSS/JS under ui/.
+# Run with `cargo run -p tagrex`; bundle a .app with `cargo tauri build`.

@@ -148,7 +148,33 @@ section {
 }
 
 .panel-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 8px 14px;
+}
+
+.panel-head .hint {
+  padding: 0;
+}
+
+.edit-hint {
+  font-size: 11px;
+}
+
+td.editable {
+  cursor: text;
+}
+
+td.editable:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--bg);
+}
+
+td.dirty {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  font-weight: 600;
 }
 
 h2 {

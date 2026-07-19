@@ -58,6 +58,16 @@ pub struct PlanDto {
     pub changes: Vec<FileChangeDto>,
 }
 
+/// One requested tag edit from the table: set `field` on `path` to `value`
+/// (an empty/`None` value clears the field).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TagEditDto {
+    pub path: String,
+    /// Storage key (see [`TagField::to_storage_key`]).
+    pub field: String,
+    pub value: Option<String>,
+}
+
 /// A recorded batch, for the history/undo UI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BatchDto {
@@ -167,6 +177,48 @@ impl App {
         }
         Ok(PlanDto {
             description: format!("Rename by mask: {mask_pattern}"),
+            changes,
+        })
+    }
+
+    /// Build a tag-edit plan from requested cell edits, without writing. Reads
+    /// each file's current value as the change's `old` (so preview shows the
+    /// real diff and the executor's staleness check is accurate) and drops
+    /// no-op edits. An empty requested value clears the field.
+    pub fn preview_tag_edits(&self, edits: &[TagEditDto]) -> Result<PlanDto, AppError> {
+        // Group edits by file so each file is read once and becomes one change.
+        let mut by_path: std::collections::BTreeMap<&str, Vec<&TagEditDto>> =
+            std::collections::BTreeMap::new();
+        for edit in edits {
+            by_path.entry(&edit.path).or_default().push(edit);
+        }
+
+        let mut changes = Vec::new();
+        for (path, group) in by_path {
+            let track = TagEngine::read(Path::new(path))?;
+            let mut tag_changes = Vec::new();
+            for edit in group {
+                let field = TagField::from_storage_key(&edit.field);
+                let old = track.tags.get(&field).cloned();
+                let new = edit.value.clone().filter(|value| !value.is_empty());
+                if old != new {
+                    tag_changes.push(FieldChangeDto {
+                        field: edit.field.clone(),
+                        old,
+                        new,
+                    });
+                }
+            }
+            if !tag_changes.is_empty() {
+                changes.push(FileChangeDto {
+                    path: path.to_string(),
+                    rename_to: None,
+                    tag_changes,
+                });
+            }
+        }
+        Ok(PlanDto {
+            description: "Edit tags".to_string(),
             changes,
         })
     }
@@ -408,6 +460,60 @@ mod tests {
         assert!(track.exists());
         assert!(!expected.exists());
         assert!(app.history().unwrap().is_empty());
+    }
+
+    #[test]
+    fn edit_tags_preview_apply_undo_round_trip() {
+        let dir = TempDir::new("edit");
+        let track = dir.tagged_flac("x.flac", "Old Artist", "Title");
+        let mut app = open_app(&dir);
+
+        let path = track.to_string_lossy().into_owned();
+        let edits = vec![
+            TagEditDto {
+                path: path.clone(),
+                field: "artist".into(),
+                value: Some("New Artist".into()),
+            },
+            // No-op (same value) — must be dropped from the plan.
+            TagEditDto {
+                path: path.clone(),
+                field: "title".into(),
+                value: Some("Title".into()),
+            },
+        ];
+        let plan = app.preview_tag_edits(&edits).unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(plan.changes[0].tag_changes.len(), 1);
+        assert_eq!(plan.changes[0].tag_changes[0].field, "artist");
+        assert_eq!(
+            plan.changes[0].tag_changes[0].old.as_deref(),
+            Some("Old Artist")
+        );
+        assert_eq!(
+            plan.changes[0].tag_changes[0].new.as_deref(),
+            Some("New Artist")
+        );
+
+        let batch = app.apply(&plan).unwrap();
+        assert_eq!(
+            TagEngine::read(&track)
+                .unwrap()
+                .tags
+                .get(&TagField::Artist)
+                .map(String::as_str),
+            Some("New Artist")
+        );
+
+        app.undo(batch.id).unwrap();
+        assert_eq!(
+            TagEngine::read(&track)
+                .unwrap()
+                .tags
+                .get(&TagField::Artist)
+                .map(String::as_str),
+            Some("Old Artist")
+        );
     }
 
     #[test]

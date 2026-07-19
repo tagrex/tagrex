@@ -11,7 +11,7 @@ use std::sync::Mutex;
 
 use tauri::{Manager, State};
 
-use tagrex::{App, BatchDto, CandidateDto, PlanDto, SearchQueryDto, TrackDto};
+use tagrex::{App, BatchDto, CandidateDto, PlanDto, SearchQueryDto, TagEditDto, TrackDto};
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
 /// the non-`Sync` journal usable as shared Tauri state.
@@ -63,6 +63,13 @@ fn preview_rename(
 }
 
 #[tauri::command]
+fn preview_tag_edits(state: State<AppState>, edits: Vec<TagEditDto>) -> Result<PlanDto, String> {
+    with_app(&state, |app| {
+        app.preview_tag_edits(&edits).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn apply_plan(state: State<AppState>, plan: PlanDto) -> Result<BatchDto, String> {
     with_app_mut(&state, |app| app.apply(&plan).map_err(|e| e.to_string()))
 }
@@ -96,6 +103,7 @@ fn main() {
             open_library,
             list_tracks,
             preview_rename,
+            preview_tag_edits,
             apply_plan,
             undo,
             history,

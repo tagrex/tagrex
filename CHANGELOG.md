@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- Inline tag editing in the GUI (#9): artist/title/album/year cells in the
+  track table are editable; edited cells are highlighted, "Preview edits"
+  shows a field-level current→new diff, and Apply writes through the same
+  transactional path as renames (so tag edits are journaled and undoable).
+  Backed by `App::preview_tag_edits`, which reads each file's current value as
+  the change's `old` and drops no-op edits.
+
 - Workspace skeleton: `tagrex-core` (tag model, mask engine, transform
   pipeline, transaction pipeline, undo journal — all module signatures in
   place, `TagEngine` I/O still `todo!()`), `tagrex-providers-discogs`
