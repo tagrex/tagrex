@@ -21,6 +21,7 @@ use base64::Engine as _;
 use tagrex_core::export::{self, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::Mask;
+use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{CoverArt, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
 use tagrex_core::provider::{MetadataProvider, ReleaseId, SearchQuery};
@@ -470,6 +471,10 @@ impl App {
     }
 
     /// Search a metadata provider (Discogs) with the given personal token.
+    ///
+    /// Results are re-scored against the query text and re-sorted: the provider
+    /// score is only "the API returned this one first", which is not evidence of
+    /// a better match (#53).
     pub fn search_discogs(
         &self,
         token: &str,
@@ -477,7 +482,25 @@ impl App {
     ) -> Result<Vec<CandidateDto>, AppError> {
         let provider = DiscogsProvider::new(token);
         let candidates = provider.search(&query.to_search_query())?;
-        Ok(candidates.iter().map(CandidateDto::from).collect())
+        let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
+
+        let wanted = [
+            query.artist.as_deref(),
+            query.album.as_deref(),
+            query.title.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ");
+        if !wanted.trim().is_empty() {
+            for candidate in &mut results {
+                let label = format!("{} {}", candidate.artist, candidate.title);
+                candidate.score = matching::text_similarity(&wanted, &label);
+            }
+            results.sort_by(|a, b| b.score.total_cmp(&a.score));
+        }
+        Ok(results)
     }
 
     /// Fetch a full release from Discogs.
@@ -498,6 +521,71 @@ impl App {
             mime: image.mime,
             data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),
         })
+    }
+
+    /// Align the selected files to a release's tracks by content rather than by
+    /// position (#53).
+    ///
+    /// Returns, for each file, the index of the release track it matches (or
+    /// `None`). Blind positional mapping is what silently tags a whole album
+    /// one title out of step when the file order doesn't happen to match the
+    /// release; this lets the UI line them up from the actual metadata instead.
+    /// Untagged files fall back to their file name, which is usually where the
+    /// information hides in a messy library.
+    pub fn auto_align(
+        &self,
+        paths: &[PathBuf],
+        tracks: &[ImportTrackDto],
+    ) -> Result<Vec<Option<usize>>, AppError> {
+        let locals: Vec<(String, String, Option<u64>)> = paths
+            .iter()
+            .map(|path| {
+                let track = TagEngine::read(path).ok();
+                let title = track
+                    .as_ref()
+                    .and_then(|track| track.tags.get(&TagField::Title).cloned())
+                    .filter(|title| !title.is_empty())
+                    .unwrap_or_else(|| {
+                        path.file_stem()
+                            .map(|stem| stem.to_string_lossy().into_owned())
+                            .unwrap_or_default()
+                    });
+                let artist = track
+                    .as_ref()
+                    .and_then(|track| track.tags.get(&TagField::Artist).cloned())
+                    .unwrap_or_default();
+                let duration = TagEngine::read_duration(path)
+                    .ok()
+                    .map(|duration| duration.as_secs())
+                    .filter(|secs| *secs > 0);
+                (title, artist, duration)
+            })
+            .collect();
+
+        let local_refs: Vec<TrackRef> = locals
+            .iter()
+            .map(|(title, artist, duration)| TrackRef {
+                title,
+                artist: Some(artist.as_str()).filter(|artist| !artist.is_empty()),
+                duration_secs: *duration,
+            })
+            .collect();
+        let candidate_refs: Vec<TrackRef> = tracks
+            .iter()
+            .map(|track| TrackRef {
+                title: &track.title,
+                artist: Some(track.artist.as_str()).filter(|artist| !artist.is_empty()),
+                // Discogs tracklists carry a display duration we don't parse
+                // yet, so length can't gate the match here.
+                duration_secs: None,
+            })
+            .collect();
+
+        Ok(matching::align(
+            &local_refs,
+            &candidate_refs,
+            &MatchOptions::default(),
+        ))
     }
 
     /// Preview importing a user-resolved release selection onto `paths`,
@@ -1121,6 +1209,35 @@ mod tests {
                 "should reject {name:?}"
             );
         }
+    }
+
+    #[test]
+    fn auto_align_matches_files_to_release_tracks_by_content() {
+        let dir = TempDir::new("align");
+        // File order deliberately does NOT match the release order.
+        let a = dir.tagged_flac("a.flac", "Plastic", "Sexy Groove");
+        let b = dir.tagged_flac("b.flac", "B.B.E.", "Seven Days And One Week");
+        let app = open_app(&dir);
+
+        let tracks = vec![
+            ImportTrackDto {
+                position: "11".into(),
+                artist: "B.B.E.".into(),
+                // Punctuation/decoration differs from the local tag.
+                title: "Seven Days & One Week (Original Mix)".into(),
+            },
+            ImportTrackDto {
+                position: "14".into(),
+                artist: "Plastic".into(),
+                title: "Sexy Groove".into(),
+            },
+        ];
+
+        // Each file finds its own track despite the order and the decoration.
+        assert_eq!(
+            app.auto_align(&[a, b], &tracks).unwrap(),
+            vec![Some(1), Some(0)]
+        );
     }
 
     #[test]

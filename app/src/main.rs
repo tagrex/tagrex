@@ -15,8 +15,8 @@ use tauri::{Manager, State};
 
 use player::{Player, PlayerStatus};
 use tagrex::{
-    App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, ImportSelectionDto, PlanDto,
-    ReleaseDto, SearchQueryDto, TagEditDto, TrackDto,
+    App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, ImportSelectionDto, ImportTrackDto,
+    PlanDto, ReleaseDto, SearchQueryDto, TagEditDto, TrackDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -228,6 +228,18 @@ fn fetch_discogs_image(
 }
 
 #[tauri::command]
+fn auto_align(
+    state: State<AppState>,
+    paths: Vec<String>,
+    tracks: Vec<ImportTrackDto>,
+) -> Result<Vec<Option<usize>>, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.auto_align(&paths, &tracks).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn preview_import(
     state: State<AppState>,
     paths: Vec<String>,
@@ -286,6 +298,7 @@ fn main() {
             fetch_discogs_release,
             fetch_discogs_image,
             preview_import,
+            auto_align,
             saved_discogs_token,
             save_discogs_token,
             player_play,

@@ -899,6 +899,51 @@ function renderReleaseTracks() {
   });
 }
 
+// Reorder the selected files so they line up with this release's tracklist,
+// matching on title/artist instead of trusting the order they happen to be in
+// (#53). Import maps the i-th enabled track onto the i-th file, so getting the
+// file order right is what stops a whole album being tagged one title out.
+async function autoMatchTracks() {
+  const paths = selectedPaths();
+  if (!currentRelease || paths.length === 0) {
+    toast("Select the tracks to match against first", true);
+    return;
+  }
+  const releaseTracks = currentRelease.tracks.map((t) => ({
+    position: t.position,
+    artist: t.artist || currentRelease.artist,
+    title: t.title,
+  }));
+  try {
+    const aligned = await invoke("auto_align", { paths, tracks: releaseTracks });
+    // Unmatched files sort to the end rather than scrambling the rest.
+    const ranked = paths.map((path, i) => ({
+      path,
+      key: aligned[i] === null || aligned[i] === undefined ? Number.MAX_SAFE_INTEGER : aligned[i],
+    }));
+    ranked.sort((a, b) => a.key - b.key);
+
+    // Rewrite `tracks` in place: selected files take their new relative order,
+    // unselected ones stay exactly where they are.
+    const byPath = new Map(tracks.map((t) => [t.path, t]));
+    const selected = new Set(paths);
+    let next = 0;
+    tracks = tracks.map((t) => (selected.has(t.path) ? byPath.get(ranked[next++].path) : t));
+    sortKey = null; // a manual order supersedes any column sort
+    renderTracks();
+
+    const matched = aligned.filter((i) => i !== null && i !== undefined).length;
+    toast(
+      matched
+        ? `Matched ${matched}/${paths.length} file(s) — reordered to line up`
+        : "No confident matches — leaving the order alone",
+      matched === 0
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 function enabledReleaseTracks() {
   return [...releaseTracksBody.querySelectorAll(".sel input:checked")].map((cb) => {
     const t = currentRelease.tracks[Number(cb.dataset.i)];
@@ -974,6 +1019,7 @@ el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && disc
 el("discogs-back").addEventListener("click", () => showDiscogsView("search"));
 el("import-apply").addEventListener("click", applyImport);
 coverEmbedBtn.addEventListener("click", embedReleaseCover);
+el("auto-match").addEventListener("click", autoMatchTracks);
 el("tracks-all").addEventListener("click", () => toggleReleaseTracks(true));
 el("tracks-none").addEventListener("click", () => toggleReleaseTracks(false));
 discogsModal.addEventListener("click", (e) => {
@@ -1277,6 +1323,17 @@ function mockInvoke(cmd, args) {
         }
       });
       return Promise.resolve({ written, skipped_no_cover });
+    }
+    case "auto_align": {
+      // Mock: match by exact title, mirroring what the backend does on real data.
+      const titles = args.tracks.map((t) => t.title.toLowerCase());
+      return Promise.resolve(
+        args.paths.map((p) => {
+          const t = findTrack(p);
+          const i = t ? titles.indexOf((t.tags.title || "").toLowerCase()) : -1;
+          return i >= 0 ? i : null;
+        })
+      );
     }
     case "export_playlist":
     case "export_csv":

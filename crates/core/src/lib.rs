@@ -9,6 +9,7 @@
 pub mod export;
 pub mod journal;
 pub mod mask;
+pub mod matching;
 pub mod model;
 pub mod plan;
 pub mod provider;

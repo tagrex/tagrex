@@ -10,6 +10,16 @@ first release ships.
 
 ### Added
 
+- Match provider candidates by content instead of result order (#53). A new
+  matching module normalizes titles progressively (case, throwaway attributes
+  like "Original Mix", punctuation, leading articles), takes an exact hit at any
+  level, and otherwise falls back to a normalized Levenshtein similarity gated
+  by a strictness threshold, with optional artist and duration checks. Remix
+  credits are never stripped — a remix is a different recording. Discogs search
+  results are now ranked by real similarity to the query rather than the order
+  the API returned them, and an "Auto-match" action in the release view reorders
+  the selected files to line up with the tracklist by title, so an import can no
+  longer tag a whole album one title out of step.
 - Exporters (#19): an "Export…" action writes the selected tracks into the
   opened library as an extended M3U playlist (relative entry paths and real
   track lengths), a CSV of the tag columns (RFC 4180 quoting), or a text report
