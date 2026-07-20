@@ -31,6 +31,12 @@ const EDIT_FIELDS = ["artist", "title", "album", "year"];
 let sortKey = null; // "file" | one of EDIT_FIELDS
 let sortDir = 1; // 1 asc, -1 desc
 let filterText = "";
+// Grouping is purely a view concern (#20): "" | "folder" | "artist" | "album".
+// It regroups rows visually but never reorders the `tracks` array, so the file
+// order used by mapping (rename masks, Discogs import) is unaffected. Collapsed
+// group keys persist across renders.
+let groupBy = "";
+const collapsedGroups = new Set();
 
 // ---- elements ----
 const el = (id) => document.getElementById(id);
@@ -98,8 +104,15 @@ function tag(track, key) {
   return track.tags[key] || "";
 }
 
+// Paths of the checked rows, in `tracks` (mapping) order — NOT the visual/DOM
+// order. This keeps position-based mapping (rename masks, Discogs import) tied
+// to the real file order even when the view is grouped (#20). Identical to the
+// visual order when ungrouped.
 function selectedPaths() {
-  return [...tracksBody.querySelectorAll(".sel input:checked")].map((cb) => cb.dataset.path);
+  const checked = new Set(
+    [...tracksBody.querySelectorAll(".sel input:checked")].map((cb) => cb.dataset.path),
+  );
+  return tracks.filter((t) => checked.has(t.path)).map((t) => t.path);
 }
 
 function escapeHtml(s) {
@@ -141,6 +154,78 @@ function updateSortIndicators() {
   });
 }
 
+// The grouping-key value for a track under the active `groupBy`.
+function groupKeyOf(track) {
+  switch (groupBy) {
+    case "folder": {
+      const i = Math.max(track.path.lastIndexOf("/"), track.path.lastIndexOf("\\"));
+      return i >= 0 ? track.path.slice(0, i) : "";
+    }
+    case "artist":
+      return track.tags.artist || "";
+    case "album":
+      return track.tags.album || "";
+    default:
+      return "";
+  }
+}
+
+// Human label for a group header ("(no artist)" etc.; folder shows its name).
+function groupLabel(key) {
+  if (key === "") {
+    return groupBy === "folder" ? "(no folder)" : `(no ${groupBy})`;
+  }
+  return groupBy === "folder" ? fileName(key) : key;
+}
+
+// Build one track row and append it to the body. `groupKey` (when grouping)
+// tags the row so its group header can collapse it.
+function appendTrackRow(track, groupKey) {
+  const pending = edits.get(track.path);
+  const tr = document.createElement("tr");
+  tr.dataset.path = track.path;
+  if (groupKey !== null) {
+    tr.dataset.group = groupKey;
+    if (collapsedGroups.has(groupKey)) tr.classList.add("hidden-row");
+  }
+  if (track.path === playingPath) tr.classList.add("playing");
+  const playGlyph = track.path === playingPath && !plPaused ? "❚❚" : "▶";
+  tr.innerHTML = `
+      <td class="sel"><input type="checkbox" checked data-path="${escapeHtml(track.path)}" /></td>
+      <td class="play"><button class="play-btn" data-path="${escapeHtml(track.path)}" title="Preview">${playGlyph}</button></td>
+      <td class="mono file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
+  for (const field of EDIT_FIELDS) {
+    const original = tag(track, field);
+    const edited = pending && pending.has(field);
+    const value = edited ? pending.get(field) : original;
+    const td = document.createElement("td");
+    td.className = "editable";
+    td.contentEditable = "true";
+    td.spellcheck = false;
+    td.dataset.path = track.path;
+    td.dataset.field = field;
+    td.dataset.original = original;
+    td.textContent = value;
+    if (edited && value !== original) td.classList.add("dirty");
+    tr.appendChild(td);
+  }
+  tracksBody.appendChild(tr);
+}
+
+// A collapsible group header row spanning the table width.
+function appendGroupHeader(key, count) {
+  const collapsed = collapsedGroups.has(key);
+  const tr = document.createElement("tr");
+  tr.className = "group-head" + (collapsed ? " collapsed" : "");
+  tr.dataset.group = key;
+  tr.innerHTML = `<td class="group-cell" colspan="7">
+      <span class="group-caret">${collapsed ? "▶" : "▼"}</span>
+      <span class="group-label">${escapeHtml(groupLabel(key))}</span>
+      <span class="group-count muted">${count}</span>
+    </td>`;
+  tracksBody.appendChild(tr);
+}
+
 function renderTracks() {
   tracksBody.innerHTML = "";
   updateSortIndicators();
@@ -153,33 +238,27 @@ function renderTracks() {
     : "";
   tracksEmpty.hidden = tracks.length > 0;
 
-  for (const track of visible) {
-    const pending = edits.get(track.path);
-    const tr = document.createElement("tr");
-    tr.dataset.path = track.path;
-    if (track.path === playingPath) tr.classList.add("playing");
-    const playGlyph = track.path === playingPath && !plPaused ? "❚❚" : "▶";
-    tr.innerHTML = `
-      <td class="sel"><input type="checkbox" checked data-path="${escapeHtml(track.path)}" /></td>
-      <td class="play"><button class="play-btn" data-path="${escapeHtml(track.path)}" title="Preview">${playGlyph}</button></td>
-      <td class="mono file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
-    for (const field of EDIT_FIELDS) {
-      const original = tag(track, field);
-      const edited = pending && pending.has(field);
-      const value = edited ? pending.get(field) : original;
-      const td = document.createElement("td");
-      td.className = "editable";
-      td.contentEditable = "true";
-      td.spellcheck = false;
-      td.dataset.path = track.path;
-      td.dataset.field = field;
-      td.dataset.original = original;
-      td.textContent = value;
-      if (edited && value !== original) td.classList.add("dirty");
-      tr.appendChild(td);
+  if (groupBy) {
+    // Groups in first-appearance order over the (mapping-ordered) track list,
+    // so grouping never reorders the underlying files.
+    const order = [];
+    const byKey = new Map();
+    for (const track of visible) {
+      const key = groupKeyOf(track);
+      if (!byKey.has(key)) {
+        byKey.set(key, []);
+        order.push(key);
+      }
+      byKey.get(key).push(track);
     }
-    tracksBody.appendChild(tr);
+    for (const key of order) {
+      appendGroupHeader(key, byKey.get(key).length);
+      for (const track of byKey.get(key)) appendTrackRow(track, key);
+    }
+  } else {
+    for (const track of visible) appendTrackRow(track, null);
   }
+
   previewBtn.disabled = tracks.length === 0;
   discogsOpenBtn.disabled = tracks.length === 0;
   coverOpenBtn.disabled = tracks.length === 0;
@@ -303,6 +382,9 @@ async function openLibrary() {
     sortDir = 1;
     filterText = "";
     el("filter").value = "";
+    groupBy = "";
+    collapsedGroups.clear();
+    el("group-by").value = "";
     renderTracks();
     showPlayerBar();
     await refreshHistory();
@@ -865,7 +947,7 @@ function onDragMove(e) {
   clearDropMarkers();
   dropInfo = null;
   const row = rowUnder(e.clientX, e.clientY);
-  if (!row || row.dataset.path === dragPath) return;
+  if (!row || !row.dataset.path || row.dataset.path === dragPath) return; // skip group headers
   const rect = row.getBoundingClientRect();
   const below = e.clientY > rect.top + rect.height / 2;
   row.classList.add(below ? "drop-below" : "drop-above");
@@ -919,6 +1001,36 @@ function sortBy(key) {
 
 document.querySelectorAll("th.sortable").forEach((th) => {
   th.addEventListener("click", () => sortBy(th.dataset.sort));
+});
+
+// Grouping is a view overlay — changing it only re-renders, never reorders
+// `tracks`. Collapsed state is per grouping, so reset it on change.
+el("group-by").addEventListener("change", (e) => {
+  groupBy = e.target.value;
+  collapsedGroups.clear();
+  renderTracks();
+});
+
+// Collapse/expand a group by clicking its header (no re-render, so selection
+// and in-progress edits are preserved).
+function toggleGroup(key) {
+  const collapse = !collapsedGroups.has(key);
+  if (collapse) collapsedGroups.add(key);
+  else collapsedGroups.delete(key);
+  tracksBody.querySelectorAll("tr").forEach((tr) => {
+    if (tr.dataset.group !== key) return;
+    if (tr.classList.contains("group-head")) {
+      tr.classList.toggle("collapsed", collapse);
+      const caret = tr.querySelector(".group-caret");
+      if (caret) caret.textContent = collapse ? "▶" : "▼";
+    } else {
+      tr.classList.toggle("hidden-row", collapse);
+    }
+  });
+}
+tracksBody.addEventListener("click", (e) => {
+  const head = e.target.closest("tr.group-head");
+  if (head) toggleGroup(head.dataset.group);
 });
 
 el("filter").addEventListener("input", (e) => {

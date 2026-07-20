@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- Group the track table (#20): a "Group" selector groups rows by folder, artist,
+  or album under collapsible headers showing each group's track count; clicking a
+  header collapses/expands it without a re-render, so selection and in-progress
+  edits survive. Grouping is strictly a view concern — it never reorders the
+  underlying track list, and position-based mapping (rename masks, Discogs
+  import) now explicitly follows that list rather than the visual row order.
+  Grouping by release id is listed but disabled until a release identifier is
+  stored on tracks.
 - Gapless playback (#30): the preview player now runs on a native rodio/
   Symphonia backend instead of a WebView `<audio>` element. A dedicated audio
   thread keeps the current and next track queued in one sink, so tracks play

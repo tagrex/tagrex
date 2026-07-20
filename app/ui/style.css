@@ -550,3 +550,51 @@ tr.playing td.play button.play-btn {
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- grouping (#20) ---- */
+.group-ctl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.group-ctl select {
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+tr.group-head {
+  cursor: pointer;
+  user-select: none;
+  background: var(--panel);
+}
+
+tr.group-head:hover {
+  background: var(--row-hover);
+}
+
+td.group-cell {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.group-caret {
+  display: inline-block;
+  width: 1em;
+  color: var(--muted);
+}
+
+.group-count {
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+tr.hidden-row {
+  display: none;
+}
