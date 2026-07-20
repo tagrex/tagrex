@@ -10,6 +10,9 @@ first release ships.
 
 ### Added
 
+- Expand All / Collapse All for groups (#32): buttons next to the Group selector
+  (shown only while grouped) toggle every group at once, reusing the in-place
+  collapse path so selection and in-progress edits survive.
 - Group the track table (#20): a "Group" selector groups rows by folder, artist,
   or album under collapsible headers showing each group's track count; clicking a
   header collapses/expands it without a re-render, so selection and in-progress

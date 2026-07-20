@@ -259,6 +259,10 @@ function renderTracks() {
     for (const track of visible) appendTrackRow(track, null);
   }
 
+  // Expand/Collapse all only make sense while grouped (#32).
+  el("expand-all").hidden = !groupBy;
+  el("collapse-all").hidden = !groupBy;
+
   previewBtn.disabled = tracks.length === 0;
   discogsOpenBtn.disabled = tracks.length === 0;
   coverOpenBtn.disabled = tracks.length === 0;
@@ -1032,6 +1036,29 @@ tracksBody.addEventListener("click", (e) => {
   const head = e.target.closest("tr.group-head");
   if (head) toggleGroup(head.dataset.group);
 });
+
+// Expand/collapse every group at once (#32), reusing the same in-place update
+// as individual headers so selection and in-progress edits survive.
+function setAllGroupsCollapsed(collapse) {
+  collapsedGroups.clear();
+  if (collapse) {
+    tracksBody
+      .querySelectorAll("tr.group-head")
+      .forEach((head) => collapsedGroups.add(head.dataset.group));
+  }
+  tracksBody.querySelectorAll("tr").forEach((tr) => {
+    if (tr.dataset.group === undefined) return;
+    if (tr.classList.contains("group-head")) {
+      tr.classList.toggle("collapsed", collapse);
+      const caret = tr.querySelector(".group-caret");
+      if (caret) caret.textContent = collapse ? "▶" : "▼";
+    } else {
+      tr.classList.toggle("hidden-row", collapse);
+    }
+  });
+}
+el("expand-all").addEventListener("click", () => setAllGroupsCollapsed(false));
+el("collapse-all").addEventListener("click", () => setAllGroupsCollapsed(true));
 
 el("filter").addEventListener("input", (e) => {
   filterText = e.target.value.trim().toLowerCase();
