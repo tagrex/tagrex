@@ -16,6 +16,7 @@
       <div class="spacer"></div>
       <button id="cover-open" disabled title="Embed a cover image into the selected files">Cover…</button>
       <button id="cover-export" disabled title="Export the embedded cover of the selected files to disk (cover.jpg)">Export cover</button>
+      <button id="fields-open" disabled title="Edit every tag field of the selected files">Fields…</button>
       <button id="export-open" disabled title="Export the selected tracks as a playlist, CSV, or text report">Export…</button>
       <button id="discogs-open" disabled title="Import metadata from Discogs">Discogs…</button>
       <button id="undo" disabled title="Undo the last applied batch">Undo last</button>
@@ -162,6 +163,37 @@
                 <tbody id="release-tracks"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="fields-modal" class="modal" hidden>
+      <div class="modal-box">
+        <div class="modal-head">
+          <h2>Tag fields</h2>
+          <div class="spacer"></div>
+          <button id="fields-close" class="icon" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="hint muted" style="padding: 0">
+            Editing <span id="fields-count"></span>. Only fields you actually change are written;
+            a field whose value differs across the selection shows
+            <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
+          </p>
+          <div class="table-wrap" style="max-height: 340px; border-top: 1px solid var(--border)">
+            <table>
+              <tbody id="fields-body"></tbody>
+            </table>
+          </div>
+          <div class="export-row">
+            <input id="fields-new-name" type="text" placeholder="custom field name" spellcheck="false" />
+            <input id="fields-new-value" type="text" placeholder="value" spellcheck="false" />
+            <button id="fields-add">Add field</button>
+          </div>
+          <div class="release-actions">
+            <div class="spacer"></div>
+            <button id="fields-apply" class="primary">Stage changes</button>
           </div>
         </div>
       </div>

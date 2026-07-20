@@ -125,6 +125,11 @@ fn lenient_tags(tags: &TagMap) -> TagMap {
         TagField::Year,
         TagField::Genre,
         TagField::Comment,
+        TagField::Composer,
+        TagField::Publisher,
+        TagField::Bpm,
+        TagField::Isrc,
+        TagField::InitialKey,
     ] {
         lenient.insert(field, String::new());
     }

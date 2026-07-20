@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- Extended tag-field editor (#35): a "Fields…" dialog edits every field the
+  model knows for the whole selection — album artist, track/disc numbers and
+  totals, genre, comment, plus new first-class Composer, Publisher, BPM, ISRC
+  and Key fields — and can add arbitrary custom fields. A field whose value
+  differs across the selection shows `<multiple values>` and is left untouched
+  unless typed into, so editing one field can't silently flatten the rest.
+  Changes land in the same pending-edits buffer as inline table edits, and the
+  new fields are usable as rename-mask placeholders (%composer%, %bpm%, …).
 - Support every container the tag backend handles (#36): AAC, AIFF, WAV, Opus,
   Speex, Musepack, Monkey's Audio and WavPack alongside the original MP3/FLAC/
   OGG/M4A. These files were previously skipped by the scanner even though the

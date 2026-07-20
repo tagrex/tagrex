@@ -87,6 +87,16 @@ pub enum TagField {
     Year,
     Genre,
     Comment,
+    Composer,
+    Publisher,
+    /// Beats per minute, written to the canonical integer BPM frame so DJ
+    /// software reads it.
+    Bpm,
+    /// International Standard Recording Code — a per-recording identifier, and
+    /// the highest-precision key available for matching.
+    Isrc,
+    /// Musical key of the recording (harmonic mixing).
+    InitialKey,
     Custom(String),
 }
 
@@ -108,6 +118,11 @@ impl TagField {
             Self::Year => "year".to_string(),
             Self::Genre => "genre".to_string(),
             Self::Comment => "comment".to_string(),
+            Self::Composer => "composer".to_string(),
+            Self::Publisher => "publisher".to_string(),
+            Self::Bpm => "bpm".to_string(),
+            Self::Isrc => "isrc".to_string(),
+            Self::InitialKey => "key".to_string(),
             Self::Custom(name) => format!("custom:{name}"),
         }
     }
@@ -128,6 +143,11 @@ impl TagField {
             "year" => Self::Year,
             "genre" => Self::Genre,
             "comment" => Self::Comment,
+            "composer" => Self::Composer,
+            "publisher" => Self::Publisher,
+            "bpm" => Self::Bpm,
+            "isrc" => Self::Isrc,
+            "key" => Self::InitialKey,
             // Only reachable if the database holds a key this build didn't
             // write; preserve it verbatim rather than losing it.
             other => Self::Custom(other.to_string()),
@@ -404,6 +424,13 @@ fn tag_field_to_item_key(field: &TagField) -> ItemKey {
         TagField::Year => ItemKey::RecordingDate,
         TagField::Genre => ItemKey::Genre,
         TagField::Comment => ItemKey::Comment,
+        TagField::Composer => ItemKey::Composer,
+        TagField::Publisher => ItemKey::Publisher,
+        // `IntegerBpm` is ID3v2's TBPM, which is what DJ software reads;
+        // `ItemKey::Bpm` would land in a TXXX frame instead.
+        TagField::Bpm => ItemKey::IntegerBpm,
+        TagField::Isrc => ItemKey::Isrc,
+        TagField::InitialKey => ItemKey::InitialKey,
         TagField::Custom(key) => ItemKey::Unknown(key.clone()),
     }
 }
@@ -430,6 +457,13 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         ItemKey::Year | ItemKey::RecordingDate => TagField::Year,
         ItemKey::Genre => TagField::Genre,
         ItemKey::Comment => TagField::Comment,
+        ItemKey::Composer => TagField::Composer,
+        ItemKey::Publisher => TagField::Publisher,
+        // Accept either BPM spelling on read, the same way Year accepts both
+        // the legacy and modern frame; writing always picks `IntegerBpm`.
+        ItemKey::Bpm | ItemKey::IntegerBpm => TagField::Bpm,
+        ItemKey::Isrc => TagField::Isrc,
+        ItemKey::InitialKey => TagField::InitialKey,
         ItemKey::Unknown(key) => TagField::Custom(key.clone()),
         other => TagField::Custom(format!("{other:?}")),
     }
@@ -463,6 +497,11 @@ mod tests {
             TagField::Year,
             TagField::Genre,
             TagField::Comment,
+            TagField::Composer,
+            TagField::Publisher,
+            TagField::Bpm,
+            TagField::Isrc,
+            TagField::InitialKey,
         ]
     }
 

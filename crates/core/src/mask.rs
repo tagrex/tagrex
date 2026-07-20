@@ -155,6 +155,11 @@ fn field_from_name(name: &str) -> Result<TagField, MaskError> {
         "year" => Ok(TagField::Year),
         "genre" => Ok(TagField::Genre),
         "comment" => Ok(TagField::Comment),
+        "composer" => Ok(TagField::Composer),
+        "publisher" => Ok(TagField::Publisher),
+        "bpm" => Ok(TagField::Bpm),
+        "isrc" => Ok(TagField::Isrc),
+        "key" => Ok(TagField::InitialKey),
         _ => Err(MaskError::UnknownPlaceholder(name.to_string())),
     }
 }
@@ -171,6 +176,11 @@ fn field_name(field: &TagField) -> &'static str {
         TagField::Year => "year",
         TagField::Genre => "genre",
         TagField::Comment => "comment",
+        TagField::Composer => "composer",
+        TagField::Publisher => "publisher",
+        TagField::Bpm => "bpm",
+        TagField::Isrc => "isrc",
+        TagField::InitialKey => "key",
         TagField::Custom(_) => "custom",
     }
 }

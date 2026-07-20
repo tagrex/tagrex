@@ -268,6 +268,7 @@ function renderTracks() {
   coverOpenBtn.disabled = tracks.length === 0;
   coverExportBtn.disabled = tracks.length === 0;
   el("export-open").disabled = tracks.length === 0;
+  el("fields-open").disabled = tracks.length === 0;
   updateEditsButton();
   applyBtn.disabled = true;
   previewTable.hidden = true;
@@ -704,6 +705,162 @@ tracksBody.addEventListener("click", (e) => {
   if (btn) playTrack(btn.dataset.path);
 });
 
+// ---- extended field editor (#35) ----
+// The table only edits four columns, but every field the model knows is already
+// in `tracks[].tags` — this exposes the rest, including custom ones.
+const EXTENDED_FIELDS = [
+  ["artist", "Artist"],
+  ["title", "Title"],
+  ["album", "Album"],
+  ["albumartist", "Album Artist"],
+  ["track", "Track"],
+  ["tracktotal", "Track Total"],
+  ["disc", "Disc"],
+  ["year", "Year"],
+  ["genre", "Genre"],
+  ["comment", "Comment"],
+  ["composer", "Composer"],
+  ["publisher", "Publisher"],
+  ["bpm", "BPM"],
+  ["isrc", "ISRC"],
+  ["key", "Key"],
+];
+
+// Fields the user actually touched in the dialog, staged until they confirm.
+let stagedFields = new Map();
+
+// The value a file currently shows for a field: a pending edit if there is one,
+// otherwise what's on disk.
+function currentFieldValue(path, key) {
+  const pending = edits.get(path);
+  if (pending && pending.has(key)) return pending.get(key);
+  const track = tracks.find((t) => t.path === path);
+  return (track && track.tags[key]) || "";
+}
+
+function openFieldEditor() {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to edit first", true);
+    return;
+  }
+  stagedFields = new Map();
+  el("fields-count").textContent = `${paths.length} file(s)`;
+  el("fields-new-name").value = "";
+  el("fields-new-value").value = "";
+  renderFieldEditor(paths);
+  el("fields-modal").hidden = false;
+}
+
+function closeFieldEditor() {
+  el("fields-modal").hidden = true;
+}
+
+function renderFieldEditor(paths) {
+  const body = el("fields-body");
+  body.innerHTML = "";
+
+  // Well-known fields plus any custom keys present anywhere in the selection —
+  // both on disk and among pending edits, so a custom field staged a moment ago
+  // is still listed when the dialog is reopened.
+  const customs = new Set();
+  for (const path of paths) {
+    const track = tracks.find((t) => t.path === path);
+    if (track) {
+      for (const key of Object.keys(track.tags)) {
+        if (key.startsWith("custom:")) customs.add(key);
+      }
+    }
+    const pending = edits.get(path);
+    if (pending) {
+      for (const key of pending.keys()) {
+        if (key.startsWith("custom:")) customs.add(key);
+      }
+    }
+  }
+  const rows = EXTENDED_FIELDS.concat(
+    [...customs].sort().map((key) => [key, key.slice("custom:".length)])
+  );
+
+  for (const [key, label] of rows) {
+    const values = new Set(paths.map((path) => currentFieldValue(path, key)));
+    const shared = values.size === 1 ? [...values][0] : null;
+
+    const tr = document.createElement("tr");
+    const labelCell = document.createElement("td");
+    labelCell.className = "field-label";
+    labelCell.textContent = label;
+    const valueCell = document.createElement("td");
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "field-input";
+    input.dataset.key = key;
+    input.spellcheck = false;
+    if (shared === null) {
+      // Differing values stay untouched unless the user types something.
+      input.placeholder = "<multiple values>";
+    } else {
+      input.value = shared;
+    }
+    input.addEventListener("input", () => {
+      stagedFields.set(key, input.value);
+      input.classList.add("dirty");
+    });
+    valueCell.appendChild(input);
+    tr.appendChild(labelCell);
+    tr.appendChild(valueCell);
+    body.appendChild(tr);
+  }
+}
+
+// Add a custom field row; it stages immediately so an empty-valued custom field
+// can still be created.
+function addCustomField() {
+  const name = el("fields-new-name").value.trim();
+  if (!name) {
+    toast("Name the custom field first", true);
+    return;
+  }
+  const key = name.startsWith("custom:") ? name : `custom:${name}`;
+  stagedFields.set(key, el("fields-new-value").value);
+  toast(`Staged custom field "${name}" — press Stage changes to apply`);
+  el("fields-new-name").value = "";
+  el("fields-new-value").value = "";
+}
+
+// Push the staged fields into the shared pending-edits buffer for every
+// selected file, then preview them alongside any other pending edits.
+async function applyFieldEditor() {
+  const paths = selectedPaths();
+  if (stagedFields.size === 0) {
+    closeFieldEditor();
+    toast("No field changes to stage");
+    return;
+  }
+  let changed = 0;
+  for (const path of paths) {
+    if (!edits.has(path)) edits.set(path, new Map());
+    const fields = edits.get(path);
+    for (const [key, value] of stagedFields) {
+      // Skip no-ops so the preview stays honest.
+      const track = tracks.find((t) => t.path === path);
+      const onDisk = (track && track.tags[key]) || "";
+      if (value === onDisk && !fields.has(key)) continue;
+      fields.set(key, value);
+      changed += 1;
+    }
+    if (fields.size === 0) edits.delete(path);
+  }
+  closeFieldEditor();
+  renderTracks();
+  await previewEdits();
+  toast(
+    changed
+      ? `Staged ${stagedFields.size} field(s) across ${paths.length} file(s)`
+      : "Nothing changed"
+  );
+}
+
 // ---- exporters (#19) ----
 // Default output name per export kind; the user can override it. The backend
 // only accepts a bare file name and writes into the opened library.
@@ -1011,6 +1168,13 @@ applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
 coverOpenBtn.addEventListener("click", chooseCover);
 coverExportBtn.addEventListener("click", exportCover);
+el("fields-open").addEventListener("click", openFieldEditor);
+el("fields-close").addEventListener("click", closeFieldEditor);
+el("fields-add").addEventListener("click", addCustomField);
+el("fields-apply").addEventListener("click", applyFieldEditor);
+el("fields-modal").addEventListener("click", (e) => {
+  if (e.target === el("fields-modal")) closeFieldEditor();
+});
 el("export-open").addEventListener("click", openExport);
 el("export-close").addEventListener("click", closeExport);
 el("export-kind").addEventListener("change", syncExportKind);
