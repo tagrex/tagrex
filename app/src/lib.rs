@@ -1201,6 +1201,40 @@ mod tests {
     }
 
     #[test]
+    fn preview_move_handles_multi_disc_pattern_with_adjacent_placeholders() {
+        let dir = TempDir::new("move-multidisc");
+        let track = dir.tagged_flac("x.flac", "The X Factor", "Desert Rain");
+        let mut file = TagEngine::read(&track).unwrap();
+        file.tags.insert(TagField::Album, "La Bush".into());
+        file.tags.insert(TagField::AlbumArtist, "Various".into());
+        file.tags.insert(TagField::Year, "1996".into());
+        file.tags.insert(TagField::DiscNumber, "1".into());
+        file.tags.insert(TagField::TrackNumber, "1".into());
+        TagEngine::write(&file).unwrap();
+        let app = open_app(&dir);
+
+        // `%disc%%track%` has no separator between the placeholders: fine to
+        // render, and the track pads to two digits so disc 1 track 1 reads as
+        // 101 rather than 11.
+        let plan = app
+            .preview_move(
+                "%albumartist% - %album% (%year%)/%disc%%track%. %artist% - %title%",
+                std::slice::from_ref(&track),
+            )
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(
+            plan.changes[0].rename_to.as_deref(),
+            Some(
+                dir.0
+                    .join("Various - La Bush (1996)/101. The X Factor - Desert Rain.flac")
+                    .to_string_lossy()
+                    .as_ref()
+            )
+        );
+    }
+
+    #[test]
     fn preview_move_refuses_escaping_and_empty_components() {
         let dir = TempDir::new("move-guard");
         let track = dir.tagged_flac("x.flac", "Plastic", "Sexy Groove");

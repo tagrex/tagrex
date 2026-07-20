@@ -26,7 +26,9 @@ use crate::model::{TagField, TagMap};
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Segment {
     Literal(String),
-    Placeholder(TagField),
+    /// A field plus the minimum width it renders to, zero-padded. Width `1`
+    /// means "print it as-is".
+    Placeholder(TagField, usize),
 }
 
 /// A parsed, validated mask pattern.
@@ -35,17 +37,27 @@ pub struct Mask {
     pattern: String,
     segments: Vec<Segment>,
     regex: Regex,
+    /// Two placeholders with nothing between them. Rendering them is perfectly
+    /// well-defined (`%disc%%track%` -> `101`); *extracting* them is not, since
+    /// nothing says where one value ends and the next begins. So this is only
+    /// an error for the extract direction, not for the pattern as such.
+    adjacent_placeholders: bool,
 }
 
 impl Mask {
     /// Parse and validate a pattern string.
     pub fn parse(pattern: &str) -> Result<Self, MaskError> {
         let segments = parse_segments(pattern)?;
+        let adjacent_placeholders = segments.windows(2).any(|pair| {
+            matches!(pair[0], Segment::Placeholder(..))
+                && matches!(pair[1], Segment::Placeholder(..))
+        });
         let regex = build_regex(&segments);
         Ok(Self {
             pattern: pattern.to_string(),
             segments,
             regex,
+            adjacent_placeholders,
         })
     }
 
@@ -55,11 +67,12 @@ impl Mask {
         for segment in &self.segments {
             match segment {
                 Segment::Literal(text) => out.push_str(text),
-                Segment::Placeholder(field) => {
+                Segment::Placeholder(field, width) => {
                     let value = tags
                         .get(field)
                         .ok_or_else(|| MaskError::MissingTag(field_name(field).to_string()))?;
-                    out.push_str(&sanitize_for_filename(value));
+                    let clean = sanitize_for_filename(value);
+                    out.push_str(&pad_numeric(&clean, *width));
                 }
             }
         }
@@ -68,11 +81,16 @@ impl Mask {
 
     /// Filename -> tags (the import direction).
     pub fn extract(&self, filename: &str) -> Result<TagMap, MaskError> {
+        // Rendering adjacent placeholders is fine; splitting the result back
+        // apart is guesswork, so refuse rather than invent a boundary.
+        if self.adjacent_placeholders {
+            return Err(MaskError::Ambiguous);
+        }
         let captures = self.regex.captures(filename).ok_or(MaskError::NoMatch)?;
 
         let mut tags = TagMap::new();
         for (index, segment) in self.segments.iter().enumerate() {
-            if let Segment::Placeholder(field) = segment {
+            if let Segment::Placeholder(field, _) = segment {
                 if let Some(matched) = captures.name(&group_name(index)) {
                     tags.insert(field.clone(), matched.as_str().to_string());
                 }
@@ -98,16 +116,30 @@ fn parse_segments(pattern: &str) -> Result<Vec<Segment>, MaskError> {
         let end = rest
             .find('%')
             .ok_or_else(|| MaskError::UnknownPlaceholder(rest.to_string()))?;
-        let name = &rest[..end];
+        let spec = &rest[..end];
         rest = &rest[end + 1..];
 
         if !literal.is_empty() {
             segments.push(Segment::Literal(std::mem::take(&mut literal)));
-        } else if matches!(segments.last(), Some(Segment::Placeholder(_))) {
-            return Err(MaskError::Ambiguous);
         }
 
-        segments.push(Segment::Placeholder(field_from_name(name)?));
+        // `name` or `name:width`, e.g. `%track:3%`.
+        let (name, width) = match spec.split_once(':') {
+            Some((name, width)) => (
+                name,
+                width
+                    .parse::<usize>()
+                    .map_err(|_| MaskError::UnknownPlaceholder(spec.to_string()))?,
+            ),
+            None => (spec, 0),
+        };
+        let field = field_from_name(name)?;
+        let width = if width == 0 {
+            default_width(&field)
+        } else {
+            width
+        };
+        segments.push(Segment::Placeholder(field, width));
     }
     literal.push_str(rest);
     if !literal.is_empty() {
@@ -128,7 +160,7 @@ fn build_regex(segments: &[Segment]) -> Regex {
     for (index, segment) in segments.iter().enumerate() {
         match segment {
             Segment::Literal(text) => pattern.push_str(&regex::escape(text)),
-            Segment::Placeholder(_) => {
+            Segment::Placeholder(..) => {
                 pattern.push_str(&format!("(?P<{}>.+?)", group_name(index)));
             }
         }
@@ -137,6 +169,34 @@ fn build_regex(segments: &[Segment]) -> Regex {
     Regex::new(&pattern).expect(
         "mask regex is built from escaped literals and indexed group names, so it always compiles",
     )
+}
+
+/// How wide a field renders by default.
+///
+/// Track numbers are conventionally zero-padded to two digits: it keeps a plain
+/// alphabetical sort correct, and it is what makes a concatenated
+/// `%disc%%track%` read as `101` (disc 1, track 01) instead of `11`, which a
+/// player would take for track eleven. Everything else prints as-is; use an
+/// explicit `%disc:2%` when a release needs it.
+fn default_width(field: &TagField) -> usize {
+    match field {
+        TagField::TrackNumber => 2,
+        _ => 1,
+    }
+}
+
+/// Left-pad a purely numeric value with zeros to `width`. Anything that isn't
+/// all digits (`A1`, `1/12`) is left alone — padding it would corrupt it.
+fn pad_numeric(value: &str, width: usize) -> Cow<'_, str> {
+    if width <= 1
+        || value.is_empty()
+        || value.len() >= width
+        || !value.bytes().all(|byte| byte.is_ascii_digit())
+    {
+        Cow::Borrowed(value)
+    } else {
+        Cow::Owned(format!("{value:0>width$}"))
+    }
 }
 
 fn group_name(index: usize) -> String {
@@ -297,10 +357,63 @@ mod tests {
     }
 
     #[test]
-    fn rejects_adjacent_placeholders_without_separator() {
+    fn adjacent_placeholders_render_but_cannot_be_extracted() {
+        // Rendering is unambiguous, so the pattern must parse and render.
+        let mask = Mask::parse("%disc%%track%. %artist% - %title%").unwrap();
+        let mut tags = TagMap::new();
+        tags.insert(TagField::DiscNumber, "1".into());
+        tags.insert(TagField::TrackNumber, "1".into());
+        tags.insert(TagField::Artist, "The X Factor".into());
+        tags.insert(TagField::Title, "Desert Rain".into());
+        assert_eq!(
+            mask.render(&tags).unwrap(),
+            "101. The X Factor - Desert Rain"
+        );
+
+        // Splitting "101" back into disc and track is guesswork, so extraction
+        // refuses instead of inventing a boundary.
         assert!(matches!(
-            Mask::parse("%artist%%title%"),
+            mask.extract("101. The X Factor - Desert Rain"),
             Err(MaskError::Ambiguous)
+        ));
+    }
+
+    #[test]
+    fn track_numbers_are_zero_padded_by_default() {
+        let mask = Mask::parse("%track%. %title%").unwrap();
+        let render = |track: &str| {
+            let mut tags = TagMap::new();
+            tags.insert(TagField::TrackNumber, track.into());
+            tags.insert(TagField::Title, "Radio".into());
+            mask.render(&tags).unwrap()
+        };
+        assert_eq!(render("1"), "01. Radio");
+        assert_eq!(render("9"), "09. Radio");
+        // Already wide enough -> untouched.
+        assert_eq!(render("10"), "10. Radio");
+        assert_eq!(render("123"), "123. Radio");
+        // Non-numeric positions must not be mangled.
+        assert_eq!(render("A1"), "A1. Radio");
+    }
+
+    #[test]
+    fn placeholder_width_can_be_set_explicitly() {
+        let mut tags = TagMap::new();
+        tags.insert(TagField::DiscNumber, "2".into());
+        tags.insert(TagField::TrackNumber, "7".into());
+
+        // Widen the disc for a large box set...
+        let wide = Mask::parse("%disc:2%%track%").unwrap();
+        assert_eq!(wide.render(&tags).unwrap(), "0207");
+
+        // ...or opt out of the default track padding.
+        let plain = Mask::parse("%disc%-%track:1%").unwrap();
+        assert_eq!(plain.render(&tags).unwrap(), "2-7");
+
+        // A malformed width is a bad placeholder, not a silent default.
+        assert!(matches!(
+            Mask::parse("%track:x%"),
+            Err(MaskError::UnknownPlaceholder(_))
         ));
     }
 

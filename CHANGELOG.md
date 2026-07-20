@@ -10,6 +10,12 @@ first release ships.
 
 ### Added
 
+- Track numbers zero-pad to two digits when rendered from a mask (#65), so a
+  plain alphabetical sort stays correct and a concatenated `%disc%%track%` reads
+  as `101` (disc 1, track 01) rather than `11`, which a player would take for
+  track eleven. Any placeholder can set its own width — `%disc:2%`, or
+  `%track:1%` to opt out. Values that aren't purely numeric (`A1`, `1/12`) are
+  left alone.
 - Reorganize files into folders from a template (#37): a "Reorganize…" action
   renders a full relative path from a mask (`%albumartist%/%year% - %album%/
   %track% - %title%`), previews the moves, and applies them through the same
@@ -115,6 +121,12 @@ first release ships.
   covers from Discogs (#24) and exporting them (#25) are tracked separately.
 
 ### Fixed
+
+- Masks accept two placeholders in a row (#65). `%disc%%track%` was rejected as
+  ambiguous at parse time, which also blocked rendering — but only *extraction*
+  is ambiguous there, since nothing says where one value ends and the next
+  begins. The check moved to `extract`, so such a pattern now renders fine and
+  only refuses the filename-to-tags direction.
 
 - Tag writes no longer destroy frames the tag model can't express (#52).
   `TagMap` is text-only, so rebuilding a tag from it wiped everything else on
