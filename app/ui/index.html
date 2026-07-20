@@ -81,8 +81,9 @@
         </div>
         <p class="hint muted">
           Placeholders: %artist% %title% %album% %albumartist% %track% %disc% %year% %genre%
-          %composer% %publisher% %bpm% %isrc% %key%. Track numbers pad to two digits; set another
-          width with %disc:2%. Preview shows the change before anything is written.
+          %composer% %publisher% %bpm% %isrc% %key% %catalognumber%. Wrap optional parts in [brackets] — they are
+          dropped whole when empty, e.g. %album%[ (%year%)]. Track numbers pad to two digits; set
+          another width with %disc:2%. Preview shows the change before anything is written.
         </p>
         <div class="table-wrap">
           <table id="preview-table" hidden>
@@ -179,9 +180,10 @@
         </div>
         <div class="modal-body">
           <p class="hint muted" style="padding: 0">
-            Use <code>/</code> to separate folders. Paths are built under the opened library, and
-            missing folders are created. Tag values can't introduce a folder — only literal slashes
-            in the pattern do.
+            Use <code>/</code> (or <code>\</code>) to separate folders — the right one for your
+            system is written out. Optional parts go in [brackets] and vanish when empty. Paths are
+            built under the opened library and missing folders are created; tag values can't
+            introduce a folder, only separators in the pattern do.
           </p>
           <label class="export-row"
             >Pattern

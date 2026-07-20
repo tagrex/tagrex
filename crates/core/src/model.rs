@@ -97,6 +97,8 @@ pub enum TagField {
     Isrc,
     /// Musical key of the recording (harmonic mixing).
     InitialKey,
+    /// Label catalogue number — also the highest-precision Discogs search key.
+    CatalogNumber,
     Custom(String),
 }
 
@@ -123,6 +125,7 @@ impl TagField {
             Self::Bpm => "bpm".to_string(),
             Self::Isrc => "isrc".to_string(),
             Self::InitialKey => "key".to_string(),
+            Self::CatalogNumber => "catalognumber".to_string(),
             Self::Custom(name) => format!("custom:{name}"),
         }
     }
@@ -148,6 +151,7 @@ impl TagField {
             "bpm" => Self::Bpm,
             "isrc" => Self::Isrc,
             "key" => Self::InitialKey,
+            "catalognumber" => Self::CatalogNumber,
             // Only reachable if the database holds a key this build didn't
             // write; preserve it verbatim rather than losing it.
             other => Self::Custom(other.to_string()),
@@ -431,6 +435,7 @@ fn tag_field_to_item_key(field: &TagField) -> ItemKey {
         TagField::Bpm => ItemKey::IntegerBpm,
         TagField::Isrc => ItemKey::Isrc,
         TagField::InitialKey => ItemKey::InitialKey,
+        TagField::CatalogNumber => ItemKey::CatalogNumber,
         TagField::Custom(key) => ItemKey::Unknown(key.clone()),
     }
 }
@@ -464,6 +469,7 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         ItemKey::Bpm | ItemKey::IntegerBpm => TagField::Bpm,
         ItemKey::Isrc => TagField::Isrc,
         ItemKey::InitialKey => TagField::InitialKey,
+        ItemKey::CatalogNumber => TagField::CatalogNumber,
         ItemKey::Unknown(key) => TagField::Custom(key.clone()),
         other => TagField::Custom(format!("{other:?}")),
     }
@@ -502,6 +508,7 @@ mod tests {
             TagField::Bpm,
             TagField::Isrc,
             TagField::InitialKey,
+            TagField::CatalogNumber,
         ]
     }
 

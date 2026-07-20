@@ -265,21 +265,32 @@ impl App {
             let Ok(rendered) = mask.render(&track.tags) else {
                 continue;
             };
+            // Both separators are accepted so a pattern stays portable and one
+            // written on another platform still describes folders rather than
+            // becoming a literal character in a file name (#71).
+            let mut components: Vec<&str> = rendered.split(['/', '\\']).collect();
             // An empty component (from an empty tag) or a `..` would produce a
             // nonsense or escaping path. The executor would refuse the latter
             // anyway; rejecting here keeps the preview honest about what will
             // actually happen.
-            if rendered
-                .split('/')
-                .any(|part| part.trim().is_empty() || part == "..")
+            if components
+                .iter()
+                .any(|part| part.trim().is_empty() || *part == "..")
             {
                 continue;
             }
-            let relative = match path.extension().and_then(|ext| ext.to_str()) {
-                Some(ext) => format!("{rendered}.{ext}"),
-                None => rendered,
+            // Extension goes on the last component, which is the file name.
+            let last = match path.extension().and_then(|ext| ext.to_str()) {
+                Some(ext) => format!("{}.{ext}", components.pop().unwrap_or_default()),
+                None => components.pop().unwrap_or_default().to_string(),
             };
-            let target = self.library_root.join(relative);
+            // Pushed one at a time so the platform supplies its own separator
+            // instead of us embedding one in the string.
+            let mut target = self.library_root.clone();
+            for component in components {
+                target.push(component);
+            }
+            target.push(last);
             if target == *path {
                 continue;
             }
@@ -1235,6 +1246,31 @@ mod tests {
     }
 
     #[test]
+    fn preview_move_accepts_either_folder_separator() {
+        let dir = TempDir::new("move-sep");
+        let track = dir.tagged_flac("x.flac", "Plastic", "Sexy Groove");
+        let mut file = TagEngine::read(&track).unwrap();
+        file.tags.insert(TagField::Album, "La Bush".into());
+        TagEngine::write(&file).unwrap();
+        let app = open_app(&dir);
+
+        // A backslash pattern (natural on Windows, and what an imported config
+        // carries) must describe folders, not become part of a file name.
+        let expected = dir.0.join("La Bush/Plastic - Sexy Groove.flac");
+        for pattern in ["%album%/%artist% - %title%", "%album%\\%artist% - %title%"] {
+            let plan = app
+                .preview_move(pattern, std::slice::from_ref(&track))
+                .unwrap();
+            assert_eq!(plan.changes.len(), 1, "pattern {pattern:?}");
+            assert_eq!(
+                plan.changes[0].rename_to.as_deref(),
+                Some(expected.to_string_lossy().as_ref()),
+                "pattern {pattern:?}"
+            );
+        }
+    }
+
+    #[test]
     fn preview_move_refuses_escaping_and_empty_components() {
         let dir = TempDir::new("move-guard");
         let track = dir.tagged_flac("x.flac", "Plastic", "Sexy Groove");
@@ -1249,11 +1285,17 @@ mod tests {
             "empty folder component is skipped"
         );
 
-        // A literal `..` in the pattern must never produce a plan.
-        let escaping = app
-            .preview_move("../%title%", std::slice::from_ref(&track))
-            .unwrap();
-        assert!(escaping.changes.is_empty(), "climbing out is refused");
+        // A literal `..` in the pattern must never produce a plan, with either
+        // separator.
+        for pattern in ["../%title%", "..\\%title%"] {
+            let escaping = app
+                .preview_move(pattern, std::slice::from_ref(&track))
+                .unwrap();
+            assert!(
+                escaping.changes.is_empty(),
+                "climbing out refused: {pattern:?}"
+            );
+        }
     }
 
     #[test]

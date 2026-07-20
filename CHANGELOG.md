@@ -10,6 +10,16 @@ first release ships.
 
 ### Added
 
+- Conditional sections in masks (#68). `[...]` renders only when a placeholder
+  inside it resolved to something and is dropped whole otherwise, so one mask
+  serves a library where some albums have a year and some don't:
+  `[%albumartist%] - %album%[ (%year%)]/%disc%%track% [%artist% - ]%title%`.
+  Sections nest, a missing tag inside one merely suppresses it (outside one it
+  is still an error), and `'x'` quotes a literal `%`, `[` or `]`. In the extract
+  direction a section becomes an optional group.
+- `%catalognumber%` joins the addressable fields, mapped to the catalogue-number
+  tag — it appears in real rename patterns and is Discogs' most precise key.
+
 - Track numbers zero-pad to two digits when rendered from a mask (#65), so a
   plain alphabetical sort stays correct and a concatenated `%disc%%track%` reads
   as `101` (disc 1, track 01) rather than `11`, which a player would take for
@@ -121,6 +131,16 @@ first release ships.
   covers from Discogs (#24) and exporting them (#25) are tracked separately.
 
 ### Fixed
+
+- Folder masks respect the platform separator (#71). Only `/` counted as a
+  directory boundary, so a pattern written with `\` — the natural form on
+  Windows, and what an imported configuration carries — was not recognised as
+  having folders at all: the `..` and empty-component guards never saw the
+  components, and on macOS the backslash ended up as a literal character inside
+  one long file name. Silently doing the wrong thing rather than failing. Both
+  separators are now accepted in a pattern, and the path is built component by
+  component so the platform supplies its own separator. Tag values keep having
+  both stripped, so a value still cannot inject a directory.
 
 - Masks accept two placeholders in a row (#65). `%disc%%track%` was rejected as
   ambiguous at parse time, which also blocked rendering — but only *extraction*

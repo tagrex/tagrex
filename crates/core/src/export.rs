@@ -130,6 +130,7 @@ fn lenient_tags(tags: &TagMap) -> TagMap {
         TagField::Bpm,
         TagField::Isrc,
         TagField::InitialKey,
+        TagField::CatalogNumber,
     ] {
         lenient.insert(field, String::new());
     }
@@ -206,8 +207,10 @@ mod tests {
     }
 
     #[test]
-    fn report_renders_a_line_per_track_and_blanks_missing_tags() {
-        let mask = Mask::parse("%artist% - %title% [%album%]").unwrap();
+    fn report_renders_a_line_per_track_and_drops_empty_optional_parts() {
+        // The album sits in a conditional section, so a track without one gets
+        // no stray "()" — the section disappears along with its separator.
+        let mask = Mask::parse("%artist% - %title%[ (%album%)]").unwrap();
         let out = report(
             &[
                 track(
@@ -218,7 +221,7 @@ mod tests {
                         (TagField::Album, "La Bush"),
                     ],
                 ),
-                // Album missing: the placeholder blanks out, the line stays.
+                // Album missing: the section drops, the line stays.
                 track(
                     "/music/b.mp3",
                     &[
@@ -231,7 +234,7 @@ mod tests {
         );
         assert_eq!(
             out,
-            "Plastic - Sexy Groove [La Bush]\nB.B.E. - Seven Days []\n"
+            "Plastic - Sexy Groove (La Bush)\nB.B.E. - Seven Days\n"
         );
     }
 }
