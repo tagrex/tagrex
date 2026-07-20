@@ -3,22 +3,34 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use lofty::aac::AacFile;
 use lofty::config::{ParseOptions, WriteOptions};
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::id3::v2::{Frame, Id3v2Tag};
+use lofty::iff::aiff::AiffFile;
+use lofty::iff::wav::WavFile;
 use lofty::mpeg::MpegFile;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::probe::Probe;
 use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
 use thiserror::Error;
 
-/// Audio container formats supported at launch (see architecture.md).
+/// Audio container formats we read and write. Covers everything the tag backend
+/// (lofty) supports; the preview player already decodes all of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioFormat {
     Mp3,
     Flac,
     OggVorbis,
     M4a,
+    Aac,
+    Aiff,
+    Wav,
+    Opus,
+    Speex,
+    Musepack,
+    MonkeysAudio,
+    WavPack,
 }
 
 impl AudioFormat {
@@ -28,18 +40,35 @@ impl AudioFormat {
             FileType::Flac => Ok(Self::Flac),
             FileType::Vorbis => Ok(Self::OggVorbis),
             FileType::Mp4 => Ok(Self::M4a),
+            FileType::Aac => Ok(Self::Aac),
+            FileType::Aiff => Ok(Self::Aiff),
+            FileType::Wav => Ok(Self::Wav),
+            FileType::Opus => Ok(Self::Opus),
+            FileType::Speex => Ok(Self::Speex),
+            FileType::Mpc => Ok(Self::Musepack),
+            FileType::Ape => Ok(Self::MonkeysAudio),
+            FileType::WavPack => Ok(Self::WavPack),
             other => Err(TagIoError::UnsupportedFormat(format!("{other:?}"))),
         }
     }
 
-    /// The tag type each format is written and read through, matching
-    /// [`lofty::file::FileType::primary_tag_type`] for the formats above.
+    /// The tag type each format is read and written through, matching
+    /// [`lofty::file::FileType::primary_tag_type`].
     fn primary_tag_type(self) -> TagType {
         match self {
-            Self::Mp3 => TagType::Id3v2,
-            Self::Flac | Self::OggVorbis => TagType::VorbisComments,
+            Self::Mp3 | Self::Aac | Self::Aiff | Self::Wav => TagType::Id3v2,
+            Self::Flac | Self::OggVorbis | Self::Opus | Self::Speex => TagType::VorbisComments,
+            Self::Musepack | Self::MonkeysAudio | Self::WavPack => TagType::Ape,
             Self::M4a => TagType::Mp4Ilst,
         }
+    }
+
+    /// Whether this format keeps its tags in an ID3v2 tag. Those need the
+    /// concrete-`Id3v2Tag` write path so binary frames (DJ cue points, ratings,
+    /// ReplayGain) survive — lofty's generic tag doesn't even surface them on
+    /// read (see [`write_id3v2`] and #52).
+    fn uses_id3v2(self) -> bool {
+        matches!(self, Self::Mp3 | Self::Aac | Self::Aiff | Self::Wav)
     }
 }
 
@@ -164,17 +193,19 @@ impl TagEngine {
     /// and loops, ratings, ReplayGain. Both paths below are written to preserve
     /// that data.
     ///
-    /// MP3 gets special handling because lofty's *generic* [`Tag`] does not even
-    /// surface frames like `PRIV`/`GEOB` when reading, so round-tripping an MP3
-    /// through it silently drops them. For ID3v2 we therefore edit the concrete
-    /// tag; other formats round-trip losslessly enough through the generic one.
+    /// ID3v2-carrying formats (MP3, AAC, AIFF, WAV) get special handling because
+    /// lofty's *generic* [`Tag`] does not even surface frames like `PRIV`/`GEOB`
+    /// when reading, so round-tripping through it silently drops them — and
+    /// AIFF/WAV are exactly where Serato writes DJ cue points. For those we edit
+    /// the concrete tag; other formats round-trip through the generic one.
     ///
     /// Only [`plan::Executor`](crate::plan::Executor) is allowed to call this —
     /// see the crate-level invariant.
     pub fn write(file: &TrackFile) -> Result<(), TagIoError> {
-        match file.format {
-            AudioFormat::Mp3 => write_id3v2(&file.path, &file.tags),
-            _ => write_generic(file),
+        if file.format.uses_id3v2() {
+            write_id3v2(&file.path, &file.tags)
+        } else {
+            write_generic(file)
         }
     }
 
@@ -219,7 +250,7 @@ impl TagEngine {
         );
         // Same reason as `write`: going through the generic tag would drop an
         // MP3's non-representable frames, so edit the concrete tag instead.
-        if is_mpeg(path) {
+        if is_id3v2_container(path) {
             let mut tag = read_id3v2(path)?.unwrap_or_default();
             tag.remove_picture_type(PictureType::CoverFront);
             tag.insert_picture(picture);
@@ -235,7 +266,7 @@ impl TagEngine {
 
     /// Remove the file's front cover, preserving all text tags.
     pub fn remove_cover(path: &Path) -> Result<(), TagIoError> {
-        if is_mpeg(path) {
+        if is_id3v2_container(path) {
             let mut tag = read_id3v2(path)?.unwrap_or_default();
             tag.remove_picture_type(PictureType::CoverFront);
             tag.save_to_path(path, WriteOptions::default())?;
@@ -287,18 +318,32 @@ fn is_model_text_frame(frame: &Frame<'_>) -> bool {
     )
 }
 
-/// The file's concrete ID3v2 tag, if it has one.
+/// The file's concrete ID3v2 tag, if it has one. Dispatches on the container so
+/// it works for every ID3v2-carrying format (MP3, AAC, AIFF, WAV), reading the
+/// concrete tag lofty's generic representation can't fully reproduce.
 fn read_id3v2(path: &Path) -> Result<Option<Id3v2Tag>, TagIoError> {
+    let file_type = Probe::open(path)?.guess_file_type()?.file_type();
     let mut file = std::fs::File::open(path)?;
-    let mpeg = MpegFile::read_from(&mut file, ParseOptions::new())?;
-    Ok(mpeg.id3v2().cloned())
+    let options = ParseOptions::new();
+    let tag = match file_type {
+        Some(FileType::Mpeg) => MpegFile::read_from(&mut file, options)?.id3v2().cloned(),
+        Some(FileType::Aac) => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
+        Some(FileType::Aiff) => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
+        Some(FileType::Wav) => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
+        _ => None,
+    };
+    Ok(tag)
 }
 
-/// Whether `path` is an MPEG (MP3) file, for the cover paths that only have a
-/// path to work from.
-fn is_mpeg(path: &Path) -> bool {
+/// Whether `path` is an ID3v2-carrying container, for the cover paths that only
+/// have a path to work from. `Id3v2Tag::save_to_path` is container-aware, so
+/// the same concrete path serves all of them.
+fn is_id3v2_container(path: &Path) -> bool {
     let probed = || -> Result<bool, TagIoError> {
-        Ok(Probe::open(path)?.guess_file_type()?.file_type() == Some(FileType::Mpeg))
+        Ok(matches!(
+            Probe::open(path)?.guess_file_type()?.file_type(),
+            Some(FileType::Mpeg | FileType::Aac | FileType::Aiff | FileType::Wav)
+        ))
     };
     probed().unwrap_or(false)
 }

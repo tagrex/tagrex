@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- Support every container the tag backend handles (#36): AAC, AIFF, WAV, Opus,
+  Speex, Musepack, Monkey's Audio and WavPack alongside the original MP3/FLAC/
+  OGG/M4A. These files were previously skipped by the scanner even though the
+  preview player already decoded them. AIFF, WAV and AAC store their tags in
+  ID3v2, so they now take the same concrete-tag write path as MP3 — otherwise
+  adding them would have risked exactly the frame loss fixed in #52, and AIFF/WAV
+  are where DJ software keeps cue points.
 - Use track lengths as a matching signal (#64). Release track durations are now
   parsed and shown in the release view, and folded into the match score:
   agreement confirms, a large gap lowers confidence and is reported as a delta,

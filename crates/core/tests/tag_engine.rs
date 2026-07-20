@@ -234,3 +234,87 @@ fn minimal_mp3() -> Vec<u8> {
     }
     data
 }
+
+/// The same frame-preservation guarantee must hold for the other ID3v2
+/// containers, not just MP3 — AIFF and WAV are exactly where DJ software writes
+/// cue points, so adding those formats without this would risk the very data
+/// loss #52 fixed.
+#[test]
+fn wav_write_preserves_non_text_frames() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::id3::v2::{Frame, Id3v2Tag, PrivateFrame};
+    use lofty::iff::wav::WavFile;
+    use lofty::prelude::{Accessor, TagExt};
+
+    let path =
+        std::env::temp_dir().join(format!("tagrex-tag-engine-wav-{}.wav", std::process::id()));
+    std::fs::write(&path, minimal_wav()).unwrap();
+
+    let mut seeded = Id3v2Tag::new();
+    seeded.set_artist("Original".to_string());
+    seeded.insert(PrivateFrame::new("SeratoMarkers".to_string(), vec![5, 6, 7]).into());
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+
+    let private_data = |path: &PathBuf| -> Option<Vec<u8>> {
+        let mut file = std::fs::File::open(path).unwrap();
+        let wav = WavFile::read_from(&mut file, ParseOptions::new()).unwrap();
+        wav.id3v2().and_then(|tag| {
+            tag.into_iter().find_map(|frame| match frame {
+                Frame::Private(p) => Some(p.private_data.clone()),
+                _ => None,
+            })
+        })
+    };
+    assert_eq!(private_data(&path), Some(vec![5, 6, 7]), "seeding failed");
+
+    // The engine must recognise WAV and route it through the concrete tag.
+    let read = TagEngine::read(&path).unwrap();
+    assert_eq!(read.format, AudioFormat::Wav);
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Edited".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Wav,
+        tags,
+    })
+    .unwrap();
+
+    assert_eq!(
+        TagEngine::read(&path)
+            .unwrap()
+            .tags
+            .get(&TagField::Artist)
+            .map(String::as_str),
+        Some("Edited")
+    );
+    assert_eq!(
+        private_data(&path),
+        Some(vec![5, 6, 7]),
+        "tag write destroyed the private frame in a WAV"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+/// A minimal PCM WAV (8 kHz mono 8-bit silence) lofty accepts.
+fn minimal_wav() -> Vec<u8> {
+    let samples: u32 = 800;
+    let mut data = Vec::new();
+    data.extend_from_slice(b"RIFF");
+    data.extend_from_slice(&(36 + samples).to_le_bytes());
+    data.extend_from_slice(b"WAVE");
+    data.extend_from_slice(b"fmt ");
+    data.extend_from_slice(&16u32.to_le_bytes());
+    data.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    data.extend_from_slice(&1u16.to_le_bytes()); // mono
+    data.extend_from_slice(&8000u32.to_le_bytes());
+    data.extend_from_slice(&8000u32.to_le_bytes());
+    data.extend_from_slice(&1u16.to_le_bytes());
+    data.extend_from_slice(&8u16.to_le_bytes());
+    data.extend_from_slice(b"data");
+    data.extend_from_slice(&samples.to_le_bytes());
+    data.resize(data.len() + samples as usize, 128);
+    data
+}

@@ -25,8 +25,13 @@ impl Default for ScanOptions {
 }
 
 /// Extensions of the formats [`model::AudioFormat`](crate::model::AudioFormat)
-/// supports at launch.
-const SUPPORTED_EXTENSIONS: &[&str] = &["mp3", "flac", "ogg", "m4a"];
+/// supports. A file that slips through by extension but isn't actually one of
+/// these is rejected later when the tag backend fails to parse it, so this only
+/// has to be permissive enough not to hide real audio.
+const SUPPORTED_EXTENSIONS: &[&str] = &[
+    "mp3", "flac", "ogg", "oga", "m4a", "m4b", "mp4", "aac", "aif", "aiff", "aifc", "wav", "opus",
+    "spx", "mpc", "mp+", "mpp", "ape", "wv",
+];
 
 /// Lazily walk `root`, yielding the paths of supported audio files as
 /// they're found.
@@ -122,5 +127,50 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
 
         assert_eq!(names, vec!["track.mp3"]);
+    }
+
+    #[test]
+    fn picks_up_every_supported_extension_and_ignores_the_rest() {
+        let dir = std::env::temp_dir().join(format!(
+            "tagrex-scanner-test-formats-{}",
+            std::process::id()
+        ));
+        // One file per supported container, plus files that must be ignored.
+        for name in [
+            "a.mp3", "b.flac", "c.ogg", "d.m4a", "e.aac", "f.aiff", "g.wav", "h.opus", "i.wv",
+            "j.ape", "k.mpc", "l.spx",
+        ] {
+            write(&dir, name);
+        }
+        for ignored in ["cover.jpg", "notes.txt", "playlist.m3u", "readme"] {
+            write(&dir, ignored);
+        }
+
+        let names = scanned_names(&dir, &ScanOptions::default());
+        std::fs::remove_dir_all(&dir).ok();
+
+        // `scanned_names` returns them sorted, and the fixture names are
+        // already in alphabetical order.
+        let expected: Vec<String> = [
+            "a.mp3", "b.flac", "c.ogg", "d.m4a", "e.aac", "f.aiff", "g.wav", "h.opus", "i.wv",
+            "j.ape", "k.mpc", "l.spx",
+        ]
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect();
+        assert_eq!(names, expected);
+    }
+
+    #[test]
+    fn extension_matching_is_case_insensitive() {
+        let dir =
+            std::env::temp_dir().join(format!("tagrex-scanner-test-case-{}", std::process::id()));
+        write(&dir, "SHOUTY.MP3");
+        write(&dir, "Mixed.FlAc");
+
+        let names = scanned_names(&dir, &ScanOptions::default());
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(names, vec!["Mixed.FlAc", "SHOUTY.MP3"]);
     }
 }
