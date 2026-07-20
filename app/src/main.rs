@@ -102,6 +102,46 @@ fn export_cover(
 }
 
 #[tauri::command]
+fn export_playlist(
+    state: State<AppState>,
+    paths: Vec<String>,
+    file_name: String,
+) -> Result<String, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.export_playlist(&paths, &file_name)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn export_csv(
+    state: State<AppState>,
+    paths: Vec<String>,
+    file_name: String,
+) -> Result<String, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.export_csv(&paths, &file_name)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn export_report(
+    state: State<AppState>,
+    paths: Vec<String>,
+    mask: String,
+    file_name: String,
+) -> Result<String, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.export_report(&paths, &mask, &file_name)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn player_play(player: State<Player>, path: String) {
     player.play(PathBuf::from(path));
 }
@@ -236,6 +276,9 @@ fn main() {
             preview_tag_edits,
             preview_cover_embed,
             export_cover,
+            export_playlist,
+            export_csv,
+            export_report,
             apply_plan,
             undo,
             history,

@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use base64::Engine as _;
+use tagrex_core::export::{self, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::Mask;
 use tagrex_core::model::{CoverArt, TagEngine, TagField};
@@ -368,6 +369,88 @@ impl App {
         })
     }
 
+    /// Resolve an export target inside the opened library. The name must be a
+    /// bare file name — no separators, no `..` — so an export can never be
+    /// steered outside the library root.
+    fn export_target(&self, file_name: &str) -> Result<PathBuf, AppError> {
+        let name = file_name.trim();
+        if name.is_empty() || name.contains('/') || name.contains('\\') || name.starts_with('.') {
+            return Err(AppError::InvalidFileName(file_name.to_string()));
+        }
+        Ok(self.library_root.join(name))
+    }
+
+    /// Export `paths` as an extended M3U playlist written into the library root.
+    /// Entry paths are relative to the playlist when the track sits inside the
+    /// library (portable), absolute otherwise. Read-only for the audio files.
+    pub fn export_playlist(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
+        let target = self.export_target(file_name)?;
+        let root = std::fs::canonicalize(&self.library_root)?;
+        let entries: Vec<PlaylistTrack> = paths
+            .iter()
+            .filter_map(|path| {
+                let track = TagEngine::read(path).ok()?;
+                let duration = TagEngine::read_duration(path).unwrap_or_default();
+                let display = std::fs::canonicalize(path)
+                    .ok()
+                    .and_then(|abs| {
+                        abs.strip_prefix(&root)
+                            .ok()
+                            .map(|rel| rel.to_string_lossy().into_owned())
+                    })
+                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                let file_stem = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                Some(PlaylistTrack {
+                    path: display,
+                    artist: track
+                        .tags
+                        .get(&TagField::Artist)
+                        .cloned()
+                        .unwrap_or_default(),
+                    // Fall back to the file name so an untagged entry still
+                    // shows something useful in a player.
+                    title: track
+                        .tags
+                        .get(&TagField::Title)
+                        .cloned()
+                        .unwrap_or(file_stem),
+                    duration_secs: match duration.as_secs() {
+                        0 => -1, // unknown
+                        secs => secs as i64,
+                    },
+                })
+            })
+            .collect();
+        std::fs::write(&target, export::m3u(&entries))?;
+        Ok(target.to_string_lossy().into_owned())
+    }
+
+    /// Export the tag columns of `paths` as CSV into the library root.
+    pub fn export_csv(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
+        let target = self.export_target(file_name)?;
+        let tracks = read_tracks(paths);
+        std::fs::write(&target, export::csv(&tracks))?;
+        Ok(target.to_string_lossy().into_owned())
+    }
+
+    /// Export a text report of `paths`, one mask-rendered line per track (same
+    /// placeholders as rename masks), into the library root.
+    pub fn export_report(
+        &self,
+        paths: &[PathBuf],
+        mask_pattern: &str,
+        file_name: &str,
+    ) -> Result<String, AppError> {
+        let target = self.export_target(file_name)?;
+        let mask = Mask::parse(mask_pattern)?;
+        let tracks = read_tracks(paths);
+        std::fs::write(&target, export::report(&tracks, &mask))?;
+        Ok(target.to_string_lossy().into_owned())
+    }
+
     /// Apply a previewed plan to disk and record it for undo.
     pub fn apply(&mut self, plan: &PlanDto) -> Result<BatchDto, AppError> {
         let change_plan = plan.to_change_plan();
@@ -515,6 +598,15 @@ fn track_number_from_position(position: &str) -> Option<String> {
 
 fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|v| !v.is_empty())
+}
+
+/// Read the given files, skipping any that can't be parsed — an export should
+/// cover what it can rather than failing wholesale on one bad file.
+fn read_tracks(paths: &[PathBuf]) -> Vec<tagrex_core::model::TrackFile> {
+    paths
+        .iter()
+        .filter_map(|path| TagEngine::read(path).ok())
+        .collect()
 }
 
 /// A file extension for an embedded cover's MIME type. Known image types map to
@@ -667,6 +759,8 @@ pub enum AppError {
     Provider(#[from] tagrex_core::provider::ProviderError),
     #[error("path resolves outside the opened library: {0}")]
     OutsideRoot(String),
+    #[error("invalid export file name: {0}")]
+    InvalidFileName(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -981,6 +1075,52 @@ mod tests {
         assert_eq!(result.written.len(), 1);
         assert_eq!(result.written[0], dir.0.join("cover.jpg").to_string_lossy());
         assert!(result.skipped_no_cover.is_empty());
+    }
+
+    #[test]
+    fn exports_playlist_csv_and_report_into_the_library() {
+        let dir = TempDir::new("export-files");
+        let a = dir.tagged_flac("a.flac", "Plastic", "Sexy Groove");
+        let b = dir.tagged_flac("b.flac", "B.B.E.", "Seven Days");
+        let app = open_app(&dir);
+        let paths = [a, b];
+
+        // Playlist: entries are relative to the library root (portable).
+        let written = app.export_playlist(&paths, "list.m3u").unwrap();
+        assert_eq!(written, dir.0.join("list.m3u").to_string_lossy());
+        let m3u = std::fs::read_to_string(dir.0.join("list.m3u")).unwrap();
+        assert!(m3u.starts_with("#EXTM3U\n"));
+        assert!(m3u.contains("Plastic - Sexy Groove"));
+        assert!(m3u.contains("\na.flac\n"), "relative entry path: {m3u}");
+
+        // CSV: header plus one row per track.
+        app.export_csv(&paths, "tags.csv").unwrap();
+        let csv = std::fs::read_to_string(dir.0.join("tags.csv")).unwrap();
+        assert!(csv.starts_with("File,Artist,Title,"));
+        assert_eq!(csv.trim_end().lines().count(), 3);
+
+        // Report: one mask-rendered line per track.
+        app.export_report(&paths, "%artist% - %title%", "report.txt")
+            .unwrap();
+        let report = std::fs::read_to_string(dir.0.join("report.txt")).unwrap();
+        assert_eq!(report, "Plastic - Sexy Groove\nB.B.E. - Seven Days\n");
+    }
+
+    #[test]
+    fn export_rejects_file_names_that_would_escape_the_library() {
+        let dir = TempDir::new("export-escape");
+        let track = dir.tagged_flac("a.flac", "Artist", "Title");
+        let app = open_app(&dir);
+
+        for name in ["../evil.csv", "sub/evil.csv", "", ".hidden"] {
+            assert!(
+                matches!(
+                    app.export_csv(std::slice::from_ref(&track), name),
+                    Err(AppError::InvalidFileName(_))
+                ),
+                "should reject {name:?}"
+            );
+        }
     }
 
     #[test]

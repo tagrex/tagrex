@@ -16,6 +16,7 @@
       <div class="spacer"></div>
       <button id="cover-open" disabled title="Embed a cover image into the selected files">Cover…</button>
       <button id="cover-export" disabled title="Export the embedded cover of the selected files to disk (cover.jpg)">Export cover</button>
+      <button id="export-open" disabled title="Export the selected tracks as a playlist, CSV, or text report">Export…</button>
       <button id="discogs-open" disabled title="Import metadata from Discogs">Discogs…</button>
       <button id="undo" disabled title="Undo the last applied batch">Undo last</button>
     </header>
@@ -159,6 +160,42 @@
                 <tbody id="release-tracks"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="export-modal" class="modal" hidden>
+      <div class="modal-box">
+        <div class="modal-head">
+          <h2>Export</h2>
+          <div class="spacer"></div>
+          <button id="export-close" class="icon" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="hint muted" style="padding: 0">
+            Writes <span id="export-count"></span> into the opened library folder. Read-only — your
+            audio files are not modified.
+          </p>
+          <label class="export-row"
+            >Format
+            <select id="export-kind">
+              <option value="playlist">Playlist (M3U)</option>
+              <option value="csv">CSV of tag columns</option>
+              <option value="report">Text report (mask)</option>
+            </select>
+          </label>
+          <label class="export-row" id="export-mask-row" hidden
+            >Mask
+            <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
+          </label>
+          <label class="export-row"
+            >File name
+            <input id="export-name" type="text" spellcheck="false" />
+          </label>
+          <div class="release-actions">
+            <div class="spacer"></div>
+            <button id="export-run" class="primary">Export</button>
           </div>
         </div>
       </div>

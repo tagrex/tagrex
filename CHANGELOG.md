@@ -10,6 +10,12 @@ first release ships.
 
 ### Added
 
+- Exporters (#19): an "Export…" action writes the selected tracks into the
+  opened library as an extended M3U playlist (relative entry paths and real
+  track lengths), a CSV of the tag columns (RFC 4180 quoting), or a text report
+  rendered from a mask template using the same placeholders as rename masks.
+  Read-only — the audio files are never modified. Export file names must be bare
+  names, so an export can't be steered outside the library.
 - Expand All / Collapse All for groups (#32): buttons next to the Group selector
   (shown only while grouped) toggle every group at once, reusing the in-place
   collapse path so selection and in-progress edits survive.

@@ -6,6 +6,7 @@
 //! [`plan::ChangePlan`], previewed, applied through [`plan::Executor`], and
 //! journaled for rollback.
 
+pub mod export;
 pub mod journal;
 pub mod mask;
 pub mod model;

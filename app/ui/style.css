@@ -551,6 +551,26 @@ tr.playing td.play button.play-btn {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---- export modal (#19) ---- */
+.export-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.export-row select,
+.export-row input {
+  flex: 1;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
 /* ---- grouping (#20) ---- */
 .group-ctl {
   display: flex;

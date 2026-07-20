@@ -267,6 +267,7 @@ function renderTracks() {
   discogsOpenBtn.disabled = tracks.length === 0;
   coverOpenBtn.disabled = tracks.length === 0;
   coverExportBtn.disabled = tracks.length === 0;
+  el("export-open").disabled = tracks.length === 0;
   updateEditsButton();
   applyBtn.disabled = true;
   previewTable.hidden = true;
@@ -703,6 +704,63 @@ tracksBody.addEventListener("click", (e) => {
   if (btn) playTrack(btn.dataset.path);
 });
 
+// ---- exporters (#19) ----
+// Default output name per export kind; the user can override it. The backend
+// only accepts a bare file name and writes into the opened library.
+const EXPORT_DEFAULTS = {
+  playlist: "playlist.m3u",
+  csv: "tags.csv",
+  report: "report.txt",
+};
+
+function openExport() {
+  const count = selectedPaths().length;
+  if (count === 0) {
+    toast("Select the tracks to export first", true);
+    return;
+  }
+  el("export-count").textContent = `${count} track(s)`;
+  syncExportKind();
+  el("export-modal").hidden = false;
+}
+
+function closeExport() {
+  el("export-modal").hidden = true;
+}
+
+// Show the mask field only for text reports, and reset the file name to the
+// chosen kind's default.
+function syncExportKind() {
+  const kind = el("export-kind").value;
+  el("export-mask-row").hidden = kind !== "report";
+  el("export-name").value = EXPORT_DEFAULTS[kind];
+}
+
+async function runExport() {
+  const paths = selectedPaths();
+  const kind = el("export-kind").value;
+  // Named `outName` so it doesn't shadow the `fileName()` helper used below.
+  const outName = el("export-name").value.trim();
+  try {
+    let written;
+    if (kind === "playlist") {
+      written = await invoke("export_playlist", { paths, fileName: outName });
+    } else if (kind === "csv") {
+      written = await invoke("export_csv", { paths, fileName: outName });
+    } else {
+      written = await invoke("export_report", {
+        paths,
+        mask: el("export-mask").value,
+        fileName: outName,
+      });
+    }
+    closeExport();
+    toast(`Exported ${paths.length} track(s) to ${fileName(written)}`);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 // ---- Discogs import ----
 function openDiscogs() {
   const paths = selectedPaths();
@@ -901,6 +959,13 @@ applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
 coverOpenBtn.addEventListener("click", chooseCover);
 coverExportBtn.addEventListener("click", exportCover);
+el("export-open").addEventListener("click", openExport);
+el("export-close").addEventListener("click", closeExport);
+el("export-kind").addEventListener("change", syncExportKind);
+el("export-run").addEventListener("click", runExport);
+el("export-modal").addEventListener("click", (e) => {
+  if (e.target === el("export-modal")) closeExport();
+});
 coverFileInput.addEventListener("change", onCoverChosen);
 discogsOpenBtn.addEventListener("click", openDiscogs);
 el("discogs-close").addEventListener("click", closeDiscogs);
@@ -1213,6 +1278,11 @@ function mockInvoke(cmd, args) {
       });
       return Promise.resolve({ written, skipped_no_cover });
     }
+    case "export_playlist":
+    case "export_csv":
+    case "export_report":
+      // The real backend writes into the library root and returns the path.
+      return Promise.resolve(`/music/${args.fileName}`);
     case "player_play":
       mockPlayer.current = args.path;
       mockPlayer.next = null;
