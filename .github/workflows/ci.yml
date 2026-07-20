@@ -21,6 +21,8 @@ jobs:
 
       # The `app` crate is a Tauri 2 desktop shell; on Linux it links against
       # GTK/WebKit/glib system libraries, which the runner doesn't ship.
+      # `libasound2-dev` (ALSA) is needed by the rodio audio backend used for
+      # the preview player.
       - name: Install Tauri Linux system dependencies
         run: |
           sudo apt-get update
@@ -31,6 +33,7 @@ jobs:
             librsvg2-dev \
             libxdo-dev \
             libssl-dev \
+            libasound2-dev \
             patchelf
 
       - name: Check formatting

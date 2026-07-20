@@ -53,20 +53,23 @@ const discogsOpenBtn = el("discogs-open");
 const discogsModal = el("discogs-modal");
 const discogsResults = el("discogs-results");
 const discogsEmpty = el("discogs-empty");
-const audioEl = el("audio");
 const playerBar = el("player");
 const plToggle = el("pl-toggle");
 const plStop = el("pl-stop");
 const plTitle = el("pl-title");
 const plSeek = el("pl-seek");
 const plTime = el("pl-time");
-// Object URL of the track currently loaded in the player (revoked on swap), and
-// the path it came from so re-clicking the same row toggles instead of reloads.
-let audioObjectUrl = null;
+// Playback runs in the native (rodio) backend; the UI mirrors its polled
+// status. `playingPath` is the track the backend reports as current, `plPaused`
+// its pause state, `plDuration` the current track's length (for the seek math).
 let playingPath = null;
-// True while the current load was triggered by auto-advance (track ended), so
-// an error on an unsupported file skips ahead instead of just stopping.
-let autoAdvancing = false;
+let plPaused = false;
+let plDuration = 0;
+// True while the user is dragging the seek slider, so status polls don't fight
+// the drag.
+let plSeeking = false;
+// Poll timer handle (one interval once a library is open).
+let plPollTimer = null;
 
 const releaseTracksBody = el("release-tracks");
 const releaseCoverImg = el("release-cover");
@@ -155,7 +158,7 @@ function renderTracks() {
     const tr = document.createElement("tr");
     tr.dataset.path = track.path;
     if (track.path === playingPath) tr.classList.add("playing");
-    const playGlyph = track.path === playingPath && !audioEl.paused ? "❚❚" : "▶";
+    const playGlyph = track.path === playingPath && !plPaused ? "❚❚" : "▶";
     tr.innerHTML = `
       <td class="sel"><input type="checkbox" checked data-path="${escapeHtml(track.path)}" /></td>
       <td class="play"><button class="play-btn" data-path="${escapeHtml(track.path)}" title="Preview">${playGlyph}</button></td>
@@ -455,25 +458,10 @@ async function exportCover() {
 }
 
 // ---- preview player ----
-// Advisory MIME for the Blob from the file extension. The webview sniffs the
-// actual bytes anyway, but a correct hint helps codec selection.
-function mimeForPath(path) {
-  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
-  return (
-    {
-      mp3: "audio/mpeg",
-      m4a: "audio/mp4",
-      mp4: "audio/mp4",
-      aac: "audio/aac",
-      flac: "audio/flac",
-      wav: "audio/wav",
-      aif: "audio/aiff",
-      aiff: "audio/aiff",
-      ogg: "audio/ogg",
-      oga: "audio/ogg",
-    }[ext] || "audio/*"
-  );
-}
+// Playback is native (rodio backend, #30): the UI sends commands and polls the
+// backend's status. Gapless + auto-advance happen in the backend, which keeps
+// the current + next track queued in one sink; the UI just feeds the next track
+// whenever the current one changes.
 
 function fmtTime(seconds) {
   if (!isFinite(seconds) || seconds < 0) seconds = 0;
@@ -489,25 +477,20 @@ function setPlayerControlsEnabled(on) {
 }
 
 // Reveal the player bar (once a library is open) so its controls are always on
-// screen, even with nothing loaded (#31).
+// screen, even with nothing loaded (#31), and start polling backend status.
 function showPlayerBar() {
   playerBar.hidden = false;
   playerIdle();
+  if (!plPollTimer) plPollTimer = setInterval(pollPlayerStatus, 300);
 }
 
-// Reset the player to its idle, no-track state: controls disabled, placeholder
-// title, zeroed time. The bar stays visible (#31). Also used when playback is
-// stopped or the playlist reaches its end.
+// Reset the UI to its idle, no-track state: controls disabled, placeholder
+// title, zeroed time. The bar stays visible (#31). Used on stop, end of list,
+// and when opening a library.
 function playerIdle() {
-  playingPath = null; // set first, so the 'error' from clearing src is ignored
-  autoAdvancing = false;
-  audioEl.pause();
-  audioEl.removeAttribute("src");
-  audioEl.load();
-  if (audioObjectUrl) {
-    URL.revokeObjectURL(audioObjectUrl);
-    audioObjectUrl = null;
-  }
+  playingPath = null;
+  plPaused = false;
+  plDuration = 0;
   plTitle.textContent = "No track loaded";
   plTitle.title = "";
   plTime.textContent = "0:00 / 0:00";
@@ -527,42 +510,36 @@ function nextVisiblePath(path) {
   return i >= 0 && rows[i + 1] ? rows[i + 1].dataset.path : null;
 }
 
-// Load `path` into the player and start playing. Clicking the already-loaded
-// track toggles play/pause instead of reloading. `auto` marks an auto-advance
-// so an unsupported file skips ahead rather than halting the run.
-async function playTrack(path, auto = false) {
-  if (path === playingPath && audioEl.src) {
+// Start playing `path`. Clicking the already-current track toggles play/pause.
+// Also primes the next visible track so the backend can play it gaplessly.
+function playTrack(path) {
+  if (path === playingPath) {
     togglePlay();
     return;
   }
-  try {
-    const data = await invoke("read_audio", { path });
-    // Tauri returns raw bytes as an ArrayBuffer; the mock returns one too.
-    const blob = new Blob([data], { type: mimeForPath(path) });
-    if (audioObjectUrl) URL.revokeObjectURL(audioObjectUrl);
-    audioObjectUrl = URL.createObjectURL(blob);
-    playingPath = path;
-    autoAdvancing = auto;
-    audioEl.src = audioObjectUrl;
-    plTitle.textContent = fileName(path);
-    plTitle.title = path;
-    playerBar.hidden = false;
-    playerBar.classList.remove("idle");
-    setPlayerControlsEnabled(true);
-    await audioEl.play();
-    markPlayingRow();
-  } catch (e) {
-    toast(String(e), true);
-  }
+  invoke("player_play", { path });
+  const next = nextVisiblePath(path);
+  if (next) invoke("player_set_next", { path: next });
+  // Optimistic UI; the next poll confirms from the backend.
+  playingPath = path;
+  plPaused = false;
+  plTitle.textContent = fileName(path);
+  plTitle.title = path;
+  playerBar.classList.remove("idle");
+  setPlayerControlsEnabled(true);
+  markPlayingRow();
 }
 
 function togglePlay() {
-  if (audioEl.paused) audioEl.play().catch((e) => toast(String(e), true));
-  else audioEl.pause();
+  if (!playingPath) return;
+  plPaused = !plPaused;
+  invoke(plPaused ? "player_pause" : "player_resume", {});
+  markPlayingRow();
 }
 
 // Manual stop returns the bar to its idle state (still visible, #31).
 function stopPlayback() {
+  invoke("player_stop", {});
   playerIdle();
 }
 
@@ -573,51 +550,66 @@ function markPlayingRow() {
     const isPlaying = tr.dataset.path === playingPath;
     tr.classList.toggle("playing", isPlaying);
     const btn = tr.querySelector("td.play button");
-    if (btn) btn.textContent = isPlaying && !audioEl.paused ? "❚❚" : "▶";
+    if (btn) btn.textContent = isPlaying && !plPaused ? "❚❚" : "▶";
   });
-  plToggle.textContent = playingPath && !audioEl.paused ? "❚❚" : "▶";
+  plToggle.textContent = playingPath && !plPaused ? "❚❚" : "▶";
 }
 
-audioEl.addEventListener("loadedmetadata", () => {
-  autoAdvancing = false; // loaded fine; a later error is a real, manual failure
-  plTime.textContent = `${fmtTime(0)} / ${fmtTime(audioEl.duration)}`;
-});
-audioEl.addEventListener("timeupdate", () => {
-  const dur = audioEl.duration || 0;
-  plSeek.value = dur ? String(Math.round((audioEl.currentTime / dur) * 1000)) : "0";
-  plTime.textContent = `${fmtTime(audioEl.currentTime)} / ${fmtTime(dur)}`;
-});
-audioEl.addEventListener("play", markPlayingRow);
-audioEl.addEventListener("pause", markPlayingRow);
-// Auto-advance to the next visible track when one ends, until the list runs out
-// or the user stops (#29). Pause/Stop don't fire 'ended', so they never advance.
-audioEl.addEventListener("ended", () => {
-  plSeek.value = "0";
-  const next = nextVisiblePath(playingPath);
-  if (next) playTrack(next, true);
-  else playerIdle(); // reached the end of the list
-});
-audioEl.addEventListener("error", () => {
-  if (!playingPath) return; // idle/stop clears src, which also fires 'error'
-  // During an auto-advance run, skip an unplayable file (e.g. OGG) and keep
-  // going; a manually-chosen unplayable file just reports and goes idle.
-  if (autoAdvancing) {
-    const next = nextVisiblePath(playingPath);
-    if (next) {
-      toast(`Skipped ${fileName(playingPath)} (unsupported format)`, true);
-      playTrack(next, true);
-      return;
-    }
-  } else {
-    toast("Can't preview this file (format may be unsupported)", true);
+// Poll the backend and mirror its state. When the current track changes (a
+// gapless transition, i.e. auto-advance #29), update the UI and feed the next
+// track; when it wants a next track but none is queued, feed it too.
+async function pollPlayerStatus() {
+  let st;
+  try {
+    st = await invoke("player_status", {});
+  } catch (e) {
+    return;
   }
-  playerIdle();
-});
+  const changed = st.path !== playingPath;
+  playingPath = st.path;
+  plPaused = st.is_paused;
+
+  if (!st.path) {
+    // Backend drained (end of list or stopped): go idle unless already idle.
+    if (!playerBar.classList.contains("idle")) playerIdle();
+    return;
+  }
+
+  if (changed) {
+    plTitle.textContent = fileName(st.path);
+    plTitle.title = st.path;
+    playerBar.classList.remove("idle");
+    setPlayerControlsEnabled(true);
+    markPlayingRow();
+  }
+  // Keep the queue primed for gapless continuation.
+  if (st.wants_next) {
+    const next = nextVisiblePath(st.path);
+    if (next) invoke("player_set_next", { path: next });
+  }
+  plDuration = st.duration_secs || 0;
+  if (!plSeeking) {
+    plSeek.value = plDuration
+      ? String(Math.round((st.position_secs / plDuration) * 1000))
+      : "0";
+  }
+  plTime.textContent = `${fmtTime(st.position_secs)} / ${fmtTime(plDuration)}`;
+  plToggle.textContent = plPaused ? "▶" : "❚❚";
+}
 
 plToggle.addEventListener("click", togglePlay);
 plStop.addEventListener("click", stopPlayback);
+// While dragging, show the target time locally and suppress poll overrides;
+// commit the seek to the backend on release.
 plSeek.addEventListener("input", () => {
-  if (audioEl.duration) audioEl.currentTime = (Number(plSeek.value) / 1000) * audioEl.duration;
+  plSeeking = true;
+  const target = (Number(plSeek.value) / 1000) * plDuration;
+  plTime.textContent = `${fmtTime(target)} / ${fmtTime(plDuration)}`;
+});
+plSeek.addEventListener("change", () => {
+  const secs = (Number(plSeek.value) / 1000) * plDuration;
+  invoke("player_seek", { secs });
+  plSeeking = false;
 });
 // Play buttons live in dynamically-rendered rows — delegate.
 tracksBody.addEventListener("click", (e) => {
@@ -947,32 +939,49 @@ tracksBody.addEventListener("keydown", (e) => {
 
 loadSavedToken();
 
-// Build a silent 8kHz/8-bit mono WAV of `seconds` length; returns an
-// ArrayBuffer, mirroring the raw bytes the real `read_audio` command returns.
-function makeSilentWav(seconds) {
-  const rate = 8000;
-  const samples = Math.floor(rate * seconds);
-  const buf = new ArrayBuffer(44 + samples);
-  const view = new DataView(buf);
-  const writeStr = (off, s) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
-  };
-  writeStr(0, "RIFF");
-  view.setUint32(4, 36 + samples, true);
-  writeStr(8, "WAVE");
-  writeStr(12, "fmt ");
-  view.setUint32(16, 16, true); // fmt chunk size
-  view.setUint16(20, 1, true); // PCM
-  view.setUint16(22, 1, true); // mono
-  view.setUint32(24, rate, true);
-  view.setUint32(28, rate, true); // byte rate (1 byte/sample)
-  view.setUint16(32, 1, true); // block align
-  view.setUint16(34, 8, true); // bits per sample
-  writeStr(36, "data");
-  view.setUint32(40, samples, true);
-  for (let i = 0; i < samples; i++) view.setUint8(44 + i, 128); // 8-bit silence
-  return buf;
-}
+// Browser-only fake of the native player: a wall-clock timer advances position,
+// auto-advances to the queued `next` on end, and reports status — enough to
+// exercise the polling/gapless-feed UI without the rodio backend. Uses a short
+// fixed duration so transitions are quick to observe.
+const mockPlayer = {
+  current: null,
+  next: null,
+  duration: 600, // seconds (long, so tests aren't raced by natural track end)
+  base: 0, // position at last (re)start
+  started: 0, // Date.now() when the current run began
+  pausedAt: 0, // Date.now() when paused, else 0
+  position() {
+    if (!this.current) return 0;
+    const now = this.pausedAt || Date.now();
+    return this.base + (now - this.started) / 1000;
+  },
+  restart(base = 0) {
+    this.base = base;
+    this.started = Date.now();
+    this.pausedAt = 0;
+  },
+  status() {
+    if (this.current) {
+      // Advance across the (gapless) boundary when the current track ends.
+      if (this.position() >= this.duration) {
+        if (this.next) {
+          this.current = this.next;
+          this.next = null;
+          this.restart(0);
+        } else {
+          this.current = null;
+        }
+      }
+    }
+    return {
+      path: this.current,
+      is_paused: !!this.pausedAt,
+      position_secs: this.current ? Math.min(this.position(), this.duration) : 0,
+      duration_secs: this.current ? this.duration : 0,
+      wants_next: !!this.current && !this.next,
+    };
+  },
+};
 
 // ---- browser-only mock (no effect inside Tauri) ----
 function mockInvoke(cmd, args) {
@@ -1065,10 +1074,32 @@ function mockInvoke(cmd, args) {
       });
       return Promise.resolve({ written, skipped_no_cover });
     }
-    case "read_audio":
-      // Return a short silent WAV as an ArrayBuffer so the player UI can be
-      // exercised in a plain browser (the real backend returns file bytes).
-      return Promise.resolve(makeSilentWav(1.5));
+    case "player_play":
+      mockPlayer.current = args.path;
+      mockPlayer.next = null;
+      mockPlayer.restart(0);
+      return Promise.resolve();
+    case "player_set_next":
+      if (mockPlayer.current && !mockPlayer.next) mockPlayer.next = args.path;
+      return Promise.resolve();
+    case "player_pause":
+      if (mockPlayer.current && !mockPlayer.pausedAt) mockPlayer.pausedAt = Date.now();
+      return Promise.resolve();
+    case "player_resume":
+      if (mockPlayer.pausedAt) {
+        mockPlayer.restart(mockPlayer.position());
+      }
+      return Promise.resolve();
+    case "player_stop":
+      mockPlayer.current = null;
+      mockPlayer.next = null;
+      mockPlayer.pausedAt = 0;
+      return Promise.resolve();
+    case "player_seek":
+      if (mockPlayer.current) mockPlayer.restart(args.secs);
+      return Promise.resolve();
+    case "player_status":
+      return Promise.resolve(mockPlayer.status());
     case "saved_discogs_token":
       return Promise.resolve("");
     case "save_discogs_token":

@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- Gapless playback (#30): the preview player now runs on a native rodio/
+  Symphonia backend instead of a WebView `<audio>` element. A dedicated audio
+  thread keeps the current and next track queued in one sink, so tracks play
+  back-to-back with no gap — seamless on continuous/mixed compilations. As a
+  bonus it decodes every format we handle, including OGG (which the old WebView
+  player couldn't play). The UI drives it via `player_*` commands and polls a
+  status snapshot for the seek bar / time; auto-advance (#29) is now realized by
+  the backend queue. CI installs `libasound2-dev` (ALSA) for the Linux build.
 - Player auto-advance (#29): when a track finishes, the player automatically
   plays the next visible track (respecting the current sort/filter/manual
   order), continuing down the list until it ends or the user stops. An

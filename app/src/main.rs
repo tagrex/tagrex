@@ -6,11 +6,14 @@
 //! HTML/JS under `ui/`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod player;
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::{Manager, State};
 
+use player::{Player, PlayerStatus};
 use tagrex::{
     App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, ImportSelectionDto, PlanDto,
     ReleaseDto, SearchQueryDto, TagEditDto, TrackDto,
@@ -99,12 +102,38 @@ fn export_cover(
 }
 
 #[tauri::command]
-fn read_audio(state: State<AppState>, path: String) -> Result<tauri::ipc::Response, String> {
-    let bytes = with_app(&state, |app| {
-        app.read_audio_bytes(&PathBuf::from(&path))
-            .map_err(|e| e.to_string())
-    })?;
-    Ok(tauri::ipc::Response::new(bytes))
+fn player_play(player: State<Player>, path: String) {
+    player.play(PathBuf::from(path));
+}
+
+#[tauri::command]
+fn player_set_next(player: State<Player>, path: String) {
+    player.set_next(PathBuf::from(path));
+}
+
+#[tauri::command]
+fn player_pause(player: State<Player>) {
+    player.pause();
+}
+
+#[tauri::command]
+fn player_resume(player: State<Player>) {
+    player.resume();
+}
+
+#[tauri::command]
+fn player_stop(player: State<Player>) {
+    player.stop();
+}
+
+#[tauri::command]
+fn player_seek(player: State<Player>, secs: f64) {
+    player.seek(secs);
+}
+
+#[tauri::command]
+fn player_status(player: State<Player>) -> PlayerStatus {
+    player.status()
 }
 
 #[tauri::command]
@@ -199,6 +228,7 @@ fn save_discogs_token(app: tauri::AppHandle, token: String) -> Result<(), String
 fn main() {
     tauri::Builder::default()
         .manage(AppState::default())
+        .manage(Player::new())
         .invoke_handler(tauri::generate_handler![
             open_library,
             list_tracks,
@@ -206,7 +236,6 @@ fn main() {
             preview_tag_edits,
             preview_cover_embed,
             export_cover,
-            read_audio,
             apply_plan,
             undo,
             history,
@@ -215,7 +244,14 @@ fn main() {
             fetch_discogs_image,
             preview_import,
             saved_discogs_token,
-            save_discogs_token
+            save_discogs_token,
+            player_play,
+            player_set_next,
+            player_pause,
+            player_resume,
+            player_stop,
+            player_seek,
+            player_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

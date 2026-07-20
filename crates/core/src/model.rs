@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use lofty::config::WriteOptions;
-use lofty::file::{FileType, TaggedFileExt};
+use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::probe::Probe;
 use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
@@ -179,6 +179,14 @@ impl TagEngine {
         }
         tag.save_to_path(&file.path, WriteOptions::default())?;
         Ok(())
+    }
+
+    /// Read the track's playback duration from its audio properties. Returns
+    /// `Duration::ZERO` when the backend can't determine it. Used by the preview
+    /// player for the seek bar / total time.
+    pub fn read_duration(path: &Path) -> Result<std::time::Duration, TagIoError> {
+        let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+        Ok(tagged.properties().duration())
     }
 
     /// Read the file's front cover (or the first embedded image if there's no

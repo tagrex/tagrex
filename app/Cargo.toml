@@ -19,6 +19,10 @@ serde = { version = "1", features = ["derive"] }
 thiserror.workspace = true
 tauri = { version = "2", features = [] }
 base64 = "0.22.1"
+# Native audio backend for the preview player: a rodio Sink queues tracks
+# back-to-back for gapless playback, decoding every format we handle (incl. OGG)
+# via Symphonia. Linux needs libasound2-dev (see CI).
+rodio = "0.20"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
