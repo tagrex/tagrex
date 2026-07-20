@@ -269,6 +269,7 @@ function renderTracks() {
   coverExportBtn.disabled = tracks.length === 0;
   el("export-open").disabled = tracks.length === 0;
   el("fields-open").disabled = tracks.length === 0;
+  el("move-open").disabled = tracks.length === 0;
   updateEditsButton();
   applyBtn.disabled = true;
   previewTable.hidden = true;
@@ -704,6 +705,39 @@ tracksBody.addEventListener("click", (e) => {
   const btn = e.target.closest("td.play button");
   if (btn) playTrack(btn.dataset.path);
 });
+
+// ---- reorganize into folders (#37) ----
+function openMove() {
+  if (selectedPaths().length === 0) {
+    toast("Select the tracks to move first", true);
+    return;
+  }
+  el("move-modal").hidden = false;
+}
+
+function closeMove() {
+  el("move-modal").hidden = true;
+}
+
+// Builds the plan and shows it in the usual preview panel, so the move is
+// applied (and undone) through exactly the same path as a rename.
+async function previewMove() {
+  const paths = selectedPaths();
+  try {
+    previewPlan = await invoke("preview_move", { mask: el("move-mask").value, paths });
+    previewSource = "rename";
+    closeMove();
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing move of ${previewPlan.changes.length} file(s) — click Apply`
+        : "Nothing to move (check the pattern's tags are set)",
+      previewPlan.changes.length === 0
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
 
 // ---- extended field editor (#35) ----
 // The table only edits four columns, but every field the model knows is already
@@ -1168,6 +1202,12 @@ applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
 coverOpenBtn.addEventListener("click", chooseCover);
 coverExportBtn.addEventListener("click", exportCover);
+el("move-open").addEventListener("click", openMove);
+el("move-close").addEventListener("click", closeMove);
+el("move-preview").addEventListener("click", previewMove);
+el("move-modal").addEventListener("click", (e) => {
+  if (e.target === el("move-modal")) closeMove();
+});
 el("fields-open").addEventListener("click", openFieldEditor);
 el("fields-close").addEventListener("click", closeFieldEditor);
 el("fields-add").addEventListener("click", addCustomField);
@@ -1438,6 +1478,26 @@ function mockInvoke(cmd, args) {
         })
         .filter(Boolean);
       return Promise.resolve({ description: "Rename by mask", changes });
+    }
+    case "preview_move": {
+      const changes = args.paths
+        .map((p) => {
+          const t = findTrack(p);
+          if (!t) return null;
+          const ext = p.slice(p.lastIndexOf("."));
+          const rendered = args.mask
+            .replace("%albumartist%", t.tags.albumartist || t.tags.artist || "")
+            .replace("%artist%", t.tags.artist || "")
+            .replace("%title%", t.tags.title || "")
+            .replace("%album%", t.tags.album || "")
+            .replace("%year%", t.tags.year || "")
+            .replace("%track%", t.tags.track || "")
+            .replace("%genre%", t.tags.genre || "");
+          if (rendered.split("/").some((part) => !part.trim() || part === "..")) return null;
+          return { path: p, rename_to: `/music/${rendered}${ext}`, tag_changes: [] };
+        })
+        .filter(Boolean);
+      return Promise.resolve({ description: "Reorganize by mask", changes });
     }
     case "preview_tag_edits": {
       const byPath = {};

@@ -27,6 +27,12 @@ pub struct AppliedBatch {
     pub applied_at: i64,
     /// The executed plan; `old` values are what rollback restores.
     pub plan: ChangePlan,
+    /// Directories this batch had to create to make room for its renames,
+    /// shallowest first. Rollback removes exactly these (deepest first) so a
+    /// reorganize can be undone without leaving empty folders behind — and
+    /// without touching directories that already existed.
+    #[allow(clippy::struct_field_names)]
+    pub created_dirs: Vec<PathBuf>,
 }
 
 pub trait UndoJournal {
@@ -132,6 +138,11 @@ impl SqliteJournal {
                  old_value      TEXT,
                  new_value      TEXT
              );
+             CREATE TABLE IF NOT EXISTS created_dirs (
+                 id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                 batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+                 path     TEXT NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS cover_changes (
                  file_change_id INTEGER NOT NULL REFERENCES file_changes(id) ON DELETE CASCADE,
                  old_mime       TEXT,
@@ -196,6 +207,13 @@ impl UndoJournal for SqliteJournal {
             }
         }
 
+        for dir in &batch.created_dirs {
+            tx.execute(
+                "INSERT INTO created_dirs (batch_id, path) VALUES (?1, ?2)",
+                rusqlite::params![batch_id, dir.to_string_lossy()],
+            )?;
+        }
+
         tx.commit()?;
         Ok(BatchId(batch_id))
     }
@@ -216,6 +234,7 @@ impl UndoJournal for SqliteJournal {
         for row in rows {
             let (id, description, applied_at) = row?;
             let changes = self.load_file_changes(id)?;
+            let created_dirs = self.load_created_dirs(id)?;
             batches.push(AppliedBatch {
                 id: BatchId(id),
                 description: description.clone(),
@@ -224,6 +243,7 @@ impl UndoJournal for SqliteJournal {
                     description,
                     changes,
                 },
+                created_dirs,
             });
         }
         Ok(batches)
@@ -242,6 +262,17 @@ impl UndoJournal for SqliteJournal {
 }
 
 impl SqliteJournal {
+    /// Directories the batch created, shallowest first (insertion order).
+    fn load_created_dirs(&self, batch_id: i64) -> Result<Vec<PathBuf>, JournalError> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT path FROM created_dirs WHERE batch_id = ?1 ORDER BY id")?;
+        let rows = stmt.query_map(rusqlite::params![batch_id], |row| {
+            row.get::<_, String>(0).map(PathBuf::from)
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     fn load_file_changes(&self, batch_id: i64) -> Result<Vec<FileChange>, JournalError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, path, rename_to FROM file_changes WHERE batch_id = ?1 ORDER BY id",

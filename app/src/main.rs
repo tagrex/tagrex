@@ -69,6 +69,18 @@ fn preview_rename(
 }
 
 #[tauri::command]
+fn preview_move(
+    state: State<AppState>,
+    mask: String,
+    paths: Vec<String>,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_move(&mask, &paths).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn preview_tag_edits(state: State<AppState>, edits: Vec<TagEditDto>) -> Result<PlanDto, String> {
     with_app(&state, |app| {
         app.preview_tag_edits(&edits).map_err(|e| e.to_string())
@@ -285,6 +297,7 @@ fn main() {
             open_library,
             list_tracks,
             preview_rename,
+            preview_move,
             preview_tag_edits,
             preview_cover_embed,
             export_cover,

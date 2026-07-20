@@ -10,6 +10,15 @@ first release ships.
 
 ### Added
 
+- Reorganize files into folders from a template (#37): a "Reorganize…" action
+  renders a full relative path from a mask (`%albumartist%/%year% - %album%/
+  %track% - %title%`), previews the moves, and applies them through the same
+  journaled pipeline as a rename. Missing folders are created, and undo removes
+  exactly the folders the batch created — a directory that already existed is
+  never deleted, even if the rollback leaves it empty. Only literal slashes in
+  the pattern create folders; tag values still have their separators stripped,
+  and a pattern that would produce an empty component or climb out of the
+  library is refused.
 - Extended tag-field editor (#35): a "Fields…" dialog edits every field the
   model knows for the whole selection — album artist, track/disc numbers and
   totals, genre, comment, plus new first-class Composer, Publisher, BPM, ISRC

@@ -16,6 +16,7 @@
       <div class="spacer"></div>
       <button id="cover-open" disabled title="Embed a cover image into the selected files">Cover…</button>
       <button id="cover-export" disabled title="Export the embedded cover of the selected files to disk (cover.jpg)">Export cover</button>
+      <button id="move-open" disabled title="Move the selected files into folders built from their tags">Reorganize…</button>
       <button id="fields-open" disabled title="Edit every tag field of the selected files">Fields…</button>
       <button id="export-open" disabled title="Export the selected tracks as a playlist, CSV, or text report">Export…</button>
       <button id="discogs-open" disabled title="Import metadata from Discogs">Discogs…</button>
@@ -163,6 +164,32 @@
                 <tbody id="release-tracks"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="move-modal" class="modal" hidden>
+      <div class="modal-box">
+        <div class="modal-head">
+          <h2>Reorganize into folders</h2>
+          <div class="spacer"></div>
+          <button id="move-close" class="icon" title="Close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="hint muted" style="padding: 0">
+            Use <code>/</code> to separate folders. Paths are built under the opened library, and
+            missing folders are created. Tag values can't introduce a folder — only literal slashes
+            in the pattern do.
+          </p>
+          <label class="export-row"
+            >Pattern
+            <input id="move-mask" type="text" spellcheck="false"
+              value="%albumartist%/%year% - %album%/%track% - %title%" />
+          </label>
+          <div class="release-actions">
+            <div class="spacer"></div>
+            <button id="move-preview" class="primary">Preview move</button>
           </div>
         </div>
       </div>

@@ -247,6 +247,55 @@ impl App {
         })
     }
 
+    /// Build a plan that moves files into a folder structure rendered from a
+    /// mask, without writing (#37).
+    ///
+    /// Unlike [`preview_rename`](Self::preview_rename), the mask may contain `/`
+    /// to denote directories — `%albumartist%/%year% - %album%/%track% - %title%`
+    /// — and the result is anchored at the library root. Tag *values* still have
+    /// their separators stripped by the mask engine, so only literal slashes in
+    /// the pattern create folders; a value can't inject one.
+    pub fn preview_move(&self, mask_pattern: &str, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
+        let mask = Mask::parse(mask_pattern)?;
+        let mut changes = Vec::new();
+        for path in paths {
+            let Ok(track) = TagEngine::read(path) else {
+                continue;
+            };
+            let Ok(rendered) = mask.render(&track.tags) else {
+                continue;
+            };
+            // An empty component (from an empty tag) or a `..` would produce a
+            // nonsense or escaping path. The executor would refuse the latter
+            // anyway; rejecting here keeps the preview honest about what will
+            // actually happen.
+            if rendered
+                .split('/')
+                .any(|part| part.trim().is_empty() || part == "..")
+            {
+                continue;
+            }
+            let relative = match path.extension().and_then(|ext| ext.to_str()) {
+                Some(ext) => format!("{rendered}.{ext}"),
+                None => rendered,
+            };
+            let target = self.library_root.join(relative);
+            if target == *path {
+                continue;
+            }
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: Some(target.to_string_lossy().into_owned()),
+                tag_changes: Vec::new(),
+                cover_change: None,
+            });
+        }
+        Ok(PlanDto {
+            description: format!("Reorganize by mask: {mask_pattern}"),
+            changes,
+        })
+    }
+
     /// Build a tag-edit plan from requested cell edits, without writing. Reads
     /// each file's current value as the change's `old` (so preview shows the
     /// real diff and the executor's staleness check is accurate) and drops
@@ -1121,6 +1170,56 @@ mod tests {
         assert_eq!(track_number_from_position("1-05").as_deref(), Some("5"));
         assert_eq!(track_number_from_position("12").as_deref(), Some("12"));
         assert_eq!(track_number_from_position(""), None);
+    }
+
+    #[test]
+    fn preview_move_builds_folder_paths_under_the_library() {
+        let dir = TempDir::new("move");
+        let track = dir.tagged_flac("x.flac", "Plastic", "Sexy Groove");
+        let mut file = TagEngine::read(&track).unwrap();
+        file.tags.insert(TagField::Album, "La Bush".into());
+        file.tags.insert(TagField::Year, "1996".into());
+        TagEngine::write(&file).unwrap();
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_move(
+                "%year% - %album%/%artist% - %title%",
+                std::slice::from_ref(&track),
+            )
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(
+            plan.changes[0].rename_to.as_deref(),
+            Some(
+                dir.0
+                    .join("1996 - La Bush/Plastic - Sexy Groove.flac")
+                    .to_string_lossy()
+                    .as_ref()
+            )
+        );
+    }
+
+    #[test]
+    fn preview_move_refuses_escaping_and_empty_components() {
+        let dir = TempDir::new("move-guard");
+        let track = dir.tagged_flac("x.flac", "Plastic", "Sexy Groove");
+        let app = open_app(&dir);
+
+        // `%album%` is unset here, so the folder component would be empty.
+        let empty = app
+            .preview_move("%album%/%title%", std::slice::from_ref(&track))
+            .unwrap();
+        assert!(
+            empty.changes.is_empty(),
+            "empty folder component is skipped"
+        );
+
+        // A literal `..` in the pattern must never produce a plan.
+        let escaping = app
+            .preview_move("../%title%", std::slice::from_ref(&track))
+            .unwrap();
+        assert!(escaping.changes.is_empty(), "climbing out is refused");
     }
 
     #[test]

@@ -127,9 +127,15 @@ impl Executor {
             write_tag_changes(change, Direction::Apply)?;
             apply_cover_change(change, Direction::Apply)?;
         }
-        // ...then renames.
+        // ...then renames, creating any folders the targets need. Directories
+        // are created here rather than in the pre-flight so a validation
+        // failure can't leave empty folders behind.
+        let mut created_dirs = Vec::new();
         for change in &plan.changes {
             if let Some(target) = effective_rename(change) {
+                if let Some(parent) = target.parent() {
+                    created_dirs.extend(create_dirs_recording(parent)?);
+                }
                 std::fs::rename(&change.path, target).map_err(PlanError::Io)?;
             }
         }
@@ -141,6 +147,7 @@ impl Executor {
             description: plan.description.clone(),
             applied_at: now_unix_secs(),
             plan: plan.clone(),
+            created_dirs,
         };
         batch.id = journal.record(&batch)?;
         Ok(batch)
@@ -192,6 +199,15 @@ impl Executor {
             apply_cover_change(change, Direction::Undo)?;
         }
 
+        // Finally remove the folders this batch created, deepest first. Only
+        // empty ones go: if the user has since put something in there, the
+        // directory stays and rollback is still considered successful.
+        for dir in batch.created_dirs.iter().rev() {
+            if ensure_within_root(dir, &root).is_ok() {
+                std::fs::remove_dir(dir).ok();
+            }
+        }
+
         journal.rollback(batch_id)?;
         Ok(())
     }
@@ -222,23 +238,66 @@ fn ensure_within_root(path: &Path, root: &Path) -> Result<(), PlanError> {
     }
 }
 
-/// A rename destination that doesn't exist yet can't be canonicalized
-/// directly, so resolve it via its (existing) parent directory and require
-/// *that* to sit inside `root`. Returns the resolved absolute target path.
-/// Directories are not created here — a target whose parent is missing is an
-/// I/O error.
+/// A rename destination that doesn't exist yet can't be canonicalized directly.
+/// Resolve it against its nearest *existing* ancestor — which may be several
+/// levels up when the target lands in folders that still have to be created —
+/// and require that ancestor to sit inside `root`. Returns the resolved
+/// absolute target path.
+///
+/// Canonicalizing the existing part is what makes the containment check
+/// meaningful: it collapses `..` and follows symlinks, so a crafted mask can't
+/// steer a move outside the library by way of a path that only looks contained.
 fn resolve_target_within_root(target: &Path, root: &Path) -> Result<PathBuf, PlanError> {
-    let parent = target
+    let mut existing = target
         .parent()
         .ok_or_else(|| PlanError::OutsideRoot(target.to_path_buf()))?;
-    let file_name = target
-        .file_name()
-        .ok_or_else(|| PlanError::OutsideRoot(target.to_path_buf()))?;
-    let canonical_parent = std::fs::canonicalize(parent).map_err(PlanError::Io)?;
-    if !canonical_parent.starts_with(root) {
+    let mut trailing: Vec<&std::ffi::OsStr> = Vec::new();
+    // `target`'s own file name is always part of the not-yet-existing tail.
+    trailing.push(
+        target
+            .file_name()
+            .ok_or_else(|| PlanError::OutsideRoot(target.to_path_buf()))?,
+    );
+    while !existing.exists() {
+        let name = existing
+            .file_name()
+            .ok_or_else(|| PlanError::OutsideRoot(target.to_path_buf()))?;
+        trailing.push(name);
+        existing = existing
+            .parent()
+            .ok_or_else(|| PlanError::OutsideRoot(target.to_path_buf()))?;
+    }
+
+    let canonical = std::fs::canonicalize(existing).map_err(PlanError::Io)?;
+    if !canonical.starts_with(root) {
         return Err(PlanError::OutsideRoot(target.to_path_buf()));
     }
-    Ok(canonical_parent.join(file_name))
+    let mut resolved = canonical;
+    for name in trailing.iter().rev() {
+        resolved.push(name);
+    }
+    Ok(resolved)
+}
+
+/// Create `dir` and any missing ancestors, returning the directories actually
+/// created, shallowest first. Recording exactly what was created lets undo
+/// remove those and only those — a directory that already existed is never
+/// touched, even if the rollback leaves it empty.
+fn create_dirs_recording(dir: &Path) -> Result<Vec<PathBuf>, PlanError> {
+    let mut missing = Vec::new();
+    let mut current = Some(dir);
+    while let Some(path) = current {
+        if path.exists() {
+            break;
+        }
+        missing.push(path.to_path_buf());
+        current = path.parent();
+    }
+    missing.reverse();
+    for path in &missing {
+        std::fs::create_dir(path).map_err(PlanError::Io)?;
+    }
+    Ok(missing)
 }
 
 /// The rename this change actually performs, if any: `rename_to` unless it's

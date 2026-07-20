@@ -285,3 +285,92 @@ fn embeds_cover_and_undo_removes_it() {
     Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
     assert_eq!(TagEngine::read_cover(&track).unwrap(), None);
 }
+
+/// Moving a file into folders that don't exist yet: the executor creates them,
+/// and rollback removes exactly the ones it created — never a directory that
+/// was already there, even if undo leaves it empty.
+#[test]
+fn rename_into_new_folders_creates_them_and_undo_removes_them() {
+    let dir = TempDir::new("reorganize");
+    let track = dir.flac("loose.flac");
+
+    // This one already exists and must survive the rollback untouched.
+    let preexisting = dir.path().join("Existing");
+    std::fs::create_dir(&preexisting).unwrap();
+    let inside_existing = dir.flac("second.flac");
+
+    let target = dir
+        .path()
+        .join("Various/1996 - La Bush/01 - Desert Rain.flac");
+    let target_in_existing = preexisting.join("moved.flac");
+
+    let plan = ChangePlan {
+        description: "Reorganize".to_string(),
+        changes: vec![
+            FileChange {
+                path: track.clone(),
+                rename_to: Some(target.clone()),
+                ..FileChange::default()
+            },
+            FileChange {
+                path: inside_existing.clone(),
+                rename_to: Some(target_in_existing.clone()),
+                ..FileChange::default()
+            },
+        ],
+    };
+
+    let mut journal = VecJournal::default();
+    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+
+    assert!(target.exists(), "file moved into the new folder tree");
+    assert!(!track.exists());
+    assert!(target_in_existing.exists());
+    // Two levels were created for the first target; `Existing` was not.
+    assert_eq!(batch.created_dirs.len(), 2);
+    assert!(batch.created_dirs.iter().all(|d| d.starts_with(dir.path())));
+
+    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+
+    assert!(track.exists(), "file restored to its original path");
+    assert!(!target.exists());
+    assert!(
+        !dir.path().join("Various").exists(),
+        "created folders removed on undo"
+    );
+    assert!(
+        preexisting.exists(),
+        "a pre-existing folder must survive rollback even when left empty"
+    );
+
+    std::fs::remove_dir_all(dir.path()).ok();
+}
+
+/// A move whose target would escape the library is refused, even though the
+/// intermediate folders don't exist yet — the containment check resolves
+/// against the nearest existing ancestor.
+#[test]
+fn rename_into_new_folders_still_cannot_escape_the_root() {
+    let dir = TempDir::new("reorganize-escape");
+    let track = dir.flac("track.flac");
+
+    let plan = ChangePlan {
+        description: "Escape".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            rename_to: Some(dir.path().join("../outside/new/track.flac")),
+            ..FileChange::default()
+        }],
+    };
+
+    let mut journal = VecJournal::default();
+    let result = Executor::apply(&plan, &mut journal, dir.path());
+    assert!(matches!(result, Err(PlanError::OutsideRoot(_))));
+    assert!(track.exists(), "nothing moved");
+    assert!(
+        !dir.path().join("../outside").exists(),
+        "no folders created"
+    );
+
+    std::fs::remove_dir_all(dir.path()).ok();
+}
