@@ -135,3 +135,102 @@ fn cover_embed_read_remove_and_survives_a_tag_write() {
 
     std::fs::remove_file(&path).ok();
 }
+
+/// A tag write (and a cover embed) must preserve everything the text-only
+/// `TagMap` cannot express: DJ cue points and loops, ratings, ReplayGain — all
+/// of which live in ID3v2 frames like `PRIV`/`GEOB`.
+///
+/// This is MP3-specific on purpose: lofty's *generic* `Tag` does not surface
+/// those frames at all, so an MP3 round-tripped through it loses them silently.
+/// Vorbis Comments cannot hold binary data in the first place, so FLAC can't
+/// exercise this.
+#[test]
+fn mp3_write_preserves_non_text_frames() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::id3::v2::{Id3v2Tag, PrivateFrame};
+    use lofty::mpeg::MpegFile;
+    use lofty::prelude::{Accessor, TagExt};
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-preserve-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).unwrap();
+
+    // Seed a private frame, standing in for what DJ software writes.
+    let mut seeded = Id3v2Tag::new();
+    seeded.set_artist("Original".to_string());
+    seeded.insert(PrivateFrame::new("SeratoMarkers".to_string(), vec![9, 8, 7, 6]).into());
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+
+    let private_data = |path: &PathBuf| -> Option<Vec<u8>> {
+        let mut file = std::fs::File::open(path).unwrap();
+        let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).unwrap();
+        mpeg.id3v2().and_then(|tag| {
+            tag.into_iter().find_map(|frame| match frame {
+                lofty::id3::v2::Frame::Private(p) => Some(p.private_data.clone()),
+                _ => None,
+            })
+        })
+    };
+    assert_eq!(
+        private_data(&path),
+        Some(vec![9, 8, 7, 6]),
+        "seeding failed"
+    );
+
+    // A normal tag edit through the engine.
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Edited".to_string());
+    tags.insert(TagField::Title, "New Title".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags,
+    })
+    .unwrap();
+
+    // The text edit landed...
+    let read = TagEngine::read(&path).unwrap();
+    assert_eq!(
+        read.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Edited")
+    );
+    // ...and the private frame survived it.
+    assert_eq!(
+        private_data(&path),
+        Some(vec![9, 8, 7, 6]),
+        "tag write destroyed the private frame"
+    );
+
+    // Embedding a cover must not destroy it either.
+    TagEngine::embed_cover(
+        &path,
+        &CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![1, 2, 3, 4],
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        private_data(&path),
+        Some(vec![9, 8, 7, 6]),
+        "cover embed destroyed the private frame"
+    );
+    assert!(TagEngine::read_cover(&path).unwrap().is_some());
+
+    std::fs::remove_file(&path).ok();
+}
+
+/// A few MPEG-1 Layer III frames (128 kbps, 44.1 kHz) — enough for lofty to
+/// identify the file and attach tags to it.
+fn minimal_mp3() -> Vec<u8> {
+    let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+    frame.resize(417, 0);
+    let mut data = Vec::new();
+    for _ in 0..5 {
+        data.extend_from_slice(&frame);
+    }
+    data
+}

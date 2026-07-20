@@ -74,6 +74,15 @@ first release ships.
 
 ### Fixed
 
+- Tag writes no longer destroy frames the tag model can't express (#52).
+  `TagMap` is text-only, so rebuilding a tag from it wiped everything else on
+  every edit, import or rename — DJ cue points and loops, ratings, ReplayGain
+  and other private/binary frames. MP3 is now written through its concrete
+  ID3v2 tag, because lofty's generic tag doesn't even surface those frames when
+  reading, so an MP3 round-tripped through it lost them silently; non-text
+  frames are carried over while text frames come from the model, so clearing a
+  field still clears it. Cover embed/remove take the same path. Other formats
+  keep the generic tag but now start from the file's existing one, not a blank.
 - Tag writes no longer strip embedded artwork: `TagEngine::write` rebuilt the
   tag from the text fields only, so any edit/import/rename silently dropped the
   cover. It now carries existing pictures over.

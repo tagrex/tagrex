@@ -1,10 +1,12 @@
 //! Tag data model and the tag I/O engine facade.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use lofty::config::WriteOptions;
+use lofty::config::{ParseOptions, WriteOptions};
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
+use lofty::id3::v2::{Frame, Id3v2Tag};
+use lofty::mpeg::MpegFile;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::probe::Probe;
 use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
@@ -157,28 +159,23 @@ impl TagEngine {
 
     /// Write the tags of `file` back to disk.
     ///
+    /// [`TagMap`] is text-only, so a naive "rebuild the tag from the map" write
+    /// destroys everything it cannot express: embedded artwork, DJ cue points
+    /// and loops, ratings, ReplayGain. Both paths below are written to preserve
+    /// that data.
+    ///
+    /// MP3 gets special handling because lofty's *generic* [`Tag`] does not even
+    /// surface frames like `PRIV`/`GEOB` when reading, so round-tripping an MP3
+    /// through it silently drops them. For ID3v2 we therefore edit the concrete
+    /// tag; other formats round-trip losslessly enough through the generic one.
+    ///
     /// Only [`plan::Executor`](crate::plan::Executor) is allowed to call this —
     /// see the crate-level invariant.
     pub fn write(file: &TrackFile) -> Result<(), TagIoError> {
-        let mut tag = Tag::new(file.format.primary_tag_type());
-        for (field, value) in &file.tags {
-            // `insert_text`/`insert` silently drop `ItemKey::Unknown` (Custom
-            // fields) since they refuse to write keys without a known mapping
-            // for the tag type. `insert_unchecked` is the documented escape
-            // hatch for exactly this case.
-            tag.insert_unchecked(TagItem::new(
-                tag_field_to_item_key(field),
-                ItemValue::Text(value.clone()),
-            ));
+        match file.format {
+            AudioFormat::Mp3 => write_id3v2(&file.path, &file.tags),
+            _ => write_generic(file),
         }
-        // We rebuild the tag from the text `TagMap`, which doesn't carry
-        // pictures — so carry over any embedded artwork, or a tag edit would
-        // silently strip the cover.
-        for picture in existing_pictures(&file.path) {
-            tag.push_picture(picture);
-        }
-        tag.save_to_path(&file.path, WriteOptions::default())?;
-        Ok(())
     }
 
     /// Read the track's playback duration from its audio properties. Returns
@@ -214,20 +211,36 @@ impl TagEngine {
     /// cover and preserving all text tags. Only [`Executor`](crate::plan::Executor)
     /// should call this.
     pub fn embed_cover(path: &Path, cover: &CoverArt) -> Result<(), TagIoError> {
-        let mut tag = load_or_new_tag(path)?;
-        tag.remove_picture_type(PictureType::CoverFront);
-        tag.push_picture(Picture::new_unchecked(
+        let picture = Picture::new_unchecked(
             PictureType::CoverFront,
             Some(MimeType::from_str(&cover.mime)),
             None,
             cover.data.clone(),
-        ));
+        );
+        // Same reason as `write`: going through the generic tag would drop an
+        // MP3's non-representable frames, so edit the concrete tag instead.
+        if is_mpeg(path) {
+            let mut tag = read_id3v2(path)?.unwrap_or_default();
+            tag.remove_picture_type(PictureType::CoverFront);
+            tag.insert_picture(picture);
+            tag.save_to_path(path, WriteOptions::default())?;
+            return Ok(());
+        }
+        let mut tag = load_or_new_tag(path)?;
+        tag.remove_picture_type(PictureType::CoverFront);
+        tag.push_picture(picture);
         tag.save_to_path(path, WriteOptions::default())?;
         Ok(())
     }
 
     /// Remove the file's front cover, preserving all text tags.
     pub fn remove_cover(path: &Path) -> Result<(), TagIoError> {
+        if is_mpeg(path) {
+            let mut tag = read_id3v2(path)?.unwrap_or_default();
+            tag.remove_picture_type(PictureType::CoverFront);
+            tag.save_to_path(path, WriteOptions::default())?;
+            return Ok(());
+        }
         let mut tag = load_or_new_tag(path)?;
         tag.remove_picture_type(PictureType::CoverFront);
         tag.save_to_path(path, WriteOptions::default())?;
@@ -235,18 +248,87 @@ impl TagEngine {
     }
 }
 
-/// The pictures currently embedded in `path`, or an empty list if it can't be
-/// read (best-effort preservation).
-fn existing_pictures(path: &Path) -> Vec<Picture> {
-    let read = || -> Result<Vec<Picture>, TagIoError> {
-        let tagged = Probe::open(path)?.guess_file_type()?.read()?;
-        Ok(tagged
-            .primary_tag()
-            .or_else(|| tagged.first_tag())
-            .map(|tag| tag.pictures().to_vec())
-            .unwrap_or_default())
+/// Write text tags into an MP3's ID3v2 tag, preserving every frame the model
+/// cannot express.
+///
+/// The text frames are produced by converting a generic [`Tag`] built from the
+/// map, so the field -> frame mapping stays identical to every other format.
+/// Everything else — pictures, `PRIV`/`GEOB` blobs (where DJ software keeps cue
+/// points and loops), popularimeter ratings, unsynchronised lyrics — is copied
+/// over from the file's existing tag. Text frames are deliberately *not* copied
+/// over, so clearing a field still clears it.
+fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
+    let mut generic = Tag::new(TagType::Id3v2);
+    for (field, value) in tags {
+        generic.insert_unchecked(TagItem::new(
+            tag_field_to_item_key(field),
+            ItemValue::Text(value.clone()),
+        ));
+    }
+    let mut updated = Id3v2Tag::from(generic);
+
+    if let Some(original) = read_id3v2(path)? {
+        for frame in &original {
+            if !is_model_text_frame(frame) {
+                updated.insert(frame.clone());
+            }
+        }
+    }
+    updated.save_to_path(path, WriteOptions::default())?;
+    Ok(())
+}
+
+/// Whether a frame is one the text-only [`TagMap`] already represents, and so
+/// must come from the model rather than being carried over from the old tag.
+fn is_model_text_frame(frame: &Frame<'_>) -> bool {
+    matches!(
+        frame,
+        Frame::Text(_) | Frame::UserText(_) | Frame::Comment(_)
+    )
+}
+
+/// The file's concrete ID3v2 tag, if it has one.
+fn read_id3v2(path: &Path) -> Result<Option<Id3v2Tag>, TagIoError> {
+    let mut file = std::fs::File::open(path)?;
+    let mpeg = MpegFile::read_from(&mut file, ParseOptions::new())?;
+    Ok(mpeg.id3v2().cloned())
+}
+
+/// Whether `path` is an MPEG (MP3) file, for the cover paths that only have a
+/// path to work from.
+fn is_mpeg(path: &Path) -> bool {
+    let probed = || -> Result<bool, TagIoError> {
+        Ok(Probe::open(path)?.guess_file_type()?.file_type() == Some(FileType::Mpeg))
     };
-    read().unwrap_or_default()
+    probed().unwrap_or(false)
+}
+
+/// Write text tags through the generic tag representation, used by every format
+/// other than MP3. Starts from the existing tag so non-text items and pictures
+/// survive, and drops only the text items the model no longer carries.
+fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
+    let tagged = Probe::open(&file.path)?.guess_file_type()?.read()?;
+    let mut tag = tagged
+        .primary_tag()
+        .or_else(|| tagged.first_tag())
+        .cloned()
+        .unwrap_or_else(|| Tag::new(file.format.primary_tag_type()));
+
+    let desired: HashSet<ItemKey> = file.tags.keys().map(tag_field_to_item_key).collect();
+    tag.retain(|item| item.value().text().is_none() || desired.contains(item.key()));
+
+    for (field, value) in &file.tags {
+        let key = tag_field_to_item_key(field);
+        // Replace rather than append, so repeated writes can't accumulate
+        // duplicate entries for the same field.
+        tag.remove_key(&key);
+        // `insert_text`/`insert` silently drop `ItemKey::Unknown` (Custom
+        // fields) since they refuse to write keys without a known mapping for
+        // the tag type. `insert_unchecked` is the documented escape hatch.
+        tag.insert_unchecked(TagItem::new(key, ItemValue::Text(value.clone())));
+    }
+    tag.save_to_path(&file.path, WriteOptions::default())?;
+    Ok(())
 }
 
 /// Load the file's primary tag (cloned, owned) or a fresh empty one, so the
