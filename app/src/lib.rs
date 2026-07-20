@@ -129,6 +129,8 @@ pub struct ReleaseTrackDto {
     pub position: String,
     pub artist: Option<String>,
     pub title: String,
+    /// Length the release lists for this track, in seconds, when it states one.
+    pub duration_secs: Option<u64>,
 }
 
 /// A fully fetched release.
@@ -155,6 +157,9 @@ pub struct ImportTrackDto {
     pub position: String,
     pub artist: String,
     pub title: String,
+    /// Length from the release listing, used to corroborate a match (#64).
+    #[serde(default)]
+    pub duration_secs: Option<u64>,
 }
 
 /// A user-resolved import: the album-level fields plus the ordered list of
@@ -575,17 +580,29 @@ impl App {
             .map(|track| TrackRef {
                 title: &track.title,
                 artist: Some(track.artist.as_str()).filter(|artist| !artist.is_empty()),
-                // Discogs tracklists carry a display duration we don't parse
-                // yet, so length can't gate the match here.
-                duration_secs: None,
+                duration_secs: track.duration_secs,
             })
             .collect();
 
-        Ok(matching::align(
-            &local_refs,
-            &candidate_refs,
-            &MatchOptions::default(),
-        ))
+        let by_content = matching::align(&local_refs, &candidate_refs, &MatchOptions::default());
+        let content_hits = by_content.iter().flatten().count();
+
+        // If titles only carried us part of the way, the folder probably has
+        // none worth matching (`track01.mp3` and friends). The ordered vector of
+        // lengths needs no titles at all, so try it and keep whichever aligned
+        // more files (#64).
+        let reachable = local_refs.len().min(candidate_refs.len());
+        if content_hits * 2 < reachable {
+            let by_duration = matching::align_by_duration_sequence(
+                &local_refs,
+                &candidate_refs,
+                matching::DURATION_SEQUENCE_TOLERANCE_SECS,
+            );
+            if by_duration.iter().flatten().count() > content_hits {
+                return Ok(by_duration);
+            }
+        }
+        Ok(by_content)
     }
 
     /// Preview importing a user-resolved release selection onto `paths`,
@@ -826,6 +843,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                     position: track.position.clone(),
                     artist: track.artist.clone(),
                     title: track.title.clone(),
+                    duration_secs: track.duration_secs,
                 })
                 .collect(),
             cover_image_url: release.cover_image_url.clone(),
@@ -1021,11 +1039,13 @@ mod tests {
                     position: "1".into(),
                     artist: String::new(),
                     title: "First".into(),
+                    duration_secs: None,
                 },
                 ImportTrackDto {
                     position: "5".into(),
                     artist: "Guest".into(),
                     title: "Fifth".into(),
+                    duration_secs: None,
                 },
             ],
         };
@@ -1078,6 +1098,7 @@ mod tests {
                 position: "5".into(),
                 artist: "Artist".into(),
                 title: "Title".into(),
+                duration_secs: None,
             }],
             ..ImportSelectionDto::default()
         };
@@ -1225,11 +1246,13 @@ mod tests {
                 artist: "B.B.E.".into(),
                 // Punctuation/decoration differs from the local tag.
                 title: "Seven Days & One Week (Original Mix)".into(),
+                duration_secs: None,
             },
             ImportTrackDto {
                 position: "14".into(),
                 artist: "Plastic".into(),
                 title: "Sexy Groove".into(),
+                duration_secs: None,
             },
         ];
 

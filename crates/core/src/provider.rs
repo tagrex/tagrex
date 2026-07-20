@@ -47,6 +47,10 @@ pub struct ReleaseTrack {
     /// Track-level artist when it differs from the release artist.
     pub artist: Option<String>,
     pub title: String,
+    /// Listed length in seconds, when the provider states one. Usually
+    /// transcribed by hand from the sleeve, so treat it as a hint rather than
+    /// ground truth (#64).
+    pub duration_secs: Option<u64>,
 }
 
 /// A fully fetched release, ready to be mapped onto local files.

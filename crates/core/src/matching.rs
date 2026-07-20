@@ -81,6 +81,37 @@ pub struct Match {
     /// 0.0..=1.0, higher is better.
     pub score: f32,
     pub reason: MatchReason,
+    /// Difference between the two listed lengths in seconds, when both are
+    /// known — so a caller can flag "the title matches but the length doesn't".
+    pub duration_delta: Option<u64>,
+}
+
+/// Length agreement within this many seconds counts as confirmation: encoder
+/// delay/padding and sleeve rounding both live well inside it.
+const DURATION_EXACT_SECS: u64 = 2;
+
+/// Past this the lengths are evidence of a different recording (an edit, a
+/// different pressing, a differently-split rip of a continuous mix).
+const DURATION_CONFLICT_SECS: u64 = 30;
+
+/// How much of the final score length agreement may swing. Deliberately a
+/// minority share: provider durations are hand-transcribed and often wrong or
+/// absent, so they refine a ranking but must never overturn the title (#64).
+const DURATION_WEIGHT: f32 = 0.3;
+
+/// Default tolerance for [`align_by_duration_sequence`].
+pub const DURATION_SEQUENCE_TOLERANCE_SECS: u64 = 5;
+
+/// 1.0 when the lengths agree, decaying to 0.0 as they diverge.
+fn duration_score(delta: u64) -> f32 {
+    if delta <= DURATION_EXACT_SECS {
+        1.0
+    } else if delta >= DURATION_CONFLICT_SECS {
+        0.0
+    } else {
+        let span = (DURATION_CONFLICT_SECS - DURATION_EXACT_SECS) as f32;
+        1.0 - (delta - DURATION_EXACT_SECS) as f32 / span
+    }
 }
 
 /// Score `candidate` against `local`, or `None` if it fails a gate or falls
@@ -108,12 +139,98 @@ pub fn match_track(
         }
     }
 
-    let (score, reason) = title_score(local.title, candidate.title);
-    // An exact title match stands on its own; a fuzzy one has to clear the bar.
-    if reason == MatchReason::Fuzzy && score < options.strictness {
+    let (title, reason) = title_score(local.title, candidate.title);
+    // Accept/reject is decided on the title alone; an exact match stands on its
+    // own, a fuzzy one has to clear the bar.
+    if reason == MatchReason::Fuzzy && title < options.strictness {
         return None;
     }
-    Some(Match { score, reason })
+
+    // Length only refines the ranking from here — it never rejects, because
+    // provider durations disagree with real files too often to be trusted that
+    // far (#64). The opt-in gate above is the escape hatch for callers that do
+    // want a hard filter.
+    let duration_delta = match (local.duration_secs, candidate.duration_secs) {
+        (Some(a), Some(b)) => Some(a.abs_diff(b)),
+        _ => None,
+    };
+    let score = match duration_delta {
+        Some(delta) => title * (1.0 - DURATION_WEIGHT + DURATION_WEIGHT * duration_score(delta)),
+        None => title,
+    };
+
+    Some(Match {
+        score,
+        reason,
+        duration_delta,
+    })
+}
+
+/// Align two ordered track lists using **only** their lengths.
+///
+/// For a folder of `track01.mp3`-style files there is no usable title to match
+/// on, but the ordered vector of durations is effectively a fingerprint of the
+/// release: even with a couple of seconds of noise per track, a full sequence
+/// lines up unambiguously. Order is preserved and both sides may have gaps
+/// (extra local files, tracks missing from the folder), so this is a classic
+/// sequence alignment rather than a per-track best guess.
+///
+/// Returns, for each local track, the index of the candidate it lines up with.
+pub fn align_by_duration_sequence(
+    locals: &[TrackRef<'_>],
+    candidates: &[TrackRef<'_>],
+    tolerance_secs: u64,
+) -> Vec<Option<usize>> {
+    let (rows, columns) = (locals.len(), candidates.len());
+    // Cell = (pairs matched so far, total seconds of disagreement). More pairs
+    // always wins; ties go to the tighter fit.
+    let mut best = vec![vec![(0u32, 0u64); columns + 1]; rows + 1];
+
+    let pairing = |i: usize, j: usize| -> Option<u64> {
+        match (locals[i].duration_secs, candidates[j].duration_secs) {
+            (Some(a), Some(b)) if a.abs_diff(b) <= tolerance_secs => Some(a.abs_diff(b)),
+            _ => None,
+        }
+    };
+
+    for i in 1..=rows {
+        for j in 1..=columns {
+            let mut cell = better(best[i - 1][j], best[i][j - 1]);
+            if let Some(delta) = pairing(i - 1, j - 1) {
+                let previous = best[i - 1][j - 1];
+                cell = better(cell, (previous.0 + 1, previous.1 + delta));
+            }
+            best[i][j] = cell;
+        }
+    }
+
+    let mut result = vec![None; rows];
+    let (mut i, mut j) = (rows, columns);
+    while i > 0 && j > 0 {
+        let current = best[i][j];
+        let paired = pairing(i - 1, j - 1).map(|delta| {
+            let previous = best[i - 1][j - 1];
+            (previous.0 + 1, previous.1 + delta)
+        });
+        if paired == Some(current) {
+            result[i - 1] = Some(j - 1);
+            i -= 1;
+            j -= 1;
+        } else if best[i - 1][j] == current {
+            i -= 1;
+        } else {
+            j -= 1;
+        }
+    }
+    result
+}
+
+fn better(a: (u32, u64), b: (u32, u64)) -> (u32, u64) {
+    if a.0 > b.0 || (a.0 == b.0 && a.1 <= b.1) {
+        a
+    } else {
+        b
+    }
 }
 
 /// The best-scoring candidate for `local`, with its index.
@@ -431,6 +548,110 @@ mod tests {
             duration_secs: Some(140),
         };
         assert!(match_track(&local, &other, &options).is_none());
+    }
+
+    fn timed<'a>(title: &'a str, secs: u64) -> TrackRef<'a> {
+        TrackRef {
+            title,
+            artist: None,
+            duration_secs: Some(secs),
+        }
+    }
+
+    #[test]
+    fn length_agreement_refines_ranking_but_never_rejects() {
+        let options = MatchOptions::default();
+
+        // Same title, lengths agree -> full confidence.
+        let agree = match_track(
+            &timed("Desert Rain", 278),
+            &timed("Desert Rain", 279),
+            &options,
+        )
+        .expect("must match");
+        assert_eq!(agree.reason, MatchReason::Exact);
+        assert_eq!(agree.score, 1.0);
+        assert_eq!(agree.duration_delta, Some(1));
+
+        // Same title, lengths clearly disagree: still a match (the title is what
+        // decides), but ranked below, and the delta is exposed so the UI can
+        // warn about it.
+        let disagree = match_track(
+            &timed("Desert Rain", 278),
+            &timed("Desert Rain", 500),
+            &options,
+        )
+        .expect("a length mismatch must not reject a title match");
+        assert_eq!(disagree.reason, MatchReason::Exact);
+        assert!(disagree.score < agree.score);
+        assert_eq!(disagree.duration_delta, Some(222));
+    }
+
+    #[test]
+    fn length_breaks_a_tie_between_identically_titled_candidates() {
+        let options = MatchOptions::default();
+        let local = timed("Universal Love", 368);
+        // Two pressings of the same title; only the length tells them apart.
+        let candidates = [timed("Universal Love", 210), timed("Universal Love", 367)];
+        let (index, _) = best_match(&local, &candidates, &options).expect("must match");
+        assert_eq!(index, 1);
+    }
+
+    #[test]
+    fn duration_sequence_aligns_untitled_files() {
+        // No usable titles at all — the ordered lengths are the only signal.
+        let locals = [
+            timed("track01", 279),
+            timed("track02", 141),
+            timed("track03", 322),
+        ];
+        let candidates = [
+            timed("Desert Rain", 278),
+            timed("Radio", 142),
+            timed("Voodoo Rhythm", 321),
+        ];
+        assert_eq!(
+            align_by_duration_sequence(&locals, &candidates, DURATION_SEQUENCE_TOLERANCE_SECS),
+            vec![Some(0), Some(1), Some(2)]
+        );
+    }
+
+    #[test]
+    fn duration_sequence_tolerates_gaps_on_both_sides() {
+        // An extra local file that isn't on the release at all.
+        let locals = [timed("a", 278), timed("stray", 999), timed("b", 142)];
+        let candidates = [timed("x", 278), timed("y", 142)];
+        assert_eq!(
+            align_by_duration_sequence(&locals, &candidates, DURATION_SEQUENCE_TOLERANCE_SECS),
+            vec![Some(0), None, Some(1)]
+        );
+
+        // A folder holding only part of the release keeps the right partners.
+        let partial = [timed("only", 142)];
+        assert_eq!(
+            align_by_duration_sequence(&partial, &candidates, DURATION_SEQUENCE_TOLERANCE_SECS),
+            vec![Some(1)]
+        );
+    }
+
+    #[test]
+    fn duration_sequence_preserves_order_and_ignores_unknown_lengths() {
+        // Order is preserved: a later file cannot claim an earlier track.
+        let locals = [timed("a", 142), timed("b", 278)];
+        let candidates = [timed("x", 278), timed("y", 142)];
+        let aligned =
+            align_by_duration_sequence(&locals, &candidates, DURATION_SEQUENCE_TOLERANCE_SECS);
+        assert!(
+            aligned.iter().flatten().count() <= 1,
+            "must not cross-match out of order"
+        );
+
+        // A track with no known length simply doesn't pair.
+        let unknown = [track("no length", None)];
+        assert_eq!(
+            align_by_duration_sequence(&unknown, &candidates, DURATION_SEQUENCE_TOLERANCE_SECS),
+            vec![None]
+        );
     }
 
     #[test]

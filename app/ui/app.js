@@ -894,7 +894,8 @@ function renderReleaseTracks() {
       <td class="sel"><input type="checkbox" checked data-i="${i}" /></td>
       <td class="mono">${escapeHtml(t.position)}</td>
       <td>${escapeHtml(t.artist || currentRelease.artist)}</td>
-      <td title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</td>`;
+      <td title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</td>
+      <td class="mono muted">${t.duration_secs ? fmtTime(t.duration_secs) : "—"}</td>`;
     releaseTracksBody.appendChild(tr);
   });
 }
@@ -913,6 +914,7 @@ async function autoMatchTracks() {
     position: t.position,
     artist: t.artist || currentRelease.artist,
     title: t.title,
+    duration_secs: t.duration_secs ?? null,
   }));
   try {
     const aligned = await invoke("auto_align", { paths, tracks: releaseTracks });
@@ -947,7 +949,12 @@ async function autoMatchTracks() {
 function enabledReleaseTracks() {
   return [...releaseTracksBody.querySelectorAll(".sel input:checked")].map((cb) => {
     const t = currentRelease.tracks[Number(cb.dataset.i)];
-    return { position: t.position, artist: t.artist || currentRelease.artist, title: t.title };
+    return {
+      position: t.position,
+      artist: t.artist || currentRelease.artist,
+      title: t.title,
+      duration_secs: t.duration_secs ?? null,
+    };
   });
 }
 
@@ -1384,9 +1391,9 @@ function mockInvoke(cmd, args) {
         genres: ["Electronic"],
         styles: ["Trance", "Tribal", "Techno"],
         tracks: [
-          { position: "1", artist: "The X Factor", title: "Desert Rain" },
-          { position: "2", artist: "Wish Mountain", title: "Radio" },
-          { position: "3", artist: "West Coast Connection", title: "Voodoo Rhythm" },
+          { position: "1", artist: "The X Factor", title: "Desert Rain", duration_secs: 278 },
+          { position: "2", artist: "Wish Mountain", title: "Radio", duration_secs: 142 },
+          { position: "3", artist: "West Coast Connection", title: "Voodoo Rhythm", duration_secs: 321 },
         ],
         cover_image_url: "https://img.discogs.com/mock/front.jpg",
       });

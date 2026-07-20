@@ -289,6 +289,10 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .to_string(),
+                    duration_secs: entry
+                        .get("duration")
+                        .and_then(Value::as_str)
+                        .and_then(parse_duration),
                 })
                 .collect()
         })
@@ -304,6 +308,27 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         tracks,
         cover_image_url: primary_image_url(root.get("images")),
     })
+}
+
+/// Parse a listed track length into seconds.
+///
+/// Discogs writes these as `M:SS`, occasionally `H:MM:SS`, and very often as an
+/// empty string — the field is transcribed by hand, so absent or malformed
+/// values are the norm rather than an error worth surfacing.
+fn parse_duration(value: &str) -> Option<u64> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut seconds: u64 = 0;
+    let mut parts = 0;
+    for part in trimmed.split(':') {
+        let number: u64 = part.trim().parse().ok()?;
+        seconds = seconds.checked_mul(60)?.checked_add(number)?;
+        parts += 1;
+    }
+    // Bare "238" is not a duration; require at least minutes and seconds.
+    (2..=3).contains(&parts).then_some(seconds)
 }
 
 /// The full-resolution URL of a release's primary image. Discogs marks one
@@ -442,8 +467,8 @@ mod tests {
             ],
             "tracklist": [
                 {"type_": "heading", "position": "", "title": "Side A"},
-                {"type_": "track", "position": "A", "title": "Never Gonna Give You Up"},
-                {"position": "B", "title": "Never Gonna Give You Up (Instrumental)"}
+                {"type_": "track", "position": "A", "title": "Never Gonna Give You Up", "duration": "3:32"},
+                {"position": "B", "title": "Never Gonna Give You Up (Instrumental)", "duration": ""}
             ]
         }"#;
         let release = parse_release(body).unwrap();
@@ -462,6 +487,9 @@ mod tests {
         // Heading filtered out; two real tracks remain.
         assert_eq!(release.tracks.len(), 2);
         assert_eq!(release.tracks[0].position, "A");
+        assert_eq!(release.tracks[0].duration_secs, Some(212));
+        // An empty duration is normal on Discogs, not an error.
+        assert_eq!(release.tracks[1].duration_secs, None);
         assert_eq!(
             release.tracks[1].title,
             "Never Gonna Give You Up (Instrumental)"
@@ -483,6 +511,20 @@ mod tests {
         // No images at all -> None.
         assert_eq!(primary_image_url(None), None);
         assert_eq!(primary_image_url(Some(&serde_json::json!([]))), None);
+    }
+
+    #[test]
+    fn parses_listed_durations_and_tolerates_junk() {
+        assert_eq!(parse_duration("4:38"), Some(278));
+        assert_eq!(parse_duration("2:22"), Some(142));
+        assert_eq!(parse_duration(" 5:21 "), Some(321));
+        assert_eq!(parse_duration("1:04:38"), Some(3878));
+        // Absent or unusable values are simply unknown.
+        assert_eq!(parse_duration(""), None);
+        assert_eq!(parse_duration("   "), None);
+        assert_eq!(parse_duration("?"), None);
+        // A bare number is not a duration.
+        assert_eq!(parse_duration("238"), None);
     }
 
     #[test]

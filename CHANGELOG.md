@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- Use track lengths as a matching signal (#64). Release track durations are now
+  parsed and shown in the release view, and folded into the match score:
+  agreement confirms, a large gap lowers confidence and is reported as a delta,
+  but length never rejects a candidate on its own — provider durations are
+  hand-transcribed and disagree with real files too often to be trusted that
+  far. Adds order-preserving alignment by duration sequence for the case that
+  matters most: a folder of `track01.mp3`-style files with no usable titles,
+  where the ordered vector of lengths identifies the release on its own.
 - Match provider candidates by content instead of result order (#53). A new
   matching module normalizes titles progressively (case, throwaway attributes
   like "Original Mix", punctuation, leading articles), takes an exact hit at any
