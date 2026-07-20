@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TagRex app icon">
   <rect width="512" height="512" rx="115" fill="#085041"/>
   <g transform="translate(74,126) scale(2.6)">
-    <path d="M4,14 Q4,6 12,6 L92,6 L136,50 L92,94 L12,94 Q4,94 4,86 Z M39,50 A9,9 0 1 0 21,50 A9,9 0 1 0 39,50 Z" fill="#E1F5EE" fill-rule="evenodd"/>
+    <path d="M4,14 Q4,6 12,6 L92,6 L128,42 Q136,50 128,58 L92,94 L12,94 Q4,94 4,86 Z M39,50 A9,9 0 1 0 21,50 A9,9 0 1 0 39,50 Z M37,44 L42,44 L42,20 L37,20 Z M42,20 L51,25 L51,31 L42,26 Z" fill="#E1F5EE" fill-rule="evenodd"/>
   </g>
 </svg>
