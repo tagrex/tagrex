@@ -132,6 +132,16 @@ first release ships.
 
 ### Fixed
 
+- Discogs disambiguation suffixes are stripped from every artist in a credit,
+  not only the last one (#69). Discogs tags each artist individually, so a
+  joined credit carries them mid-string — `Zolex (2), Carat Trax (3)`,
+  `Oxygen (9) feat. Nbg (2)` — and only the trailing one was removed. Search
+  results were worse off: they arrive as one combined "Artist - Title" string
+  and were not cleaned at all, so every suffix survived into the candidate list.
+  A suffix is now removed wherever it is followed by a name boundary, which
+  keeps genuine parentheticals like `Godspeed You! Black Emperor (F#A#)` and
+  `Apollo (440) Sound` intact.
+
 - Folder masks respect the platform separator (#71). Only `/` counted as a
   directory boundary, so a pattern written with `\` — the natural form on
   Windows, and what an imported configuration carries — was not recognised as

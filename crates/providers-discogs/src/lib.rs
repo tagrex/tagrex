@@ -170,17 +170,48 @@ impl TransformStep for StripDiscogsSuffix {
     }
 
     fn apply(&self, input: &str) -> String {
-        let trimmed = input.trim_end();
-        if trimmed.ends_with(')') {
-            if let Some(open) = trimmed.rfind(" (") {
-                let inner = &trimmed[open + 2..trimmed.len() - 1];
-                if !inner.is_empty() && inner.bytes().all(|byte| byte.is_ascii_digit()) {
-                    return trimmed[..open].to_string();
-                }
+        let mut out = String::with_capacity(input.len());
+        let mut rest = input;
+        while let Some(open) = rest.find(" (") {
+            let after_open = open + 2;
+            let Some(offset) = rest[after_open..].find(')') else {
+                break;
+            };
+            let close = after_open + offset;
+            let inner = &rest[after_open..close];
+            let following = &rest[close + 1..];
+
+            if !inner.is_empty()
+                && inner.bytes().all(|byte| byte.is_ascii_digit())
+                && ends_a_name(following)
+            {
+                out.push_str(&rest[..open]);
+            } else {
+                out.push_str(&rest[..=close]);
             }
+            rest = following;
         }
-        input.to_string()
+        out.push_str(rest);
+        out
     }
+}
+
+/// Whether what follows a ` (N)` marks the end of an artist name, meaning the
+/// parentheses were Discogs' disambiguation rather than part of the name.
+///
+/// Discogs attaches the suffix to *each* artist in a credit, so it also turns up
+/// mid-string in a joined one — `Artist (2), Other (3)`, `Artist (2) feat.
+/// Other`. Requiring a real boundary is what keeps a genuine parenthetical like
+/// `Godspeed You! Black Emperor (F#A#)` intact.
+fn ends_a_name(following: &str) -> bool {
+    let trimmed = following.trim_start();
+    if trimmed.is_empty() || trimmed.starts_with([',', ';', '/', ')', '&']) {
+        return true;
+    }
+    let lowered = trimmed.to_ascii_lowercase();
+    ["feat.", "feat ", "featuring", "presents", "vs.", "vs "]
+        .iter()
+        .any(|join| lowered.starts_with(join))
 }
 
 fn artist_cleaner() -> TransformChain {
@@ -214,6 +245,7 @@ fn parse_search_response(body: &str) -> Result<Vec<ReleaseCandidate>, ProviderEr
             ProviderError::Other("search response missing `results` array".to_string())
         })?;
 
+    let cleaner = artist_cleaner();
     let count = results.len();
     let candidates = results
         .iter()
@@ -226,8 +258,11 @@ fn parse_search_response(body: &str) -> Result<Vec<ReleaseCandidate>, ProviderEr
                 .unwrap_or_default();
             // Discogs search results carry a combined "Artist - Title" string
             // rather than separate fields.
+            // Search hits arrive as one "Artist - Title" string rather than a
+            // structured artist list, so the disambiguation suffixes are still
+            // in there — and there may be several artists in the one string.
             let (artist, title) = match combined.split_once(" - ") {
-                Some((artist, title)) => (artist.trim().to_string(), title.trim().to_string()),
+                Some((artist, title)) => (cleaner.apply(artist.trim()), title.trim().to_string()),
                 None => (String::new(), combined.trim().to_string()),
             };
             Some(ReleaseCandidate {
@@ -428,6 +463,47 @@ mod tests {
             "Godspeed You! Black Emperor (F#A#)"
         );
         assert_eq!(step.apply("The B-52's"), "The B-52's");
+    }
+
+    #[test]
+    fn strips_the_suffix_from_every_artist_in_a_joined_credit() {
+        let step = StripDiscogsSuffix;
+        // Discogs tags each artist in a credit, so the suffix also appears
+        // mid-string once the names are joined.
+        assert_eq!(step.apply("Zolex (2), Carat Trax (3)"), "Zolex, Carat Trax");
+        assert_eq!(step.apply("Oxygen (9) feat. Nbg (2)"), "Oxygen feat. Nbg");
+        assert_eq!(step.apply("A (2) / B (11)"), "A / B");
+        assert_eq!(step.apply("A (2); B (3)"), "A; B");
+        assert_eq!(step.apply("A (2) & B"), "A & B");
+        assert_eq!(
+            step.apply("Zolex (2) Presents Carat Trax"),
+            "Zolex Presents Carat Trax"
+        );
+
+        // A parenthetical that isn't a boundary-marked number stays put.
+        assert_eq!(
+            step.apply("Godspeed You! Black Emperor (F#A#)"),
+            "Godspeed You! Black Emperor (F#A#)"
+        );
+        // Digits in parentheses that are part of the name, not a suffix.
+        assert_eq!(step.apply("Apollo (440) Sound"), "Apollo (440) Sound");
+    }
+
+    #[test]
+    fn search_results_have_their_artist_suffixes_cleaned() {
+        // Search hits arrive as one combined "Artist - Title" string, so the
+        // per-name cleaning the release path gets doesn't apply there.
+        let body = r#"{
+            "results": [
+                {"id": 1, "title": "Aphex Twin (3) - Selected Ambient Works", "year": "1992"},
+                {"id": 2, "title": "Zolex (2), Carat Trax (3) - Beautiful Inside"}
+            ]
+        }"#;
+        let candidates = parse_search_response(body).unwrap();
+        assert_eq!(candidates[0].artist, "Aphex Twin");
+        assert_eq!(candidates[1].artist, "Zolex, Carat Trax");
+        // Titles are untouched.
+        assert_eq!(candidates[0].title, "Selected Ambient Works");
     }
 
     #[test]
