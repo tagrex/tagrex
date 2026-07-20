@@ -270,6 +270,7 @@ function renderTracks() {
   el("export-open").disabled = tracks.length === 0;
   el("fields-open").disabled = tracks.length === 0;
   el("move-open").disabled = tracks.length === 0;
+  el("transform-open").disabled = tracks.length === 0;
   updateEditsButton();
   applyBtn.disabled = true;
   previewTable.hidden = true;
@@ -705,6 +706,196 @@ tracksBody.addEventListener("click", (e) => {
   const btn = e.target.closest("td.play button");
   if (btn) playTrack(btn.dataset.path);
 });
+
+// ---- transformations (#34) ----
+// An ordered chain of cleanup rules applied to tags or filenames. The rules
+// live here only for the length of the dialog; naming and saving chains is
+// tracked separately (#57).
+let transformRules = [];
+
+function openTransform() {
+  const count = selectedPaths().length;
+  if (count === 0) {
+    toast("Select the tracks to transform first", true);
+    return;
+  }
+  el("transform-count").textContent = `${count} file(s)`;
+  renderTransformRules();
+  el("transform-modal").hidden = false;
+}
+
+function closeTransform() {
+  el("transform-modal").hidden = true;
+}
+
+function addTransformRule() {
+  const kind = el("transform-kind").value;
+  transformRules.push({
+    kind,
+    from: "",
+    to: "",
+    regex: false,
+    whole_word: false,
+    case_sensitive: false,
+    style: kind === "case" ? "title" : "",
+  });
+  renderTransformRules();
+}
+
+function renderTransformRules() {
+  const body = el("transform-rules");
+  body.innerHTML = "";
+  el("transform-empty").hidden = transformRules.length > 0;
+
+  transformRules.forEach((rule, index) => {
+    const tr = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.className = "rule-cell";
+
+    const header = document.createElement("div");
+    header.className = "rule-head";
+    header.innerHTML = `<span class="rule-index">${index + 1}</span>`;
+
+    const label = document.createElement("span");
+    label.textContent =
+      rule.kind === "replace"
+        ? "Find and replace"
+        : rule.kind === "case"
+          ? "Change case"
+          : "Remove diacritics";
+    header.appendChild(label);
+
+    const spacer = document.createElement("div");
+    spacer.className = "spacer";
+    header.appendChild(spacer);
+
+    // Order matters — case conversion before or after an acronym fix gives
+    // different results — so rules can be moved.
+    const up = document.createElement("button");
+    up.className = "icon";
+    up.textContent = "↑";
+    up.title = "Move up";
+    up.disabled = index === 0;
+    up.addEventListener("click", () => {
+      [transformRules[index - 1], transformRules[index]] = [
+        transformRules[index],
+        transformRules[index - 1],
+      ];
+      renderTransformRules();
+    });
+    const down = document.createElement("button");
+    down.className = "icon";
+    down.textContent = "↓";
+    down.title = "Move down";
+    down.disabled = index === transformRules.length - 1;
+    down.addEventListener("click", () => {
+      [transformRules[index + 1], transformRules[index]] = [
+        transformRules[index],
+        transformRules[index + 1],
+      ];
+      renderTransformRules();
+    });
+    const remove = document.createElement("button");
+    remove.className = "icon";
+    remove.textContent = "✕";
+    remove.title = "Remove rule";
+    remove.addEventListener("click", () => {
+      transformRules.splice(index, 1);
+      renderTransformRules();
+    });
+    header.append(up, down, remove);
+    cell.appendChild(header);
+
+    if (rule.kind === "replace") {
+      const row = document.createElement("div");
+      row.className = "rule-body";
+      const from = document.createElement("input");
+      from.type = "text";
+      from.placeholder = "find";
+      from.value = rule.from;
+      from.spellcheck = false;
+      from.addEventListener("input", () => (rule.from = from.value));
+      const to = document.createElement("input");
+      to.type = "text";
+      to.placeholder = "replace with";
+      to.value = rule.to;
+      to.spellcheck = false;
+      to.addEventListener("input", () => (rule.to = to.value));
+      row.append(from, to);
+
+      for (const [key, text, hint] of [
+        ["regex", "regex", "Treat the pattern as a regular expression"],
+        ["whole_word", "whole word", "Only match complete words"],
+        ["case_sensitive", "match case", "Distinguish upper and lower case"],
+      ]) {
+        const label = document.createElement("label");
+        label.className = "rule-flag muted";
+        label.title = hint;
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = rule[key];
+        box.addEventListener("change", () => (rule[key] = box.checked));
+        label.append(box, document.createTextNode(text));
+        row.appendChild(label);
+      }
+      cell.appendChild(row);
+    } else if (rule.kind === "case") {
+      const row = document.createElement("div");
+      row.className = "rule-body";
+      const style = document.createElement("select");
+      for (const [value, text] of [
+        ["title", "Title Case"],
+        ["lower", "lower case"],
+        ["upper", "UPPER CASE"],
+        ["sentence", "Sentence case"],
+      ]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = text;
+        style.appendChild(option);
+      }
+      style.value = rule.style;
+      style.addEventListener("change", () => (rule.style = style.value));
+      row.appendChild(style);
+      const note = document.createElement("span");
+      note.className = "muted";
+      note.textContent = "Known acronyms and roman numerals keep their casing.";
+      row.appendChild(note);
+      cell.appendChild(row);
+    }
+
+    tr.appendChild(cell);
+    body.appendChild(tr);
+  });
+}
+
+async function previewTransform() {
+  const paths = selectedPaths();
+  if (transformRules.length === 0) {
+    toast("Add at least one rule", true);
+    return;
+  }
+  try {
+    previewPlan = await invoke("preview_transform", {
+      paths,
+      rules: transformRules,
+      scope: el("transform-scope").value,
+    });
+    // A filename transform is a rename; a tag transform is an edit. Either way
+    // it applies through the normal preview/apply/undo path.
+    previewSource = el("transform-scope").value === "filename" ? "rename" : "transform";
+    closeTransform();
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing ${previewPlan.changes.length} file(s) — click Apply`
+        : "These rules change nothing on the selection",
+      previewPlan.changes.length === 0
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
 
 // ---- reorganize into folders (#37) ----
 function openMove() {
@@ -1202,6 +1393,13 @@ applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
 coverOpenBtn.addEventListener("click", chooseCover);
 coverExportBtn.addEventListener("click", exportCover);
+el("transform-open").addEventListener("click", openTransform);
+el("transform-close").addEventListener("click", closeTransform);
+el("transform-add").addEventListener("click", addTransformRule);
+el("transform-preview").addEventListener("click", previewTransform);
+el("transform-modal").addEventListener("click", (e) => {
+  if (e.target === el("transform-modal")) closeTransform();
+});
 el("move-open").addEventListener("click", openMove);
 el("move-close").addEventListener("click", closeMove);
 el("move-preview").addEventListener("click", previewMove);
@@ -1478,6 +1676,46 @@ function mockInvoke(cmd, args) {
         })
         .filter(Boolean);
       return Promise.resolve({ description: "Rename by mask", changes });
+    }
+    case "preview_transform": {
+      // Mirrors the backend closely enough to exercise the dialog: literal
+      // replace plus title-casing, over tags or the file name.
+      const applyRules = (value) => {
+        let out = value;
+        for (const rule of args.rules) {
+          if (rule.kind === "replace" && rule.from) {
+            out = out.split(rule.from).join(rule.to);
+          } else if (rule.kind === "case" && rule.style === "title") {
+            out = out.replace(/[\p{L}\p{N}']+/gu, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+          } else if (rule.kind === "case" && rule.style === "lower") {
+            out = out.toLowerCase();
+          } else if (rule.kind === "case" && rule.style === "upper") {
+            out = out.toUpperCase();
+          }
+        }
+        return out;
+      };
+      const changes = args.paths
+        .map((p) => {
+          const t = findTrack(p);
+          if (!t) return null;
+          if (args.scope === "filename") {
+            const dir = p.slice(0, p.lastIndexOf("/") + 1);
+            const base = p.slice(p.lastIndexOf("/") + 1, p.lastIndexOf("."));
+            const ext = p.slice(p.lastIndexOf("."));
+            const renamed = applyRules(base);
+            return renamed === base ? null : { path: p, rename_to: `${dir}${renamed}${ext}`, tag_changes: [] };
+          }
+          const tag_changes = [];
+          for (const [field, value] of Object.entries(t.tags)) {
+            if (args.scope !== "tags" && args.scope !== field) continue;
+            const next = applyRules(value);
+            if (next !== value) tag_changes.push({ field, old: value, new: next });
+          }
+          return tag_changes.length ? { path: p, rename_to: null, tag_changes } : null;
+        })
+        .filter(Boolean);
+      return Promise.resolve({ description: "Transform", changes });
     }
     case "preview_move": {
       const changes = args.paths

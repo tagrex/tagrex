@@ -639,3 +639,52 @@ input.field-input {
 input.field-input.dirty {
   border-color: var(--accent);
 }
+
+/* ---- transformation rules (#34) ---- */
+td.rule-cell {
+  white-space: normal;
+  max-width: none;
+}
+
+.rule-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.rule-index {
+  display: inline-block;
+  min-width: 18px;
+  text-align: center;
+  color: var(--accent);
+}
+
+.rule-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rule-body input[type="text"],
+.rule-body select {
+  flex: 1 1 140px;
+  min-width: 100px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.rule-flag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  white-space: nowrap;
+}

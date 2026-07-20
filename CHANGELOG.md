@@ -10,6 +10,16 @@ first release ships.
 
 ### Added
 
+- Text transformations (#34): a "Transform…" dialog runs an ordered chain of
+  cleanup rules over the selected files' tags or filenames, previewed and applied
+  through the normal journaled path. Rules are find-and-replace (literal or
+  regex, with whole-word and case-sensitivity switches), change case (lower,
+  UPPER, Title, Sentence — with a data-driven exception list that keeps acronyms
+  and roman numerals like `DJ` and `III` from being mangled), and remove
+  diacritics (`Björk` → `Bjork`, expanding ligatures and `ß`). Rules can be
+  reordered and scoped to all tags, one field, or the file name. A malformed
+  rule (bad regex, unknown kind) is reported rather than silently doing nothing.
+
 - Conditional sections in masks (#68). `[...]` renders only when a placeholder
   inside it resolved to something and is dropped whole otherwise, so one mask
   serves a library where some albums have a year and some don't:

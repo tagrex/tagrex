@@ -26,6 +26,9 @@ use tagrex_core::model::{CoverArt, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
 use tagrex_core::provider::{MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
+use tagrex_core::transform::{
+    CaseStyle, ChangeCase, RemoveDiacritics, Replace, ReplaceOptions, TransformChain,
+};
 use tagrex_providers_discogs::DiscogsProvider;
 
 /// One audio file as the table view sees it.
@@ -174,6 +177,26 @@ pub struct ImportSelectionDto {
     pub tracks: Vec<ImportTrackDto>,
 }
 
+/// One rule in a transformation chain, as the UI describes it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TransformRuleDto {
+    /// `replace`, `case` or `diacritics`.
+    pub kind: String,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub to: String,
+    #[serde(default)]
+    pub regex: bool,
+    #[serde(default)]
+    pub whole_word: bool,
+    #[serde(default)]
+    pub case_sensitive: bool,
+    /// For `case`: `lower`, `upper`, `title` or `sentence`.
+    #[serde(default)]
+    pub style: String,
+}
+
 /// A tagging session rooted at one library directory. The root doubles as the
 /// [`Executor`] `allowed_root`, so every write is confined to the opened
 /// library.
@@ -243,6 +266,84 @@ impl App {
         }
         Ok(PlanDto {
             description: format!("Rename by mask: {mask_pattern}"),
+            changes,
+        })
+    }
+
+    /// Preview applying a transformation chain, without writing (#34).
+    ///
+    /// `scope` is either `filename` — rewriting the file's stem, extension
+    /// untouched — or a tag storage key, or `tags` for every text field the file
+    /// carries. Producing a normal [`PlanDto`] means transformations preview,
+    /// apply and undo through exactly the same journaled path as every other
+    /// change; nothing here writes.
+    pub fn preview_transform(
+        &self,
+        paths: &[PathBuf],
+        rules: &[TransformRuleDto],
+        scope: &str,
+    ) -> Result<PlanDto, AppError> {
+        let chain = build_chain(rules)?;
+        let mut changes = Vec::new();
+
+        for path in paths {
+            let Ok(track) = TagEngine::read(path) else {
+                continue;
+            };
+
+            if scope == "filename" {
+                let stem = path
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let renamed = chain.apply(&stem);
+                if renamed == stem || renamed.trim().is_empty() {
+                    continue;
+                }
+                let file_name = match path.extension().and_then(|ext| ext.to_str()) {
+                    Some(ext) => format!("{renamed}.{ext}"),
+                    None => renamed,
+                };
+                changes.push(FileChangeDto {
+                    path: path.to_string_lossy().into_owned(),
+                    rename_to: Some(
+                        path.with_file_name(file_name)
+                            .to_string_lossy()
+                            .into_owned(),
+                    ),
+                    tag_changes: Vec::new(),
+                    cover_change: None,
+                });
+                continue;
+            }
+
+            let mut tag_changes = Vec::new();
+            for (field, value) in &track.tags {
+                let key = field.to_storage_key();
+                if scope != "tags" && scope != key {
+                    continue;
+                }
+                let transformed = chain.apply(value);
+                if transformed != *value {
+                    tag_changes.push(FieldChangeDto {
+                        field: key,
+                        old: Some(value.clone()),
+                        new: Some(transformed),
+                    });
+                }
+            }
+            if !tag_changes.is_empty() {
+                changes.push(FileChangeDto {
+                    path: path.to_string_lossy().into_owned(),
+                    rename_to: None,
+                    tag_changes,
+                    cover_change: None,
+                });
+            }
+        }
+
+        Ok(PlanDto {
+            description: format!("Transform ({scope})"),
             changes,
         })
     }
@@ -765,6 +866,39 @@ fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|v| !v.is_empty())
 }
 
+/// Turn the UI's rule list into a transform chain, rejecting a malformed rule
+/// rather than silently dropping it — a rule that quietly does nothing is worse
+/// than an error, because the preview would look like a no-op.
+fn build_chain(rules: &[TransformRuleDto]) -> Result<TransformChain, AppError> {
+    let mut chain = TransformChain::default();
+    for rule in rules {
+        match rule.kind.as_str() {
+            "replace" => chain.push(Box::new(Replace::new(
+                &rule.from,
+                &rule.to,
+                ReplaceOptions {
+                    regex: rule.regex,
+                    whole_word: rule.whole_word,
+                    case_sensitive: rule.case_sensitive,
+                },
+            )?)),
+            "case" => {
+                let style = match rule.style.as_str() {
+                    "lower" => CaseStyle::Lower,
+                    "upper" => CaseStyle::Upper,
+                    "title" => CaseStyle::Title,
+                    "sentence" => CaseStyle::Sentence,
+                    other => return Err(AppError::UnknownTransform(other.to_string())),
+                };
+                chain.push(Box::new(ChangeCase::new(style)));
+            }
+            "diacritics" => chain.push(Box::new(RemoveDiacritics)),
+            other => return Err(AppError::UnknownTransform(other.to_string())),
+        }
+    }
+    Ok(chain)
+}
+
 /// Read the given files, skipping any that can't be parsed — an export should
 /// cover what it can rather than failing wholesale on one bad file.
 fn read_tracks(paths: &[PathBuf]) -> Vec<tagrex_core::model::TrackFile> {
@@ -927,6 +1061,10 @@ pub enum AppError {
     OutsideRoot(String),
     #[error("invalid export file name: {0}")]
     InvalidFileName(String),
+    #[error("unknown transformation: {0}")]
+    UnknownTransform(String),
+    #[error(transparent)]
+    Transform(#[from] tagrex_core::transform::TransformError),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -1181,6 +1319,109 @@ mod tests {
         assert_eq!(track_number_from_position("1-05").as_deref(), Some("5"));
         assert_eq!(track_number_from_position("12").as_deref(), Some("12"));
         assert_eq!(track_number_from_position(""), None);
+    }
+
+    fn replace_rule(from: &str, to: &str) -> TransformRuleDto {
+        TransformRuleDto {
+            kind: "replace".into(),
+            from: from.into(),
+            to: to.into(),
+            regex: false,
+            whole_word: false,
+            case_sensitive: false,
+            style: String::new(),
+        }
+    }
+
+    fn case_rule(style: &str) -> TransformRuleDto {
+        TransformRuleDto {
+            kind: "case".into(),
+            style: style.into(),
+            ..replace_rule("", "")
+        }
+    }
+
+    #[test]
+    fn preview_transform_rewrites_tags_and_skips_unchanged_ones() {
+        let dir = TempDir::new("transform-tags");
+        let track = dir.tagged_flac("x.flac", "the_x_factor", "desert_rain");
+        let app = open_app(&dir);
+
+        let rules = vec![replace_rule("_", " "), case_rule("title")];
+        let plan = app
+            .preview_transform(std::slice::from_ref(&track), &rules, "tags")
+            .unwrap();
+
+        let changed: std::collections::BTreeMap<_, _> = plan.changes[0]
+            .tag_changes
+            .iter()
+            .map(|c| (c.field.clone(), c.new.clone().unwrap()))
+            .collect();
+        assert_eq!(
+            changed.get("artist").map(String::as_str),
+            Some("The X Factor")
+        );
+        assert_eq!(
+            changed.get("title").map(String::as_str),
+            Some("Desert Rain")
+        );
+    }
+
+    #[test]
+    fn preview_transform_can_target_one_field_or_the_filename() {
+        let dir = TempDir::new("transform-scope");
+        let track = dir.tagged_flac("the_x_factor_-_desert_rain.flac", "a_b", "c_d");
+        let app = open_app(&dir);
+        let rules = vec![replace_rule("_", " ")];
+
+        // A single field: the others are left alone.
+        let one = app
+            .preview_transform(std::slice::from_ref(&track), &rules, "artist")
+            .unwrap();
+        assert_eq!(one.changes[0].tag_changes.len(), 1);
+        assert_eq!(one.changes[0].tag_changes[0].field, "artist");
+
+        // The filename scope renames instead, keeping the extension.
+        let renamed = app
+            .preview_transform(std::slice::from_ref(&track), &rules, "filename")
+            .unwrap();
+        assert_eq!(
+            renamed.changes[0].rename_to.as_deref(),
+            Some(
+                dir.0
+                    .join("the x factor - desert rain.flac")
+                    .to_string_lossy()
+                    .as_ref()
+            )
+        );
+        assert!(renamed.changes[0].tag_changes.is_empty());
+    }
+
+    #[test]
+    fn preview_transform_reports_a_bad_rule_instead_of_ignoring_it() {
+        let dir = TempDir::new("transform-bad");
+        let track = dir.tagged_flac("x.flac", "Artist", "Title");
+        let app = open_app(&dir);
+
+        // A rule that silently did nothing would show an empty preview and look
+        // like "no changes needed", which is the wrong story to tell.
+        let unknown = vec![TransformRuleDto {
+            kind: "nonsense".into(),
+            ..replace_rule("a", "b")
+        }];
+        assert!(matches!(
+            app.preview_transform(std::slice::from_ref(&track), &unknown, "tags"),
+            Err(AppError::UnknownTransform(_))
+        ));
+
+        let bad_regex = vec![TransformRuleDto {
+            regex: true,
+            ..replace_rule("(unclosed", "x")
+        }];
+        assert!(matches!(
+            app.preview_transform(std::slice::from_ref(&track), &bad_regex, "tags"),
+            Err(AppError::Transform(_))
+        ));
     }
 
     #[test]

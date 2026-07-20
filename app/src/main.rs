@@ -16,7 +16,7 @@ use tauri::{Manager, State};
 use player::{Player, PlayerStatus};
 use tagrex::{
     App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, ImportSelectionDto, ImportTrackDto,
-    PlanDto, ReleaseDto, SearchQueryDto, TagEditDto, TrackDto,
+    PlanDto, ReleaseDto, SearchQueryDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -65,6 +65,20 @@ fn preview_rename(
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
         app.preview_rename(&mask, &paths).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn preview_transform(
+    state: State<AppState>,
+    paths: Vec<String>,
+    rules: Vec<TransformRuleDto>,
+    scope: String,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_transform(&paths, &rules, &scope)
+            .map_err(|e| e.to_string())
     })
 }
 
@@ -298,6 +312,7 @@ fn main() {
             list_tracks,
             preview_rename,
             preview_move,
+            preview_transform,
             preview_tag_edits,
             preview_cover_embed,
             export_cover,
