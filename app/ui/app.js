@@ -64,6 +64,9 @@ const plTime = el("pl-time");
 // the path it came from so re-clicking the same row toggles instead of reloads.
 let audioObjectUrl = null;
 let playingPath = null;
+// True while the current load was triggered by auto-advance (track ended), so
+// an error on an unsupported file skips ahead instead of just stopping.
+let autoAdvancing = false;
 
 const releaseTracksBody = el("release-tracks");
 const releaseCoverImg = el("release-cover");
@@ -298,6 +301,7 @@ async function openLibrary() {
     filterText = "";
     el("filter").value = "";
     renderTracks();
+    showPlayerBar();
     await refreshHistory();
     toast(`Opened ${root} — ${tracks.length} tracks`);
   } catch (e) {
@@ -478,9 +482,55 @@ function fmtTime(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function setPlayerControlsEnabled(on) {
+  plToggle.disabled = !on;
+  plStop.disabled = !on;
+  plSeek.disabled = !on;
+}
+
+// Reveal the player bar (once a library is open) so its controls are always on
+// screen, even with nothing loaded (#31).
+function showPlayerBar() {
+  playerBar.hidden = false;
+  playerIdle();
+}
+
+// Reset the player to its idle, no-track state: controls disabled, placeholder
+// title, zeroed time. The bar stays visible (#31). Also used when playback is
+// stopped or the playlist reaches its end.
+function playerIdle() {
+  playingPath = null; // set first, so the 'error' from clearing src is ignored
+  autoAdvancing = false;
+  audioEl.pause();
+  audioEl.removeAttribute("src");
+  audioEl.load();
+  if (audioObjectUrl) {
+    URL.revokeObjectURL(audioObjectUrl);
+    audioObjectUrl = null;
+  }
+  plTitle.textContent = "No track loaded";
+  plTitle.title = "";
+  plTime.textContent = "0:00 / 0:00";
+  plSeek.value = "0";
+  plToggle.textContent = "▶";
+  playerBar.classList.add("idle");
+  setPlayerControlsEnabled(false);
+  markPlayingRow();
+}
+
+// The path of the next visible row after `path` in the current table order
+// (respecting sort/filter/manual reorder — the DOM is the source of truth), or
+// null if `path` is the last visible row.
+function nextVisiblePath(path) {
+  const rows = [...tracksBody.querySelectorAll("tr")];
+  const i = rows.findIndex((r) => r.dataset.path === path);
+  return i >= 0 && rows[i + 1] ? rows[i + 1].dataset.path : null;
+}
+
 // Load `path` into the player and start playing. Clicking the already-loaded
-// track toggles play/pause instead of reloading.
-async function playTrack(path) {
+// track toggles play/pause instead of reloading. `auto` marks an auto-advance
+// so an unsupported file skips ahead rather than halting the run.
+async function playTrack(path, auto = false) {
   if (path === playingPath && audioEl.src) {
     togglePlay();
     return;
@@ -492,10 +542,13 @@ async function playTrack(path) {
     if (audioObjectUrl) URL.revokeObjectURL(audioObjectUrl);
     audioObjectUrl = URL.createObjectURL(blob);
     playingPath = path;
+    autoAdvancing = auto;
     audioEl.src = audioObjectUrl;
     plTitle.textContent = fileName(path);
     plTitle.title = path;
     playerBar.hidden = false;
+    playerBar.classList.remove("idle");
+    setPlayerControlsEnabled(true);
     await audioEl.play();
     markPlayingRow();
   } catch (e) {
@@ -508,17 +561,9 @@ function togglePlay() {
   else audioEl.pause();
 }
 
+// Manual stop returns the bar to its idle state (still visible, #31).
 function stopPlayback() {
-  audioEl.pause();
-  audioEl.removeAttribute("src");
-  audioEl.load();
-  if (audioObjectUrl) {
-    URL.revokeObjectURL(audioObjectUrl);
-    audioObjectUrl = null;
-  }
-  playingPath = null;
-  playerBar.hidden = true;
-  markPlayingRow();
+  playerIdle();
 }
 
 // Reflect the active track + play/pause state in the table without a full
@@ -534,6 +579,7 @@ function markPlayingRow() {
 }
 
 audioEl.addEventListener("loadedmetadata", () => {
+  autoAdvancing = false; // loaded fine; a later error is a real, manual failure
   plTime.textContent = `${fmtTime(0)} / ${fmtTime(audioEl.duration)}`;
 });
 audioEl.addEventListener("timeupdate", () => {
@@ -543,14 +589,29 @@ audioEl.addEventListener("timeupdate", () => {
 });
 audioEl.addEventListener("play", markPlayingRow);
 audioEl.addEventListener("pause", markPlayingRow);
+// Auto-advance to the next visible track when one ends, until the list runs out
+// or the user stops (#29). Pause/Stop don't fire 'ended', so they never advance.
 audioEl.addEventListener("ended", () => {
   plSeek.value = "0";
-  markPlayingRow();
+  const next = nextVisiblePath(playingPath);
+  if (next) playTrack(next, true);
+  else playerIdle(); // reached the end of the list
 });
 audioEl.addEventListener("error", () => {
-  if (!playingPath) return; // stop() clears src, which also fires 'error'
-  toast("Can't preview this file (format may be unsupported)", true);
-  stopPlayback();
+  if (!playingPath) return; // idle/stop clears src, which also fires 'error'
+  // During an auto-advance run, skip an unplayable file (e.g. OGG) and keep
+  // going; a manually-chosen unplayable file just reports and goes idle.
+  if (autoAdvancing) {
+    const next = nextVisiblePath(playingPath);
+    if (next) {
+      toast(`Skipped ${fileName(playingPath)} (unsupported format)`, true);
+      playTrack(next, true);
+      return;
+    }
+  } else {
+    toast("Can't preview this file (format may be unsupported)", true);
+  }
+  playerIdle();
 });
 
 plToggle.addEventListener("click", togglePlay);

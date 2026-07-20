@@ -504,8 +504,7 @@ tr.playing td.play button.play-btn {
 }
 
 #player {
-  position: sticky;
-  bottom: 0;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -517,6 +516,18 @@ tr.playing td.play button.play-btn {
 
 #player[hidden] {
   display: none;
+}
+
+#player button:disabled,
+#pl-seek:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Idle bar (no track loaded): muted title placeholder. */
+#player.idle #pl-title {
+  color: var(--muted);
+  font-style: italic;
 }
 
 #pl-title {

@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- Player auto-advance (#29): when a track finishes, the player automatically
+  plays the next visible track (respecting the current sort/filter/manual
+  order), continuing down the list until it ends or the user stops. An
+  unplayable file (e.g. an unsupported format) is skipped mid-run rather than
+  halting playback; a manually chosen unplayable file just reports and stops.
+- Always-visible player controls (#31): the player bar stays docked once a
+  library is open, showing a disabled idle state ("No track loaded", `0:00 /
+  0:00`) instead of appearing only during playback and vanishing on stop.
 - Built-in preview player (#28): a ▶ button on each track row auditions the
   file in an in-app player bar (play/pause, stop, seek, elapsed/total time) — no
   external player, no leaving the app. The backend streams the file's bytes to
