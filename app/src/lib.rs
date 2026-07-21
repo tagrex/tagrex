@@ -656,7 +656,7 @@ impl App {
             .filter(|batch| {
                 batch.plan.changes.iter().all(|change| {
                     under_root(&change.path)
-                        && change.rename_to.as_ref().map_or(true, |to| under_root(to))
+                        && change.rename_to.as_ref().is_none_or(|to| under_root(to))
                 })
             })
             .map(BatchDto::from)
