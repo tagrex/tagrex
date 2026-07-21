@@ -631,9 +631,36 @@ impl App {
         Ok(())
     }
 
-    /// Recorded batches, newest first.
+    /// Recorded batches for the currently open library, newest first. The undo
+    /// journal is shared across every library a user opens, so a batch from a
+    /// previously opened library can linger in it; surfacing that here would let
+    /// the UI offer an "undo" that then fails because the files live outside the
+    /// current `allowed_root`. Filtering to batches whose paths sit under the
+    /// open library keeps undo scoped to what the user is actually looking at.
     pub fn history(&self) -> Result<Vec<BatchDto>, AppError> {
-        Ok(self.journal.batches()?.iter().map(BatchDto::from).collect())
+        // A path belongs to the current library if it sits under the library
+        // root in either its raw or canonicalized form. Checking both avoids
+        // wrongly hiding a real batch when the two differ (e.g. a symlinked
+        // path), while still filtering out batches from other libraries.
+        let mut roots = vec![self.library_root.clone()];
+        if let Ok(canon) = std::fs::canonicalize(&self.library_root) {
+            if canon != self.library_root {
+                roots.push(canon);
+            }
+        }
+        let under_root = |path: &std::path::Path| roots.iter().any(|r| path.starts_with(r));
+        Ok(self
+            .journal
+            .batches()?
+            .iter()
+            .filter(|batch| {
+                batch.plan.changes.iter().all(|change| {
+                    under_root(&change.path)
+                        && change.rename_to.as_ref().map_or(true, |to| under_root(to))
+                })
+            })
+            .map(BatchDto::from)
+            .collect())
     }
 
     /// Search a metadata provider (Discogs) with the given personal token.

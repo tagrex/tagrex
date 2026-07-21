@@ -142,6 +142,14 @@ first release ships.
 
 ### Fixed
 
+- Undo is scoped to the currently open library (#75). The undo journal is shared
+  across every library you open, so after working in one library and opening
+  another, the second library's Undo offered the first's batches — and undoing
+  one then failed with "path resolves outside the allowed root", stranding it.
+  History now lists only batches whose files sit under the open library (matched
+  against both the raw and canonicalized root), so Undo always applies to what
+  you are actually looking at.
+
 - Discogs disambiguation suffixes are stripped from every artist in a credit,
   not only the last one (#69). Discogs tags each artist individually, so a
   joined credit carries them mid-string — `Zolex (2), Carat Trax (3)`,
