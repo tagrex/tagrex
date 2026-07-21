@@ -7,30 +7,41 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <header class="toolbar">
+    <!-- Top bar: brand, library path + open, undo. The library path is the app's
+         single source of files (the scanner recurses into subfolders). -->
+    <header class="topbar">
       <div class="brand">/tagrex/</div>
       <div class="lib">
         <input id="root" type="text" placeholder="/path/to/music/library" spellcheck="false" />
+        <button id="browse" title="Choose a folder to open">Browse…</button>
         <button id="open">Open</button>
       </div>
       <div class="spacer"></div>
-      <button id="cover-open" disabled title="Embed a cover image into the selected files">Cover…</button>
-      <button id="cover-export" disabled title="Export the embedded cover of the selected files to disk (cover.jpg)">Export cover</button>
-      <button id="transform-open" disabled title="Clean up tags or filenames with a chain of rules">Transform…</button>
-      <button id="move-open" disabled title="Move the selected files into folders built from their tags">Reorganize…</button>
-      <button id="fields-open" disabled title="Edit every tag field of the selected files">Fields…</button>
-      <button id="export-open" disabled title="Export the selected tracks as a playlist, CSV, or text report">Export…</button>
-      <button id="discogs-open" disabled title="Import metadata from Discogs">Discogs…</button>
       <button id="undo" disabled title="Undo the last applied batch">Undo last</button>
     </header>
-    <input id="cover-file" type="file" accept="image/*" hidden />
 
-    <main>
-      <section id="tracks-panel">
-        <div class="panel-head">
-          <h2>Tracks <span id="track-count" class="muted"></span></h2>
-          <span class="hint muted edit-hint">Double-click a cell to edit</span>
+    <!-- Mode tabs — the file table stays put; only the right-hand panel swaps.
+         Table is the subject (noun), each tab is a verb applied to it. -->
+    <nav class="modebar">
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="renamer" title="Rename files and reorganize them into folders">RENAMER</button>
+        <button class="mode-tab" data-mode="tagger" title="Edit tags — from Discogs, by hand, and cover art">TAGGER</button>
+        <button class="mode-tab" data-mode="generator" title="Generate and clean up tag/filename values">GENERATOR</button>
+        <button class="mode-tab" data-mode="exporter" title="Export playlists, CSV, and reports">EXPORTER</button>
+      </div>
+      <div class="spacer"></div>
+      <button id="panel-toggle" class="icon" title="Collapse the mode panel (more room for the table)">⇥</button>
+    </nav>
+
+    <main class="workarea">
+      <!-- Files column: the persistent table, plus a Preview view over it that
+           every mutating mode funnels its change plan into. -->
+      <section class="files-col">
+        <div class="view-tabs">
+          <button id="view-files" class="view-tab active" data-view="files">Files <span id="track-count" class="muted"></span></button>
+          <button id="view-preview" class="view-tab" data-view="preview" disabled>Preview</button>
           <div class="spacer"></div>
+          <span class="hint muted edit-hint">Double-click a cell to edit</span>
           <label class="group-ctl muted"
             >Group
             <select id="group-by" title="Group rows by a key (view only — file order is unchanged)">
@@ -44,9 +55,9 @@
           <button id="expand-all" hidden title="Expand every group">Expand all</button>
           <button id="collapse-all" hidden title="Collapse every group">Collapse all</button>
           <input id="filter" type="search" placeholder="Filter…" spellcheck="false" />
-          <button id="preview-edits" disabled>Preview edits</button>
         </div>
-        <div class="table-wrap">
+
+        <div id="files-view" class="table-wrap">
           <table id="tracks">
             <thead>
               <tr>
@@ -63,255 +74,235 @@
           </table>
           <p id="tracks-empty" class="empty">Open a library to list its tracks.</p>
         </div>
+
+        <!-- Preview view: the current→new diff for the staged change plan. -->
+        <div id="preview-view" hidden>
+          <div class="preview-bar">
+            <span class="hint muted" style="padding: 0">Review the change, then apply — nothing is written until you do.</span>
+            <div class="spacer"></div>
+            <button id="discard">Discard</button>
+            <button id="apply" class="primary" disabled>Apply</button>
+          </div>
+          <div class="table-wrap">
+            <table id="preview-table" hidden>
+              <thead>
+                <tr>
+                  <th>Current</th>
+                  <th></th>
+                  <th>New</th>
+                </tr>
+              </thead>
+              <tbody id="preview-body"></tbody>
+            </table>
+            <p id="preview-empty" class="empty" hidden></p>
+          </div>
+        </div>
       </section>
 
-      <section id="rename-panel">
-        <div class="panel-head">
-          <h2>Rename by mask</h2>
-        </div>
-        <div class="mask-row">
-          <input
-            id="mask"
-            type="text"
-            value="%artist% - %title%"
-            spellcheck="false"
-            placeholder="%artist% - %title%"
-          />
-          <button id="preview" disabled>Preview</button>
-          <button id="apply" class="primary" disabled>Apply</button>
-        </div>
-        <p class="hint muted">
-          Placeholders: %artist% %title% %album% %albumartist% %track% %disc% %year% %genre%
-          %composer% %publisher% %bpm% %isrc% %key% %catalognumber%. Wrap optional parts in [brackets] — they are
-          dropped whole when empty, e.g. %album%[ (%year%)]. Track numbers pad to two digits; set
-          another width with %disc:2%. Preview shows the change before anything is written.
-        </p>
-        <div class="table-wrap">
-          <table id="preview-table" hidden>
-            <thead>
-              <tr>
-                <th>Current</th>
-                <th></th>
-                <th>New</th>
-              </tr>
-            </thead>
-            <tbody id="preview-body"></tbody>
-          </table>
-          <p id="preview-empty" class="empty" hidden></p>
-        </div>
-      </section>
+      <div id="col-splitter" class="col-splitter" title="Drag to resize"></div>
+
+      <!-- Mode panels: exactly one is shown, matching the active tab. -->
+      <aside class="mode-col">
+        <!-- RENAMER: rename by mask + reorganize into folders. -->
+        <section id="panel-renamer" class="mode-panel">
+          <div class="panel-block">
+            <h2>Rename by mask</h2>
+            <div class="mask-row">
+              <input id="mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
+            </div>
+            <p class="hint muted">
+              Placeholders: %artist% %title% %album% %albumartist% %track% %disc% %year% %genre%
+              %composer% %publisher% %bpm% %isrc% %key% %catalognumber%. Wrap optional parts in
+              [brackets] — dropped whole when empty, e.g. %album%[ (%year%)]. Track numbers pad to two
+              digits; set another width with %disc:2%.
+            </p>
+            <div class="panel-actions">
+              <div class="spacer"></div>
+              <button id="preview" class="primary" disabled>Preview rename</button>
+            </div>
+          </div>
+
+          <div class="panel-block">
+            <h2>Reorganize into folders</h2>
+            <p class="hint muted">
+              Use <code>/</code> (or <code>\</code>) to separate folders. Optional parts go in
+              [brackets] and vanish when empty. Paths are built under the opened library; tag values
+              can't introduce a folder, only separators in the pattern do.
+            </p>
+            <label class="export-row"
+              >Pattern
+              <input id="move-mask" type="text" spellcheck="false" value="%albumartist%/%year% - %album%/%track% - %title%" />
+            </label>
+            <div class="panel-actions">
+              <div class="spacer"></div>
+              <button id="move-preview" class="primary">Preview move</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAGGER: everything about tags — online source, field editor, cover. -->
+        <section id="panel-tagger" class="mode-panel" hidden>
+          <div class="panel-block">
+            <h2>Online source — Discogs</h2>
+            <div id="discogs-search-view">
+              <input id="discogs-token" type="password" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
+              <div class="mask-row" style="padding: 6px 0 0">
+                <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
+                <button id="discogs-search">Search</button>
+              </div>
+              <p class="hint muted" style="padding: 6px 0 0">Click a release to see its tracklist, then choose which tracks to import.</p>
+              <div class="table-wrap panel-list">
+                <table>
+                  <tbody id="discogs-results"></tbody>
+                </table>
+                <p id="discogs-empty" class="empty">Search Discogs to see releases.</p>
+              </div>
+            </div>
+
+            <div id="discogs-release-view" hidden>
+              <div class="release-head">
+                <button id="discogs-back" class="icon">← results</button>
+                <img id="release-cover" class="release-cover" hidden alt="Release cover" />
+                <div id="release-title" class="release-title"></div>
+              </div>
+              <div class="release-actions">
+                <button id="tracks-all">Enable all</button>
+                <button id="tracks-none">Disable all</button>
+                <button id="auto-match" title="Reorder your selected files to line up with this tracklist, matching by title">Auto-match</button>
+                <button id="cover-embed" hidden title="Embed this cover into the selected files">Embed cover</button>
+              </div>
+              <div class="table-wrap panel-list">
+                <table>
+                  <thead>
+                    <tr>
+                      <th class="sel"></th>
+                      <th>#</th>
+                      <th>Artist</th>
+                      <th>Title</th>
+                      <th>Length</th>
+                    </tr>
+                  </thead>
+                  <tbody id="release-tracks"></tbody>
+                </table>
+              </div>
+              <div class="panel-actions">
+                <div class="spacer"></div>
+                <button id="import-apply" class="primary">Import to selected files</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-block">
+            <h2>Tag fields <span id="fields-count" class="muted"></span></h2>
+            <p class="hint muted" style="padding: 0">
+              Only fields you change are written; a field whose value differs across the selection
+              shows <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
+            </p>
+            <div class="table-wrap panel-list">
+              <table>
+                <tbody id="fields-body"></tbody>
+              </table>
+            </div>
+            <div class="export-row">
+              <input id="fields-new-name" type="text" placeholder="custom field name" spellcheck="false" />
+              <input id="fields-new-value" type="text" placeholder="value" spellcheck="false" />
+              <button id="fields-add">Add field</button>
+            </div>
+            <div class="panel-actions">
+              <div class="spacer"></div>
+              <button id="fields-apply" class="primary">Stage field changes</button>
+            </div>
+          </div>
+
+          <div class="panel-block">
+            <h2>Cover art</h2>
+            <div class="panel-actions">
+              <button id="cover-open" title="Embed a cover image into the selected files">Embed cover…</button>
+              <button id="cover-export" title="Export the embedded cover of the selected files to disk (cover.jpg)">Export cover</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- GENERATOR: an ordered chain of cleanup rules over tags or filenames. -->
+        <section id="panel-generator" class="mode-panel" hidden>
+          <div class="panel-block">
+            <h2>Transform <span id="transform-count" class="muted"></span></h2>
+            <p class="hint muted" style="padding: 0">
+              Rules run top to bottom. Nothing is written until you review the preview and press Apply.
+            </p>
+            <label class="export-row"
+              >Apply to
+              <select id="transform-scope">
+                <option value="tags">All tag fields</option>
+                <option value="artist">Artist</option>
+                <option value="title">Title</option>
+                <option value="album">Album</option>
+                <option value="albumartist">Album Artist</option>
+                <option value="genre">Genre</option>
+                <option value="comment">Comment</option>
+                <option value="filename">File name</option>
+              </select>
+            </label>
+            <div class="table-wrap panel-list">
+              <table>
+                <tbody id="transform-rules"></tbody>
+              </table>
+              <p id="transform-empty" class="empty">No rules yet — add one below.</p>
+            </div>
+            <div class="export-row">
+              <select id="transform-kind">
+                <option value="replace">Find and replace</option>
+                <option value="case">Change case</option>
+                <option value="diacritics">Remove diacritics</option>
+              </select>
+              <button id="transform-add">Add rule</button>
+            </div>
+            <div class="panel-actions">
+              <div class="spacer"></div>
+              <button id="transform-preview" class="primary">Preview changes</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- EXPORTER: playlists / CSV / mask report, written into the library. -->
+        <section id="panel-exporter" class="mode-panel" hidden>
+          <div class="panel-block">
+            <h2>Export <span id="export-count" class="muted"></span></h2>
+            <p class="hint muted" style="padding: 0">
+              Writes into the opened library folder. Read-only — your audio files are not modified.
+            </p>
+            <label class="export-row"
+              >Format
+              <select id="export-kind">
+                <option value="playlist">Playlist (M3U)</option>
+                <option value="csv">CSV of tag columns</option>
+                <option value="report">Text report (mask)</option>
+              </select>
+            </label>
+            <label class="export-row" id="export-mask-row" hidden
+              >Mask
+              <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
+            </label>
+            <label class="export-row"
+              >File name
+              <input id="export-name" type="text" spellcheck="false" />
+            </label>
+            <div class="panel-actions">
+              <div class="spacer"></div>
+              <button id="export-run" class="primary">Export</button>
+            </div>
+          </div>
+        </section>
+      </aside>
     </main>
 
-    <div id="discogs-modal" class="modal" hidden>
-      <div class="modal-box">
-        <div class="modal-head">
-          <h2>Discogs import</h2>
-          <div class="spacer"></div>
-          <button id="discogs-close" class="icon" title="Close">✕</button>
-        </div>
-        <div class="modal-body">
-          <!-- Search view -->
-          <div id="discogs-search-view">
-            <input
-              id="discogs-token"
-              type="password"
-              placeholder="Personal Discogs token"
-              spellcheck="false"
-              autocomplete="off"
-            />
-            <div class="mask-row" style="padding: 6px 0 0">
-              <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
-              <button id="discogs-search">Search</button>
-            </div>
-            <p class="hint muted" style="padding: 6px 0 0">
-              Click a release to see its tracklist, then choose which tracks to import.
-            </p>
-            <div class="table-wrap" style="max-height: 300px; border-top: 1px solid var(--border); margin-top: 8px">
-              <table>
-                <tbody id="discogs-results"></tbody>
-              </table>
-              <p id="discogs-empty" class="empty">Search Discogs to see releases.</p>
-            </div>
-          </div>
+    <input id="cover-file" type="file" accept="image/*" hidden />
 
-          <!-- Release detail view -->
-          <div id="discogs-release-view" hidden>
-            <div class="release-head">
-              <button id="discogs-back" class="icon">← results</button>
-              <img id="release-cover" class="release-cover" hidden alt="Release cover" />
-              <div id="release-title" class="release-title"></div>
-            </div>
-            <div class="release-actions">
-              <button id="tracks-all">Enable all</button>
-              <button id="tracks-none">Disable all</button>
-              <button id="auto-match" title="Reorder your selected files to line up with this tracklist, matching by title">Auto-match</button>
-              <button id="cover-embed" hidden title="Embed this cover into the selected files">Embed cover</button>
-              <div class="spacer"></div>
-              <button id="import-apply" class="primary">Import to selected files</button>
-            </div>
-            <p class="hint muted" style="padding: 0 0 6px">
-              Enabled tracks map onto your selected files in order. Reorder files by dragging their
-              File cell in the main table so they line up.
-            </p>
-            <div class="table-wrap" style="max-height: 300px; border-top: 1px solid var(--border)">
-              <table>
-                <thead>
-                  <tr>
-                    <th class="sel"></th>
-                    <th>#</th>
-                    <th>Artist</th>
-                    <th>Title</th>
-                    <th>Length</th>
-                  </tr>
-                </thead>
-                <tbody id="release-tracks"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="transform-modal" class="modal" hidden>
-      <div class="modal-box">
-        <div class="modal-head">
-          <h2>Transform</h2>
-          <div class="spacer"></div>
-          <button id="transform-close" class="icon" title="Close">✕</button>
-        </div>
-        <div class="modal-body">
-          <p class="hint muted" style="padding: 0">
-            Rules run top to bottom on <span id="transform-count"></span>. Nothing is written until
-            you review the preview and press Apply.
-          </p>
-          <label class="export-row"
-            >Apply to
-            <select id="transform-scope">
-              <option value="tags">All tag fields</option>
-              <option value="artist">Artist</option>
-              <option value="title">Title</option>
-              <option value="album">Album</option>
-              <option value="albumartist">Album Artist</option>
-              <option value="genre">Genre</option>
-              <option value="comment">Comment</option>
-              <option value="filename">File name</option>
-            </select>
-          </label>
-          <div class="table-wrap" style="max-height: 260px; border-top: 1px solid var(--border)">
-            <table>
-              <tbody id="transform-rules"></tbody>
-            </table>
-            <p id="transform-empty" class="empty">No rules yet — add one below.</p>
-          </div>
-          <div class="export-row">
-            <select id="transform-kind">
-              <option value="replace">Find and replace</option>
-              <option value="case">Change case</option>
-              <option value="diacritics">Remove diacritics</option>
-            </select>
-            <button id="transform-add">Add rule</button>
-          </div>
-          <div class="release-actions">
-            <div class="spacer"></div>
-            <button id="transform-preview" class="primary">Preview changes</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="move-modal" class="modal" hidden>
-      <div class="modal-box">
-        <div class="modal-head">
-          <h2>Reorganize into folders</h2>
-          <div class="spacer"></div>
-          <button id="move-close" class="icon" title="Close">✕</button>
-        </div>
-        <div class="modal-body">
-          <p class="hint muted" style="padding: 0">
-            Use <code>/</code> (or <code>\</code>) to separate folders — the right one for your
-            system is written out. Optional parts go in [brackets] and vanish when empty. Paths are
-            built under the opened library and missing folders are created; tag values can't
-            introduce a folder, only separators in the pattern do.
-          </p>
-          <label class="export-row"
-            >Pattern
-            <input id="move-mask" type="text" spellcheck="false"
-              value="%albumartist%/%year% - %album%/%track% - %title%" />
-          </label>
-          <div class="release-actions">
-            <div class="spacer"></div>
-            <button id="move-preview" class="primary">Preview move</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="fields-modal" class="modal" hidden>
-      <div class="modal-box">
-        <div class="modal-head">
-          <h2>Tag fields</h2>
-          <div class="spacer"></div>
-          <button id="fields-close" class="icon" title="Close">✕</button>
-        </div>
-        <div class="modal-body">
-          <p class="hint muted" style="padding: 0">
-            Editing <span id="fields-count"></span>. Only fields you actually change are written;
-            a field whose value differs across the selection shows
-            <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
-          </p>
-          <div class="table-wrap" style="max-height: 340px; border-top: 1px solid var(--border)">
-            <table>
-              <tbody id="fields-body"></tbody>
-            </table>
-          </div>
-          <div class="export-row">
-            <input id="fields-new-name" type="text" placeholder="custom field name" spellcheck="false" />
-            <input id="fields-new-value" type="text" placeholder="value" spellcheck="false" />
-            <button id="fields-add">Add field</button>
-          </div>
-          <div class="release-actions">
-            <div class="spacer"></div>
-            <button id="fields-apply" class="primary">Stage changes</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="export-modal" class="modal" hidden>
-      <div class="modal-box">
-        <div class="modal-head">
-          <h2>Export</h2>
-          <div class="spacer"></div>
-          <button id="export-close" class="icon" title="Close">✕</button>
-        </div>
-        <div class="modal-body">
-          <p class="hint muted" style="padding: 0">
-            Writes <span id="export-count"></span> into the opened library folder. Read-only — your
-            audio files are not modified.
-          </p>
-          <label class="export-row"
-            >Format
-            <select id="export-kind">
-              <option value="playlist">Playlist (M3U)</option>
-              <option value="csv">CSV of tag columns</option>
-              <option value="report">Text report (mask)</option>
-            </select>
-          </label>
-          <label class="export-row" id="export-mask-row" hidden
-            >Mask
-            <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
-          </label>
-          <label class="export-row"
-            >File name
-            <input id="export-name" type="text" spellcheck="false" />
-          </label>
-          <div class="release-actions">
-            <div class="spacer"></div>
-            <button id="export-run" class="primary">Export</button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <footer class="statusbar">
+      <span id="status-sel" class="muted"></span>
+      <div class="spacer"></div>
+      <button id="preview-edits" disabled title="Preview the pending inline cell edits">Preview edits</button>
+    </footer>
 
     <footer id="player" hidden>
       <button id="pl-toggle" class="icon" title="Play / pause">▶</button>

@@ -22,6 +22,11 @@ let previewSource = null;
 // into a single preview/apply. A value of "" means "clear the field".
 const edits = new Map();
 
+// The set of selected file paths — the single source of truth for what every
+// mode operates on. Kept here (not in the DOM) so a re-render (sort, reorder,
+// auto-match, staging edits) never silently wipes or widens the selection.
+const selection = new Set();
+
 // Fields shown as editable columns, in table order.
 const EDIT_FIELDS = ["artist", "title", "album", "year"];
 
@@ -55,10 +60,9 @@ const selectAll = el("select-all");
 const coverOpenBtn = el("cover-open");
 const coverExportBtn = el("cover-export");
 const coverFileInput = el("cover-file");
-const discogsOpenBtn = el("discogs-open");
-const discogsModal = el("discogs-modal");
 const discogsResults = el("discogs-results");
 const discogsEmpty = el("discogs-empty");
+const statusSel = el("status-sel");
 const playerBar = el("player");
 const plToggle = el("pl-toggle");
 const plStop = el("pl-stop");
@@ -104,15 +108,12 @@ function tag(track, key) {
   return track.tags[key] || "";
 }
 
-// Paths of the checked rows, in `tracks` (mapping) order — NOT the visual/DOM
-// order. This keeps position-based mapping (rename masks, Discogs import) tied
-// to the real file order even when the view is grouped (#20). Identical to the
-// visual order when ungrouped.
+// Selected paths in `tracks` (mapping) order — NOT the visual/DOM order. This
+// keeps position-based mapping (rename masks, Discogs import) tied to the real
+// file order even when the view is grouped (#20). Reads the `selection` set, so
+// it survives re-renders.
 function selectedPaths() {
-  const checked = new Set(
-    [...tracksBody.querySelectorAll(".sel input:checked")].map((cb) => cb.dataset.path),
-  );
-  return tracks.filter((t) => checked.has(t.path)).map((t) => t.path);
+  return tracks.filter((t) => selection.has(t.path)).map((t) => t.path);
 }
 
 function escapeHtml(s) {
@@ -189,18 +190,23 @@ function appendTrackRow(track, groupKey) {
     if (collapsedGroups.has(groupKey)) tr.classList.add("hidden-row");
   }
   if (track.path === playingPath) tr.classList.add("playing");
+  // Checkbox + row highlight both reflect the `selection` set (source of truth),
+  // so re-rendering never changes what's selected.
+  const isSel = selection.has(track.path);
+  if (isSel) tr.classList.add("selected");
   const playGlyph = track.path === playingPath && !plPaused ? "❚❚" : "▶";
   tr.innerHTML = `
-      <td class="sel"><input type="checkbox" checked data-path="${escapeHtml(track.path)}" /></td>
+      <td class="sel"><input type="checkbox" ${isSel ? "checked" : ""} data-path="${escapeHtml(track.path)}" /></td>
       <td class="play"><button class="play-btn" data-path="${escapeHtml(track.path)}" title="Preview">${playGlyph}</button></td>
-      <td class="mono file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
+      <td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
   for (const field of EDIT_FIELDS) {
     const original = tag(track, field);
     const edited = pending && pending.has(field);
     const value = edited ? pending.get(field) : original;
     const td = document.createElement("td");
     td.className = "editable";
-    td.contentEditable = "true";
+    // Not editable until double-clicked (single click selects the row).
+    td.contentEditable = "false";
     td.spellcheck = false;
     td.dataset.path = track.path;
     td.dataset.field = field;
@@ -264,17 +270,16 @@ function renderTracks() {
   el("collapse-all").hidden = !groupBy;
 
   previewBtn.disabled = tracks.length === 0;
-  discogsOpenBtn.disabled = tracks.length === 0;
-  coverOpenBtn.disabled = tracks.length === 0;
-  coverExportBtn.disabled = tracks.length === 0;
-  el("export-open").disabled = tracks.length === 0;
-  el("fields-open").disabled = tracks.length === 0;
-  el("move-open").disabled = tracks.length === 0;
-  el("transform-open").disabled = tracks.length === 0;
   updateEditsButton();
-  applyBtn.disabled = true;
-  previewTable.hidden = true;
-  previewEmpty.hidden = true;
+  syncSelectionUI();
+}
+
+// Selection count in the status bar ("N/M selected"). Uses the checked-row
+// count directly; total size/duration are deferred (#27 notes → their own issue).
+function updateStatus() {
+  const total = tracks.length;
+  const selected = selectedPaths().length;
+  statusSel.textContent = total ? `${selected}/${total} selected` : "";
 }
 
 function resetEdits() {
@@ -314,8 +319,36 @@ function updateEditsButton() {
   previewEditsBtn.disabled = edits.size === 0;
 }
 
+// Switch the files column between the table ("files") and the change-plan diff
+// ("preview"). The Preview tab is only reachable while a plan is staged.
+function showView(which) {
+  const preview = which === "preview";
+  el("files-view").hidden = preview;
+  el("preview-view").hidden = !preview;
+  el("view-files").classList.toggle("active", !preview);
+  el("view-preview").classList.toggle("active", preview);
+  el("view-preview").disabled = !preview && !previewPlan;
+}
+
+function discardPreview() {
+  // A preview built from the pending-edits buffer (inline edits + Discogs
+  // import) owns that buffer, so discarding it must also drop those staged
+  // values and repaint the table; other previews just drop the plan.
+  const wasEdits = previewSource === "edits";
+  previewPlan = null;
+  previewSource = null;
+  el("view-preview").disabled = true;
+  if (wasEdits) {
+    resetEdits();
+    renderTracks();
+  }
+  showView("files");
+}
+
 function renderPreview(plan) {
   previewBody.innerHTML = "";
+  el("view-preview").disabled = false;
+  showView("preview");
   const changes = plan.changes;
   if (changes.length === 0) {
     previewTable.hidden = true;
@@ -384,6 +417,9 @@ async function openLibrary() {
   try {
     await invoke("open_library", { root });
     tracks = await invoke("list_tracks", {});
+    // Everything selected by default; the set (not the DOM) holds it.
+    selection.clear();
+    for (const t of tracks) selection.add(t.path);
     previewPlan = null;
     resetEdits();
     sortKey = null;
@@ -394,6 +430,8 @@ async function openLibrary() {
     collapsedGroups.clear();
     el("group-by").value = "";
     renderTracks();
+    el("view-preview").disabled = true;
+    showView("files");
     showPlayerBar();
     await refreshHistory();
     toast(`Opened ${root} — ${tracks.length} tracks`);
@@ -458,6 +496,8 @@ async function apply() {
     // cover apply leaves the tag-edits buffer untouched (separate change kind)
     tracks = await invoke("list_tracks", {});
     renderTracks();
+    el("view-preview").disabled = true;
+    showView("files");
     await refreshHistory();
   } catch (e) {
     toast(String(e), true);
@@ -475,6 +515,8 @@ async function undo() {
     resetEdits();
     tracks = await invoke("list_tracks", {});
     renderTracks();
+    el("view-preview").disabled = true;
+    showView("files");
     await refreshHistory();
   } catch (e) {
     toast(String(e), true);
@@ -713,19 +755,12 @@ tracksBody.addEventListener("click", (e) => {
 // tracked separately (#57).
 let transformRules = [];
 
-function openTransform() {
+// Refresh the GENERATOR panel for the current selection (called on entering the
+// mode). The rule chain persists across mode switches within a session.
+function refreshGenerator() {
   const count = selectedPaths().length;
-  if (count === 0) {
-    toast("Select the tracks to transform first", true);
-    return;
-  }
-  el("transform-count").textContent = `${count} file(s)`;
+  el("transform-count").textContent = count ? `— ${count} file(s)` : "";
   renderTransformRules();
-  el("transform-modal").hidden = false;
-}
-
-function closeTransform() {
-  el("transform-modal").hidden = true;
 }
 
 function addTransformRule() {
@@ -884,7 +919,6 @@ async function previewTransform() {
     // A filename transform is a rename; a tag transform is an edit. Either way
     // it applies through the normal preview/apply/undo path.
     previewSource = el("transform-scope").value === "filename" ? "rename" : "transform";
-    closeTransform();
     renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
@@ -898,26 +932,17 @@ async function previewTransform() {
 }
 
 // ---- reorganize into folders (#37) ----
-function openMove() {
-  if (selectedPaths().length === 0) {
-    toast("Select the tracks to move first", true);
-    return;
-  }
-  el("move-modal").hidden = false;
-}
-
-function closeMove() {
-  el("move-modal").hidden = true;
-}
-
-// Builds the plan and shows it in the usual preview panel, so the move is
+// Builds the plan and shows it in the usual preview view, so the move is
 // applied (and undone) through exactly the same path as a rename.
 async function previewMove() {
   const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to move first", true);
+    return;
+  }
   try {
     previewPlan = await invoke("preview_move", { mask: el("move-mask").value, paths });
     previewSource = "rename";
-    closeMove();
     renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
@@ -963,22 +988,17 @@ function currentFieldValue(path, key) {
   return (track && track.tags[key]) || "";
 }
 
-function openFieldEditor() {
+// Refresh the field-editor section of the TAGGER panel for the current
+// selection (called on entering the mode). Staged-but-unapplied field changes
+// are dropped on refresh — they only make sense against the selection they were
+// typed for.
+function refreshFieldEditor() {
   const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks to edit first", true);
-    return;
-  }
   stagedFields = new Map();
-  el("fields-count").textContent = `${paths.length} file(s)`;
+  el("fields-count").textContent = paths.length ? `— ${paths.length} file(s)` : "";
   el("fields-new-name").value = "";
   el("fields-new-value").value = "";
   renderFieldEditor(paths);
-  el("fields-modal").hidden = false;
-}
-
-function closeFieldEditor() {
-  el("fields-modal").hidden = true;
 }
 
 function renderFieldEditor(paths) {
@@ -1057,8 +1077,11 @@ function addCustomField() {
 // selected file, then preview them alongside any other pending edits.
 async function applyFieldEditor() {
   const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to edit first", true);
+    return;
+  }
   if (stagedFields.size === 0) {
-    closeFieldEditor();
     toast("No field changes to stage");
     return;
   }
@@ -1076,8 +1099,8 @@ async function applyFieldEditor() {
     }
     if (fields.size === 0) edits.delete(path);
   }
-  closeFieldEditor();
   renderTracks();
+  refreshFieldEditor();
   await previewEdits();
   toast(
     changed
@@ -1095,19 +1118,13 @@ const EXPORT_DEFAULTS = {
   report: "report.txt",
 };
 
-function openExport() {
+// Refresh the EXPORTER panel for the current selection (called on entering the
+// mode). Only resets the file name when it's empty, so a name the user typed
+// survives a mode switch.
+function refreshExporter() {
   const count = selectedPaths().length;
-  if (count === 0) {
-    toast("Select the tracks to export first", true);
-    return;
-  }
-  el("export-count").textContent = `${count} track(s)`;
-  syncExportKind();
-  el("export-modal").hidden = false;
-}
-
-function closeExport() {
-  el("export-modal").hidden = true;
+  el("export-count").textContent = count ? `— ${count} track(s)` : "";
+  if (!el("export-name").value) syncExportKind();
 }
 
 // Show the mask field only for text reports, and reset the file name to the
@@ -1120,6 +1137,10 @@ function syncExportKind() {
 
 async function runExport() {
   const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to export first", true);
+    return;
+  }
   const kind = el("export-kind").value;
   // Named `outName` so it doesn't shadow the `fileName()` helper used below.
   const outName = el("export-name").value.trim();
@@ -1136,7 +1157,6 @@ async function runExport() {
         fileName: outName,
       });
     }
-    closeExport();
     toast(`Exported ${paths.length} track(s) to ${fileName(written)}`);
   } catch (e) {
     toast(String(e), true);
@@ -1144,21 +1164,6 @@ async function runExport() {
 }
 
 // ---- Discogs import ----
-function openDiscogs() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks to import onto first", true);
-    return;
-  }
-  showDiscogsView("search");
-  discogsModal.hidden = false;
-  el("discogs-query").focus();
-}
-
-function closeDiscogs() {
-  discogsModal.hidden = true;
-}
-
 async function discogsSearch() {
   const token = el("discogs-token").value.trim();
   const query = el("discogs-query").value.trim();
@@ -1256,7 +1261,6 @@ async function embedReleaseCover() {
   try {
     previewPlan = await invoke("preview_cover_embed", { paths, cover: currentReleaseCover });
     previewSource = "cover";
-    closeDiscogs();
     renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
@@ -1372,8 +1376,8 @@ async function applyImport() {
       }
       if (fields.size === 0) edits.delete(change.path);
     }
-    closeDiscogs();
     renderTracks(); // imported values now show as pending edits in the table
+    refreshFieldEditor(); // reflect the imported values in the field grid too
     await previewEdits(); // one unified preview of all pending edits
     toast(
       merged
@@ -1385,44 +1389,71 @@ async function applyImport() {
   }
 }
 
+// ---- mode tabs ----
+// The active mode's panel is the only one shown; entering a mode refreshes its
+// panel against the current selection. The table (subject) never changes — only
+// the right-hand panel (verb) swaps.
+const MODE_REFRESH = {
+  renamer: () => {},
+  tagger: refreshTagger,
+  generator: refreshGenerator,
+  exporter: refreshExporter,
+};
+let currentMode = "renamer";
+
+function setMode(name) {
+  currentMode = name;
+  document.querySelectorAll(".mode-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.mode === name);
+  });
+  document.querySelectorAll(".mode-panel").forEach((panel) => {
+    panel.hidden = panel.id !== `panel-${name}`;
+  });
+  // Uncollapse when a tab is clicked, so switching modes always reveals the panel.
+  document.body.classList.remove("panel-collapsed");
+  (MODE_REFRESH[name] || (() => {}))();
+}
+
+// Refresh the whole TAGGER panel (Discogs search state + field grid). Cover
+// buttons need no per-selection refresh.
+function refreshTagger() {
+  showDiscogsView("search");
+  refreshFieldEditor();
+}
+
+document.querySelectorAll(".mode-tab").forEach((tab) => {
+  tab.addEventListener("click", () => setMode(tab.dataset.mode));
+});
+
+// Collapse/expand the mode panel to give the table the full width.
+el("panel-toggle").addEventListener("click", () => {
+  document.body.classList.toggle("panel-collapsed");
+});
+
+// ---- view tabs (Files | Preview) ----
+el("view-files").addEventListener("click", () => showView("files"));
+el("view-preview").addEventListener("click", () => {
+  if (previewPlan) showView("preview");
+});
+el("discard").addEventListener("click", discardPreview);
+
 // ---- wire up ----
 el("open").addEventListener("click", openLibrary);
+el("browse").addEventListener("click", browseForFolder);
 previewBtn.addEventListener("click", preview);
 previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
 coverOpenBtn.addEventListener("click", chooseCover);
 coverExportBtn.addEventListener("click", exportCover);
-el("transform-open").addEventListener("click", openTransform);
-el("transform-close").addEventListener("click", closeTransform);
 el("transform-add").addEventListener("click", addTransformRule);
 el("transform-preview").addEventListener("click", previewTransform);
-el("transform-modal").addEventListener("click", (e) => {
-  if (e.target === el("transform-modal")) closeTransform();
-});
-el("move-open").addEventListener("click", openMove);
-el("move-close").addEventListener("click", closeMove);
 el("move-preview").addEventListener("click", previewMove);
-el("move-modal").addEventListener("click", (e) => {
-  if (e.target === el("move-modal")) closeMove();
-});
-el("fields-open").addEventListener("click", openFieldEditor);
-el("fields-close").addEventListener("click", closeFieldEditor);
 el("fields-add").addEventListener("click", addCustomField);
 el("fields-apply").addEventListener("click", applyFieldEditor);
-el("fields-modal").addEventListener("click", (e) => {
-  if (e.target === el("fields-modal")) closeFieldEditor();
-});
-el("export-open").addEventListener("click", openExport);
-el("export-close").addEventListener("click", closeExport);
 el("export-kind").addEventListener("change", syncExportKind);
 el("export-run").addEventListener("click", runExport);
-el("export-modal").addEventListener("click", (e) => {
-  if (e.target === el("export-modal")) closeExport();
-});
 coverFileInput.addEventListener("change", onCoverChosen);
-discogsOpenBtn.addEventListener("click", openDiscogs);
-el("discogs-close").addEventListener("click", closeDiscogs);
 el("discogs-search").addEventListener("click", discogsSearch);
 el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
 el("discogs-back").addEventListener("click", () => showDiscogsView("search"));
@@ -1431,9 +1462,26 @@ coverEmbedBtn.addEventListener("click", embedReleaseCover);
 el("auto-match").addEventListener("click", autoMatchTracks);
 el("tracks-all").addEventListener("click", () => toggleReleaseTracks(true));
 el("tracks-none").addEventListener("click", () => toggleReleaseTracks(false));
-discogsModal.addEventListener("click", (e) => {
-  if (e.target === discogsModal) closeDiscogs();
-});
+
+// Open a native folder chooser (Tauri dialog plugin). The scanner recurses into
+// subfolders, so picking a folder loads everything under it. Outside Tauri
+// (browser dev) there's no native dialog — fall back to focusing the path field.
+async function browseForFolder() {
+  const dialog = window.__TAURI__ && window.__TAURI__.dialog;
+  if (!dialog) {
+    toast("Type a library path, then press Open");
+    rootInput.focus();
+    return;
+  }
+  try {
+    const picked = await dialog.open({ directory: true, multiple: false });
+    if (!picked) return; // user cancelled
+    rootInput.value = picked;
+    await openLibrary();
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
 
 function toggleReleaseTracks(on) {
   releaseTracksBody.querySelectorAll(".sel input").forEach((cb) => (cb.checked = on));
@@ -1503,10 +1551,176 @@ function onDragUp() {
 }
 rootInput.addEventListener("keydown", (e) => e.key === "Enter" && openLibrary());
 selectAll.addEventListener("change", () => {
-  tracksBody
-    .querySelectorAll(".sel input[type=checkbox]")
-    .forEach((cb) => (cb.checked = selectAll.checked));
+  const on = selectAll.checked;
+  for (const tr of dataRows()) {
+    if (on) selection.add(tr.dataset.path);
+    else selection.delete(tr.dataset.path);
+  }
+  syncSelectionUI();
 });
+// Direct checkbox clicks feed the selection set too.
+tracksBody.addEventListener("change", (e) => {
+  const cb = e.target.closest(".sel input[type=checkbox]");
+  if (!cb) return;
+  if (cb.checked) selection.add(cb.dataset.path);
+  else selection.delete(cb.dataset.path);
+  syncSelectionUI();
+});
+
+// ---- row selection ----
+// The `selection` set is the source of truth (see its declaration). On top of
+// checkboxes, clicking a row selects it the way a file list does (click = only
+// this row, ⌘/Ctrl = toggle, Shift = range); double-clicking a group's name
+// toggles that whole group. Editing a cell is a deliberate double-click, so the
+// single click is free for selection.
+let selAnchor = null; // path of the last row clicked, for Shift-range
+
+function rowCheckbox(tr) {
+  return tr.querySelector(".sel input[type=checkbox]");
+}
+
+// Data rows in DOM (visual) order, group headers excluded.
+function dataRows() {
+  return [...tracksBody.querySelectorAll("tr")].filter(
+    (tr) => tr.dataset.path && !tr.classList.contains("group-head"),
+  );
+}
+
+// Push the `selection` set onto the checkboxes + row highlight, set the
+// select-all tri-state, and refresh the status count. Called after any change.
+function syncSelectionUI() {
+  const rows = dataRows();
+  let checked = 0;
+  for (const tr of rows) {
+    const on = selection.has(tr.dataset.path);
+    rowCheckbox(tr).checked = on;
+    tr.classList.toggle("selected", on);
+    if (on) checked += 1;
+  }
+  selectAll.checked = checked > 0 && checked === rows.length;
+  selectAll.indeterminate = checked > 0 && checked < rows.length;
+  updateStatus();
+  // The TAGGER field grid shows the current selection's values, so keep it in
+  // step as the selection changes while that mode is open.
+  if (currentMode === "tagger") refreshFieldEditor();
+}
+
+function selectRow(tr, e) {
+  const rows = dataRows();
+  const path = tr.dataset.path;
+  if (e.shiftKey && selAnchor) {
+    const paths = rows.map((r) => r.dataset.path);
+    let a = paths.indexOf(selAnchor);
+    let b = paths.indexOf(path);
+    if (a < 0) a = b;
+    if (a > b) [a, b] = [b, a];
+    selection.clear();
+    for (let i = a; i <= b; i++) selection.add(paths[i]);
+  } else if (e.metaKey || e.ctrlKey) {
+    if (selection.has(path)) selection.delete(path);
+    else selection.add(path);
+    selAnchor = path;
+  } else {
+    selection.clear();
+    selection.add(path);
+    selAnchor = path;
+  }
+  syncSelectionUI();
+}
+
+// Toggle a whole group's selection (a group-name double-click): if every row of
+// the group is already selected, deselect them; otherwise select them all,
+// leaving other groups' selection untouched.
+function toggleGroupSelection(key) {
+  const rows = dataRows().filter((tr) => tr.dataset.group === key);
+  if (rows.length === 0) return;
+  const allSelected = rows.every((tr) => selection.has(tr.dataset.path));
+  for (const tr of rows) {
+    if (allSelected) selection.delete(tr.dataset.path);
+    else selection.add(tr.dataset.path);
+  }
+  syncSelectionUI();
+}
+
+// Enter edit mode on a cell and select its text (double-click, per the hint).
+function beginCellEdit(cell) {
+  cell.contentEditable = "true";
+  cell.focus();
+  const range = document.createRange();
+  range.selectNodeContents(cell);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+tracksBody.addEventListener("click", (e) => {
+  if (e.target.closest("td.play")) return; // play button handles itself
+  if (e.target.closest("td.sel")) return; // checkbox toggle → change listener
+  if (e.target.closest("tr.group-head")) return; // caret handles collapse
+  const tr = e.target.closest("tr");
+  if (!tr || !tr.dataset.path) return;
+  const cell = e.target.closest("td.editable");
+  if (cell && cell.isContentEditable) return; // mid-edit: don't reselect
+  selectRow(tr, e);
+});
+
+tracksBody.addEventListener("dblclick", (e) => {
+  const head = e.target.closest("tr.group-head");
+  if (head) {
+    // Caret double-click just toggles collapse (handled by the click listener);
+    // double-clicking the name toggles the group's selection.
+    if (!e.target.closest(".group-caret")) toggleGroupSelection(head.dataset.group);
+    return;
+  }
+  const cell = e.target.closest("td.editable");
+  if (cell) beginCellEdit(cell);
+});
+
+// contentEditable is turned off again when a cell loses focus (blur doesn't
+// bubble, so listen in the capture phase).
+tracksBody.addEventListener(
+  "blur",
+  (e) => {
+    if (e.target.classList && e.target.classList.contains("editable")) {
+      e.target.contentEditable = "false";
+    }
+  },
+  true,
+);
+
+// ---- resize the table / mode-panel split by dragging the divider ----
+// Mouse events (not a native splitter) for the same WKWebView reason as the row
+// reorder. The panel has a fixed flex-basis; dragging sets it in pixels.
+(function initSplitter() {
+  const splitter = el("col-splitter");
+  const modeCol = document.querySelector(".mode-col");
+  const workarea = document.querySelector(".workarea");
+  let dragging = false;
+
+  splitter.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    document.body.classList.add("resizing");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+
+  function onMove(e) {
+    if (!dragging) return;
+    // Panel width = distance from the cursor to the right edge of the work area,
+    // clamped so neither column collapses.
+    const rect = workarea.getBoundingClientRect();
+    const width = Math.min(Math.max(rect.right - e.clientX, 240), rect.width - 360);
+    modeCol.style.flexBasis = `${Math.round(width)}px`;
+  }
+
+  function onUp() {
+    dragging = false;
+    document.body.classList.remove("resizing");
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+  }
+})();
 
 // Sort by clicking a column header (toggles direction). Reorders `tracks`
 // itself so position-based mapping follows the visible order.
@@ -1552,8 +1766,12 @@ function toggleGroup(key) {
     }
   });
 }
+// Collapse/expand only via the caret at the start of the header, so a click on
+// the group name is free to (double-)select the group instead.
 tracksBody.addEventListener("click", (e) => {
-  const head = e.target.closest("tr.group-head");
+  const caret = e.target.closest(".group-caret");
+  if (!caret) return;
+  const head = caret.closest("tr.group-head");
   if (head) toggleGroup(head.dataset.group);
 });
 
@@ -1588,10 +1806,11 @@ el("filter").addEventListener("input", (e) => {
 tracksBody.addEventListener("input", (e) => {
   if (e.target.classList.contains("editable")) onCellEdit(e.target);
 });
-// Enter commits a cell instead of inserting a newline.
+// Enter commits a cell instead of inserting a newline, and leaves edit mode.
 tracksBody.addEventListener("keydown", (e) => {
   if (e.target.classList.contains("editable") && e.key === "Enter") {
     e.preventDefault();
+    e.target.contentEditable = "false";
     e.target.blur();
   }
 });

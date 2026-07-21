@@ -4,10 +4,13 @@
   --border: #e2e5ea;
   --text: #1a1d23;
   --muted: #6b7280;
-  --accent: #c2410c;
+  /* Brand green (from the logo, #085041) drives the accent; a clear red is
+     reserved for danger — errors, deletions, and the "old" side of a diff — so
+     problems stand out against all the positive/interactive green. */
+  --accent: #0b6b53;
   --accent-text: #ffffff;
-  --add: #166534;
-  --del: #9a3412;
+  --add: #15803d;
+  --del: #dc2626;
   --row-hover: #eef1f5;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
@@ -19,10 +22,10 @@
     --border: #2c313b;
     --text: #e6e8ec;
     --muted: #9aa1ac;
-    --accent: #ea580c;
+    --accent: #0d8f6a;
     --accent-text: #ffffff;
     --add: #4ade80;
-    --del: #fb923c;
+    --del: #f87171;
     --row-hover: #242832;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
@@ -40,7 +43,7 @@ body {
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text);
   background: var(--bg);
   display: flex;
@@ -49,11 +52,16 @@ body {
   overflow: hidden;
 }
 
-.toolbar {
+.spacer {
+  flex: 1;
+}
+
+/* ---- top bar ---- */
+.topbar {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
@@ -68,18 +76,15 @@ body {
   display: flex;
   gap: 6px;
   flex: 1;
-  max-width: 560px;
+  max-width: 620px;
 }
 
 .lib input {
   flex: 1;
 }
 
-.spacer {
-  flex: 1;
-}
-
-input[type="text"] {
+input[type="text"],
+input[type="password"] {
   padding: 6px 9px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -88,9 +93,14 @@ input[type="text"] {
   font: inherit;
 }
 
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="password"]:focus {
   outline: none;
   border-color: var(--accent);
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent);
 }
 
 button {
@@ -124,46 +134,197 @@ button.primary:hover:not(:disabled) {
   background: var(--accent);
 }
 
-main {
-  flex: 1;
+button.icon {
+  padding: 4px 9px;
+  box-shadow: none;
+}
+
+/* ---- mode tabs ---- */
+.modebar {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-section {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-
-#tracks-panel {
-  flex: 1;
-}
-
-#rename-panel {
-  border-top: 1px solid var(--border);
+  align-items: stretch;
+  gap: 6px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border);
   background: var(--panel);
-  max-height: 45%;
 }
 
-.panel-head {
+.mode-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.mode-tab {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  font-size: 12px;
+  padding: 10px 14px;
+  border-bottom: 2px solid transparent;
+}
+
+.mode-tab:hover:not(.active) {
+  background: var(--row-hover);
+  color: var(--text);
+}
+
+.mode-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.modebar #panel-toggle {
+  align-self: center;
+}
+
+/* ---- work area: table (left) + mode panel (right) ---- */
+.workarea {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.files-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.col-splitter {
+  flex: 0 0 5px;
+  cursor: col-resize;
+  background: var(--border);
+  opacity: 0.6;
+}
+
+.col-splitter:hover,
+body.resizing .col-splitter {
+  opacity: 1;
+  background: var(--accent);
+}
+
+.mode-col {
+  flex: 0 0 340px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--panel);
+}
+
+/* Collapsed state: the panel and its splitter fold away, table takes it all. */
+body.panel-collapsed .mode-col,
+body.panel-collapsed .col-splitter {
+  display: none;
+}
+
+.mode-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px;
+}
+
+.mode-panel[hidden] {
+  display: none;
+}
+
+.panel-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-block:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* A scrolling list embedded in a panel block (candidates, tracklist, fields). */
+.panel-list {
+  max-height: 260px;
+  border-top: 1px solid var(--border);
+}
+
+/* ---- view tabs (Files | Preview) over the table ---- */
+.view-tabs {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
 }
 
-.panel-head .hint {
-  padding: 0;
+.view-tab {
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 4px 4px;
+  border-bottom: 2px solid transparent;
+}
+
+.view-tab:hover:not(.active):not(:disabled) {
+  color: var(--text);
+}
+
+.view-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 }
 
 .edit-hint {
   font-size: 11px;
 }
 
-td.editable {
-  cursor: text;
+#preview-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* `display: flex` above outranks the UA `[hidden] { display: none }`, so the
+   attribute alone wouldn't hide the preview view — this makes `hidden` win. */
+#preview-view[hidden] {
+  display: none;
+}
+
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+/* ---- shared bits ---- */
+h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
 }
 
 td.editable:focus {
@@ -175,18 +336,6 @@ td.editable:focus {
 td.dirty {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   font-weight: 600;
-}
-
-h2 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--muted);
-  margin: 0;
-}
-
-.muted {
-  color: var(--muted);
 }
 
 .table-wrap {
@@ -227,6 +376,29 @@ tbody tr:hover {
   background: var(--row-hover);
 }
 
+/* Selected rows are tinted so a narrowed-down selection is scannable in a big
+   library. Dirty cells keep their own highlight (they win via :not). */
+#tracks tbody tr.selected td:not(.dirty) {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+}
+
+#tracks tbody tr.selected:hover td:not(.dirty) {
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+}
+
+/* Compact, information-dense main table (the reference is tight). Monospace
+   across every column so track numbers, filenames and tag values line up. */
+#tracks tbody td {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+/* Editable cells only show the text caret while actually editing. */
+#tracks td.editable[contenteditable="true"] {
+  cursor: text;
+}
+
 th.sel,
 td.sel {
   width: 28px;
@@ -249,7 +421,7 @@ th.sortable:hover {
 }
 
 #filter {
-  width: 180px;
+  width: 170px;
   padding: 5px 9px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -266,7 +438,6 @@ th.sortable:hover {
 .mask-row {
   display: flex;
   gap: 6px;
-  padding: 4px 14px 6px;
 }
 
 .mask-row input {
@@ -275,8 +446,10 @@ th.sortable:hover {
 }
 
 .hint {
-  padding: 0 14px 8px;
+  padding: 0;
   font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
 }
 
 .empty {
@@ -312,59 +485,7 @@ th.sortable:hover {
   vertical-align: middle;
 }
 
-.modal {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 20;
-}
-
-/* `display: flex` above outranks the UA `[hidden] { display: none }`, so the
-   attribute alone wouldn't hide the modal — this makes `hidden` win. */
-.modal[hidden] {
-  display: none;
-}
-
-.modal-box {
-  width: min(640px, 92vw);
-  max-height: 82vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-}
-
-.modal-head {
-  display: flex;
-  align-items: center;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
-}
-
-.modal-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  min-height: 0;
-}
-
-.modal-body input {
-  width: 100%;
-}
-
-button.icon {
-  padding: 4px 9px;
-  box-shadow: none;
-}
-
+/* ---- Discogs candidate list + release detail ---- */
 #discogs-results td {
   cursor: pointer;
   white-space: normal;
@@ -406,6 +527,7 @@ button.icon {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
   margin-bottom: 6px;
 }
 
@@ -413,7 +535,7 @@ button.icon {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 220px;
+  max-width: 160px;
 }
 
 #release-tracks td.sel {
@@ -441,9 +563,6 @@ tr.dragging td {
   opacity: 0.35;
 }
 
-/* Crisp insertion line showing exactly where the row will land — above or
-   below the hovered row depending on which half the cursor is over. `inset`
-   box-shadow draws it without shifting the layout. */
 tr.drop-above td {
   box-shadow: inset 0 3px 0 0 var(--accent);
 }
@@ -454,7 +573,7 @@ tr.drop-below td {
 
 .toast {
   position: fixed;
-  bottom: 16px;
+  bottom: 44px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--text);
@@ -463,7 +582,7 @@ tr.drop-below td {
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   max-width: 80%;
-  z-index: 10;
+  z-index: 30;
 }
 
 .toast.error {
@@ -494,13 +613,24 @@ button.play-btn:hover {
   border-color: var(--border);
 }
 
-/* The row whose track is loaded in the player. */
 tr.playing td {
   background: var(--row-hover);
 }
 
 tr.playing td.play button.play-btn {
   color: var(--accent);
+}
+
+/* ---- status bar ---- */
+.statusbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 5px 14px;
+  font-size: 11px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
 }
 
 #player {
@@ -524,7 +654,6 @@ tr.playing td.play button.play-btn {
   cursor: default;
 }
 
-/* Idle bar (no track loaded): muted title placeholder. */
 #player.idle #pl-title {
   color: var(--muted);
   font-style: italic;
@@ -551,7 +680,7 @@ tr.playing td.play button.play-btn {
   font-variant-numeric: tabular-nums;
 }
 
-/* ---- export modal (#19) ---- */
+/* ---- export / labelled rows ---- */
 .export-row {
   display: flex;
   align-items: center;
@@ -563,6 +692,7 @@ tr.playing td.play button.play-btn {
 .export-row select,
 .export-row input {
   flex: 1;
+  min-width: 0;
   padding: 6px 9px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -571,7 +701,7 @@ tr.playing td.play button.play-btn {
   font: inherit;
 }
 
-/* ---- grouping (#20) ---- */
+/* ---- grouping ---- */
 .group-ctl {
   display: flex;
   align-items: center;
@@ -589,13 +719,8 @@ tr.playing td.play button.play-btn {
 }
 
 tr.group-head {
-  cursor: pointer;
   user-select: none;
   background: var(--panel);
-}
-
-tr.group-head:hover {
-  background: var(--row-hover);
 }
 
 td.group-cell {
@@ -604,10 +729,19 @@ td.group-cell {
   font-weight: 600;
 }
 
+/* Only the caret toggles collapse — give it a clear hit area and affordance. */
 .group-caret {
   display: inline-block;
-  width: 1em;
+  width: 1.4em;
+  text-align: center;
   color: var(--muted);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.group-caret:hover {
+  color: var(--text);
+  background: var(--row-hover);
 }
 
 .group-count {
@@ -619,9 +753,9 @@ tr.hidden-row {
   display: none;
 }
 
-/* ---- extended field editor (#35) ---- */
+/* ---- extended field editor ---- */
 td.field-label {
-  width: 130px;
+  width: 120px;
   color: var(--muted);
   white-space: nowrap;
 }
@@ -640,7 +774,7 @@ input.field-input.dirty {
   border-color: var(--accent);
 }
 
-/* ---- transformation rules (#34) ---- */
+/* ---- transformation rules ---- */
 td.rule-cell {
   white-space: normal;
   max-width: none;

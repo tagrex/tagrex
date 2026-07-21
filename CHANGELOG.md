@@ -10,6 +10,12 @@ first release ships.
 
 ### Added
 
+- Native folder picker (#74). A "Browse…" button next to the library path opens
+  the OS folder chooser and loads the picked folder (the scanner already
+  recurses into its subfolders), so opening a library no longer means pasting a
+  path. Built on `tauri-plugin-dialog`; outside the desktop shell it falls back
+  to focusing the path field.
+
 - Text transformations (#34): a "Transform…" dialog runs an ordered chain of
   cleanup rules over the selected files' tags or filenames, previewed and applied
   through the normal journaled path. Rules are find-and-replace (literal or
@@ -139,6 +145,27 @@ first release ships.
   same journaled/undoable path as tags (a new cover change kind in the plan,
   executor, and SQLite journal — undo restores the previous cover). Fetching
   covers from Discogs (#24) and exporting them (#25) are tracked separately.
+
+### Changed
+
+- Reworked the main layout around mode tabs and a persistent file table (#27,
+  step 1 of 2). The pile of toolbar buttons that each opened a modal is gone;
+  instead the file table is the permanent subject and four mode tabs —
+  **RENAMER** (rename mask + reorganize), **TAGGER** (Discogs online + field
+  editor + cover), **GENERATOR** (transform/cleanup), **EXPORTER** — swap only a
+  right-hand panel. The panel collapses and its divider drags, so the table can
+  take the full width. A Files/Preview tab over the table shows every mode's
+  change plan in one place (Apply/Discard), and a status line tracks the
+  selection count. Selection is now a first-class set that survives re-renders
+  (sort, reorder, auto-match, staging edits) instead of living in the DOM and
+  being silently reset to "all": click selects a row, ⌘/Ctrl toggles, Shift
+  ranges, and double-clicking a group's name toggles that whole group (its caret
+  collapses it). Cells edit on double-click; the TAGGER field grid follows the
+  current selection. The accent is now the brand green with a dedicated red kept
+  for danger (errors, deletions, the "old" side of a diff); the table is a
+  compact monospace. Step 2 (a richer release picker with cover thumbnails) is
+  tracked on #27. Design follow-ups (colour shades, resizable columns) are on
+  #76.
 
 ### Fixed
 

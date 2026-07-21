@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Core IPC for the main window. TagRex's own commands are app-defined and not gated by the ACL.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

@@ -305,6 +305,7 @@ fn save_discogs_token(app: tauri::AppHandle, token: String) -> Result<(), String
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .manage(Player::new())
         .invoke_handler(tauri::generate_handler![

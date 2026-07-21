@@ -18,6 +18,9 @@ tagrex-providers-discogs = { path = "../crates/providers-discogs" }
 serde = { version = "1", features = ["derive"] }
 thiserror.workspace = true
 tauri = { version = "2", features = [] }
+# Native folder chooser behind the "Browse…" button; the scanner then recurses
+# into the picked folder. The JS side calls it via window.__TAURI__.dialog.
+tauri-plugin-dialog = "2"
 base64 = "0.22.1"
 # Native audio backend for the preview player: a rodio Sink queues tracks
 # back-to-back for gapless playback, decoding every format we handle (incl. OGG)
