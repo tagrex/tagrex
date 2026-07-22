@@ -160,6 +160,15 @@ first release ships.
 
 ### Changed
 
+- Visible keyboard focus rings, and the design-system token layer they sit on
+  (#76). Every control now shows a two-layer accent focus ring on keyboard
+  navigation (`:focus-visible`, so plain mouse clicks stay quiet) — the app is
+  keyboard-heavy but previously showed no focus at all. This also lands the
+  foundation tokens from the Claude Design pass (type scale, line-heights,
+  weights, spacing scale, radii, the focus-ring, the inert-stripe motif, and
+  selection/dirty/error tints) that the rest of the states/inert/typography
+  integration will build on.
+
 - Split the accent into fill vs ink for text contrast (#76). A new `--accent-ink`
   token carries the accent where it is used as *text* (active tabs, brand mark,
   sort indicator, rule numbers), separate from `--accent` used as a *fill* behind
