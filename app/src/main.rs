@@ -217,9 +217,13 @@ fn history(state: State<AppState>) -> Result<Vec<BatchDto>, String> {
     with_app(&state, |app| app.history().map_err(|e| e.to_string()))
 }
 
+// The three Discogs commands are `async` so Tauri runs them off the main thread:
+// their bodies do blocking HTTP (ureq), and a synchronous command would freeze
+// the webview for the whole request — very visible when the picker prefetches a
+// release per candidate. No `.await` inside, so no MutexGuard crosses one.
 #[tauri::command]
-fn search_discogs(
-    state: State<AppState>,
+async fn search_discogs(
+    state: State<'_, AppState>,
     token: String,
     query: SearchQueryDto,
 ) -> Result<Vec<CandidateDto>, String> {
@@ -230,8 +234,8 @@ fn search_discogs(
 }
 
 #[tauri::command]
-fn fetch_discogs_release(
-    state: State<AppState>,
+async fn fetch_discogs_release(
+    state: State<'_, AppState>,
     token: String,
     release_id: String,
 ) -> Result<ReleaseDto, String> {
@@ -242,8 +246,8 @@ fn fetch_discogs_release(
 }
 
 #[tauri::command]
-fn fetch_discogs_image(
-    state: State<AppState>,
+async fn fetch_discogs_image(
+    state: State<'_, AppState>,
     token: String,
     url: String,
 ) -> Result<CoverArtDto, String> {

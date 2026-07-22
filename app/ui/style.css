@@ -1058,6 +1058,25 @@ td.rule-cell {
   padding: 8px 9px;
 }
 
+/* Catalogue chip and count pill size to their content; the rest is full width. */
+.tile-info .catno,
+.tile-info .tk-count {
+  align-self: flex-start;
+}
+
+.tile-info .tk-count {
+  margin-top: 2px;
+}
+
+.tile-artist {
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.tile-info .muted {
+  font-size: 10.5px;
+}
+
 .tile-info .release-title {
   white-space: normal;
   font-size: 11.5px;

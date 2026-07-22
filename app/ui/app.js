@@ -1215,6 +1215,11 @@ function coverElOf(id) {
   );
 }
 
+// The track/disc-count pill, whichever layout this release is shown in.
+function countPillOf(id) {
+  return releaseList().querySelector(`[data-id="${cssEscape(id)}"] .tk-count`);
+}
+
 // "N tracks", or "N tracks · M discs" once the release is fetched; a dash before.
 function countLabel(id) {
   const release = releaseCache.get(id);
@@ -1281,13 +1286,19 @@ function cardMarkup(c) {
 }
 
 function tileMarkup(c) {
+  const catno = c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : "";
+  const artist = c.artist ? `<span class="tile-artist">${escapeHtml(c.artist)}</span>` : "";
+  // Same information as a list card: catalogue no. · artist (bold) · album title ·
+  // country/year/format · track (and disc) count.
   return `
     <article class="release-tile" data-id="${escapeHtml(c.id)}">
       <div class="tile-cover"></div>
       <div class="tile-info">
+        ${catno}
+        ${artist}
         <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
-        ${c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : ""}
-        <span class="muted">${escapeHtml([c.country, c.year].filter(Boolean).join(" · "))}</span>
+        <span class="muted">${escapeHtml(candidateMeta(c))}</span>
+        <span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span>
       </div>
     </article>`;
 }
@@ -1328,7 +1339,7 @@ async function prefetchReleaseCounts() {
     if (releaseCache.has(c.id)) continue;
     try {
       releaseCache.set(c.id, await invoke("fetch_discogs_release", { token, releaseId: c.id }));
-      const pill = cardEl(c.id)?.querySelector(".tk-count");
+      const pill = countPillOf(c.id);
       if (pill) pill.textContent = countLabel(c.id);
     } catch (e) {
       /* skip this one; the card just keeps its dash */
@@ -1365,7 +1376,7 @@ async function toggleCard(card) {
     }
     renderTracklist(card, release);
     body.dataset.loaded = "1";
-    card.querySelector(".tk-count").textContent = countLabel(id);
+    const tkPill = countPillOf(id); if (tkPill) tkPill.textContent = countLabel(id);
     loadFullCover(id, release.cover_image_url, card);
   } catch (e) {
     body.innerHTML = "";
