@@ -124,6 +124,12 @@ pub struct CandidateDto {
     pub title: String,
     pub year: Option<u16>,
     pub score: f32,
+    /// Small cover thumbnail URL (fetch bytes via [`App::fetch_discogs_image`]).
+    pub thumb_url: Option<String>,
+    pub country: Option<String>,
+    pub label: Option<String>,
+    pub format: Option<String>,
+    pub catalog_number: Option<String>,
 }
 
 /// One track of a fetched release.
@@ -1044,6 +1050,11 @@ impl From<&tagrex_core::provider::ReleaseCandidate> for CandidateDto {
             title: candidate.title.clone(),
             year: candidate.year,
             score: candidate.score,
+            thumb_url: candidate.thumb_url.clone(),
+            country: candidate.country.clone(),
+            label: candidate.label.clone(),
+            format: candidate.format.clone(),
+            catalog_number: candidate.catalog_number.clone(),
         }
     }
 }

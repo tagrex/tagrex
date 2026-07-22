@@ -37,6 +37,18 @@ pub struct ReleaseCandidate {
     pub year: Option<u16>,
     /// Provider-reported or locally computed relevance, 0.0..=1.0.
     pub score: f32,
+    /// Small cover thumbnail URL, when the provider offers one — enough to tell
+    /// releases apart visually in the candidate list. Fetch its bytes through
+    /// the app layer (auth headers) the same way a full cover is fetched.
+    pub thumb_url: Option<String>,
+    /// Release country, e.g. `Belgium`.
+    pub country: Option<String>,
+    /// Primary label, e.g. `Antler-Subway`.
+    pub label: Option<String>,
+    /// Human-readable format descriptors joined, e.g. `CD, Compilation, Mixed`.
+    pub format: Option<String>,
+    /// Catalogue number, e.g. `TOTH 006` — the DJ's most precise match key.
+    pub catalog_number: Option<String>,
 }
 
 /// One track of a fetched release.

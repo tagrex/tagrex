@@ -265,6 +265,16 @@ fn parse_search_response(body: &str) -> Result<Vec<ReleaseCandidate>, ProviderEr
                 Some((artist, title)) => (cleaner.apply(artist.trim()), title.trim().to_string()),
                 None => (String::new(), combined.trim().to_string()),
             };
+            // Non-empty string field, else None (Discogs sends `""` for absent).
+            let string_field = |key: &str| {
+                result
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string)
+            };
+            let format = string_array(result.get("format"));
             Some(ReleaseCandidate {
                 id,
                 artist,
@@ -274,6 +284,12 @@ fn parse_search_response(body: &str) -> Result<Vec<ReleaseCandidate>, ProviderEr
                 // from result order (results come back best-first) so the
                 // candidate list has a stable, meaningful ranking.
                 score: positional_score(index, count),
+                thumb_url: string_field("thumb"),
+                country: string_field("country"),
+                // `label` is an array; the first is the primary imprint.
+                label: string_array(result.get("label")).into_iter().next(),
+                format: (!format.is_empty()).then(|| format.join(", ")),
+                catalog_number: string_field("catno"),
             })
         })
         .collect();
@@ -526,6 +542,44 @@ mod tests {
         // No " - " separator: whole string becomes the title.
         assert_eq!(candidates[1].artist, "");
         assert_eq!(candidates[1].title, "No Separator Title");
+    }
+
+    #[test]
+    fn parses_display_fields_from_search() {
+        // Thumb, country, label (array → first), format (array → joined) and
+        // catalogue number enrich each candidate card; absent/empty stay None.
+        let body = r#"{
+            "results": [
+                {
+                    "id": 316795,
+                    "title": "Various - La Bush",
+                    "year": "1996",
+                    "thumb": "https://img.discogs.com/thumb.jpg",
+                    "country": "Belgium",
+                    "label": ["Antler-Subway", "Subway Dance"],
+                    "format": ["CD", "Compilation", "Mixed"],
+                    "catno": "TOTH 006"
+                },
+                {"id": 42, "title": "Nobody - Nothing", "thumb": "", "country": ""}
+            ]
+        }"#;
+        let candidates = parse_search_response(body).unwrap();
+        let first = &candidates[0];
+        assert_eq!(
+            first.thumb_url.as_deref(),
+            Some("https://img.discogs.com/thumb.jpg")
+        );
+        assert_eq!(first.country.as_deref(), Some("Belgium"));
+        assert_eq!(first.label.as_deref(), Some("Antler-Subway"));
+        assert_eq!(first.format.as_deref(), Some("CD, Compilation, Mixed"));
+        assert_eq!(first.catalog_number.as_deref(), Some("TOTH 006"));
+        // Empty strings and missing keys collapse to None.
+        let second = &candidates[1];
+        assert_eq!(second.thumb_url, None);
+        assert_eq!(second.country, None);
+        assert_eq!(second.label, None);
+        assert_eq!(second.format, None);
+        assert_eq!(second.catalog_number, None);
     }
 
     #[test]
