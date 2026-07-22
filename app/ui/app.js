@@ -262,6 +262,7 @@ function renderTracks() {
   previewBtn.disabled = tracks.length === 0;
   updateEditsButton();
   syncSelectionUI();
+  refreshRoving();
 }
 
 // Selection count in the status bar ("N/M selected"). Uses the checked-row
@@ -1832,6 +1833,7 @@ function selectRow(tr, e) {
     selAnchor = path;
   }
   syncSelectionUI();
+  setActiveRow(tr, true); // clicking a row also makes it the keyboard-nav anchor
 }
 
 // Toggle a whole group's selection (a group-name double-click): if every row of
@@ -1893,6 +1895,55 @@ tracksBody.addEventListener(
   },
   true,
 );
+
+// ---- keyboard row navigation (roving tabindex) ----
+// Exactly one data row is tabbable (tabindex 0); ↑/↓ move focus between visible
+// rows and Space toggles the focused row's selection. This makes the row focus
+// ring (states.css) reachable for a keyboard-heavy tool.
+let activeRowPath = null;
+
+// Visible data rows (group headers and collapsed rows excluded).
+function navRows() {
+  return dataRows().filter((tr) => !tr.classList.contains("hidden-row"));
+}
+
+// Keep exactly one row tabbable; called after every render.
+function refreshRoving() {
+  const rows = navRows();
+  if (rows.length === 0) {
+    activeRowPath = null;
+    return;
+  }
+  if (!rows.some((r) => r.dataset.path === activeRowPath)) activeRowPath = rows[0].dataset.path;
+  for (const r of dataRows()) r.tabIndex = r.dataset.path === activeRowPath ? 0 : -1;
+}
+
+function setActiveRow(tr, focus) {
+  activeRowPath = tr ? tr.dataset.path : null;
+  for (const r of dataRows()) r.tabIndex = r.dataset.path === activeRowPath ? 0 : -1;
+  if (tr && focus) tr.focus();
+}
+
+tracksBody.addEventListener("keydown", (e) => {
+  // Don't hijack keys while editing a cell or typing in a control.
+  if (e.target.isContentEditable || e.target.matches("input, textarea, select")) return;
+  const tr = e.target.closest("tr");
+  if (!tr || !tr.dataset.path) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const rows = navRows();
+    const i = rows.indexOf(tr);
+    const next = rows[e.key === "ArrowDown" ? i + 1 : i - 1];
+    if (next) setActiveRow(next, true);
+  } else if (e.key === " ") {
+    e.preventDefault(); // Space would otherwise scroll
+    const path = tr.dataset.path;
+    if (selection.has(path)) selection.delete(path);
+    else selection.add(path);
+    selAnchor = path;
+    syncSelectionUI();
+  }
+});
 
 // ---- resize the table / mode-panel split by dragging the divider ----
 // Mouse events (not a native splitter) for the same WKWebView reason as the row

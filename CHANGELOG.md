@@ -10,6 +10,11 @@ first release ships.
 
 ### Added
 
+- Keyboard row navigation in the file table (#76). A roving focus moves between
+  rows with ↑/↓ (drawing the new focus ring), and Space toggles the focused row's
+  selection — so a keyboard-heavy tool's main surface is now operable without the
+  mouse, complementing the existing click / ⌘ / Shift selection.
+
 - Rich release picker in TAGGER (#27, step 2 of 2). Discogs search results are
   now expandable cards instead of a flat list: each shows a cover thumbnail
   (fetched in the background), the catalogue number as an accent chip, and
