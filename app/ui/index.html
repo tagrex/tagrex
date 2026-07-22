@@ -144,52 +144,23 @@
         <section id="panel-tagger" class="mode-panel" hidden>
           <div class="panel-block">
             <h2>Online source — Discogs</h2>
-            <div id="discogs-search-view">
-              <input id="discogs-token" type="password" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
-              <div class="mask-row" style="padding: 6px 0 0">
-                <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
-                <button id="discogs-search">Search</button>
-              </div>
-              <p class="hint muted" style="padding: 6px 0 0">Click a release to see its tracklist, then choose which tracks to import.</p>
-              <div class="table-wrap panel-list">
-                <table>
-                  <tbody id="discogs-results"></tbody>
-                </table>
-                <p id="discogs-empty" class="empty">Search Discogs to see releases.</p>
+            <input id="discogs-token" type="password" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
+            <div class="mask-row" style="padding: 6px 0 0">
+              <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
+              <button id="discogs-search">Search</button>
+            </div>
+            <div class="release-toolbar" id="release-toolbar" hidden>
+              <span class="hint muted">Found <span id="release-count">0</span> entries</span>
+              <div class="spacer"></div>
+              <div class="seg" id="release-layout" role="tablist" aria-label="Layout">
+                <button class="seg-btn active" data-layout="list">☰ List</button>
+                <button class="seg-btn" data-layout="grid">▦ Grid</button>
               </div>
             </div>
-
-            <div id="discogs-release-view" hidden>
-              <div class="release-head">
-                <button id="discogs-back" class="icon">← results</button>
-                <img id="release-cover" class="release-cover" hidden alt="Release cover" />
-                <div id="release-title" class="release-title"></div>
-              </div>
-              <div class="release-actions">
-                <button id="tracks-all">Enable all</button>
-                <button id="tracks-none">Disable all</button>
-                <button id="auto-match" title="Reorder your selected files to line up with this tracklist, matching by title">Auto-match</button>
-                <button id="cover-embed" hidden title="Embed this cover into the selected files">Embed cover</button>
-              </div>
-              <div class="table-wrap panel-list">
-                <table>
-                  <thead>
-                    <tr>
-                      <th class="sel"></th>
-                      <th>#</th>
-                      <th>Artist</th>
-                      <th>Title</th>
-                      <th>Length</th>
-                    </tr>
-                  </thead>
-                  <tbody id="release-tracks"></tbody>
-                </table>
-              </div>
-              <div class="panel-actions">
-                <div class="spacer"></div>
-                <button id="import-apply" class="primary">Import to selected files</button>
-              </div>
-            </div>
+            <!-- Cards are rendered here (list or grid). Each card expands to its
+                 tracklist, fetched lazily; import is per-card. -->
+            <div id="release-list" class="release-list"></div>
+            <p id="discogs-empty" class="empty">Search Discogs to see releases.</p>
           </div>
 
           <div class="panel-block">

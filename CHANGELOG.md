@@ -10,6 +10,18 @@ first release ships.
 
 ### Added
 
+- Rich release picker in TAGGER (#27, step 2 of 2). Discogs search results are
+  now expandable cards instead of a flat list: each shows a cover thumbnail
+  (fetched in the background), the catalogue number as an accent chip, and
+  country · year · format. Clicking a card lazily fetches the release and reveals
+  its tracklist inline (checkbox · number · title · artist · duration) with a
+  live selected count; Enable/Disable all, Auto-match, Embed cover and Import are
+  all per-card. A List/Grid toggle switches to compact cover tiles. Backend: the
+  Discogs search DTO now carries `thumb_url`, `country`, `label`, `format` and
+  `catalog_number`. Nothing is written until Import goes through the usual
+  preview/apply/undo path. (The match-confidence bar from the design is deferred
+  until candidates are scored against the selection.)
+
 - Native folder picker (#74). A "Browse…" button next to the library path opens
   the OS folder chooser and loads the picked folder (the scanner already
   recurses into its subfolders), so opening a library no longer means pasting a

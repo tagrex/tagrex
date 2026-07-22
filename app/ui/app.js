@@ -60,8 +60,6 @@ const selectAll = el("select-all");
 const coverOpenBtn = el("cover-open");
 const coverExportBtn = el("cover-export");
 const coverFileInput = el("cover-file");
-const discogsResults = el("discogs-results");
-const discogsEmpty = el("discogs-empty");
 const statusSel = el("status-sel");
 const playerBar = el("player");
 const plToggle = el("pl-toggle");
@@ -80,14 +78,6 @@ let plDuration = 0;
 let plSeeking = false;
 // Poll timer handle (one interval once a library is open).
 let plPollTimer = null;
-
-const releaseTracksBody = el("release-tracks");
-const releaseCoverImg = el("release-cover");
-const coverEmbedBtn = el("cover-embed");
-let currentRelease = null;
-// The fetched cover of the currently open release, as a CoverArtDto ({ mime,
-// data_base64 }), or null if the release has no image / it failed to load.
-let currentReleaseCover = null;
 
 // ---- helpers ----
 function toast(message, isError) {
@@ -1163,7 +1153,15 @@ async function runExport() {
   }
 }
 
-// ---- Discogs import ----
+// ---- Discogs import (release picker cards, #27 step 2) ----
+// Each search hit is a card; expanding it lazily fetches the release (tracklist)
+// and its cover. Import / auto-match / embed-cover are per-card and route
+// through the same preview/apply/undo path as before.
+let releaseCandidates = []; // last search results (CandidateDto[])
+let releaseLayout = "list"; // "list" | "grid"
+const releaseCache = new Map(); // releaseId -> fetched ReleaseDto (with tracks)
+const coverCache = new Map(); // releaseId -> CoverArtDto (full cover, for embed)
+
 async function discogsSearch() {
   const token = el("discogs-token").value.trim();
   const query = el("discogs-query").value.trim();
@@ -1174,8 +1172,10 @@ async function discogsSearch() {
   // Remember the token locally so it's prefilled next time.
   invoke("save_discogs_token", { token }).catch(() => {});
   try {
-    const candidates = await invoke("search_discogs", { token, query: { album: query } });
-    renderCandidates(candidates);
+    releaseCandidates = await invoke("search_discogs", { token, query: { album: query } });
+    releaseCache.clear();
+    coverCache.clear();
+    renderReleaseList();
   } catch (e) {
     toast(String(e), true);
   }
@@ -1190,180 +1190,261 @@ async function loadSavedToken() {
   }
 }
 
-function renderCandidates(candidates) {
-  discogsResults.innerHTML = "";
-  discogsEmpty.hidden = candidates.length > 0;
-  if (candidates.length === 0) {
-    discogsEmpty.textContent = "No releases found.";
+// Meta line "Country · Year · Format" from whatever fields the candidate carries.
+function candidateMeta(c) {
+  return [c.country, c.year, c.format].filter(Boolean).join(" · ");
+}
+
+function releaseList() {
+  return el("release-list");
+}
+
+function renderReleaseList() {
+  const list = releaseList();
+  list.innerHTML = "";
+  el("release-toolbar").hidden = releaseCandidates.length === 0;
+  el("release-count").textContent = String(releaseCandidates.length);
+  el("discogs-empty").hidden = releaseCandidates.length > 0;
+  if (releaseCandidates.length === 0) {
+    el("discogs-empty").textContent = "No releases found.";
     return;
   }
-  for (const c of candidates) {
-    const tr = document.createElement("tr");
-    const year = c.year ? ` · ${c.year}` : "";
-    const artist = c.artist ? `${escapeHtml(c.artist)} — ` : "";
-    tr.innerHTML = `<td>
-        <div class="cand-title">${artist}${escapeHtml(c.title)}</div>
-        <div class="cand-meta">Discogs #${escapeHtml(c.id)}${year}</div>
-      </td>`;
-    tr.addEventListener("click", () => openRelease(c.id));
-    discogsResults.appendChild(tr);
+  list.classList.toggle("grid", releaseLayout === "grid");
+  for (const c of releaseCandidates) {
+    list.insertAdjacentHTML("beforeend", releaseLayout === "grid" ? tileMarkup(c) : cardMarkup(c));
   }
+  // Load thumbnails in the background so cards can be told apart visually.
+  for (const c of releaseCandidates) loadThumb(c);
 }
 
-function showDiscogsView(which) {
-  el("discogs-search-view").hidden = which !== "search";
-  el("discogs-release-view").hidden = which !== "release";
+function cardMarkup(c) {
+  const meta = candidateMeta(c);
+  const catno = c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : "";
+  return `
+    <article class="release-card" data-id="${escapeHtml(c.id)}" aria-expanded="false">
+      <button class="release-head" type="button">
+        <span class="release-cover"></span>
+        <span class="release-info">
+          <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.artist ? c.artist + " — " : "")}${escapeHtml(c.title)}</span>
+          <span class="release-meta">${catno}<span class="muted">${escapeHtml(meta)}</span></span>
+        </span>
+        <span class="release-caret" aria-hidden="true">▸</span>
+      </button>
+      <div class="release-facts">
+        <span class="pill tk-count">— tracks</span>
+        <button class="release-details" type="button">details…</button>
+      </div>
+      <div class="release-tracklist"></div>
+    </article>`;
 }
 
-async function openRelease(releaseId) {
+function tileMarkup(c) {
+  return `
+    <article class="release-tile" data-id="${escapeHtml(c.id)}">
+      <div class="tile-cover"></div>
+      <div class="tile-info">
+        <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
+        ${c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : ""}
+        <span class="muted">${escapeHtml([c.country, c.year].filter(Boolean).join(" · "))}</span>
+      </div>
+    </article>`;
+}
+
+// Fetch a candidate's thumbnail (auth'd through the backend) and drop it into
+// its card/tile cover. Best-effort — a missing thumb just leaves the placeholder.
+async function loadThumb(c) {
+  if (!c.thumb_url) return;
   const token = el("discogs-token").value.trim();
   try {
-    currentRelease = await invoke("fetch_discogs_release", { token, releaseId });
-    renderReleaseTracks();
-    const year = currentRelease.year ? ` (${currentRelease.year})` : "";
-    el("release-title").textContent = `${currentRelease.artist} — ${currentRelease.title}${year}`;
-    showDiscogsView("release");
-    loadReleaseCover(token, currentRelease.cover_image_url);
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// Fetch the release's cover (bytes come through the backend, since the image
-// URL needs Discogs auth headers the webview can't send) and show it. Failure
-// is non-fatal: the tracklist import still works without a cover.
-async function loadReleaseCover(token, url) {
-  currentReleaseCover = null;
-  releaseCoverImg.hidden = true;
-  releaseCoverImg.removeAttribute("src");
-  coverEmbedBtn.hidden = true;
-  if (!url) return;
-  try {
-    const cover = await invoke("fetch_discogs_image", { token, url });
-    currentReleaseCover = cover;
-    releaseCoverImg.src = `data:${cover.mime};base64,${cover.data_base64}`;
-    releaseCoverImg.hidden = false;
-    coverEmbedBtn.hidden = false;
-  } catch (e) {
-    // Leave the cover hidden; the import flow is unaffected.
-  }
-}
-
-// Embed the fetched release cover into the files selected in the main table,
-// routing through the same preview/apply/undo path as a locally chosen image.
-async function embedReleaseCover() {
-  if (!currentReleaseCover) return;
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
-    return;
-  }
-  try {
-    previewPlan = await invoke("preview_cover_embed", { paths, cover: currentReleaseCover });
-    previewSource = "cover";
-    renderPreview(previewPlan);
-    toast(
-      previewPlan.changes.length
-        ? `Previewing cover on ${previewPlan.changes.length} file(s) — click Apply`
-        : "Selected files already have this cover"
+    const img = await invoke("fetch_discogs_image", { token, url: c.thumb_url });
+    const cover = releaseList().querySelector(
+      `[data-id="${cssEscape(c.id)}"] .release-cover, [data-id="${cssEscape(c.id)}"] .tile-cover`,
     );
+    if (cover) cover.innerHTML = `<img alt="" src="data:${img.mime};base64,${img.data_base64}" />`;
   } catch (e) {
-    toast(String(e), true);
+    /* leave the striped placeholder */
   }
 }
 
-function renderReleaseTracks() {
-  releaseTracksBody.innerHTML = "";
-  currentRelease.tracks.forEach((t, i) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td class="sel"><input type="checkbox" checked data-i="${i}" /></td>
-      <td class="mono">${escapeHtml(t.position)}</td>
-      <td>${escapeHtml(t.artist || currentRelease.artist)}</td>
-      <td title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</td>
-      <td class="mono muted">${t.duration_secs ? fmtTime(t.duration_secs) : "—"}</td>`;
-    releaseTracksBody.appendChild(tr);
-  });
+// CSS.escape isn't guaranteed in every webview; ids are numeric strings anyway.
+function cssEscape(s) {
+  return String(s).replace(/["\\]/g, "\\$&");
 }
 
-// Reorder the selected files so they line up with this release's tracklist,
-// matching on title/artist instead of trusting the order they happen to be in
-// (#53). Import maps the i-th enabled track onto the i-th file, so getting the
-// file order right is what stops a whole album being tagged one title out.
-async function autoMatchTracks() {
-  const paths = selectedPaths();
-  if (!currentRelease || paths.length === 0) {
-    toast("Select the tracks to match against first", true);
-    return;
-  }
-  const releaseTracks = currentRelease.tracks.map((t) => ({
-    position: t.position,
-    artist: t.artist || currentRelease.artist,
-    title: t.title,
-    duration_secs: t.duration_secs ?? null,
-  }));
+// Expand/collapse a card; on first expand, fetch the release + render its
+// tracklist and pull the full cover for embedding.
+async function toggleCard(card) {
+  const expanded = card.getAttribute("aria-expanded") === "true";
+  card.setAttribute("aria-expanded", expanded ? "false" : "true");
+  card.querySelector(".release-caret").textContent = expanded ? "▸" : "▾";
+  if (expanded) return;
+  const id = card.dataset.id;
+  const body = card.querySelector(".release-tracklist");
+  if (body.dataset.loaded === "1") return;
+  body.innerHTML = `<div class="tracklist-actions muted">Loading…</div>`;
+  const token = el("discogs-token").value.trim();
   try {
-    const aligned = await invoke("auto_align", { paths, tracks: releaseTracks });
-    // Unmatched files sort to the end rather than scrambling the rest.
-    const ranked = paths.map((path, i) => ({
-      path,
-      key: aligned[i] === null || aligned[i] === undefined ? Number.MAX_SAFE_INTEGER : aligned[i],
-    }));
-    ranked.sort((a, b) => a.key - b.key);
-
-    // Rewrite `tracks` in place: selected files take their new relative order,
-    // unselected ones stay exactly where they are.
-    const byPath = new Map(tracks.map((t) => [t.path, t]));
-    const selected = new Set(paths);
-    let next = 0;
-    tracks = tracks.map((t) => (selected.has(t.path) ? byPath.get(ranked[next++].path) : t));
-    sortKey = null; // a manual order supersedes any column sort
-    renderTracks();
-
-    const matched = aligned.filter((i) => i !== null && i !== undefined).length;
-    toast(
-      matched
-        ? `Matched ${matched}/${paths.length} file(s) — reordered to line up`
-        : "No confident matches — leaving the order alone",
-      matched === 0
-    );
+    let release = releaseCache.get(id);
+    if (!release) {
+      release = await invoke("fetch_discogs_release", { token, releaseId: id });
+      releaseCache.set(id, release);
+    }
+    renderTracklist(card, release);
+    body.dataset.loaded = "1";
+    card.querySelector(".tk-count").textContent = `${release.tracks.length} tracks`;
+    loadFullCover(id, release.cover_image_url, card);
   } catch (e) {
+    body.innerHTML = "";
+    body.dataset.loaded = "";
     toast(String(e), true);
   }
 }
 
-function enabledReleaseTracks() {
-  return [...releaseTracksBody.querySelectorAll(".sel input:checked")].map((cb) => {
-    const t = currentRelease.tracks[Number(cb.dataset.i)];
+function renderTracklist(card, release) {
+  const rows = release.tracks
+    .map(
+      (t, i) => `
+      <tr>
+        <td class="sel"><input type="checkbox" checked data-i="${i}" /></td>
+        <td class="tk-num">${escapeHtml(t.position)}</td>
+        <td class="tk-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</td>
+        <td class="tk-artist">${escapeHtml(t.artist || release.artist)}</td>
+        <td class="tk-dur">${t.duration_secs ? fmtTime(t.duration_secs) : "—"}</td>
+      </tr>`,
+    )
+    .join("");
+  card.querySelector(".release-tracklist").innerHTML = `
+    <div class="tracklist-actions">
+      <button class="btn-sm" data-act="enable-all">Enable all</button>
+      <button class="btn-sm" data-act="disable-all">Disable all</button>
+      <button class="btn-sm" data-act="automatch" title="Reorder the selected files to line up with this tracklist">Auto-match</button>
+      <button class="btn-sm" data-act="embed" title="Embed this release's cover into the selected files">Embed cover</button>
+      <span class="muted tk-selcount" style="margin-left:auto"></span>
+    </div>
+    <table><tbody>${rows}</tbody></table>
+    <div class="tracklist-apply"><button class="primary" data-act="import">Import to selected files</button></div>`;
+  updateTracklistCount(card);
+}
+
+function updateTracklistCount(card) {
+  const boxes = [...card.querySelectorAll(".release-tracklist .sel input")];
+  const on = boxes.filter((b) => b.checked).length;
+  const label = card.querySelector(".tk-selcount");
+  if (label) label.textContent = `${on} / ${boxes.length} selected`;
+}
+
+// The enabled tracks of a card, shaped for import / auto-align.
+function enabledTracksOf(card) {
+  const release = releaseCache.get(card.dataset.id);
+  return [...card.querySelectorAll(".release-tracklist .sel input:checked")].map((cb) => {
+    const t = release.tracks[Number(cb.dataset.i)];
     return {
       position: t.position,
-      artist: t.artist || currentRelease.artist,
+      artist: t.artist || release.artist,
       title: t.title,
       duration_secs: t.duration_secs ?? null,
     };
   });
 }
 
-async function applyImport() {
+// Fetch the full-size cover once (for embedding) and upgrade the card thumbnail.
+async function loadFullCover(id, url, card) {
+  if (!url || coverCache.has(id)) return;
+  const token = el("discogs-token").value.trim();
+  try {
+    const cover = await invoke("fetch_discogs_image", { token, url });
+    coverCache.set(id, cover);
+    const coverEl = card.querySelector(".release-cover");
+    if (coverEl) coverEl.innerHTML = `<img alt="" src="data:${cover.mime};base64,${cover.data_base64}" />`;
+  } catch (e) {
+    /* embedding just won't be available for this card */
+  }
+}
+
+async function autoMatchToRelease(card) {
   const paths = selectedPaths();
-  // Prefer Discogs "styles" (e.g. Trance/Tribal/Techno) over the coarse
-  // "genres" (e.g. Electronic) for the genre tag — styles are closer to what a
-  // genre tag usually means (#26). Fall back to genres when a release has no
-  // styles. Multiple values are joined with "/" (no spaces), matching the
-  // existing convention in the user's library.
-  const genreValues = currentRelease.styles.length ? currentRelease.styles : currentRelease.genres;
+  const release = releaseCache.get(card.dataset.id);
+  if (!release || paths.length === 0) {
+    toast("Select the tracks to match against first", true);
+    return;
+  }
+  const releaseTracks = release.tracks.map((t) => ({
+    position: t.position,
+    artist: t.artist || release.artist,
+    title: t.title,
+    duration_secs: t.duration_secs ?? null,
+  }));
+  try {
+    const aligned = await invoke("auto_align", { paths, tracks: releaseTracks });
+    const ranked = paths.map((path, i) => ({
+      path,
+      key: aligned[i] === null || aligned[i] === undefined ? Number.MAX_SAFE_INTEGER : aligned[i],
+    }));
+    ranked.sort((a, b) => a.key - b.key);
+    const byPath = new Map(tracks.map((t) => [t.path, t]));
+    const selected = new Set(paths);
+    let next = 0;
+    tracks = tracks.map((t) => (selected.has(t.path) ? byPath.get(ranked[next++].path) : t));
+    sortKey = null;
+    renderTracks();
+    const matched = aligned.filter((i) => i !== null && i !== undefined).length;
+    toast(
+      matched
+        ? `Matched ${matched}/${paths.length} file(s) — reordered to line up`
+        : "No confident matches — leaving the order alone",
+      matched === 0,
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+async function embedCoverFrom(card) {
+  const cover = coverCache.get(card.dataset.id);
+  if (!cover) {
+    toast("This release has no cover to embed", true);
+    return;
+  }
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to embed the cover into first", true);
+    return;
+  }
+  try {
+    previewPlan = await invoke("preview_cover_embed", { paths, cover });
+    previewSource = "cover";
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing cover on ${previewPlan.changes.length} file(s) — click Apply`
+        : "Selected files already have this cover",
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+async function importRelease(card) {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to import onto first", true);
+    return;
+  }
+  const release = releaseCache.get(card.dataset.id);
+  // Prefer Discogs "styles" over the coarse "genres" for the genre tag (#26),
+  // joined with "/" to match the user's library convention.
+  const genreValues = release.styles.length ? release.styles : release.genres;
   const selection = {
-    album: currentRelease.title,
-    album_artist: currentRelease.artist,
-    year: currentRelease.year ? String(currentRelease.year) : null,
+    album: release.title,
+    album_artist: release.artist,
+    year: release.year ? String(release.year) : null,
     genre: genreValues.join("/") || null,
-    tracks: enabledReleaseTracks(),
+    tracks: enabledTracksOf(card),
   };
   try {
     const plan = await invoke("preview_import", { paths, selection });
-    // Merge the import into the pending-edits buffer instead of replacing the
-    // preview. A field the user already edited by hand wins (we don't
-    // overwrite an existing entry), so manual edits aren't clobbered.
+    // Merge into the pending-edits buffer; a field the user already edited by
+    // hand wins (we don't overwrite an existing entry).
     let merged = 0;
     for (const change of plan.changes) {
       if (!edits.has(change.path)) edits.set(change.path, new Map());
@@ -1376,13 +1457,13 @@ async function applyImport() {
       }
       if (fields.size === 0) edits.delete(change.path);
     }
-    renderTracks(); // imported values now show as pending edits in the table
-    refreshFieldEditor(); // reflect the imported values in the field grid too
-    await previewEdits(); // one unified preview of all pending edits
+    renderTracks();
+    refreshFieldEditor();
+    await previewEdits();
     toast(
       merged
         ? `Merged ${merged} field change(s) from Discogs into pending edits`
-        : "Nothing new to import from this release"
+        : "Nothing new to import from this release",
     );
   } catch (e) {
     toast(String(e), true);
@@ -1414,10 +1495,9 @@ function setMode(name) {
   (MODE_REFRESH[name] || (() => {}))();
 }
 
-// Refresh the whole TAGGER panel (Discogs search state + field grid). Cover
-// buttons need no per-selection refresh.
+// Refresh the TAGGER field grid for the selection. The Discogs card list
+// persists across mode switches (a search isn't thrown away when you leave).
 function refreshTagger() {
-  showDiscogsView("search");
   refreshFieldEditor();
 }
 
@@ -1456,12 +1536,51 @@ el("export-run").addEventListener("click", runExport);
 coverFileInput.addEventListener("change", onCoverChosen);
 el("discogs-search").addEventListener("click", discogsSearch);
 el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
-el("discogs-back").addEventListener("click", () => showDiscogsView("search"));
-el("import-apply").addEventListener("click", applyImport);
-coverEmbedBtn.addEventListener("click", embedReleaseCover);
-el("auto-match").addEventListener("click", autoMatchTracks);
-el("tracks-all").addEventListener("click", () => toggleReleaseTracks(true));
-el("tracks-none").addEventListener("click", () => toggleReleaseTracks(false));
+
+// List/Grid layout toggle.
+el("release-layout").addEventListener("click", (e) => {
+  const btn = e.target.closest(".seg-btn");
+  if (!btn || btn.classList.contains("active")) return;
+  releaseLayout = btn.dataset.layout;
+  el("release-layout").querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b === btn));
+  renderReleaseList();
+});
+
+// One delegated handler for every card interaction (they're re-rendered often).
+el("release-list").addEventListener("click", (e) => {
+  const tile = e.target.closest(".release-tile");
+  if (tile) {
+    // Grid tile → back to list layout, expanded on that release.
+    releaseLayout = "list";
+    el("release-layout").querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.layout === "list"));
+    renderReleaseList();
+    const card = el("release-list").querySelector(`.release-card[data-id="${cssEscape(tile.dataset.id)}"]`);
+    if (card) toggleCard(card);
+    return;
+  }
+  const card = e.target.closest(".release-card");
+  if (!card) return;
+  const act = e.target.closest("[data-act]")?.dataset.act;
+  if (act === "enable-all" || act === "disable-all") {
+    card.querySelectorAll(".release-tracklist .sel input").forEach((cb) => (cb.checked = act === "enable-all"));
+    updateTracklistCount(card);
+  } else if (act === "automatch") {
+    autoMatchToRelease(card);
+  } else if (act === "embed") {
+    embedCoverFrom(card);
+  } else if (act === "import") {
+    importRelease(card);
+  } else if (e.target.closest(".release-head") || e.target.closest(".release-details")) {
+    toggleCard(card);
+  }
+});
+
+// Live "N / M selected" as track checkboxes toggle.
+el("release-list").addEventListener("change", (e) => {
+  if (e.target.matches(".release-tracklist .sel input")) {
+    updateTracklistCount(e.target.closest(".release-card"));
+  }
+});
 
 // Open a native folder chooser (Tauri dialog plugin). The scanner recurses into
 // subfolders, so picking a folder loads everything under it. Outside Tauri
@@ -1481,10 +1600,6 @@ async function browseForFolder() {
   } catch (e) {
     toast(String(e), true);
   }
-}
-
-function toggleReleaseTracks(on) {
-  releaseTracksBody.querySelectorAll(".sel input").forEach((cb) => (cb.checked = on));
 }
 
 // ---- reorder files by dragging the File cell ----
@@ -2060,8 +2175,8 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case "search_discogs":
       return Promise.resolve([
-        { id: "316795", artist: "Various", title: "La Bush - Music From The Temple Of House", year: 1996, score: 1.0 },
-        { id: "764414", artist: "Various", title: "La Bush Vol. 4", year: 1997, score: 0.9 },
+        { id: "316795", artist: "Various", title: "La Bush - Music From The Temple Of House", year: 1996, score: 1.0, thumb_url: "https://img/1.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Compilation, Mixed", catalog_number: "TOTH 006" },
+        { id: "764414", artist: "Various", title: "La Bush Vol. 4", year: 1997, score: 0.9, thumb_url: "https://img/2.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Mixed", catalog_number: "TOTH 021" },
       ]);
     case "fetch_discogs_release":
       return Promise.resolve({

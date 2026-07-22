@@ -490,68 +490,6 @@ th.sortable:hover {
   vertical-align: middle;
 }
 
-/* ---- Discogs candidate list + release detail ---- */
-#discogs-results td {
-  cursor: pointer;
-  white-space: normal;
-}
-
-#discogs-results tr:hover {
-  background: var(--row-hover);
-}
-
-.cand-title {
-  font-weight: 600;
-}
-
-.cand-meta {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.release-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.release-title {
-  font-weight: 600;
-}
-
-.release-cover {
-  height: 48px;
-  width: 48px;
-  object-fit: cover;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-}
-
-.release-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 6px;
-}
-
-#release-tracks td:not(.sel) {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 160px;
-}
-
-#release-tracks td.sel {
-  width: 34px;
-  text-align: center;
-}
-
-#release-tracks input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
-}
 
 /* Drag handle on the File cell of the main table. WebKit (the macOS Tauri
    webview) needs `-webkit-user-drag: element` to let a non-anchor/img element
@@ -826,4 +764,306 @@ td.rule-cell {
   flex: 0 0 auto;
   font-size: 11px;
   white-space: nowrap;
+}
+
+/* ---- release picker cards (#27 step 2, from the Claude Design handoff) ---- */
+.release-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+
+.seg {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.seg-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--bg);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.seg-btn.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.release-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.release-list.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.release-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.release-head {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  padding: 10px;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.release-head:hover {
+  background: var(--row-hover);
+}
+
+.release-cover {
+  width: 56px;
+  height: 56px;
+  flex: none;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  /* Striped placeholder until the fetched cover <img> is dropped in. */
+  background: repeating-linear-gradient(
+    45deg, var(--bg), var(--bg) 5px, var(--row-hover) 5px, var(--row-hover) 10px);
+}
+
+.release-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.release-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.release-title {
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.release-artist {
+  font-size: 11px;
+}
+
+.release-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+
+/* Catalogue number — the DJ's fastest match key; accent-as-text -> ink. */
+.catno {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.release-caret {
+  flex: none;
+  align-self: center;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.release-facts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 10.5px;
+}
+
+.pill {
+  font-weight: 600;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 7px;
+}
+
+.release-details {
+  margin-left: auto;
+  color: var(--accent-ink);
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.release-tracklist {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.release-card:not([aria-expanded="true"]) .release-tracklist {
+  display: none;
+}
+
+.tracklist-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+}
+
+.btn-sm {
+  padding: 3px 8px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  box-shadow: none;
+}
+
+.release-tracklist table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10.5px;
+}
+
+.release-tracklist tr {
+  border-top: 1px solid var(--border);
+}
+
+.release-tracklist tr:hover {
+  background: var(--row-hover);
+}
+
+.release-tracklist td {
+  padding: 4px 6px;
+  border-bottom: none;
+  max-width: none;
+}
+
+.release-tracklist td.sel {
+  width: 30px;
+  text-align: center;
+}
+
+.release-tracklist td.tk-num {
+  width: 34px;
+  color: var(--muted);
+}
+
+.release-tracklist td.tk-title,
+.release-tracklist td.tk-artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.release-tracklist td.tk-title {
+  max-width: 120px;
+}
+
+.release-tracklist td.tk-artist {
+  max-width: 90px;
+  color: var(--muted);
+}
+
+.release-tracklist td.tk-dur {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  padding-right: 8px;
+}
+
+.release-tracklist input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+.tracklist-apply {
+  display: flex;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+}
+
+.tracklist-apply .primary {
+  margin-left: auto;
+  font-size: 11px;
+}
+
+/* ---- grid tiles ---- */
+.release-tile {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+  cursor: pointer;
+  box-shadow: var(--shadow);
+}
+
+.release-tile:hover {
+  border-color: var(--accent);
+}
+
+.tile-cover {
+  aspect-ratio: 1 / 1;
+  border-bottom: 1px solid var(--border);
+  background: repeating-linear-gradient(
+    45deg, var(--bg), var(--bg) 6px, var(--row-hover) 6px, var(--row-hover) 12px);
+}
+
+.tile-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.tile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 9px;
+}
+
+.tile-info .release-title {
+  white-space: normal;
+  font-size: 11.5px;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
