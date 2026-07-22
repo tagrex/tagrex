@@ -9,6 +9,10 @@
      problems stand out against all the positive/interactive green. */
   --accent: #0b6b53;
   --accent-text: #ffffff;
+  /* Accent used AS TEXT (tabs, brand, sort indicator, links, chips) rather than
+     as a fill behind white text — split out so it can clear small-text contrast
+     independently of the fill colour (matters most in dark mode). */
+  --accent-ink: #0a5f49;
   --add: #15803d;
   --del: #dc2626;
   --row-hover: #eef1f5;
@@ -24,6 +28,7 @@
     --muted: #9aa1ac;
     --accent: #0d8f6a;
     --accent-text: #ffffff;
+    --accent-ink: #14a67d;
     --add: #4ade80;
     --del: #f87171;
     --row-hover: #242832;
@@ -69,7 +74,7 @@ body {
 .brand {
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .lib {
@@ -173,7 +178,7 @@ button.icon {
 }
 
 .mode-tab.active {
-  color: var(--accent);
+  color: var(--accent-ink);
   border-bottom-color: var(--accent);
 }
 
@@ -284,7 +289,7 @@ body.panel-collapsed .col-splitter {
 }
 
 .view-tab.active {
-  color: var(--accent);
+  color: var(--accent-ink);
   border-bottom-color: var(--accent);
 }
 
@@ -417,7 +422,7 @@ th.sortable:hover {
 .sort-ind {
   display: inline-block;
   width: 0.9em;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 #filter {
@@ -609,7 +614,7 @@ button.play-btn {
 }
 
 button.play-btn:hover {
-  color: var(--accent);
+  color: var(--accent-ink);
   border-color: var(--border);
 }
 
@@ -618,7 +623,7 @@ tr.playing td {
 }
 
 tr.playing td.play button.play-btn {
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* ---- status bar ---- */
@@ -792,7 +797,7 @@ td.rule-cell {
   display: inline-block;
   min-width: 18px;
   text-align: center;
-  color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .rule-body {

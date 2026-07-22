@@ -148,6 +148,13 @@ first release ships.
 
 ### Changed
 
+- Split the accent into fill vs ink for text contrast (#76). A new `--accent-ink`
+  token carries the accent where it is used as *text* (active tabs, brand mark,
+  sort indicator, rule numbers), separate from `--accent` used as a *fill* behind
+  white text (buttons, selection, tab underline). This lets the accent-as-text
+  clear small-text contrast independently of the fill — the win is in dark mode,
+  where the fill green as small text was borderline.
+
 - Reworked the main layout around mode tabs and a persistent file table (#27,
   step 1 of 2). The pile of toolbar buttons that each opened a modal is gone;
   instead the file table is the permanent subject and four mode tabs —
