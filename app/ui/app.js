@@ -1189,12 +1189,15 @@ async function discogsSearch() {
 }
 
 async function loadSavedToken() {
+  let token = "";
   try {
-    const token = await invoke("saved_discogs_token", {});
+    token = await invoke("saved_discogs_token", {});
     if (token) el("discogs-token").value = token;
   } catch (e) {
     /* no saved token yet */
   }
+  // First run (no saved token): reveal the token field so it can be entered.
+  if (!token) el("discogs-token-row").hidden = false;
 }
 
 // Meta line "Country · Year · Format" from whatever fields the candidate carries.
@@ -1636,6 +1639,25 @@ el("export-run").addEventListener("click", runExport);
 coverFileInput.addEventListener("change", onCoverChosen);
 el("discogs-search").addEventListener("click", discogsSearch);
 el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
+
+// TAGGER sub-tabs: ONLINE (Discogs) vs EDITOR (tag fields + cover).
+function setSubtab(name) {
+  document.querySelectorAll(".subtab").forEach((t) => t.classList.toggle("active", t.dataset.subtab === name));
+  document.querySelectorAll(".subtab-panel").forEach((p) => {
+    p.hidden = p.id !== `subtab-${name}`;
+  });
+}
+document.querySelectorAll(".subtab").forEach((tab) => {
+  tab.addEventListener("click", () => setSubtab(tab.dataset.subtab));
+});
+
+// The Discogs token is remembered; keep it tucked behind the gear until there's
+// a real Settings area (a token field next to the search is just clutter).
+el("discogs-settings").addEventListener("click", () => {
+  const row = el("discogs-token-row");
+  row.hidden = !row.hidden;
+  if (!row.hidden) el("discogs-token").focus();
+});
 
 // List/Grid layout toggle.
 el("release-layout").addEventListener("click", (e) => {

@@ -140,56 +140,77 @@
           </div>
         </section>
 
-        <!-- TAGGER: everything about tags — online source, field editor, cover. -->
+        <!-- TAGGER: tags from two angles — ONLINE (a metadata source) and EDITOR
+             (hand-edit fields + cover). Sub-tabs keep the panel uncluttered. -->
         <section id="panel-tagger" class="mode-panel" hidden>
-          <div class="panel-block">
-            <h2>Online source — Discogs</h2>
-            <input id="discogs-token" type="password" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
-            <div class="mask-row" style="padding: 6px 0 0">
-              <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
-              <button id="discogs-search">Search</button>
-            </div>
-            <div class="release-toolbar" id="release-toolbar" hidden>
-              <span class="hint muted">Found <span id="release-count">0</span> entries</span>
-              <div class="spacer"></div>
-              <div class="seg" id="release-layout" role="tablist" aria-label="Layout">
-                <button class="seg-btn active" data-layout="list">☰ List</button>
-                <button class="seg-btn" data-layout="grid">▦ Grid</button>
+          <div class="subtabs" role="tablist" aria-label="Tagging mode">
+            <button class="subtab active" data-subtab="online" type="button">ONLINE</button>
+            <button class="subtab" data-subtab="editor" type="button">EDITOR</button>
+          </div>
+
+          <!-- ONLINE: Discogs search. The head is pinned; only the results scroll. -->
+          <div id="subtab-online" class="subtab-panel online">
+            <div class="online-head">
+              <div class="online-head-row">
+                <h2>Online source — Discogs</h2>
+                <div class="spacer"></div>
+                <button id="discogs-settings" class="icon" title="Set your Discogs token">⚙</button>
+              </div>
+              <!-- Token is remembered; tucked away here until a real Settings area exists. -->
+              <div id="discogs-token-row" hidden>
+                <input id="discogs-token" type="password" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
+              </div>
+              <div class="mask-row">
+                <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
+                <button id="discogs-search">Search</button>
+              </div>
+              <div class="release-toolbar" id="release-toolbar" hidden>
+                <span class="hint muted">Found <span id="release-count">0</span> entries</span>
+                <div class="spacer"></div>
+                <div class="seg" id="release-layout" role="tablist" aria-label="Layout">
+                  <button class="seg-btn active" data-layout="list">☰ List</button>
+                  <button class="seg-btn" data-layout="grid">▦ Grid</button>
+                </div>
               </div>
             </div>
-            <!-- Cards are rendered here (list or grid). Each card expands to its
-                 tracklist, fetched lazily; import is per-card. -->
-            <div id="release-list" class="release-list"></div>
-            <p id="discogs-empty" class="empty inert-panel">Search Discogs to see releases.</p>
-          </div>
-
-          <div class="panel-block">
-            <h2>Tag fields <span id="fields-count" class="muted"></span></h2>
-            <p class="hint muted" style="padding: 0">
-              Only fields you change are written; a field whose value differs across the selection
-              shows <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
-            </p>
-            <div class="table-wrap panel-list">
-              <table>
-                <tbody id="fields-body"></tbody>
-              </table>
-            </div>
-            <div class="export-row">
-              <input id="fields-new-name" type="text" placeholder="custom field name" spellcheck="false" />
-              <input id="fields-new-value" type="text" placeholder="value" spellcheck="false" />
-              <button id="fields-add">Add field</button>
-            </div>
-            <div class="panel-actions">
-              <div class="spacer"></div>
-              <button id="fields-apply" class="primary">Stage field changes</button>
+            <div class="online-scroll">
+              <!-- Cards (list or grid). Each expands to its tracklist, fetched
+                   lazily; import is per-card. -->
+              <div id="release-list" class="release-list"></div>
+              <p id="discogs-empty" class="empty inert-panel">Search Discogs to see releases.</p>
             </div>
           </div>
 
-          <div class="panel-block">
-            <h2>Cover art</h2>
-            <div class="panel-actions">
-              <button id="cover-open" title="Embed a cover image into the selected files">Embed cover…</button>
-              <button id="cover-export" title="Export the embedded cover of the selected files to disk (cover.jpg)">Export cover</button>
+          <!-- EDITOR: hand-edit tag fields + cover art. -->
+          <div id="subtab-editor" class="subtab-panel editor" hidden>
+            <div class="panel-block">
+              <h2>Tag fields <span id="fields-count" class="muted"></span></h2>
+              <p class="hint muted" style="padding: 0">
+                Only fields you change are written; a field whose value differs across the selection
+                shows <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
+              </p>
+              <div class="table-wrap panel-list">
+                <table>
+                  <tbody id="fields-body"></tbody>
+                </table>
+              </div>
+              <div class="export-row">
+                <input id="fields-new-name" type="text" placeholder="custom field name" spellcheck="false" />
+                <input id="fields-new-value" type="text" placeholder="value" spellcheck="false" />
+                <button id="fields-add">Add field</button>
+              </div>
+              <div class="panel-actions">
+                <div class="spacer"></div>
+                <button id="fields-apply" class="primary">Stage field changes</button>
+              </div>
+            </div>
+
+            <div class="panel-block">
+              <h2>Cover art</h2>
+              <div class="panel-actions">
+                <button id="cover-open" title="Embed a cover image into the selected files">Embed cover…</button>
+                <button id="cover-export" title="Export the embedded cover of the selected files to disk (cover.jpg)">Export cover</button>
+              </div>
             </div>
           </div>
         </section>

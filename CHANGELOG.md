@@ -165,6 +165,13 @@ first release ships.
 
 ### Changed
 
+- Reorganized the TAGGER panel into ONLINE / EDITOR sub-tabs (#77). Online Discogs
+  search and the release cards live under **ONLINE** with a pinned search header —
+  only the results scroll now, not the whole panel; hand-editing tag fields and
+  cover art live under **EDITOR**. The Discogs token moved out of the way behind a
+  gear toggle (a proper Settings area is still to come) and is remembered as
+  before.
+
 - Typography scale and tabular numerals (#76). The ad-hoc font sizes, weights and
   letter-spacings across the UI now reference the design-system type tokens
   (`--text-*`, `--fw-*`, `--ls-*`), tidying the scale without changing how it

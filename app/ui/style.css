@@ -1336,3 +1336,90 @@ td[data-field="year"],
 #status-sel {
   font-variant-numeric: tabular-nums;
 }
+
+/* ---- TAGGER sub-tabs: ONLINE / EDITOR (#77) ----
+   The tagger panel fills the mode column and manages its own scroll, so the
+   ONLINE search head stays pinned while only the results scroll. */
+#panel-tagger {
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.subtabs {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.subtab {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: var(--fw-medium);
+  font-size: var(--text-sm);
+  letter-spacing: var(--ls-caps);
+  padding: 6px 8px;
+  border-bottom: 2px solid transparent;
+}
+
+.subtab:hover:not(.active) {
+  color: var(--text);
+}
+
+.subtab.active {
+  color: var(--accent-ink);
+  border-bottom-color: var(--accent);
+}
+
+.subtab-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.subtab-panel[hidden] {
+  display: none;
+}
+
+/* EDITOR scrolls as a whole. */
+.subtab-panel.editor {
+  overflow-y: auto;
+  gap: 14px;
+  padding: 12px 14px;
+}
+
+/* ONLINE: pinned head + independently scrolling results. */
+.online-head {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.online-head-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.online-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 14px;
+}
+
+#discogs-token-row input {
+  width: 100%;
+}
