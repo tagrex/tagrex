@@ -1295,11 +1295,10 @@ function tileMarkup(c) {
     <article class="release-tile" data-id="${escapeHtml(c.id)}">
       <div class="tile-cover"></div>
       <div class="tile-info">
-        ${catno}
+        <div class="tile-top">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></div>
         ${artist}
         <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
         <span class="muted">${escapeHtml(candidateMeta(c))}</span>
-        <span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span>
       </div>
     </article>`;
 }
@@ -1329,23 +1328,32 @@ async function applyImage(c) {
   if (cover) cover.innerHTML = `<img alt="" src="${dataUri}" />`;
 }
 
-// Fetch each release once, sequentially and in the background (so we don't burst
-// past Discogs' 60/min limit), to fill the track/disc count on every card up
-// front. Cached, so expanding a card and toggling layout are then instant.
+// Fetch each release once, in the background, to fill the track/disc count on
+// every card up front. A small pool fetches several at a time (the commands are
+// async/off-main-thread) so counts appear quickly without bursting past Discogs'
+// 60/min limit; the backend still honours 429/Retry-After. Cached, so expanding
+// a card and toggling layout are then instant.
+const PREFETCH_CONCURRENCY = 4;
+
 async function prefetchReleaseCounts() {
   const token = el("discogs-token").value.trim();
   const batch = releaseCandidates;
-  for (const c of batch) {
-    if (releaseCandidates !== batch) return; // a newer search superseded this one
-    if (releaseCache.has(c.id)) continue;
-    try {
-      releaseCache.set(c.id, await invoke("fetch_discogs_release", { token, releaseId: c.id }));
-      const pill = countPillOf(c.id);
-      if (pill) pill.textContent = countLabel(c.id);
-    } catch (e) {
-      /* skip this one; the card just keeps its dash */
+  const queue = batch.filter((c) => !releaseCache.has(c.id));
+  async function worker() {
+    while (queue.length) {
+      if (releaseCandidates !== batch) return; // a newer search superseded this
+      const c = queue.shift();
+      if (!c || releaseCache.has(c.id)) continue;
+      try {
+        releaseCache.set(c.id, await invoke("fetch_discogs_release", { token, releaseId: c.id }));
+        const pill = countPillOf(c.id);
+        if (pill) pill.textContent = countLabel(c.id);
+      } catch (e) {
+        /* skip this one; the card just keeps its dash */
+      }
     }
   }
+  await Promise.all(Array.from({ length: PREFETCH_CONCURRENCY }, worker));
 }
 
 // CSS.escape isn't guaranteed in every webview; ids are numeric strings anyway.

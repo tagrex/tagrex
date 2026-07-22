@@ -1166,14 +1166,12 @@ td.rule-cell {
   padding: 8px 9px;
 }
 
-/* Catalogue chip and count pill size to their content; the rest is full width. */
-.tile-info .catno,
-.tile-info .tk-count {
-  align-self: flex-start;
-}
-
-.tile-info .tk-count {
-  margin-top: 2px;
+/* Top row: catalogue chip + track/disc count together, for a cohesive card. */
+.tile-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .tile-artist {
