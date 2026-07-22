@@ -1423,3 +1423,28 @@ td[data-field="year"],
 #discogs-token-row input {
   width: 100%;
 }
+
+/* Metadata-source selector (replaces the redundant "Online source" heading). */
+.source-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+}
+
+#online-source {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-regular);
+  text-transform: none;
+  letter-spacing: normal;
+}

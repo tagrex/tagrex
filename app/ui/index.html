@@ -152,7 +152,13 @@
           <div id="subtab-online" class="subtab-panel online">
             <div class="online-head">
               <div class="online-head-row">
-                <h2>Online source — Discogs</h2>
+                <label class="source-label"
+                  >Source
+                  <select id="online-source" title="Metadata source">
+                    <option value="discogs">Discogs</option>
+                    <option value="musicbrainz" disabled>MusicBrainz — soon</option>
+                  </select>
+                </label>
                 <div class="spacer"></div>
                 <button id="discogs-settings" class="icon" title="Set your Discogs token">⚙</button>
               </div>
