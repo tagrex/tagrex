@@ -1161,6 +1161,9 @@ let releaseCandidates = []; // last search results (CandidateDto[])
 let releaseLayout = "list"; // "list" | "grid"
 const releaseCache = new Map(); // releaseId -> fetched ReleaseDto (with tracks)
 const coverCache = new Map(); // releaseId -> CoverArtDto (full cover, for embed)
+// Fetched images as data URIs, so re-rendering (layout toggle) never re-fetches.
+const imageCache = new Map(); // releaseId -> { thumb?, cover? }
+const expandedIds = new Set(); // cards currently expanded — survive a re-render
 
 async function discogsSearch() {
   const token = el("discogs-token").value.trim();
@@ -1175,7 +1178,10 @@ async function discogsSearch() {
     releaseCandidates = await invoke("search_discogs", { token, query: { album: query } });
     releaseCache.clear();
     coverCache.clear();
+    imageCache.clear();
+    expandedIds.clear();
     renderReleaseList();
+    prefetchReleaseCounts(); // fill track/disc counts up front, in the background
   } catch (e) {
     toast(String(e), true);
   }
@@ -1199,6 +1205,34 @@ function releaseList() {
   return el("release-list");
 }
 
+function cardEl(id) {
+  return releaseList().querySelector(`.release-card[data-id="${cssEscape(id)}"]`);
+}
+
+function coverElOf(id) {
+  return releaseList().querySelector(
+    `[data-id="${cssEscape(id)}"] .release-cover, [data-id="${cssEscape(id)}"] .tile-cover`,
+  );
+}
+
+// "N tracks", or "N tracks · M discs" once the release is fetched; a dash before.
+function countLabel(id) {
+  const release = releaseCache.get(id);
+  if (!release) return "— tracks";
+  const discs = discCount(release);
+  return discs > 1 ? `${release.tracks.length} tracks · ${discs} discs` : `${release.tracks.length} tracks`;
+}
+
+// Highest disc number across track positions ("2-1" -> disc 2); 1 if unmarked.
+function discCount(release) {
+  let max = 1;
+  for (const t of release.tracks) {
+    const m = /^(\d+)-/.exec(t.position || "");
+    if (m) max = Math.max(max, Number(m[1]));
+  }
+  return max;
+}
+
 function renderReleaseList() {
   const list = releaseList();
   list.innerHTML = "";
@@ -1213,12 +1247,20 @@ function renderReleaseList() {
   for (const c of releaseCandidates) {
     list.insertAdjacentHTML("beforeend", releaseLayout === "grid" ? tileMarkup(c) : cardMarkup(c));
   }
-  // Load thumbnails in the background so cards can be told apart visually.
-  for (const c of releaseCandidates) loadThumb(c);
+  // Restore images (from cache) and any expanded tracklists after the re-render.
+  for (const c of releaseCandidates) {
+    applyImage(c);
+    const card = cardEl(c.id);
+    if (releaseLayout === "list" && card && expandedIds.has(c.id) && releaseCache.has(c.id)) {
+      card.setAttribute("aria-expanded", "true");
+      card.querySelector(".release-caret").textContent = "▾";
+      renderTracklist(card, releaseCache.get(c.id));
+      card.querySelector(".release-tracklist").dataset.loaded = "1";
+    }
+  }
 }
 
 function cardMarkup(c) {
-  const meta = candidateMeta(c);
   const catno = c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : "";
   return `
     <article class="release-card" data-id="${escapeHtml(c.id)}" aria-expanded="false">
@@ -1226,12 +1268,12 @@ function cardMarkup(c) {
         <span class="release-cover"></span>
         <span class="release-info">
           <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.artist ? c.artist + " — " : "")}${escapeHtml(c.title)}</span>
-          <span class="release-meta">${catno}<span class="muted">${escapeHtml(meta)}</span></span>
+          <span class="release-meta">${catno}<span class="muted">${escapeHtml(candidateMeta(c))}</span></span>
         </span>
         <span class="release-caret" aria-hidden="true">▸</span>
       </button>
       <div class="release-facts">
-        <span class="pill tk-count">— tracks</span>
+        <span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span>
         <button class="release-details" type="button">details…</button>
       </div>
       <div class="release-tracklist"></div>
@@ -1250,19 +1292,47 @@ function tileMarkup(c) {
     </article>`;
 }
 
-// Fetch a candidate's thumbnail (auth'd through the backend) and drop it into
-// its card/tile cover. Best-effort — a missing thumb just leaves the placeholder.
-async function loadThumb(c) {
-  if (!c.thumb_url) return;
+// Show the layout-appropriate cover for a candidate, fetching + caching it once.
+// List cards use the small thumb (56px); grid tiles use the larger cover image so
+// they don't look upscaled. Cached data URIs are reused, so toggling layout is
+// instant and never re-hits Discogs.
+async function applyImage(c) {
+  const kind = releaseLayout === "grid" ? "cover" : "thumb";
+  const url = kind === "cover" ? c.cover_url || c.thumb_url : c.thumb_url || c.cover_url;
+  if (!url) return;
+  const cached = imageCache.get(c.id) || {};
+  let dataUri = cached[kind];
+  if (!dataUri) {
+    const token = el("discogs-token").value.trim();
+    try {
+      const img = await invoke("fetch_discogs_image", { token, url });
+      dataUri = `data:${img.mime};base64,${img.data_base64}`;
+      cached[kind] = dataUri;
+      imageCache.set(c.id, cached);
+    } catch (e) {
+      return; // leave the striped placeholder
+    }
+  }
+  const cover = coverElOf(c.id);
+  if (cover) cover.innerHTML = `<img alt="" src="${dataUri}" />`;
+}
+
+// Fetch each release once, sequentially and in the background (so we don't burst
+// past Discogs' 60/min limit), to fill the track/disc count on every card up
+// front. Cached, so expanding a card and toggling layout are then instant.
+async function prefetchReleaseCounts() {
   const token = el("discogs-token").value.trim();
-  try {
-    const img = await invoke("fetch_discogs_image", { token, url: c.thumb_url });
-    const cover = releaseList().querySelector(
-      `[data-id="${cssEscape(c.id)}"] .release-cover, [data-id="${cssEscape(c.id)}"] .tile-cover`,
-    );
-    if (cover) cover.innerHTML = `<img alt="" src="data:${img.mime};base64,${img.data_base64}" />`;
-  } catch (e) {
-    /* leave the striped placeholder */
+  const batch = releaseCandidates;
+  for (const c of batch) {
+    if (releaseCandidates !== batch) return; // a newer search superseded this one
+    if (releaseCache.has(c.id)) continue;
+    try {
+      releaseCache.set(c.id, await invoke("fetch_discogs_release", { token, releaseId: c.id }));
+      const pill = cardEl(c.id)?.querySelector(".tk-count");
+      if (pill) pill.textContent = countLabel(c.id);
+    } catch (e) {
+      /* skip this one; the card just keeps its dash */
+    }
   }
 }
 
@@ -1274,11 +1344,15 @@ function cssEscape(s) {
 // Expand/collapse a card; on first expand, fetch the release + render its
 // tracklist and pull the full cover for embedding.
 async function toggleCard(card) {
+  const id = card.dataset.id;
   const expanded = card.getAttribute("aria-expanded") === "true";
   card.setAttribute("aria-expanded", expanded ? "false" : "true");
   card.querySelector(".release-caret").textContent = expanded ? "▸" : "▾";
-  if (expanded) return;
-  const id = card.dataset.id;
+  if (expanded) {
+    expandedIds.delete(id);
+    return;
+  }
+  expandedIds.add(id);
   const body = card.querySelector(".release-tracklist");
   if (body.dataset.loaded === "1") return;
   body.innerHTML = `<div class="tracklist-actions muted">Loading…</div>`;
@@ -1291,11 +1365,12 @@ async function toggleCard(card) {
     }
     renderTracklist(card, release);
     body.dataset.loaded = "1";
-    card.querySelector(".tk-count").textContent = `${release.tracks.length} tracks`;
+    card.querySelector(".tk-count").textContent = countLabel(id);
     loadFullCover(id, release.cover_image_url, card);
   } catch (e) {
     body.innerHTML = "";
     body.dataset.loaded = "";
+    expandedIds.delete(id);
     toast(String(e), true);
   }
 }
@@ -2175,8 +2250,8 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case "search_discogs":
       return Promise.resolve([
-        { id: "316795", artist: "Various", title: "La Bush - Music From The Temple Of House", year: 1996, score: 1.0, thumb_url: "https://img/1.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Compilation, Mixed", catalog_number: "TOTH 006" },
-        { id: "764414", artist: "Various", title: "La Bush Vol. 4", year: 1997, score: 0.9, thumb_url: "https://img/2.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Mixed", catalog_number: "TOTH 021" },
+        { id: "316795", artist: "Various", title: "La Bush - Music From The Temple Of House", year: 1996, score: 1.0, thumb_url: "https://img/1t.jpg", cover_url: "https://img/1c.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Compilation, Mixed", catalog_number: "TOTH 006" },
+        { id: "764414", artist: "Various", title: "La Bush Vol. 4", year: 1997, score: 0.9, thumb_url: "https://img/2t.jpg", cover_url: "https://img/2c.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Mixed", catalog_number: "TOTH 021" },
       ]);
     case "fetch_discogs_release":
       return Promise.resolve({

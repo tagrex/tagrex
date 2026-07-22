@@ -285,6 +285,7 @@ fn parse_search_response(body: &str) -> Result<Vec<ReleaseCandidate>, ProviderEr
                 // candidate list has a stable, meaningful ranking.
                 score: positional_score(index, count),
                 thumb_url: string_field("thumb"),
+                cover_url: string_field("cover_image"),
                 country: string_field("country"),
                 // `label` is an array; the first is the primary imprint.
                 label: string_array(result.get("label")).into_iter().next(),
@@ -555,6 +556,7 @@ mod tests {
                     "title": "Various - La Bush",
                     "year": "1996",
                     "thumb": "https://img.discogs.com/thumb.jpg",
+                    "cover_image": "https://img.discogs.com/cover.jpg",
                     "country": "Belgium",
                     "label": ["Antler-Subway", "Subway Dance"],
                     "format": ["CD", "Compilation", "Mixed"],
@@ -569,6 +571,10 @@ mod tests {
             first.thumb_url.as_deref(),
             Some("https://img.discogs.com/thumb.jpg")
         );
+        assert_eq!(
+            first.cover_url.as_deref(),
+            Some("https://img.discogs.com/cover.jpg")
+        );
         assert_eq!(first.country.as_deref(), Some("Belgium"));
         assert_eq!(first.label.as_deref(), Some("Antler-Subway"));
         assert_eq!(first.format.as_deref(), Some("CD, Compilation, Mixed"));
@@ -576,6 +582,7 @@ mod tests {
         // Empty strings and missing keys collapse to None.
         let second = &candidates[1];
         assert_eq!(second.thumb_url, None);
+        assert_eq!(second.cover_url, None);
         assert_eq!(second.country, None);
         assert_eq!(second.label, None);
         assert_eq!(second.format, None);

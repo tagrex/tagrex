@@ -41,6 +41,9 @@ pub struct ReleaseCandidate {
     /// releases apart visually in the candidate list. Fetch its bytes through
     /// the app layer (auth headers) the same way a full cover is fetched.
     pub thumb_url: Option<String>,
+    /// Larger cover image URL (bigger than the thumbnail) — for a grid of tiles
+    /// where the small thumbnail would look upscaled.
+    pub cover_url: Option<String>,
     /// Release country, e.g. `Belgium`.
     pub country: Option<String>,
     /// Primary label, e.g. `Antler-Subway`.

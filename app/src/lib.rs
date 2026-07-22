@@ -126,6 +126,8 @@ pub struct CandidateDto {
     pub score: f32,
     /// Small cover thumbnail URL (fetch bytes via [`App::fetch_discogs_image`]).
     pub thumb_url: Option<String>,
+    /// Larger cover image URL, for a grid of tiles.
+    pub cover_url: Option<String>,
     pub country: Option<String>,
     pub label: Option<String>,
     pub format: Option<String>,
@@ -1051,6 +1053,7 @@ impl From<&tagrex_core::provider::ReleaseCandidate> for CandidateDto {
             year: candidate.year,
             score: candidate.score,
             thumb_url: candidate.thumb_url.clone(),
+            cover_url: candidate.cover_url.clone(),
             country: candidate.country.clone(),
             label: candidate.label.clone(),
             format: candidate.format.clone(),
