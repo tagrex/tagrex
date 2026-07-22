@@ -165,6 +165,14 @@ first release ships.
 
 ### Changed
 
+- Typography scale and tabular numerals (#76). The ad-hoc font sizes, weights and
+  letter-spacings across the UI now reference the design-system type tokens
+  (`--text-*`, `--fw-*`, `--ls-*`), tidying the scale without changing how it
+  looks. Figures that stack or are compared column-to-column — years, durations,
+  track/disc counts, the selection count, player time — now use `tabular-nums`
+  so their digits line up. (A bundled disambiguating mono is left as a token slot
+  for later; the system mono ships today.)
+
 - Table-row state layering (#76). A row can be hover + selected + dirty (per
   cell) + playing + keyboard-focused at once. Backgrounds are now ranked (dirty
   cell → selected row → hover) and the rest move to orthogonal channels that

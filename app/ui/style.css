@@ -123,8 +123,8 @@ body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 12px;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
   color: var(--text);
   background: var(--bg);
   display: flex;
@@ -148,8 +148,8 @@ body {
 }
 
 .brand {
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-brand);
   color: var(--accent-ink);
 }
 
@@ -241,10 +241,10 @@ button.icon {
   box-shadow: none;
   background: transparent;
   color: var(--muted);
-  font-weight: 600;
-  letter-spacing: 0.6px;
-  font-size: 12px;
-  padding: 10px 14px;
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-caps);
+  font-size: var(--text-sm);
+  padding: var(--space-4) var(--space-5);
   border-bottom: 2px solid transparent;
 }
 
@@ -355,7 +355,7 @@ body.panel-collapsed .col-splitter {
   box-shadow: none;
   background: transparent;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: var(--fw-medium);
   padding: 4px 4px;
   border-bottom: 2px solid transparent;
 }
@@ -370,7 +370,7 @@ body.panel-collapsed .col-splitter {
 }
 
 .edit-hint {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 #preview-view {
@@ -397,9 +397,9 @@ body.panel-collapsed .col-splitter {
 
 /* ---- shared bits ---- */
 h2 {
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: var(--ls-caps);
   color: var(--muted);
   margin: 0;
 }
@@ -442,10 +442,10 @@ thead th {
   top: 0;
   background: var(--panel);
   text-align: left;
-  font-weight: 600;
-  font-size: 11px;
+  font-weight: var(--fw-medium);
+  font-size: var(--text-xs);
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  letter-spacing: var(--ls-caps-tight);
   color: var(--muted);
   padding: 7px 10px;
   border-bottom: 1px solid var(--border);
@@ -558,8 +558,8 @@ th.sortable:hover {
 
 .hint {
   padding: 0;
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: var(--text-xs);
+  line-height: var(--lh-normal);
   margin: 0;
 }
 
@@ -896,8 +896,8 @@ td.rule-cell {
   box-shadow: none;
   background: var(--bg);
   color: var(--muted);
-  font-weight: 600;
-  font-size: 11px;
+  font-weight: var(--fw-medium);
+  font-size: var(--text-xs);
 }
 
 .seg-btn.active {
@@ -970,15 +970,15 @@ td.rule-cell {
 }
 
 .release-title {
-  font-weight: 600;
-  font-size: 12.5px;
+  font-weight: var(--fw-medium);
+  font-size: var(--text-md);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .release-artist {
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .release-meta {
@@ -1321,4 +1321,20 @@ button.primary:disabled {
   .skeleton-line {
     animation: none;
   }
+}
+
+/* ---- tabular numerals (#76) ----
+   Figures that stack or are compared column-to-column use tabular-nums so
+   digits line up. The mono table columns are fixed-width already; this also
+   covers the proportional-font numbers (status bar, pills, counts, times). */
+.tnum,
+.tk-num,
+.tk-dur,
+td[data-field="year"],
+#pl-time,
+.tk-count,
+.pill,
+.match-pct,
+#status-sel {
+  font-variant-numeric: tabular-nums;
 }
