@@ -409,14 +409,21 @@ h2 {
 }
 
 td.editable:focus {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: none;
+  box-shadow: var(--ring-inset);
   background: var(--bg);
 }
 
+/* Dirty cell — a value touched but not yet written to disk. Per-cell, so it wins
+   the background over a selected/hovered row (see the layering block below). */
 td.dirty {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  font-weight: 600;
+  background: var(--dirty-tint);
+  font-weight: var(--fw-medium);
+}
+
+/* Keep the focus ring visible when editing an already-dirty cell. */
+td.dirty:focus {
+  box-shadow: var(--ring-inset);
 }
 
 .table-wrap {
@@ -457,14 +464,37 @@ tbody tr:hover {
   background: var(--row-hover);
 }
 
-/* Selected rows are tinted so a narrowed-down selection is scannable in a big
-   library. Dirty cells keep their own highlight (they win via :not). */
-#tracks tbody tr.selected td:not(.dirty) {
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+/* ---- table-row state layering (#76, from states.css) ----
+   A row can be hover + selected + dirty(per-cell) + playing + error + focused at
+   once. A cell background shows one colour, so we RANK the fill and push the
+   rest onto orthogonal channels (box-shadow bars / rings) that never fight it.
+   Background precedence (highest wins): dirty cell → error cell → selected row →
+   hover → base. Orthogonal: playing = left bar, focus = inset ring, error =
+   del marker. */
+
+/* selected — row tint; dirty/error cells opt out so they keep their own fill */
+#tracks tbody tr.selected td:not(.dirty):not(.error) {
+  background: var(--sel-tint);
 }
 
-#tracks tbody tr.selected:hover td:not(.dirty) {
-  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+#tracks tbody tr.selected:hover td:not(.dirty):not(.error) {
+  background: var(--sel-tint-hover);
+}
+
+/* error — per-cell (e.g. a value the backend rejected); wins over selection and
+   marks the cell danger-red. Latent until wired in JS. */
+td.error {
+  background: var(--error-tint);
+  color: var(--del);
+  box-shadow: inset 2px 0 0 0 var(--del);
+}
+
+/* row-level keyboard focus (arrow-key navigation lands on a row) */
+#tracks tbody tr:focus-visible {
+  outline: none;
+}
+#tracks tbody tr:focus-visible td {
+  box-shadow: var(--ring-inset);
 }
 
 /* Compact, information-dense main table (the reference is tight). Monospace
@@ -632,8 +662,10 @@ button.play-btn:hover {
   border-color: var(--border);
 }
 
-tr.playing td {
-  background: var(--row-hover);
+/* Playing — an orthogonal left-edge bar (not a full-row tint), so it reads
+   alongside a selected/dirty row instead of overwriting its background. */
+tr.playing td:first-child {
+  box-shadow: inset 3px 0 0 0 var(--accent);
 }
 
 tr.playing td.play button.play-btn {

@@ -160,6 +160,14 @@ first release ships.
 
 ### Changed
 
+- Table-row state layering (#76). A row can be hover + selected + dirty (per
+  cell) + playing + keyboard-focused at once. Backgrounds are now ranked (dirty
+  cell → selected row → hover) and the rest move to orthogonal channels that
+  never fight the fill: the **playing** track is a left-edge accent bar (it was a
+  full-row tint that overwrote the selection tint), and keyboard focus is an
+  inset ring. Also adds latent per-cell error styling for a future rejected-value
+  state.
+
 - One "inert / unavailable" visual language (#76). Disabled controls, empty
   states and in-flight loaders now share a single diagonal-stripe motif (the
   release-cover placeholder, generalized): disabled buttons/fields get soft
