@@ -160,6 +160,13 @@ first release ships.
 
 ### Changed
 
+- One "inert / unavailable" visual language (#76). Disabled controls, empty
+  states and in-flight loaders now share a single diagonal-stripe motif (the
+  release-cover placeholder, generalized): disabled buttons/fields get soft
+  stripes under a muted label instead of a flat `opacity` fade, empty states are
+  dashed striped panels, and a release's tracklist shows a shimmering skeleton
+  while it fetches.
+
 - Visible keyboard focus rings, and the design-system token layer they sit on
   (#76). Every control now shows a two-layer accent focus ring on keyboard
   navigation (`:focus-visible`, so plain mouse clicks stay quiet) — the app is

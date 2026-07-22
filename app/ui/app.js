@@ -1366,7 +1366,12 @@ async function toggleCard(card) {
   expandedIds.add(id);
   const body = card.querySelector(".release-tracklist");
   if (body.dataset.loaded === "1") return;
-  body.innerHTML = `<div class="tracklist-actions muted">Loading…</div>`;
+  // Skeleton while the release fetch is in flight (inert stripe motif).
+  body.innerHTML = `<div style="padding: 8px 10px">
+      <div class="skeleton-line w-80"></div>
+      <div class="skeleton-line w-60"></div>
+      <div class="skeleton-line w-40"></div>
+    </div>`;
   const token = el("discogs-token").value.trim();
   try {
     let release = releaseCache.get(id);
