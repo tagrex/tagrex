@@ -8,6 +8,18 @@ first release ships.
 
 ## [Unreleased]
 
+### Fixed
+
+- A short numeric year could corrupt a file and make it vanish from the library.
+  The year is written as a timestamp that must be exactly 4 digits; a shorter
+  numeric value like `222` was accepted on write but rejected by the tag reader,
+  after which the whole file failed to read and was silently dropped from the
+  track list (looking like data loss, though the file was intact on disk). The
+  year validation now requires exactly 4 digits (matching the tag backend) at
+  the preview layer, and `TagEngine::write` guards the year before touching the
+  file, so no plan source (edits, transforms, import) can corrupt one — a
+  rejected value leaves the file untouched.
+
 ### Added
 
 - Preview rejects an invalid tag value instead of writing it (#82). A change

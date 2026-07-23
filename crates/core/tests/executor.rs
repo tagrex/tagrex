@@ -111,6 +111,57 @@ fn undo_restores_the_previous_value() {
 }
 
 #[test]
+fn rejects_an_invalid_year_without_poisoning_the_file() {
+    let dir = TempDir::new("badyear");
+    let track = dir.flac("track.flac");
+    let mut journal = VecJournal::new();
+
+    // A 3-digit year: lofty writes it but then rejects it on read, which would
+    // make the file unreadable. Apply must fail instead of corrupting it.
+    let bad = ChangePlan {
+        description: "set year".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            tag_changes: vec![FieldChange {
+                field: TagField::Year,
+                old: None,
+                new: Some("222".to_string()),
+            }],
+            cover_change: None,
+            rename_to: None,
+        }],
+    };
+    assert!(Executor::apply(&bad, &mut journal, dir.path()).is_err());
+    // The file is still readable and carries no year — untouched.
+    let tags = TagEngine::read(&track).unwrap().tags;
+    assert!(!tags.contains_key(&TagField::Year));
+
+    // A proper 4-digit year still writes fine (the guard isn't over-eager).
+    let good = ChangePlan {
+        description: "set year".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            tag_changes: vec![FieldChange {
+                field: TagField::Year,
+                old: None,
+                new: Some("1996".to_string()),
+            }],
+            cover_change: None,
+            rename_to: None,
+        }],
+    };
+    Executor::apply(&good, &mut journal, dir.path()).unwrap();
+    assert_eq!(
+        TagEngine::read(&track)
+            .unwrap()
+            .tags
+            .get(&TagField::Year)
+            .map(String::as_str),
+        Some("1996")
+    );
+}
+
+#[test]
 fn rejects_a_path_outside_the_allowed_root() {
     let root = TempDir::new("root");
     let outside = TempDir::new("outside");

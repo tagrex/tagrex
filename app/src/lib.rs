@@ -81,14 +81,13 @@ fn field_value_invalid(field: &str, new: Option<&str>) -> bool {
     };
     match field {
         "year" => {
+            // ID3v2.4 (lofty) requires the year to be exactly 4 digits and
+            // rejects a shorter numeric year like "222" on read, which corrupts
+            // the file. Mirror that rule exactly; an optional `-MM-DD` date
+            // suffix is allowed, only the year segment is validated here.
             let year = value.split('-').next().unwrap_or(value);
-            let plausible = (1..=4).contains(&year.len())
-                && year.bytes().all(|b| b.is_ascii_digit())
-                && year
-                    .parse::<u16>()
-                    .map(|y| (1..=9999).contains(&y))
-                    .unwrap_or(false);
-            !plausible
+            let ok = year.len() == 4 && year.bytes().all(|b| b.is_ascii_digit());
+            !ok
         }
         _ => false,
     }
@@ -1348,6 +1347,11 @@ mod tests {
         assert!(!field_value_invalid("year", Some(""))); // clearing is valid
         assert!(field_value_invalid("year", Some("19x6")));
         assert!(field_value_invalid("year", Some("MCMXCVI")));
+        // A numeric year of the wrong length is rejected too: lofty needs
+        // exactly 4 digits, and a shorter one ("222") poisons the file on write.
+        assert!(field_value_invalid("year", Some("222")));
+        assert!(field_value_invalid("year", Some("96")));
+        assert!(field_value_invalid("year", Some("12345")));
         // Other fields are not validated (any value is accepted).
         assert!(!field_value_invalid("artist", Some("19x6")));
     }

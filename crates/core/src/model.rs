@@ -226,6 +226,19 @@ impl TagEngine {
     /// Only [`plan::Executor`](crate::plan::Executor) is allowed to call this —
     /// see the crate-level invariant.
     pub fn write(file: &TrackFile) -> Result<(), TagIoError> {
+        // Guard the year before touching the file. It is written as a timestamp
+        // (ID3v2.4 TDRC / Vorbis DATE / MP4 ©day) whose year MUST be exactly 4
+        // digits; lofty accepts a shorter one like "222" on write but then
+        // rejects it on the next READ — poisoning the file so it can no longer
+        // be listed or edited. Reject it here, leaving the file untouched, so no
+        // plan source (edits, transforms, import) can ever corrupt a file.
+        if let Some(year) = file.tags.get(&TagField::Year) {
+            if !is_writable_year(year) {
+                return Err(TagIoError::Malformed(format!(
+                    "invalid year {year:?}: a year must be 4 digits (e.g. 1996)"
+                )));
+            }
+        }
         if file.format.uses_id3v2() {
             write_id3v2(&file.path, &file.tags)
         } else {
@@ -475,6 +488,18 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
     }
 }
 
+/// Whether a `year` value is safe to write. Empty clears the field (allowed).
+/// Otherwise the year segment (before any `-MM-DD` date suffix) must be exactly
+/// 4 ASCII digits — the one timestamp rule lofty enforces as a hard error on
+/// read regardless of parsing mode, so violating it makes the file unreadable.
+fn is_writable_year(value: &str) -> bool {
+    if value.is_empty() {
+        return true;
+    }
+    let year = value.split('-').next().unwrap_or(value);
+    year.len() == 4 && year.bytes().all(|b| b.is_ascii_digit())
+}
+
 #[derive(Debug, Error)]
 pub enum TagIoError {
     #[error("unsupported format: {0}")]
@@ -518,6 +543,17 @@ mod tests {
             let key = tag_field_to_item_key(&field);
             assert_eq!(item_key_to_tag_field(&key), field);
         }
+    }
+
+    #[test]
+    fn is_writable_year_requires_exactly_four_digits() {
+        assert!(is_writable_year("1996"));
+        assert!(is_writable_year("1996-05-01")); // date suffix allowed
+        assert!(is_writable_year("")); // clearing the field
+        assert!(!is_writable_year("222")); // too short — poisons the file
+        assert!(!is_writable_year("96"));
+        assert!(!is_writable_year("12345")); // too long
+        assert!(!is_writable_year("19x6")); // non-digit
     }
 
     #[test]
