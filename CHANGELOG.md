@@ -10,6 +10,20 @@ first release ships.
 
 ### Added
 
+- Preview shown as a table-diff (#80). The staged change plan is no longer a
+  vertical `Current → New` list but a table that mirrors the main file table, so
+  a batch is scanned in the same layout the user reads it in. The core columns
+  (File · Artist · Title · Album · Year) always show; one extra column is added
+  per changed non-main field (Album Artist, Track, Genre, …) with an
+  accent-underlined header, and a Cover column appears when a cover changes.
+  Cells show the new value; unchanged cells are dimmed so changes pop, a folder
+  move adds the new path line on the File cell (#37), and the File column stays
+  pinned on horizontal scroll. The old value is on hover, or revealed
+  struck-through under every changed cell via a "Show old values" toggle. Error
+  (rejected value) styling is wired but latent until the backend flags a change
+  invalid. (The design's per-row "include in this apply" checkbox is deferred
+  until the apply path supports a partial plan.)
+
 - Keyboard row navigation in the file table (#76). A roving focus moves between
   rows with ↑/↓ (drawing the new focus ring), and Space toggles the focused row's
   selection — so a keyboard-heavy tool's main surface is now operable without the

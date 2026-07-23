@@ -79,23 +79,15 @@
         <div id="preview-view" hidden>
           <div class="preview-bar">
             <span class="hint muted" style="padding: 0">Review the change, then apply — nothing is written until you do.</span>
+            <label class="toggle-old muted" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="show-old" /> Show old values</label>
             <div class="spacer"></div>
             <button id="discard">Discard</button>
             <button id="apply" class="primary" disabled>Apply</button>
           </div>
-          <div class="table-wrap">
-            <table id="preview-table" hidden>
-              <thead>
-                <tr>
-                  <th>Current</th>
-                  <th></th>
-                  <th>New</th>
-                </tr>
-              </thead>
-              <tbody id="preview-body"></tbody>
-            </table>
-            <p id="preview-empty" class="empty inert-panel" hidden></p>
-          </div>
+          <!-- The change plan renders here as a table mirroring the file table (#80).
+               The mount is its own horizontal/vertical scroll surface so the header
+               and File column can stay pinned. -->
+          <div id="preview-diff" class="diff-wrap"></div>
         </div>
       </section>
 

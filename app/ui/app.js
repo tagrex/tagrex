@@ -49,9 +49,7 @@ const rootInput = el("root");
 const tracksBody = el("tracks-body");
 const tracksEmpty = el("tracks-empty");
 const trackCount = el("track-count");
-const previewTable = el("preview-table");
-const previewBody = el("preview-body");
-const previewEmpty = el("preview-empty");
+const previewDiff = el("preview-diff");
 const applyBtn = el("apply");
 const previewBtn = el("preview");
 const previewEditsBtn = el("preview-edits");
@@ -336,56 +334,143 @@ function discardPreview() {
   showView("files");
 }
 
+// Path -> track lookup, so the diff can show the current value of a file's
+// unchanged main/extra columns. Rebuilt per render from the live `tracks`.
+function trackByPath() {
+  return new Map(tracks.map((t) => [t.path, t]));
+}
+
 function renderPreview(plan) {
-  previewBody.innerHTML = "";
   el("view-preview").disabled = false;
   showView("preview");
-  const changes = plan.changes;
+  const n = renderPreviewDiff(previewDiff, plan, trackByPath());
+  applyBtn.disabled = n === 0;
+  applyBtn.textContent = n ? `Apply (${n})` : "Apply";
+  // The table is rebuilt on every render, so re-assert a checked "Show old
+  // values" toggle onto the fresh table.
+  const table = previewDiff.querySelector("table.diff");
+  if (table && el("show-old").checked) table.classList.add("show-old");
+}
+
+/* ---- table-diff renderer (#80) --------------------------------------------
+   Renders the change plan as a table mirroring the main file table: the main
+   columns (File · Artist · Title · Album · Year) always show, one extra column
+   is added per changed non-main field, and a Cover column when a cover changes.
+   Cells show the NEW value; the old value is on the cell title (hover) and,
+   when "Show old values" is on, as a struck-through line. Styling lives in the
+   `table.diff` block of style.css. Reuses fileName()/escapeHtml(). */
+
+// Main columns (mirror the file table, minus play). Always shown.
+const DIFF_MAIN_COLS = ["file", "artist", "title", "album", "year"];
+// Extra (non-main) fields, in the order they appear as added columns.
+const DIFF_EXTRA_ORDER = [
+  "albumartist", "track", "tracktotal", "disc", "genre",
+  "composer", "publisher", "bpm", "isrc", "key", "comment",
+];
+const DIFF_LABELS = {
+  file: "File", artist: "Artist", title: "Title", album: "Album", year: "Year",
+  albumartist: "Album Artist", track: "Track", tracktotal: "Track Total",
+  disc: "Disc", genre: "Genre", composer: "Composer", publisher: "Publisher",
+  bpm: "BPM", isrc: "ISRC", key: "Key", comment: "Comment",
+};
+
+function diffLabel(field) {
+  return DIFF_LABELS[field] || (field.startsWith("custom:") ? field.slice(7) : field);
+}
+
+function diffDir(path) {
+  const i = Math.max(String(path).lastIndexOf("/"), String(path).lastIndexOf("\\"));
+  return i >= 0 ? path.slice(0, i) : "";
+}
+
+// Which columns this plan needs: main + changed extras (in order) + cover.
+function diffColumns(plan) {
+  const changedExtras = new Set();
+  let anyCover = false;
+  for (const c of plan.changes) {
+    for (const tc of c.tag_changes || []) {
+      if (!DIFF_MAIN_COLS.includes(tc.field)) changedExtras.add(tc.field);
+    }
+    if (c.cover_change) anyCover = true;
+  }
+  const extras = DIFF_EXTRA_ORDER.filter((f) => changedExtras.has(f))
+    .concat([...changedExtras].filter((f) => f.startsWith("custom:")).sort());
+  const cols = [...DIFF_MAIN_COLS, ...extras];
+  if (anyCover) cols.push("cover");
+  return cols;
+}
+
+// The state + text of one field cell for one file: unchanged | dirty | error |
+// cleared. `track` supplies the current value for an unchanged cell.
+function diffCell(change, field, track) {
+  const tc = (change.tag_changes || []).find((t) => t.field === field);
+  const current = track ? (track.tags[field] || "") : "";
+  if (!tc) return { text: current, cls: "unchanged" + (current ? "" : " empty") };
+  const nv = tc.new == null ? "" : String(tc.new);
+  const ov = tc.old == null ? "" : String(tc.old);
+  if (tc.invalid) {
+    return { text: nv, cls: "error", title: `Invalid ${diffLabel(field)}: “${nv}” — keeping “${ov || "∅"}”`, old: ov };
+  }
+  if (nv === "") return { text: "", cls: "dirty cleared", title: `Cleared (was “${ov}”)`, old: ov };
+  return { text: nv, cls: "dirty", title: `was “${ov || "∅"}”`, old: ov };
+}
+
+function diffThumb(cover) {
+  return cover
+    ? `<img class="diff-thumb" alt="" src="data:${cover.mime};base64,${cover.data_base64}" />`
+    : `<span class="diff-thumb inert" title="no cover"></span>`;
+}
+
+function diffHeadHtml(cols) {
+  return "<tr>" + cols.map((col) => {
+    if (col === "cover") return `<th class="col-cover col-changed">Cover</th>`;
+    const isExtra = !DIFF_MAIN_COLS.includes(col);
+    return `<th class="col-${escapeHtml(col)}${isExtra ? " col-changed" : ""}">${escapeHtml(diffLabel(col))}</th>`;
+  }).join("") + "</tr>";
+}
+
+function diffRowHtml(change, cols, track) {
+  const cells = cols.map((col) => {
+    if (col === "cover") {
+      if (!change.cover_change) return `<td class="col-cover unchanged empty"></td>`;
+      const cc = change.cover_change;
+      return `<td class="col-cover dirty"><span class="diff-cover">${diffThumb(cc.old)}<span class="diff-arrow">→</span>${diffThumb(cc.new)}</span></td>`;
+    }
+    if (col === "file") {
+      const moved = change.rename_to && diffDir(change.rename_to) !== diffDir(change.path);
+      const newName = change.rename_to ? fileName(change.rename_to) : fileName(change.path);
+      const cls = change.rename_to ? "col-file dirty" : "col-file unchanged";
+      const title = change.rename_to
+        ? `${escapeHtml(change.path)}  →  ${escapeHtml(change.rename_to)}`
+        : escapeHtml(change.path);
+      const pathLine = moved
+        ? `<span class="diff-file-path" title="${escapeHtml(change.rename_to)}">${escapeHtml(diffDir(change.rename_to))}/</span>`
+        : "";
+      const oldName = change.rename_to
+        ? `<span class="diff-old">${escapeHtml(fileName(change.path))}</span>` : "";
+      return `<td class="${cls}" title="${title}"><span class="diff-file">${pathLine}<span class="diff-file-name">${escapeHtml(newName)}</span>${oldName}</span></td>`;
+    }
+    const cell = diffCell(change, col, track);
+    const title = cell.title ? ` title="${escapeHtml(cell.title)}"` : "";
+    const oldSpan = cell.old ? `<span class="diff-old">${escapeHtml(cell.old)}</span>` : "";
+    return `<td class="col-${escapeHtml(col)} ${cell.cls}"${title}>${escapeHtml(cell.text)}${oldSpan}</td>`;
+  });
+  return `<tr data-path="${escapeHtml(change.path)}">${cells.join("")}</tr>`;
+}
+
+// Render the plan into `container` (a scroll wrapper); returns the change count
+// so the caller can enable/disable Apply.
+function renderPreviewDiff(container, plan, byPath) {
+  const changes = (plan && plan.changes) || [];
   if (changes.length === 0) {
-    previewTable.hidden = true;
-    previewEmpty.hidden = false;
-    previewEmpty.textContent = "Nothing would change.";
-    applyBtn.disabled = true;
-    return;
+    container.innerHTML = `<p class="empty inert-panel diff-empty">Nothing would change.</p>`;
+    return 0;
   }
-  for (const change of changes) {
-    if (change.rename_to) {
-      addPreviewRow(fileName(change.path), fileName(change.rename_to));
-    }
-    for (const tc of change.tag_changes) {
-      const label = `${fileName(change.path)} · ${tc.field}`;
-      addPreviewRow(`${label}: ${tc.old || "∅"}`, tc.new || "∅");
-    }
-    if (change.cover_change) {
-      addCoverPreviewRow(change);
-    }
-  }
-  previewTable.hidden = false;
-  previewEmpty.hidden = true;
-  applyBtn.disabled = false;
-}
-
-function addPreviewRow(oldText, newText) {
-  const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td class="mono old">${escapeHtml(oldText)}</td>
-    <td class="arrow">→</td>
-    <td class="mono new">${escapeHtml(newText)}</td>`;
-  previewBody.appendChild(tr);
-}
-
-function coverThumb(cover) {
-  return cover ? `<img class="cover-thumb" src="data:${cover.mime};base64,${cover.data_base64}" />` : "∅";
-}
-
-function addCoverPreviewRow(change) {
-  const cc = change.cover_change;
-  const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td class="mono old">${escapeHtml(fileName(change.path))} · cover: ${coverThumb(cc.old)}</td>
-    <td class="arrow">→</td>
-    <td class="new">${coverThumb(cc.new)}</td>`;
-  previewBody.appendChild(tr);
+  const cols = diffColumns(plan);
+  const rows = changes.map((c) => diffRowHtml(c, cols, byPath && byPath.get(c.path))).join("");
+  container.innerHTML =
+    `<table class="diff"><thead>${diffHeadHtml(cols)}</thead><tbody>${rows}</tbody></table>`;
+  return changes.length;
 }
 
 async function refreshHistory() {
@@ -454,10 +539,11 @@ async function previewEdits() {
     }
   }
   if (list.length === 0) {
-    previewEmpty.hidden = false;
-    previewEmpty.textContent = "No pending edits.";
-    previewTable.hidden = true;
+    el("view-preview").disabled = false;
+    showView("preview");
+    previewDiff.innerHTML = `<p class="empty inert-panel diff-empty">No pending edits.</p>`;
     applyBtn.disabled = true;
+    applyBtn.textContent = "Apply";
     return;
   }
   try {
@@ -1619,6 +1705,12 @@ el("view-preview").addEventListener("click", () => {
   if (previewPlan) showView("preview");
 });
 el("discard").addEventListener("click", discardPreview);
+// "Show old values" (#80 Q1): reveal the struck-through old value under each
+// changed cell. A density toggle over the default single-line (new-only) diff.
+el("show-old").addEventListener("change", (e) => {
+  const table = previewDiff.querySelector("table.diff");
+  if (table) table.classList.toggle("show-old", e.target.checked);
+});
 
 // ---- wire up ----
 el("open").addEventListener("click", openLibrary);
