@@ -176,6 +176,19 @@ function appendTrackRow(track, groupKey) {
     tr.dataset.group = groupKey;
     if (collapsedGroups.has(groupKey)) tr.classList.add("hidden-row");
   }
+  // An unreadable file (tags failed to parse) is shown but inert: it can't be
+  // selected, played, or edited, and every mode's preview already skips it. It's
+  // listed only so it never looks like the file vanished (#83).
+  if (track.unreadable) {
+    tr.classList.add("unreadable");
+    tr.innerHTML = `
+      <td class="sel"><input type="checkbox" disabled title="This file's tags couldn't be read" /></td>
+      <td class="play"></td>
+      <td class="file" title="${escapeHtml(track.path)} — tags couldn't be read">${escapeHtml(fileName(track.path))}</td>
+      <td class="unreadable-note" colspan="4">couldn't read tags — file left untouched</td>`;
+    tracksBody.appendChild(tr);
+    return;
+  }
   if (track.path === playingPath) tr.classList.add("playing");
   // Checkbox + row highlight both reflect the `selection` set (source of truth),
   // so re-rendering never changes what's selected.
@@ -342,13 +355,28 @@ function trackByPath() {
 function renderPreview(plan) {
   el("view-preview").disabled = false;
   showView("preview");
-  const n = renderPreviewDiff(previewDiff, plan, trackByPath());
-  applyBtn.disabled = n === 0;
-  applyBtn.textContent = n ? `Apply (${n})` : "Apply";
+  renderPreviewDiff(previewDiff, plan, trackByPath());
   // The table is rebuilt on every render, so re-assert a checked "Show old
   // values" toggle onto the fresh table.
   const table = previewDiff.querySelector("table.diff");
   if (table && el("show-old").checked) table.classList.add("show-old");
+  // Every row starts included; Apply reflects the checked count (#81).
+  updateApplyFromChecks();
+}
+
+// Sync the Apply button (label + enabled) and the header select-all tri-state
+// to the row checkboxes. Rows all start checked; unticking some narrows what a
+// single Apply writes (#81).
+function updateApplyFromChecks() {
+  const boxes = [...previewDiff.querySelectorAll(".diff-sel")];
+  const checked = boxes.filter((b) => b.checked).length;
+  applyBtn.disabled = checked === 0;
+  applyBtn.textContent = checked ? `Apply (${checked})` : "Apply";
+  const all = previewDiff.querySelector(".diff-sel-all");
+  if (all) {
+    all.checked = boxes.length > 0 && checked === boxes.length;
+    all.indeterminate = checked > 0 && checked < boxes.length;
+  }
 }
 
 /* ---- table-diff renderer (#80) --------------------------------------------
@@ -394,7 +422,8 @@ function diffColumns(plan) {
   }
   const extras = DIFF_EXTRA_ORDER.filter((f) => changedExtras.has(f))
     .concat([...changedExtras].filter((f) => f.startsWith("custom:")).sort());
-  const cols = [...DIFF_MAIN_COLS, ...extras];
+  // Leading `sel` column = per-row "include in this apply" (#81).
+  const cols = ["sel", ...DIFF_MAIN_COLS, ...extras];
   if (anyCover) cols.push("cover");
   return cols;
 }
@@ -422,6 +451,7 @@ function diffThumb(cover) {
 
 function diffHeadHtml(cols) {
   return "<tr>" + cols.map((col) => {
+    if (col === "sel") return `<th class="col-sel"><input type="checkbox" class="diff-sel-all" checked title="Include all in this apply" /></th>`;
     if (col === "cover") return `<th class="col-cover col-changed">Cover</th>`;
     const isExtra = !DIFF_MAIN_COLS.includes(col);
     return `<th class="col-${escapeHtml(col)}${isExtra ? " col-changed" : ""}">${escapeHtml(diffLabel(col))}</th>`;
@@ -430,6 +460,9 @@ function diffHeadHtml(cols) {
 
 function diffRowHtml(change, cols, track) {
   const cells = cols.map((col) => {
+    if (col === "sel") {
+      return `<td class="col-sel"><input type="checkbox" class="diff-sel" checked data-path="${escapeHtml(change.path)}" title="Include in this apply" /></td>`;
+    }
     if (col === "cover") {
       if (!change.cover_change) return `<td class="col-cover unchanged empty"></td>`;
       const cc = change.cover_change;
@@ -492,9 +525,11 @@ async function openLibrary() {
   try {
     await invoke("open_library", { root });
     tracks = await invoke("list_tracks", {});
-    // Everything selected by default; the set (not the DOM) holds it.
+    // Everything readable selected by default; the set (not the DOM) holds it.
+    // Unreadable placeholders (#83) stay out of the selection — they can't be
+    // operated on.
     selection.clear();
-    for (const t of tracks) selection.add(t.path);
+    for (const t of tracks) if (!t.unreadable) selection.add(t.path);
     previewPlan = null;
     resetEdits();
     sortKey = null;
@@ -558,7 +593,20 @@ async function apply() {
   if (!previewPlan || previewPlan.changes.length === 0) return;
   const wasRename = previewSource === "rename";
   const wasEdits = previewSource === "edits";
-  const appliedPlan = previewPlan;
+  // Only the ticked rows are applied (#81). The plan the backend gets — and
+  // undo journals — is exactly this subset.
+  const checked = new Set(
+    [...previewDiff.querySelectorAll(".diff-sel:checked")].map((b) => b.dataset.path)
+  );
+  const appliedPlan = {
+    ...previewPlan,
+    changes: previewPlan.changes.filter((c) => checked.has(c.path)),
+  };
+  if (appliedPlan.changes.length === 0) {
+    toast("Tick at least one row to apply", true);
+    return;
+  }
+  const appliedPaths = new Set(appliedPlan.changes.map((c) => c.path));
   try {
     await invoke("apply_plan", { plan: appliedPlan });
     toast(`Applied changes to ${appliedPlan.changes.length} file(s)`);
@@ -567,7 +615,10 @@ async function apply() {
     if (wasRename) {
       remapEditsAfterRename(appliedPlan); // keep pending tag edits, new paths
     } else if (wasEdits) {
-      resetEdits(); // tag edits are now on disk
+      // Drop only the applied files' edits; unticked files keep their staged
+      // edits so a follow-up apply can still write them.
+      for (const path of appliedPaths) edits.delete(path);
+      updateEditsButton();
     }
     // cover apply leaves the tag-edits buffer untouched (separate change kind)
     tracks = await invoke("list_tracks", {});
@@ -1933,6 +1984,17 @@ el("show-old").addEventListener("change", (e) => {
   const table = previewDiff.querySelector("table.diff");
   if (table) table.classList.toggle("show-old", e.target.checked);
 });
+// Per-row include checkboxes (#81): the header box toggles all; any change
+// updates the Apply count.
+previewDiff.addEventListener("change", (e) => {
+  if (e.target.classList.contains("diff-sel-all")) {
+    const on = e.target.checked;
+    previewDiff.querySelectorAll(".diff-sel").forEach((b) => (b.checked = on));
+  }
+  if (e.target.classList.contains("diff-sel") || e.target.classList.contains("diff-sel-all")) {
+    updateApplyFromChecks();
+  }
+});
 
 // ---- wire up ----
 el("open").addEventListener("click", openLibrary);
@@ -2149,10 +2211,15 @@ function rowCheckbox(tr) {
   return tr.querySelector(".sel input[type=checkbox]");
 }
 
-// Data rows in DOM (visual) order, group headers excluded.
+// Data rows in DOM (visual) order — group headers and unreadable (inert)
+// rows excluded, so selection/select-all never touches a file that can't be
+// operated on.
 function dataRows() {
   return [...tracksBody.querySelectorAll("tr")].filter(
-    (tr) => tr.dataset.path && !tr.classList.contains("group-head"),
+    (tr) =>
+      tr.dataset.path &&
+      !tr.classList.contains("group-head") &&
+      !tr.classList.contains("unreadable"),
   );
 }
 
@@ -2176,6 +2243,7 @@ function syncSelectionUI() {
 }
 
 function selectRow(tr, e) {
+  if (tr.classList.contains("unreadable")) return; // inert — can't be selected
   const rows = dataRows();
   const path = tr.dataset.path;
   if (e.shiftKey && selAnchor) {

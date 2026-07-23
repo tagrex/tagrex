@@ -41,7 +41,23 @@ first release ships.
   the tag engine (`is_writable_value`) so the preview flags exactly what the
   writer would mishandle.
 
+### Added
+
+- Preview rows can be individually excluded from an apply (#81). The change-plan
+  diff has a leading checkbox column again (all ticked by default); unticking a
+  row drops it from what a single Apply writes and journals, and the header
+  checkbox toggles all with an indeterminate state. Excluded tag-edit rows keep
+  their staged edits for a later apply.
+
 ### Fixed
+
+- A file whose tags can't be parsed is now listed instead of vanishing (#83).
+  `list_tracks` used to silently drop any file it couldn't read, so a single
+  malformed frame made a track disappear from the library (looking like data
+  loss though the file was intact). Such a file now shows as an inert, greyed,
+  non-selectable placeholder ("couldn't read tags — file left untouched") that
+  still counts in the total; it's kept out of the default selection and every
+  mode's preview skips it.
 
 - Auto-match mis-aligned files when some didn't match, which would write wrong
   tags on import. Matched files were packed densely by their matched position,

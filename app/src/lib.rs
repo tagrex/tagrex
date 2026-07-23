@@ -38,6 +38,29 @@ pub struct TrackDto {
     pub format: String,
     /// Storage-key -> value (see [`TagField::to_storage_key`]).
     pub tags: std::collections::BTreeMap<String, String>,
+    /// The file is on disk but its tags couldn't be parsed (e.g. a malformed
+    /// frame). It's listed anyway — greyed and non-editable — so it never
+    /// silently vanishes from the library. `#[serde(default)]` = false.
+    #[serde(default)]
+    pub unreadable: bool,
+}
+
+impl TrackDto {
+    /// A placeholder row for a file whose tags failed to read: path only, format
+    /// guessed from the extension, no tags.
+    fn unreadable(path: &Path) -> Self {
+        let format = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(str::to_uppercase)
+            .unwrap_or_default();
+        Self {
+            path: path.to_string_lossy().into_owned(),
+            format,
+            tags: std::collections::BTreeMap::new(),
+            unreadable: true,
+        }
+    }
 }
 
 /// A single planned field change: `old` is the current value, `new` what will
@@ -267,17 +290,21 @@ impl App {
         })
     }
 
-    /// Scan the library and read each file's tags. Files that can't be read
-    /// (unsupported, corrupt, or walk errors like a permission-denied dir) are
-    /// skipped rather than failing the whole scan. Results are sorted by path
-    /// so the table has a stable order (the scanner yields filesystem order,
-    /// which isn't alphabetical) — this order is also what mapping-by-position
-    /// (rename masks, release import) lines up against.
+    /// Scan the library and read each file's tags. A file whose tags can't be
+    /// parsed (e.g. a malformed frame) is still listed — as an `unreadable`
+    /// placeholder — rather than silently dropped, so it never looks like the
+    /// file went missing (#83). Walk errors (a permission-denied dir) are the
+    /// only thing skipped. Results are sorted by path so the table has a stable
+    /// order (the scanner yields filesystem order, which isn't alphabetical) —
+    /// this order is also what mapping-by-position (rename masks, release
+    /// import) lines up against.
     pub fn list_tracks(&self) -> Vec<TrackDto> {
         let mut tracks: Vec<TrackDto> = scanner::scan(&self.library_root, &ScanOptions::default())
             .filter_map(Result::ok)
-            .filter_map(|path| TagEngine::read(&path).ok())
-            .map(TrackDto::from)
+            .map(|path| match TagEngine::read(&path) {
+                Ok(track) => TrackDto::from(track),
+                Err(_) => TrackDto::unreadable(&path),
+            })
             .collect();
         tracks.sort_by(|a, b| a.path.cmp(&b.path));
         tracks
@@ -1093,6 +1120,7 @@ impl From<tagrex_core::model::TrackFile> for TrackDto {
                 .into_iter()
                 .map(|(field, value)| (field.to_storage_key(), value))
                 .collect(),
+            unreadable: false,
         }
     }
 }
@@ -1281,6 +1309,31 @@ mod tests {
             Some("Boards of Canada")
         );
         assert_eq!(tracks[0].format, "Flac");
+    }
+
+    #[test]
+    fn unreadable_file_is_listed_not_dropped() {
+        let dir = TempDir::new("unreadable");
+        dir.tagged_flac("good.flac", "Artist", "Title");
+        // A supported extension with garbage content: the tag reader fails on it.
+        std::fs::write(dir.0.join("bad.flac"), b"not a real flac file").unwrap();
+        let app = open_app(&dir);
+
+        let tracks = app.list_tracks();
+        // Both are listed — the unreadable one is a placeholder, not dropped.
+        assert_eq!(tracks.len(), 2);
+        let bad = tracks
+            .iter()
+            .find(|t| t.path.ends_with("bad.flac"))
+            .unwrap();
+        assert!(bad.unreadable);
+        assert!(bad.tags.is_empty());
+        assert_eq!(bad.format, "FLAC");
+        let good = tracks
+            .iter()
+            .find(|t| t.path.ends_with("good.flac"))
+            .unwrap();
+        assert!(!good.unreadable);
     }
 
     #[test]

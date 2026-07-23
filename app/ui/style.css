@@ -100,6 +100,7 @@
      an opaque --bg instead. */
   --diff-dirty-solid: color-mix(in srgb, var(--accent) 12%, var(--bg));
   --diff-error-solid: color-mix(in srgb, var(--del) 10%, var(--bg));
+  --diff-sel-w: 30px; /* pinned Sel checkbox column width (#81) */
   --diff-file-w: 210px; /* pinned File column width */
 }
 
@@ -691,10 +692,29 @@ table.diff {
   content: "cleared";
 }
 
-/* ---- sticky File column (pinned during horizontal scroll) ---- */
-.diff th.col-file, .diff td.col-file {
+/* ---- sticky Sel + File columns (pinned during horizontal scroll) ---- */
+/* Sel: the per-row "include in this apply" checkbox (#81), pinned leftmost. */
+.diff th.col-sel, .diff td.col-sel {
   position: sticky;
   left: 0;
+  z-index: 1;
+  width: var(--diff-sel-w);
+  min-width: var(--diff-sel-w);
+  text-align: center;
+  padding-left: 0;
+  padding-right: 0;
+  background: var(--bg);
+}
+.diff thead th.col-sel {
+  z-index: 3;
+  background: var(--panel);
+}
+.diff tbody tr:hover td.col-sel {
+  background: var(--row-hover);
+}
+.diff th.col-file, .diff td.col-file {
+  position: sticky;
+  left: var(--diff-sel-w);
   z-index: 1;
   width: var(--diff-file-w);
   min-width: var(--diff-file-w);
@@ -1005,6 +1025,27 @@ td.group-cell {
 
 tr.hidden-row {
   display: none;
+}
+
+/* Unreadable file (#83): on disk but its tags couldn't be parsed. Listed so it
+   never looks lost, but inert — muted, striped, non-interactive. */
+#tracks tbody tr.unreadable {
+  color: var(--muted);
+  background: var(--inert-stripes-soft);
+}
+#tracks tbody tr.unreadable:hover {
+  background: var(--inert-stripes-soft);
+}
+#tracks tbody tr.unreadable .file {
+  font-style: italic;
+}
+#tracks tbody tr.unreadable .sel input {
+  cursor: not-allowed;
+}
+td.unreadable-note {
+  color: var(--del);
+  font-size: var(--text-2xs);
+  white-space: nowrap;
 }
 
 /* ============================================================================
