@@ -18,6 +18,7 @@
       </div>
       <div class="spacer"></div>
       <button id="undo" disabled title="Undo the last applied batch">Undo last</button>
+      <button id="settings-open" class="icon gear" title="Settings">⚙</button>
     </header>
 
     <!-- Mode tabs — the file table stays put; only the right-hand panel swaps.
@@ -152,11 +153,6 @@
                   </select>
                 </label>
                 <div class="spacer"></div>
-                <button id="discogs-settings" class="icon" title="Set your Discogs token">⚙</button>
-              </div>
-              <!-- Token is remembered; tucked away here until a real Settings area exists. -->
-              <div id="discogs-token-row" hidden>
-                <input id="discogs-token" type="password" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
               </div>
               <div class="mask-row">
                 <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
@@ -300,6 +296,62 @@
     </footer>
 
     <div id="toast" class="toast" hidden></div>
+
+    <!-- Settings slide-over (#79): app-wide preferences, opened from the top-bar
+         gear — deliberately outside the RENAMER/TAGGER/… per-mode panel flow. -->
+    <div id="settings" class="settings-overlay" hidden>
+      <div id="settings-scrim" class="settings-scrim"></div>
+      <aside class="settings-sheet" role="dialog" aria-modal="true" aria-label="Settings">
+        <div class="settings-head">
+          <span class="settings-title">Settings</span>
+          <div class="spacer"></div>
+          <button id="settings-close" class="icon" title="Close">✕</button>
+        </div>
+        <div class="settings-body">
+          <div class="settings-group">
+            <h3>Discogs</h3>
+            <div class="settings-row">
+              <label for="discogs-token">Personal token</label>
+              <input id="discogs-token" type="password" class="mono" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
+            </div>
+            <p class="settings-hint">Used for search, release lookups, and cover fetches.</p>
+          </div>
+
+          <div class="settings-group">
+            <h3>Network</h3>
+            <div class="settings-row">
+              <label for="set-proxy">Proxy</label>
+              <input id="set-proxy" type="text" class="mono" placeholder="http://host:port  (blank = none)" spellcheck="false" />
+            </div>
+            <div class="settings-row">
+              <label for="set-rate">Rate limit</label>
+              <div class="settings-inline">
+                <input id="set-rate" type="number" min="0" class="mono" style="width: 64px" />
+                <span class="settings-hint">requests / min — 0 = no limit (429 / Retry-After is always honoured)</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-group">
+            <h3>Tag defaults</h3>
+            <div class="settings-row">
+              <label>ID3 version</label>
+              <div class="seg" id="set-id3" role="tablist" aria-label="ID3 version">
+                <button class="seg-btn" type="button" data-id3="v23">ID3v2.3</button>
+                <button class="seg-btn active" type="button" data-id3="v24">ID3v2.4</button>
+              </div>
+            </div>
+            <p class="settings-hint">Which ID3v2 revision to write for MP3/AIFF/WAV. v2.4 is the modern default.</p>
+          </div>
+        </div>
+        <div class="settings-foot">
+          <span class="settings-hint">Saved to this machine.</span>
+          <div class="spacer"></div>
+          <button id="settings-cancel">Cancel</button>
+          <button id="settings-save" class="primary">Save</button>
+        </div>
+      </aside>
+    </div>
 
     <script src="app.js"></script>
   </body>

@@ -14,6 +14,9 @@
 
 use std::path::{Path, PathBuf};
 
+use std::cell::{Cell, RefCell};
+use std::time::{Duration, Instant};
+
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -166,6 +169,22 @@ pub struct CoverSummaryDto {
     pub samples: Vec<CoverArtDto>,
 }
 
+/// App-wide preferences (Settings, #79), persisted as JSON in the config dir.
+/// Every field has a serde default so an older/partial file still loads.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct SettingsDto {
+    /// HTTP/SOCKS proxy URL for Discogs requests; empty = direct connection.
+    #[serde(default)]
+    pub proxy: String,
+    /// Client-side throttle for Discogs requests, in requests/minute; 0 = no
+    /// throttle (the server's 429/Retry-After is still honored either way).
+    #[serde(default)]
+    pub rate_limit_per_min: u32,
+    /// Write ID3v2 tags as v2.3 instead of the default v2.4.
+    #[serde(default)]
+    pub id3_v23: bool,
+}
+
 /// A recorded batch, for the history/undo UI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BatchDto {
@@ -278,16 +297,65 @@ pub struct TransformRuleDto {
 pub struct App {
     library_root: PathBuf,
     journal: SqliteJournal,
+    /// Live Discogs proxy URL (None = direct), from settings.
+    discogs_proxy: RefCell<Option<String>>,
+    /// Minimum spacing between Discogs requests (None = no throttle), from the
+    /// rate-limit setting. Enforced in [`throttle_discogs`](App::throttle_discogs).
+    discogs_min_interval: Cell<Option<Duration>>,
+    /// When the last Discogs request went out, for the throttle. Interior
+    /// mutability so the read-only command path can update it.
+    last_discogs_request: Cell<Option<Instant>>,
 }
 
 impl App {
     /// Open a session for `library_root`, storing the undo journal at
-    /// `journal_path` (typically inside the app's config dir).
+    /// `journal_path` (typically inside the app's config dir). Settings default
+    /// until [`apply_settings`](App::apply_settings) is called.
     pub fn open(library_root: impl Into<PathBuf>, journal_path: &Path) -> Result<Self, AppError> {
         Ok(Self {
             library_root: library_root.into(),
             journal: SqliteJournal::open(journal_path)?,
+            discogs_proxy: RefCell::new(None),
+            discogs_min_interval: Cell::new(None),
+            last_discogs_request: Cell::new(None),
         })
+    }
+
+    /// Apply saved settings (#79): the Discogs proxy + rate-limit throttle, and
+    /// the app-wide ID3v2 write version. Called on open and whenever settings
+    /// are saved.
+    pub fn apply_settings(&self, settings: &SettingsDto) {
+        let proxy = settings.proxy.trim();
+        *self.discogs_proxy.borrow_mut() = (!proxy.is_empty()).then(|| proxy.to_string());
+        self.discogs_min_interval.set(
+            (settings.rate_limit_per_min > 0)
+                .then(|| Duration::from_secs_f64(60.0 / settings.rate_limit_per_min as f64)),
+        );
+        tagrex_core::model::set_write_id3v23(settings.id3_v23);
+    }
+
+    /// Build a Discogs provider using the current proxy setting.
+    fn discogs_provider(&self, token: &str) -> Result<DiscogsProvider, AppError> {
+        Ok(DiscogsProvider::with_proxy(
+            token,
+            self.discogs_proxy.borrow().as_deref(),
+        )?)
+    }
+
+    /// Sleep just enough to honor the rate-limit setting before a Discogs
+    /// request. Discogs calls are already serialized by the app lock, so a
+    /// single shared timestamp is enough to space them out.
+    fn throttle_discogs(&self) {
+        let Some(min) = self.discogs_min_interval.get() else {
+            return;
+        };
+        if let Some(last) = self.last_discogs_request.get() {
+            let elapsed = last.elapsed();
+            if elapsed < min {
+                std::thread::sleep(min - elapsed);
+            }
+        }
+        self.last_discogs_request.set(Some(Instant::now()));
     }
 
     /// Scan the library and read each file's tags. A file whose tags can't be
@@ -815,7 +883,8 @@ impl App {
         token: &str,
         query: &SearchQueryDto,
     ) -> Result<Vec<CandidateDto>, AppError> {
-        let provider = DiscogsProvider::new(token);
+        self.throttle_discogs();
+        let provider = self.discogs_provider(token)?;
         let candidates = provider.search(&query.to_search_query())?;
         let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
 
@@ -840,7 +909,8 @@ impl App {
 
     /// Fetch a full release from Discogs.
     pub fn fetch_discogs_release(&self, token: &str, id: &str) -> Result<ReleaseDto, AppError> {
-        let provider = DiscogsProvider::new(token);
+        self.throttle_discogs();
+        let provider = self.discogs_provider(token)?;
         let release = provider.fetch_release(&ReleaseId(id.to_string()))?;
         Ok(ReleaseDto::from(&release))
     }
@@ -850,7 +920,8 @@ impl App {
     /// same shape a locally chosen file produces, so the fetched art flows
     /// through the identical preview/apply/undo path.
     pub fn fetch_discogs_image(&self, token: &str, url: &str) -> Result<CoverArtDto, AppError> {
-        let provider = DiscogsProvider::new(token);
+        self.throttle_discogs();
+        let provider = self.discogs_provider(token)?;
         let image = provider.fetch_image(url)?;
         Ok(CoverArtDto {
             mime: image.mime,
@@ -1294,6 +1365,40 @@ mod tests {
 
     fn open_app(dir: &TempDir) -> App {
         App::open(dir.0.clone(), &dir.0.join("journal.sqlite")).unwrap()
+    }
+
+    #[test]
+    fn settings_deserialize_fills_defaults_and_applies() {
+        // A partial (older) settings file still loads — every field defaults.
+        let partial: SettingsDto = serde_json::from_str(r#"{"proxy":"http://p:8080"}"#).unwrap();
+        assert_eq!(partial.proxy, "http://p:8080");
+        assert_eq!(partial.rate_limit_per_min, 0);
+        assert!(!partial.id3_v23);
+        assert_eq!(
+            SettingsDto::default(),
+            serde_json::from_str::<SettingsDto>("{}").unwrap()
+        );
+
+        // Applying settings wires the proxy/throttle onto the app without panic.
+        let dir = TempDir::new("settings");
+        let app = open_app(&dir);
+        app.apply_settings(&SettingsDto {
+            proxy: "http://host:3128".into(),
+            rate_limit_per_min: 120,
+            id3_v23: true,
+        });
+        assert_eq!(
+            app.discogs_proxy.borrow().as_deref(),
+            Some("http://host:3128")
+        );
+        assert_eq!(
+            app.discogs_min_interval.get(),
+            Some(Duration::from_secs_f64(0.5))
+        );
+        // An empty proxy clears it back to a direct connection.
+        app.apply_settings(&SettingsDto::default());
+        assert!(app.discogs_proxy.borrow().is_none());
+        assert!(app.discogs_min_interval.get().is_none());
     }
 
     #[test]

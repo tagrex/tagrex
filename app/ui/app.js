@@ -1532,15 +1532,77 @@ async function discogsSearch() {
 }
 
 async function loadSavedToken() {
-  let token = "";
   try {
-    token = await invoke("saved_discogs_token", {});
+    const token = await invoke("saved_discogs_token", {});
     if (token) el("discogs-token").value = token;
   } catch (e) {
     /* no saved token yet */
   }
-  // First run (no saved token): reveal the token field so it can be entered.
-  if (!token) el("discogs-token-row").hidden = false;
+  updateSettingsDot();
+}
+
+// ---- settings slide-over (#79) ----
+// App-wide preferences, opened from the top-bar gear. The Discogs token lives
+// here now (moved out of TAGGER › ONLINE); the search still reads it via the
+// same #discogs-token input.
+let id3Choice = "v24"; // "v23" | "v24", mirrored by the segmented control
+
+function updateSettingsDot() {
+  el("settings-open").classList.toggle("has-token", !!el("discogs-token").value.trim());
+}
+
+function setId3Choice(choice) {
+  id3Choice = choice;
+  el("set-id3")
+    .querySelectorAll(".seg-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.id3 === choice));
+}
+
+async function openSettings() {
+  // Populate from saved values (the token is already in #discogs-token).
+  try {
+    const s = await invoke("load_settings", {});
+    el("set-proxy").value = s.proxy || "";
+    el("set-rate").value = s.rate_limit_per_min || 0;
+    setId3Choice(s.id3_v23 ? "v23" : "v24");
+  } catch (e) {
+    /* defaults already in the DOM */
+  }
+  el("settings").hidden = false;
+}
+
+function closeSettings() {
+  el("settings").hidden = true;
+}
+
+async function saveSettings() {
+  const token = el("discogs-token").value.trim();
+  const settings = {
+    proxy: el("set-proxy").value.trim(),
+    rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
+    id3_v23: id3Choice === "v23",
+  };
+  try {
+    await invoke("save_discogs_token", { token });
+    await invoke("save_settings", { settings });
+    updateSettingsDot();
+    closeSettings();
+    toast("Settings saved");
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// Discard unsaved edits: the token input is shared with the ONLINE search, so
+// restore it to the saved value before closing.
+async function cancelSettings() {
+  try {
+    el("discogs-token").value = (await invoke("saved_discogs_token", {})) || "";
+  } catch (e) {
+    /* leave as-is */
+  }
+  updateSettingsDot();
+  closeSettings();
 }
 
 // Meta line "Country · Year · Format" from whatever fields the candidate carries.
@@ -2046,12 +2108,18 @@ document.querySelectorAll(".subtab").forEach((tab) => {
   tab.addEventListener("click", () => setSubtab(tab.dataset.subtab));
 });
 
-// The Discogs token is remembered; keep it tucked behind the gear until there's
-// a real Settings area (a token field next to the search is just clutter).
-el("discogs-settings").addEventListener("click", () => {
-  const row = el("discogs-token-row");
-  row.hidden = !row.hidden;
-  if (!row.hidden) el("discogs-token").focus();
+// Settings slide-over (#79).
+el("settings-open").addEventListener("click", openSettings);
+el("settings-close").addEventListener("click", cancelSettings);
+el("settings-cancel").addEventListener("click", cancelSettings);
+el("settings-scrim").addEventListener("click", cancelSettings);
+el("settings-save").addEventListener("click", saveSettings);
+el("set-id3").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-id3]");
+  if (btn) setId3Choice(btn.dataset.id3);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !el("settings").hidden) cancelSettings();
 });
 
 // List/Grid layout toggle.
@@ -2777,8 +2845,18 @@ function mockInvoke(cmd, args) {
     case "player_status":
       return Promise.resolve(mockPlayer.status());
     case "saved_discogs_token":
-      return Promise.resolve("");
+      return Promise.resolve(mockInvoke.state?.token || "");
     case "save_discogs_token":
+      mockInvoke.state = mockInvoke.state || {};
+      mockInvoke.state.token = args.token;
+      return Promise.resolve();
+    case "load_settings":
+      return Promise.resolve(
+        mockInvoke.state?.settings || { proxy: "", rate_limit_per_min: 0, id3_v23: false }
+      );
+    case "save_settings":
+      mockInvoke.state = mockInvoke.state || {};
+      mockInvoke.state.settings = args.settings;
       return Promise.resolve();
     case "search_discogs":
       return Promise.resolve([

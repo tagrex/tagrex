@@ -38,16 +38,33 @@ pub struct DiscogsProvider {
 
 impl DiscogsProvider {
     pub fn new(token: impl Into<String>) -> Self {
+        Self::build(token, None).expect("no proxy can't fail")
+    }
+
+    /// Like [`new`](Self::new) but routing requests through an HTTP/SOCKS proxy
+    /// when `proxy` is a non-empty URL (e.g. `http://host:port`). An invalid
+    /// proxy URL is reported rather than silently ignored.
+    pub fn with_proxy(
+        token: impl Into<String>,
+        proxy: Option<&str>,
+    ) -> Result<Self, ProviderError> {
+        Self::build(token, proxy.filter(|p| !p.trim().is_empty()))
+    }
+
+    fn build(token: impl Into<String>, proxy: Option<&str>) -> Result<Self, ProviderError> {
         // Status-as-error off: we want the response object for every status so
         // a 429 can be read for its Retry-After header rather than collapsing
         // into an opaque error.
-        let config = ureq::Agent::config_builder()
-            .http_status_as_error(false)
-            .build();
-        Self {
-            agent: ureq::Agent::new_with_config(config),
-            token: token.into(),
+        let mut builder = ureq::Agent::config_builder().http_status_as_error(false);
+        if let Some(proxy) = proxy {
+            let proxy = ureq::Proxy::new(proxy.trim())
+                .map_err(|err| ProviderError::Network(format!("invalid proxy: {err}")))?;
+            builder = builder.proxy(Some(proxy));
         }
+        Ok(Self {
+            agent: ureq::Agent::new_with_config(builder.build()),
+            token: token.into(),
+        })
     }
 
     fn get(&self, url: &str, query: &[(&str, &str)]) -> Result<String, ProviderError> {

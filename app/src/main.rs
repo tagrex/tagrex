@@ -16,7 +16,8 @@ use tauri::{Manager, State};
 use player::{Player, PlayerStatus};
 use tagrex::{
     App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto, ImportSelectionDto,
-    ImportTrackDto, PlanDto, ReleaseDto, SearchQueryDto, TagEditDto, TrackDto, TransformRuleDto,
+    ImportTrackDto, PlanDto, ReleaseDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto,
+    TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -47,6 +48,8 @@ fn open_library(state: State<AppState>, app: tauri::AppHandle, root: String) -> 
     std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
     let journal_path = config_dir.join("journal.sqlite");
     let opened = App::open(root, &journal_path).map_err(|e| e.to_string())?;
+    // Apply saved settings (proxy / rate-limit / ID3 version) to the new session.
+    opened.apply_settings(&read_settings(&app));
     *state.lock().unwrap() = Some(opened);
     Ok(())
 }
@@ -326,6 +329,47 @@ fn save_discogs_token(app: tauri::AppHandle, token: String) -> Result<(), String
     std::fs::write(path, token.trim()).map_err(|e| e.to_string())
 }
 
+/// Path to the persisted settings JSON (#79), in the OS app-config dir.
+fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join("settings.json"))
+}
+
+/// Read saved settings, falling back to defaults if the file is missing or
+/// unreadable (so a corrupt file never blocks startup).
+fn read_settings(app: &tauri::AppHandle) -> SettingsDto {
+    settings_path(app)
+        .ok()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default()
+}
+
+#[tauri::command]
+fn load_settings(app: tauri::AppHandle) -> Result<SettingsDto, String> {
+    Ok(read_settings(&app))
+}
+
+#[tauri::command]
+fn save_settings(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    settings: SettingsDto,
+) -> Result<(), String> {
+    let path = settings_path(&app)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())?;
+    // Apply immediately if a library is open, so the change takes effect without
+    // reopening.
+    if let Some(app) = state.lock().unwrap().as_ref() {
+        app.apply_settings(&settings);
+    }
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -355,6 +399,8 @@ fn main() {
             auto_align,
             saved_discogs_token,
             save_discogs_token,
+            load_settings,
+            save_settings,
             player_play,
             player_set_next,
             player_pause,

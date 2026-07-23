@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use lofty::aac::AacFile;
 use lofty::config::{ParseOptions, WriteOptions};
@@ -14,6 +15,23 @@ use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::probe::Probe;
 use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
 use thiserror::Error;
+
+/// Whether ID3v2 tags are written as v2.3 (`true`) or v2.4 (`false`, the
+/// default). App-wide preference (Settings › Tag defaults, #79). Kept as a
+/// process global rather than threaded through every `write` call because it is
+/// a rarely-changed, app-wide default; the app sets it from saved settings via
+/// [`set_write_id3v23`].
+static WRITE_ID3V23: AtomicBool = AtomicBool::new(false);
+
+/// Set the ID3v2 version future writes use (`true` = v2.3, `false` = v2.4).
+pub fn set_write_id3v23(v23: bool) {
+    WRITE_ID3V23.store(v23, Ordering::Relaxed);
+}
+
+/// The write options for an ID3v2 save, honoring the version preference.
+fn id3_write_options() -> WriteOptions {
+    WriteOptions::default().use_id3v23(WRITE_ID3V23.load(Ordering::Relaxed))
+}
 
 /// Audio container formats we read and write. Covers everything the tag backend
 /// (lofty) supports; the preview player already decodes all of these.
@@ -291,7 +309,7 @@ impl TagEngine {
             let mut tag = read_id3v2(path)?.unwrap_or_default();
             tag.remove_picture_type(PictureType::CoverFront);
             tag.insert_picture(picture);
-            tag.save_to_path(path, WriteOptions::default())?;
+            tag.save_to_path(path, id3_write_options())?;
             return Ok(());
         }
         let mut tag = load_or_new_tag(path)?;
@@ -306,7 +324,7 @@ impl TagEngine {
         if is_id3v2_container(path) {
             let mut tag = read_id3v2(path)?.unwrap_or_default();
             tag.remove_picture_type(PictureType::CoverFront);
-            tag.save_to_path(path, WriteOptions::default())?;
+            tag.save_to_path(path, id3_write_options())?;
             return Ok(());
         }
         let mut tag = load_or_new_tag(path)?;
@@ -342,7 +360,7 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
             }
         }
     }
-    updated.save_to_path(path, WriteOptions::default())?;
+    updated.save_to_path(path, id3_write_options())?;
     Ok(())
 }
 

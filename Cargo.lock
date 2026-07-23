@@ -3442,6 +3442,7 @@ dependencies = [
  "base64 0.22.1",
  "rodio",
  "serde",
+ "serde_json",
  "tagrex-core",
  "tagrex-providers-discogs",
  "tauri",

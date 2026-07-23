@@ -2046,3 +2046,133 @@ td[data-field="year"],
   text-transform: none;
   letter-spacing: normal;
 }
+
+/* ============================================================================
+   Settings slide-over (#79) — app-wide preferences from the top-bar gear.
+   A right-edge sheet over a scrim, deliberately outside the per-mode panel flow.
+   ============================================================================ */
+/* top-bar gear: a dot when a Discogs token is set */
+#settings-open.gear {
+  position: relative;
+}
+#settings-open.gear.has-token::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.settings-overlay[hidden] {
+  display: none;
+}
+.settings-scrim {
+  position: absolute;
+  inset: 0;
+  background: color-mix(in srgb, #000 34%, transparent);
+}
+.settings-sheet {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 420px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.18);
+}
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.settings-title {
+  font-size: var(--text-md);
+  font-weight: var(--fw-bold);
+}
+.settings-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+.settings-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.settings-group > h3 {
+  margin: 0;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--muted);
+  font-weight: var(--fw-medium);
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: 116px 1fr;
+  align-items: center;
+  gap: var(--space-4);
+}
+.settings-row > label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.settings-row input[type="text"],
+.settings-row input[type="password"],
+.settings-row input[type="number"] {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.settings-row input.mono {
+  font-family: var(--font-mono-bundled);
+}
+.settings-row input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.settings-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.settings-hint {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  line-height: var(--lh-snug);
+}

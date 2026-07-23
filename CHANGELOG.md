@@ -10,6 +10,17 @@ first release ships.
 
 ### Added
 
+- A Settings screen (#79, Claude Design pass). A top-bar gear (with a dot when a
+  Discogs token is set) opens a right-edge slide-over over a scrim — app-wide
+  preferences, deliberately outside the per-mode panel flow. **Discogs**: the
+  personal token, promoted here out of the gear behind TAGGER › ONLINE.
+  **Network**: an HTTP/SOCKS proxy for Discogs requests, and a client-side rate
+  limit (requests/min, 0 = off; the server's 429/Retry-After is honoured either
+  way). **Tag defaults**: the ID3v2 version to write (v2.3 or v2.4). Settings
+  persist to a `settings.json` in the app config dir and apply immediately.
+  (Cover size/quality is deferred to the cover-resize work #41; tag-read
+  priority to a later pass.)
+
 - TAGGER › EDITOR redesigned (Claude Design pass). The flat label/input table
   becomes a grouped, scannable form: a **Core** group (Artist, Title, Album,
   Album Artist, Track, Track Total, Disc, Year, Genre) always open and a
