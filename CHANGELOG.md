@@ -8,6 +8,18 @@ first release ships.
 
 ## [Unreleased]
 
+### Added
+
+- Per-field "don't-be-a-fool" validation in the preview. Beyond the year (which
+  must be a valid 4-digit timestamp or it corrupts the file), the track, disc,
+  and track-total fields now require a plain integer and BPM requires a number
+  (integer or decimal), because the tag writer silently drops a non-numeric
+  value for those frames. Free-text fields (artist, title, album, genre,
+  comment, ISRC, key, catalog number, …) still accept anything. A rejected value
+  shows as an error cell in the diff and is skipped on apply. The rule lives in
+  the tag engine (`is_writable_value`) so the preview flags exactly what the
+  writer would mishandle.
+
 ### Fixed
 
 - Auto-match mis-aligned files when some didn't match, which would write wrong

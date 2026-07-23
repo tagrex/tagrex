@@ -22,7 +22,7 @@ use tagrex_core::export::{self, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::Mask;
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
-use tagrex_core::model::{CoverArt, TagEngine, TagField};
+use tagrex_core::model::{is_writable_value, CoverArt, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
 use tagrex_core::provider::{MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
@@ -70,26 +70,15 @@ impl FieldChangeDto {
 }
 
 /// Whether a proposed `new` value for `field` (a storage key) must be rejected
-/// rather than written. Only the year is validated for now: it must be a
-/// plausible numeric year, with an optional date suffix — so `1996` and
-/// `1996-05-01` pass but `19x6` does not. An empty/absent value is always valid
-/// (it clears the field).
+/// rather than written. Delegates to the tag engine's per-field rule
+/// ([`is_writable_value`]) so the preview flags exactly what the writer would
+/// mishandle: an invalid year (corrupts the file), a non-numeric track/disc/
+/// total or BPM (silently dropped). Free-text fields accept anything; an
+/// empty/absent value is always valid (it clears the field).
 fn field_value_invalid(field: &str, new: Option<&str>) -> bool {
-    let value = match new {
-        Some(v) if !v.is_empty() => v,
-        _ => return false,
-    };
-    match field {
-        "year" => {
-            // ID3v2.4 (lofty) requires the year to be exactly 4 digits and
-            // rejects a shorter numeric year like "222" on read, which corrupts
-            // the file. Mirror that rule exactly; an optional `-MM-DD` date
-            // suffix is allowed, only the year segment is validated here.
-            let year = value.split('-').next().unwrap_or(value);
-            let ok = year.len() == 4 && year.bytes().all(|b| b.is_ascii_digit());
-            !ok
-        }
-        _ => false,
+    match new {
+        Some(value) => !is_writable_value(&TagField::from_storage_key(field), value),
+        None => false,
     }
 }
 
@@ -1339,21 +1328,37 @@ mod tests {
     }
 
     #[test]
-    fn field_value_invalid_only_rejects_implausible_years() {
-        // Year: numeric (optionally with a date suffix) passes; anything else fails.
+    fn field_value_invalid_rejects_bad_typed_values() {
+        // Year: exactly 4 digits (optionally a date suffix); anything else fails.
         assert!(!field_value_invalid("year", Some("1996")));
         assert!(!field_value_invalid("year", Some("1996-05-01")));
         assert!(!field_value_invalid("year", None));
         assert!(!field_value_invalid("year", Some(""))); // clearing is valid
         assert!(field_value_invalid("year", Some("19x6")));
         assert!(field_value_invalid("year", Some("MCMXCVI")));
-        // A numeric year of the wrong length is rejected too: lofty needs
-        // exactly 4 digits, and a shorter one ("222") poisons the file on write.
-        assert!(field_value_invalid("year", Some("222")));
+        assert!(field_value_invalid("year", Some("222"))); // short year poisons the file
         assert!(field_value_invalid("year", Some("96")));
         assert!(field_value_invalid("year", Some("12345")));
-        // Other fields are not validated (any value is accepted).
+
+        // Track / disc / total: a plain integer (a non-numeric one is dropped
+        // by the writer).
+        assert!(!field_value_invalid("track", Some("7")));
+        assert!(!field_value_invalid("disc", Some("2")));
+        assert!(!field_value_invalid("tracktotal", Some("12")));
+        assert!(field_value_invalid("track", Some("A1"))); // vinyl-style — dropped
+        assert!(field_value_invalid("track", Some("7/12"))); // pair belongs in two fields
+        assert!(field_value_invalid("disc", Some("one")));
+
+        // BPM: numeric, integer or decimal (DJ tools store fractional BPM).
+        assert!(!field_value_invalid("bpm", Some("128")));
+        assert!(!field_value_invalid("bpm", Some("128.5")));
+        assert!(field_value_invalid("bpm", Some("fast")));
+        assert!(field_value_invalid("bpm", Some("128bpm")));
+
+        // Free-text fields accept anything.
         assert!(!field_value_invalid("artist", Some("19x6")));
+        assert!(!field_value_invalid("title", Some("A1")));
+        assert!(!field_value_invalid("comment", Some("anything at all")));
     }
 
     #[test]

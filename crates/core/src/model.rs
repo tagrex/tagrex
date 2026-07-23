@@ -500,6 +500,51 @@ fn is_writable_year(value: &str) -> bool {
     year.len() == 4 && year.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// A non-empty run of ASCII digits (a plain non-negative integer).
+fn is_ascii_digits(value: &str) -> bool {
+    !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit())
+}
+
+/// A non-negative decimal: digits, with at most one `.` separating more digits
+/// (e.g. `128` or `128.5`). Used for BPM, which DJ software often stores
+/// fractionally.
+fn is_decimal(value: &str) -> bool {
+    let mut parts = value.split('.');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(int), None, _) => is_ascii_digits(int),
+        (Some(int), Some(frac), None) => is_ascii_digits(int) && is_ascii_digits(frac),
+        _ => false,
+    }
+}
+
+/// Whether `value` is a sensible thing to write into `field` — the rule behind
+/// the preview's per-field rejection ("don't-be-a-fool" input validation).
+///
+/// Empty always clears the field. Beyond that only the *typed* fields are
+/// constrained, to match what the tag backend does with them:
+/// - **year** must be a valid 4-digit timestamp — an invalid one is written as
+///   a raw text frame the reader then rejects, corrupting the file (see the
+///   hard guard in [`TagEngine::write`]).
+/// - **track / track-total / disc** are parsed as integers; a non-numeric value
+///   is silently dropped, so require a plain non-negative integer.
+/// - **bpm** must be numeric (integer or decimal).
+///
+/// Every free-text field (artist, title, album, genre, comment, ISRC, key,
+/// catalog number, custom …) accepts anything.
+pub fn is_writable_value(field: &TagField, value: &str) -> bool {
+    if value.is_empty() {
+        return true;
+    }
+    match field {
+        TagField::Year => is_writable_year(value),
+        TagField::TrackNumber | TagField::TrackTotal | TagField::DiscNumber => {
+            is_ascii_digits(value)
+        }
+        TagField::Bpm => is_decimal(value),
+        _ => true,
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum TagIoError {
     #[error("unsupported format: {0}")]
@@ -554,6 +599,35 @@ mod tests {
         assert!(!is_writable_year("96"));
         assert!(!is_writable_year("12345")); // too long
         assert!(!is_writable_year("19x6")); // non-digit
+    }
+
+    #[test]
+    fn is_writable_value_constrains_typed_fields_only() {
+        // Empty clears any field.
+        assert!(is_writable_value(&TagField::Year, ""));
+        assert!(is_writable_value(&TagField::TrackNumber, ""));
+
+        // Numeric fields require plain integers; BPM also allows a decimal.
+        assert!(is_writable_value(&TagField::TrackNumber, "7"));
+        assert!(is_writable_value(&TagField::TrackTotal, "12"));
+        assert!(is_writable_value(&TagField::DiscNumber, "1"));
+        assert!(!is_writable_value(&TagField::TrackNumber, "A1"));
+        assert!(!is_writable_value(&TagField::DiscNumber, "one"));
+        assert!(is_writable_value(&TagField::Bpm, "128"));
+        assert!(is_writable_value(&TagField::Bpm, "128.5"));
+        assert!(!is_writable_value(&TagField::Bpm, "128.5.1"));
+        assert!(!is_writable_value(&TagField::Bpm, "fast"));
+
+        // Year keeps its 4-digit rule.
+        assert!(is_writable_value(&TagField::Year, "1996"));
+        assert!(!is_writable_value(&TagField::Year, "222"));
+
+        // Free-text fields accept anything, including things that look numeric
+        // or vinyl-ish.
+        assert!(is_writable_value(&TagField::Artist, "19x6"));
+        assert!(is_writable_value(&TagField::Title, "A1"));
+        assert!(is_writable_value(&TagField::Isrc, "GBAYE0601498"));
+        assert!(is_writable_value(&TagField::InitialKey, "8A"));
     }
 
     #[test]
