@@ -1310,7 +1310,11 @@ mod tests {
         ];
         let plan = app.preview_tag_edits(&edits).unwrap();
         let by_field = |c: &FileChangeDto, f: &str| {
-            c.tag_changes.iter().find(|fc| fc.field == f).cloned().unwrap()
+            c.tag_changes
+                .iter()
+                .find(|fc| fc.field == f)
+                .cloned()
+                .unwrap()
         };
         let year = by_field(&plan.changes[0], "year");
         let album = by_field(&plan.changes[0], "album");
@@ -1323,7 +1327,10 @@ mod tests {
         app.apply(&plan).unwrap();
         let tags = TagEngine::read(&track).unwrap().tags;
         // The valid change landed; the invalid year was never written.
-        assert_eq!(tags.get(&TagField::Album).map(String::as_str), Some("New Album"));
+        assert_eq!(
+            tags.get(&TagField::Album).map(String::as_str),
+            Some("New Album")
+        );
         assert_eq!(tags.get(&TagField::Year), None);
     }
 
