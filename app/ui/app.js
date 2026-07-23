@@ -1565,15 +1565,31 @@ async function autoMatchToRelease(card) {
   }));
   try {
     const aligned = await invoke("auto_align", { paths, tracks: releaseTracks });
-    const ranked = paths.map((path, i) => ({
-      path,
-      key: aligned[i] === null || aligned[i] === undefined ? Number.MAX_SAFE_INTEGER : aligned[i],
-    }));
-    ranked.sort((a, b) => a.key - b.key);
+    // Place each matched file at the position of the release track it matched,
+    // so import's position mapping (file[i] <-> track[i]) lines up. A file that
+    // didn't match must NOT shift the matched ones: packing matches densely
+    // turns any gap (an unmatched file) into an off-by-one that mis-assigns tags
+    // on import. Unmatched files (and any match beyond the file count) fill the
+    // remaining slots in their original order.
+    const n = paths.length;
+    const slots = new Array(n).fill(null);
+    const leftovers = [];
+    paths.forEach((path, i) => {
+      const k = aligned[i];
+      if (k !== null && k !== undefined && k < n && slots[k] === null) {
+        slots[k] = path;
+      } else {
+        leftovers.push(path);
+      }
+    });
+    let li = 0;
+    for (let s = 0; s < n; s++) {
+      if (slots[s] === null) slots[s] = leftovers[li++];
+    }
     const byPath = new Map(tracks.map((t) => [t.path, t]));
     const selected = new Set(paths);
     let next = 0;
-    tracks = tracks.map((t) => (selected.has(t.path) ? byPath.get(ranked[next++].path) : t));
+    tracks = tracks.map((t) => (selected.has(t.path) ? byPath.get(slots[next++]) : t));
     sortKey = null;
     renderTracks();
     const matched = aligned.filter((i) => i !== null && i !== undefined).length;

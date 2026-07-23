@@ -10,6 +10,14 @@ first release ships.
 
 ### Fixed
 
+- Auto-match mis-aligned files when some didn't match, which would write wrong
+  tags on import. Matched files were packed densely by their matched position,
+  so any unmatched file left a gap that shifted every file after it by one —
+  and since import maps release track `i` onto file `i` by position, the shifted
+  files got another track's title/artist/number. Each matched file is now placed
+  at the position of the track it matched, and unmatched files fill the remaining
+  slots without displacing the matched ones.
+
 - A short numeric year could corrupt a file and make it vanish from the library.
   The year is written as a timestamp that must be exactly 4 digits; a shorter
   numeric value like `222` was accepted on write but rejected by the tag reader,
