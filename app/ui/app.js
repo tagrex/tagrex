@@ -27,13 +27,16 @@ const edits = new Map();
 // auto-match, staging edits) never silently wipes or widens the selection.
 const selection = new Set();
 
-// Fields shown as editable columns, in table order.
-const EDIT_FIELDS = ["artist", "title", "album", "year"];
+// The file table's columns are user-configurable (#43): "file" (always first,
+// structural) followed by any modeled tag field, in a persisted order.
+const DEFAULT_COLUMNS = ["file", "artist", "title", "album", "year"];
+let visibleColumns = DEFAULT_COLUMNS.slice();
+const COLUMNS_STORAGE_KEY = "tagrex.columns";
 
 // View state (does not change what's on disk). Sorting reorders the `tracks`
 // array itself so position-based mapping (rename masks, Discogs import) follows
 // the visible order; filtering only hides rows.
-let sortKey = null; // "file" | one of EDIT_FIELDS
+let sortKey = null; // "file" | any tag-field column key
 let sortDir = 1; // 1 asc, -1 desc
 let filterText = "";
 // Grouping is purely a view concern (#20): "" | "folder" | "artist" | "album".
@@ -123,15 +126,9 @@ function sortValue(track, key) {
 
 function matchesFilter(track) {
   if (!filterText) return true;
-  const hay = [
-    fileName(track.path),
-    track.tags.artist,
-    track.tags.title,
-    track.tags.album,
-    track.tags.year,
-  ]
-    .join(" ")
-    .toLowerCase();
+  // Filter across the file name and every tag value, so a column the user added
+  // (#43) is filterable too.
+  const hay = [fileName(track.path), ...Object.values(track.tags)].join(" ").toLowerCase();
   return hay.includes(filterText);
 }
 
@@ -140,6 +137,124 @@ function updateSortIndicators() {
     const ind = th.querySelector(".sort-ind");
     ind.textContent = th.dataset.sort === sortKey ? (sortDir > 0 ? "▲" : "▼") : "";
   });
+}
+
+// ---- configurable columns (#43) ----
+// "file" plus every modeled tag field, the pool the user picks columns from.
+function allColumnKeys() {
+  return ["file", ...EXTENDED_FIELDS.map(([key]) => key)];
+}
+
+function columnLabel(key) {
+  if (key === "file") return "File";
+  const found = EXTENDED_FIELDS.find(([k]) => k === key);
+  return found ? found[1] : key;
+}
+
+// Rebuild the sortable column headers from `visibleColumns` (the sel + play
+// headers are static so #select-all and its listener survive).
+function renderTableHead() {
+  const row = el("tracks").querySelector("thead tr");
+  row.querySelectorAll("th.sortable").forEach((th) => th.remove());
+  for (const key of visibleColumns) {
+    const th = document.createElement("th");
+    th.dataset.sort = key;
+    th.className = "sortable";
+    th.innerHTML = `${escapeHtml(columnLabel(key))}<span class="sort-ind"></span>`;
+    row.appendChild(th);
+  }
+  updateSortIndicators();
+}
+
+function saveColumns() {
+  try {
+    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
+  } catch (e) {
+    /* localStorage unavailable — columns just won't persist */
+  }
+}
+
+// Load the saved column choice; drop unknown keys and force "file" first.
+function loadColumns() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMNS_STORAGE_KEY));
+    if (Array.isArray(saved) && saved.length) {
+      const known = new Set(allColumnKeys());
+      const cols = saved.filter((k) => known.has(k) && k !== "file");
+      cols.unshift("file");
+      if (cols.length > 1) visibleColumns = cols;
+    }
+  } catch (e) {
+    /* keep defaults */
+  }
+}
+
+// Apply a new column set: persist, rebuild the header, repaint rows.
+function applyColumns(cols) {
+  const deduped = [...new Set(cols)].filter((k) => k !== "file");
+  visibleColumns = ["file", ...deduped];
+  saveColumns();
+  renderTableHead();
+  renderTracks();
+}
+
+// ---- column picker popover (#43) ----
+let colDragKey = null; // key of the column row being dragged in the menu
+
+function renderColumnsMenu() {
+  const menu = el("columns-menu");
+  menu.innerHTML = "";
+  for (const key of visibleColumns) menu.appendChild(colMenuRow(key, true));
+  const hidden = allColumnKeys().filter((k) => !visibleColumns.includes(k));
+  if (hidden.length) {
+    const sep = document.createElement("div");
+    sep.className = "col-menu-sep";
+    sep.textContent = "Hidden";
+    menu.appendChild(sep);
+    for (const key of hidden) menu.appendChild(colMenuRow(key, false));
+  }
+}
+
+function colMenuRow(key, visible) {
+  const isFile = key === "file";
+  const row = document.createElement("div");
+  row.className = "col-menu-row";
+  row.dataset.key = key;
+
+  const grip = document.createElement("span");
+  grip.className = "col-grip";
+  grip.textContent = "⋮⋮";
+  if (visible && !isFile) {
+    grip.title = "Drag to reorder";
+    grip.addEventListener("mousedown", () => (row.draggable = true));
+    row.addEventListener("dragstart", () => {
+      colDragKey = key;
+      row.classList.add("dragging");
+    });
+    row.addEventListener("dragend", () => {
+      row.draggable = false;
+      colDragKey = null;
+      row.classList.remove("dragging");
+    });
+  } else {
+    grip.style.visibility = "hidden";
+  }
+
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = visible;
+  box.disabled = isFile; // file is structural — always shown, first
+  box.addEventListener("change", () => {
+    applyColumns(box.checked ? [...visibleColumns, key] : visibleColumns.filter((k) => k !== key));
+    renderColumnsMenu();
+  });
+
+  const label = document.createElement("span");
+  label.className = "col-menu-label";
+  label.textContent = columnLabel(key) + (isFile ? " (always shown)" : "");
+
+  row.append(grip, box, label);
+  return row;
 }
 
 // The grouping-key value for a track under the active `groupBy`.
@@ -185,7 +300,7 @@ function appendTrackRow(track, groupKey) {
       <td class="sel"><input type="checkbox" disabled title="This file's tags couldn't be read" /></td>
       <td class="play"></td>
       <td class="file" title="${escapeHtml(track.path)} — tags couldn't be read">${escapeHtml(fileName(track.path))}</td>
-      <td class="unreadable-note" colspan="4">couldn't read tags — file left untouched</td>`;
+      <td class="unreadable-note" colspan="${visibleColumns.length - 1}">couldn't read tags — file left untouched</td>`;
     tracksBody.appendChild(tr);
     return;
   }
@@ -199,7 +314,8 @@ function appendTrackRow(track, groupKey) {
       <td class="sel"><input type="checkbox" ${isSel ? "checked" : ""} data-path="${escapeHtml(track.path)}" /></td>
       <td class="play"><button class="play-btn" data-path="${escapeHtml(track.path)}" title="Preview">${playGlyph}</button></td>
       <td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
-  for (const field of EDIT_FIELDS) {
+  for (const field of visibleColumns) {
+    if (field === "file") continue; // rendered above (structural, always first)
     const original = tag(track, field);
     const edited = pending && pending.has(field);
     const value = edited ? pending.get(field) : original;
@@ -224,7 +340,7 @@ function appendGroupHeader(key, count) {
   const tr = document.createElement("tr");
   tr.className = "group-head" + (collapsed ? " collapsed" : "");
   tr.dataset.group = key;
-  tr.innerHTML = `<td class="group-cell" colspan="7">
+  tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
       <span class="group-caret">${collapsed ? "▶" : "▼"}</span>
       <span class="group-label">${escapeHtml(groupLabel(key))}</span>
       <span class="group-count muted">${count}</span>
@@ -2586,8 +2702,43 @@ function sortBy(key) {
   renderTracks();
 }
 
-document.querySelectorAll("th.sortable").forEach((th) => {
-  th.addEventListener("click", () => sortBy(th.dataset.sort));
+// Sort clicks are delegated on the header so dynamically-built columns (#43)
+// stay sortable.
+el("tracks").querySelector("thead").addEventListener("click", (e) => {
+  const th = e.target.closest("th.sortable");
+  if (th) sortBy(th.dataset.sort);
+});
+
+// Column picker popover (#43): toggle, drag-reorder, and outside-click close.
+el("columns-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = el("columns-menu");
+  if (menu.hidden) renderColumnsMenu();
+  menu.hidden = !menu.hidden;
+});
+document.addEventListener("click", (e) => {
+  const menu = el("columns-menu");
+  if (!menu.hidden && !menu.contains(e.target) && e.target !== el("columns-btn")) {
+    menu.hidden = true;
+  }
+});
+el("columns-menu").addEventListener("dragover", (e) => {
+  if (colDragKey !== null) e.preventDefault();
+});
+el("columns-menu").addEventListener("drop", (e) => {
+  if (colDragKey === null) return;
+  e.preventDefault();
+  const target = e.target.closest(".col-menu-row");
+  if (!target || target.dataset.key === "file" || !visibleColumns.includes(target.dataset.key)) return;
+  const order = visibleColumns.filter((k) => k !== "file");
+  order.splice(order.indexOf(colDragKey), 1);
+  let to = order.indexOf(target.dataset.key);
+  const r = target.getBoundingClientRect();
+  if (e.clientY > r.top + r.height / 2) to += 1;
+  order.splice(to, 0, colDragKey);
+  colDragKey = null;
+  applyColumns(order);
+  renderColumnsMenu();
 });
 
 // Grouping is a view overlay — changing it only re-renders, never reorders
@@ -2665,6 +2816,11 @@ tracksBody.addEventListener("keydown", (e) => {
 });
 
 loadSavedToken();
+
+// Apply the saved column choice (#43) and build the header before any library
+// is opened.
+loadColumns();
+renderTableHead();
 
 // Browser-only fake of the native player: a wall-clock timer advances position,
 // auto-advances to the queued `next` on end, and reports status — enough to

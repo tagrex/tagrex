@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- User-configurable table columns (#43). A "Columns" popover in the table
+  toolbar lets you show/hide any modeled tag field and drag to reorder them; the
+  File column stays pinned first. The header and rows are built from the chosen
+  set, inline editing and per-column sorting work for whatever is shown, the
+  filter searches every visible field, and the choice persists across sessions
+  (localStorage). (Grouping keeps its existing folder/artist/album options.)
+
 - GENERATOR and EXPORTER panels redesigned (Claude Design pass) — the last two
   plain mode panels. **GENERATOR**: the flat rule table becomes drag-reorderable
   rule cards, each a step number + kind + a per-kind body (find/replace with its

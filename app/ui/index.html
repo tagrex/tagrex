@@ -56,6 +56,12 @@
           <button id="expand-all" hidden title="Expand every group">Expand all</button>
           <button id="collapse-all" hidden title="Collapse every group">Collapse all</button>
           <input id="filter" type="search" placeholder="Filter…" spellcheck="false" />
+          <!-- Configurable columns (#43): pick which tag fields show, and their
+               order. The popover is built by renderColumnsMenu. -->
+          <div class="col-picker">
+            <button id="columns-btn" title="Choose which columns to show">Columns ▾</button>
+            <div id="columns-menu" class="col-menu" hidden></div>
+          </div>
         </div>
 
         <div id="files-view" class="table-wrap">
