@@ -10,6 +10,18 @@ first release ships.
 
 ### Added
 
+- TAGGER › EDITOR redesigned (Claude Design pass). The flat label/input table
+  becomes a grouped, scannable form: a **Core** group (Artist, Title, Album,
+  Album Artist, Track, Track Total, Disc, Year, Genre) always open and a
+  collapsible **Extended** group (Comment, Composer, Publisher, BPM, ISRC, Key,
+  custom fields). Typed fields now validate **as you type** — a bad Year, Track,
+  Disc, Track Total, or BPM shows an inline error (red row + "✕ 4-digit year" /
+  "numbers only" hint) mirroring the backend rule, instead of only being caught
+  at apply; numeric fields render as narrow right-aligned figures. The three
+  row states — dirty (unsaved), multiple-values (differs across the selection),
+  and error — are visually distinct via a left marker, tint, and label
+  treatment. (The cover-art well is a separate follow-up.)
+
 - Per-field "don't-be-a-fool" validation in the preview. Beyond the year (which
   must be a valid 4-digit timestamp or it corrupts the file), the track, disc,
   and track-total fields now require a plain integer and BPM requires a number

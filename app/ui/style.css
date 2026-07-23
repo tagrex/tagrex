@@ -1007,25 +1007,253 @@ tr.hidden-row {
   display: none;
 }
 
-/* ---- extended field editor ---- */
-td.field-label {
-  width: 120px;
+/* ============================================================================
+   TAGGER › EDITOR — hand-edit tag fields (from the Claude Design pass).
+   A dense, grouped tag-field form: core/extended groups, one row per field,
+   inline typed validation (year/track/disc/total/bpm), and distinct dirty /
+   multiple-values / error row states. Builds only on shipped tokens.
+   (The cover-art well is a separate follow-up.)
+   ============================================================================ */
+.fe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* ---- group (core / extended) ---- */
+.fe-group {
+  display: flex;
+  flex-direction: column;
+}
+.fe-group-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-1) 0 var(--space-2);
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  cursor: default;
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--muted);
+}
+/* Extended group collapses; core does not. */
+.fe-group.collapsible .fe-group-head {
+  cursor: pointer;
+}
+.fe-group.collapsible .fe-group-head:hover {
+  color: var(--text);
+}
+.fe-group-count {
+  font-weight: var(--fw-regular);
+  color: var(--border);
+}
+.fe-group-caret {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  transition: transform 120ms ease;
+}
+.fe-group.collapsed .fe-group-caret {
+  transform: rotate(-90deg);
+}
+.fe-group.collapsed .fe-grid {
+  display: none;
+}
+
+.fe-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- one field row ----
+   Row grid: [marker gutter] [label] [input]. The label column is fixed so every
+   input left-edge lines up like the file table; the marker gutter carries the
+   per-row "changed / rejected" state so it survives a long scroll. */
+.fe-row {
+  display: grid;
+  grid-template-columns: 3px 92px 1fr;
+  align-items: center;
+  column-gap: var(--space-3);
+  padding: 2px 0 2px var(--space-1);
+  border-radius: var(--radius-sm);
+}
+.fe-row + .fe-row {
+  margin-top: 3px;
+}
+
+/* marker gutter (col 1) — the orthogonal per-row state channel */
+.fe-marker {
+  align-self: stretch;
+  border-radius: 2px;
+  background: transparent;
+}
+.fe-row.dirty .fe-marker {
+  background: var(--accent);
+}
+.fe-row.error .fe-marker {
+  background: var(--del);
+}
+
+/* faint fill so a changed row reads across the whole rhythm, not just the bar */
+.fe-row.dirty {
+  background: var(--dirty-tint);
+}
+.fe-row.error {
+  background: var(--error-tint);
+}
+
+.fe-label {
+  font-size: var(--text-xs);
   color: var(--muted);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fe-row.dirty .fe-label {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+.fe-row.error .fe-label {
+  color: var(--del);
+  font-weight: var(--fw-medium);
 }
 
-input.field-input {
+/* input cell holds the input + the collapsible hint line */
+.fe-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- the input (keeps .field-input so app.js keeps working) ---- */
+.field-input {
   width: 100%;
-  padding: 5px 8px;
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
-  font: inherit;
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+}
+.field-input:hover:not(:focus):not(.error) {
+  border-color: color-mix(in srgb, var(--border) 40%, var(--muted));
+}
+.field-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
 }
 
-input.field-input.dirty {
+/* multiple-values — differing across the selection: quiet muted italic
+   placeholder, NO fill and NO marker (it's an absence of one value, not a
+   change). Distinct from dirty/error at a glance. */
+.field-input.multiple::placeholder {
+  color: var(--muted);
+  font-style: italic;
+  opacity: 1;
+}
+.fe-row.multiple .fe-label {
+  font-style: italic;
+}
+
+/* dirty — touched, not yet staged: accent border reinforces the row bar/tint */
+.field-input.dirty {
   border-color: var(--accent);
+}
+
+/* error — rejected typed value: del border + del ring (mirrors the Preview diff
+   error cell) */
+.field-input.error,
+.field-input[aria-invalid="true"] {
+  border-color: var(--del);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--del) 22%, transparent);
+}
+
+/* numeric fields (year / track / tracktotal / disc / bpm) read as numbers:
+   right-aligned tabular figures in a narrower box. */
+.field-input.num {
+  width: 92px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.fe-cell.num {
+  align-items: flex-start;
+}
+
+/* ---- per-row hint / rule line (Q1) ----
+   Collapsed to zero height by default so a 15-row form stays silent. Reveals on
+   focus (the rule) or whenever the row is in error (the reason) — only the
+   active row and any errored rows ever grow, so the form never gets noisy. */
+.fe-hint {
+  max-height: 0;
+  overflow: hidden;
+  font-size: var(--text-2xs);
+  line-height: var(--lh-snug);
+  color: var(--muted);
+  transition: max-height 120ms ease, padding 120ms ease;
+}
+.fe-row:focus-within .fe-hint {
+  max-height: 2.4em;
+  padding-top: 2px;
+}
+.fe-row.error .fe-hint {
+  max-height: 2.4em;
+  padding-top: 2px;
+  color: var(--del);
+}
+.fe-hint .rule::before {
+  content: "› ";
+  color: var(--accent-ink);
+}
+.fe-row.error .fe-hint .rule::before {
+  content: "✕ ";
+  color: var(--del);
+}
+
+/* ---- add custom field — folds the loose inputs into the grid's language ---- */
+.fe-add {
+  display: grid;
+  grid-template-columns: 3px 92px 1fr auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  padding: var(--space-3) 0 0 var(--space-1);
+  margin-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+}
+.fe-add .fe-add-lead {
+  grid-column: 1 / 3;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--muted);
+}
+.fe-add input {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+}
+.fe-add .fe-add-name {
+  min-width: 0;
+}
+.fe-add .fe-add-value {
+  grid-column: 2 / 4;
+  min-width: 0;
+  margin-top: 3px;
+}
+.fe-add .fe-add-btn {
+  grid-column: 4;
 }
 
 /* ---- transformation rules ---- */

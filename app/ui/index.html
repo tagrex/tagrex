@@ -187,15 +187,13 @@
                 Only fields you change are written; a field whose value differs across the selection
                 shows <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
               </p>
-              <div class="table-wrap panel-list">
-                <table>
-                  <tbody id="fields-body"></tbody>
-                </table>
-              </div>
-              <div class="export-row">
-                <input id="fields-new-name" type="text" placeholder="custom field name" spellcheck="false" />
-                <input id="fields-new-value" type="text" placeholder="value" spellcheck="false" />
-                <button id="fields-add">Add field</button>
+              <!-- Grouped core/extended field rows are built by renderFieldEditor. -->
+              <div id="fields-body" class="fe"></div>
+              <div class="fe-add">
+                <span class="fe-add-lead">Add field</span>
+                <input id="fields-new-name" class="fe-add-name" type="text" placeholder="name" spellcheck="false" />
+                <button id="fields-add" class="fe-add-btn">+ Add</button>
+                <input id="fields-new-value" class="fe-add-value" type="text" placeholder="value" spellcheck="false" />
               </div>
               <div class="panel-actions">
                 <div class="spacer"></div>

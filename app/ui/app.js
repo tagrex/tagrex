@@ -1078,6 +1078,32 @@ function refreshFieldEditor() {
   renderFieldEditor(paths);
 }
 
+// The core group is what a DJ touches every session; the rest (+ custom fields)
+// lives in a collapsible Extended group (#editor design pass, Q2).
+const EDITOR_CORE_KEYS = ["artist", "title", "album", "albumartist", "track", "tracktotal", "disc", "year", "genre"];
+// Numeric/typed fields get a narrow right-aligned input and inline validation
+// mirroring the backend's is_writable_value rule, so a bad value shows as an
+// error as you type instead of only being rejected at apply.
+const EDITOR_NUMERIC_KEYS = new Set(["track", "tracktotal", "disc", "bpm", "year"]);
+// Whether the Extended group is folded; persists across re-renders in a session.
+let editorExtendedCollapsed = false;
+
+// Validate a hand-typed value the same way the backend does (empty always OK —
+// it clears the field). Returns { ok, hint } — hint is the rule shown on focus.
+function validateFieldValue(key, value) {
+  if (!EDITOR_NUMERIC_KEYS.has(key)) return { ok: true, hint: "" };
+  const v = value.trim();
+  if (key === "year") {
+    const year = v.split("-")[0];
+    return { ok: v === "" || /^\d{4}$/.test(year), hint: "4-digit year" };
+  }
+  if (key === "bpm") {
+    return { ok: v === "" || /^\d+(\.\d+)?$/.test(v), hint: "numbers only" };
+  }
+  // track / tracktotal / disc — a plain integer.
+  return { ok: v === "" || /^\d+$/.test(v), hint: "numbers only" };
+}
+
 function renderFieldEditor(paths) {
   const body = el("fields-body");
   body.innerHTML = "";
@@ -1100,39 +1126,111 @@ function renderFieldEditor(paths) {
       }
     }
   }
-  const rows = EXTENDED_FIELDS.concat(
+
+  const labelOf = new Map(EXTENDED_FIELDS);
+  const coreRows = EDITOR_CORE_KEYS.map((key) => [key, labelOf.get(key)]);
+  const extendedRows = EXTENDED_FIELDS.filter(([key]) => !EDITOR_CORE_KEYS.includes(key)).concat(
     [...customs].sort().map((key) => [key, key.slice("custom:".length)])
   );
 
-  for (const [key, label] of rows) {
-    const values = new Set(paths.map((path) => currentFieldValue(path, key)));
-    const shared = values.size === 1 ? [...values][0] : null;
+  body.appendChild(fieldGroup("Core", coreRows, paths, false));
+  body.appendChild(fieldGroup("Extended", extendedRows, paths, true));
+}
 
-    const tr = document.createElement("tr");
-    const labelCell = document.createElement("td");
-    labelCell.className = "field-label";
-    labelCell.textContent = label;
-    const valueCell = document.createElement("td");
-    const input = document.createElement("input");
-    input.type = "text";
-    input.className = "field-input";
-    input.dataset.key = key;
-    input.spellcheck = false;
-    if (shared === null) {
-      // Differing values stay untouched unless the user types something.
-      input.placeholder = "<multiple values>";
-    } else {
-      input.value = shared;
-    }
-    input.addEventListener("input", () => {
-      stagedFields.set(key, input.value);
-      input.classList.add("dirty");
+// Build one field group (a header + its rows). `collapsible` marks the Extended
+// group, which folds; the Core group is always open.
+function fieldGroup(title, rows, paths, collapsible) {
+  const group = document.createElement("div");
+  group.className = "fe-group" + (collapsible ? " collapsible" : "");
+  if (collapsible && editorExtendedCollapsed) group.classList.add("collapsed");
+
+  const head = document.createElement("div");
+  head.className = "fe-group-head";
+  head.textContent = title;
+  if (collapsible) {
+    const count = document.createElement("span");
+    count.className = "fe-group-count";
+    count.textContent = String(rows.length);
+    const caret = document.createElement("span");
+    caret.className = "fe-group-caret";
+    caret.textContent = "▾";
+    head.append(" ", count, caret);
+    head.addEventListener("click", () => {
+      editorExtendedCollapsed = !editorExtendedCollapsed;
+      group.classList.toggle("collapsed", editorExtendedCollapsed);
     });
-    valueCell.appendChild(input);
-    tr.appendChild(labelCell);
-    tr.appendChild(valueCell);
-    body.appendChild(tr);
   }
+  group.appendChild(head);
+
+  const grid = document.createElement("div");
+  grid.className = "fe-grid";
+  for (const [key, label] of rows) grid.appendChild(fieldRow(key, label, paths));
+  group.appendChild(grid);
+  return group;
+}
+
+function fieldRow(key, label, paths) {
+  const values = new Set(paths.map((path) => currentFieldValue(path, key)));
+  const shared = values.size === 1 ? [...values][0] : null;
+  const numeric = EDITOR_NUMERIC_KEYS.has(key);
+
+  const row = document.createElement("div");
+  row.className = "fe-row";
+
+  const marker = document.createElement("span");
+  marker.className = "fe-marker";
+
+  const labelCell = document.createElement("span");
+  labelCell.className = "fe-label";
+  labelCell.textContent = label;
+
+  const cell = document.createElement("span");
+  cell.className = "fe-cell" + (numeric ? " num" : "");
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "field-input" + (numeric ? " num" : "");
+  input.dataset.key = key;
+  input.spellcheck = false;
+  if (numeric) input.inputMode = "numeric";
+  if (shared === null) {
+    row.classList.add("multiple");
+    input.classList.add("multiple");
+    input.placeholder = "<multiple values>";
+  } else {
+    input.value = shared;
+  }
+
+  const hint = document.createElement("span");
+  hint.className = "fe-hint";
+  const { hint: ruleText } = validateFieldValue(key, "");
+  if (ruleText) hint.innerHTML = `<span class="rule">${escapeHtml(ruleText)}</span>`;
+
+  // Reflect the field's state (dirty / error) on the row and input.
+  const reflect = () => {
+    const { ok } = validateFieldValue(key, input.value);
+    row.classList.toggle("error", !ok);
+    input.classList.toggle("error", !ok);
+    if (!ok) input.setAttribute("aria-invalid", "true");
+    else input.removeAttribute("aria-invalid");
+  };
+
+  input.addEventListener("input", () => {
+    stagedFields.set(key, input.value);
+    row.classList.remove("multiple");
+    input.classList.remove("multiple");
+    row.classList.add("dirty");
+    input.classList.add("dirty");
+    reflect();
+  });
+
+  // A pre-filled value that's already invalid (rare — the backend guards it)
+  // should show its error state on first render too.
+  if (shared) reflect();
+
+  cell.append(input, hint);
+  row.append(marker, labelCell, cell);
+  return row;
 }
 
 // Add a custom field row; it stages immediately so an empty-valued custom field
