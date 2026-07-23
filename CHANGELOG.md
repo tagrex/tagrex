@@ -10,6 +10,15 @@ first release ships.
 
 ### Added
 
+- Preview rejects an invalid tag value instead of writing it (#82). A change
+  plan now validates each proposed value and flags a rejected one; the preview
+  marks that cell as an error (the state styled in #80/#76) while apply skips it,
+  so the field keeps its current on-disk value. The first validated field is the
+  year: a non-numeric or implausible year (e.g. `19x6`) is rejected, while a
+  plain year or a dated `1996-05-01` passes. The flag rides on the plan DTO
+  (`#[serde(default)]`, so older plans still deserialize) and is set at every
+  plan source — tag edits, transforms, and Discogs import.
+
 - Preview shown as a table-diff (#80). The staged change plan is no longer a
   vertical `Current → New` list but a table that mirrors the main file table, so
   a batch is scanned in the same layout the user reads it in. The core columns

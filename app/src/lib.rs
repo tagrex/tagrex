@@ -41,12 +41,57 @@ pub struct TrackDto {
 }
 
 /// A single planned field change: `old` is the current value, `new` what will
-/// be written; `None` means absent/removed.
+/// be written; `None` means absent/removed. `invalid` marks a `new` value the
+/// backend rejected (see [`field_value_invalid`]): the preview flags the cell
+/// and apply skips it, so `old` stays on disk. `#[serde(default)]` keeps plans
+/// authored before the flag existed (and hand-built ones) deserializable.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct FieldChangeDto {
     pub field: String,
     pub old: Option<String>,
     pub new: Option<String>,
+    #[serde(default)]
+    pub invalid: bool,
+}
+
+impl FieldChangeDto {
+    /// Build a field change, validating the proposed `new` value. A rejected
+    /// value is flagged `invalid` rather than dropped, so the preview can show
+    /// it as an error while apply leaves the field untouched.
+    fn new(field: String, old: Option<String>, new: Option<String>) -> Self {
+        let invalid = field_value_invalid(&field, new.as_deref());
+        Self {
+            field,
+            old,
+            new,
+            invalid,
+        }
+    }
+}
+
+/// Whether a proposed `new` value for `field` (a storage key) must be rejected
+/// rather than written. Only the year is validated for now: it must be a
+/// plausible numeric year, with an optional date suffix — so `1996` and
+/// `1996-05-01` pass but `19x6` does not. An empty/absent value is always valid
+/// (it clears the field).
+fn field_value_invalid(field: &str, new: Option<&str>) -> bool {
+    let value = match new {
+        Some(v) if !v.is_empty() => v,
+        _ => return false,
+    };
+    match field {
+        "year" => {
+            let year = value.split('-').next().unwrap_or(value);
+            let plausible = (1..=4).contains(&year.len())
+                && year.bytes().all(|b| b.is_ascii_digit())
+                && year
+                    .parse::<u16>()
+                    .map(|y| (1..=9999).contains(&y))
+                    .unwrap_or(false);
+            !plausible
+        }
+        _ => false,
+    }
 }
 
 /// An embedded cover image crossing the IPC boundary: base64 data + MIME.
@@ -333,11 +378,11 @@ impl App {
                 }
                 let transformed = chain.apply(value);
                 if transformed != *value {
-                    tag_changes.push(FieldChangeDto {
-                        field: key,
-                        old: Some(value.clone()),
-                        new: Some(transformed),
-                    });
+                    tag_changes.push(FieldChangeDto::new(
+                        key,
+                        Some(value.clone()),
+                        Some(transformed),
+                    ));
                 }
             }
             if !tag_changes.is_empty() {
@@ -437,11 +482,7 @@ impl App {
                 let old = track.tags.get(&field).cloned();
                 let new = edit.value.clone().filter(|value| !value.is_empty());
                 if old != new {
-                    tag_changes.push(FieldChangeDto {
-                        field: edit.field.clone(),
-                        old,
-                        new,
-                    });
+                    tag_changes.push(FieldChangeDto::new(edit.field.clone(), old, new));
                 }
             }
             if !tag_changes.is_empty() {
@@ -857,11 +898,7 @@ impl App {
                 let new = new.filter(|value| !value.is_empty());
                 let old = current.tags.get(&field).cloned();
                 if new.is_some() && old != new {
-                    tag_changes.push(FieldChangeDto {
-                        field: field.to_storage_key(),
-                        old,
-                        new,
-                    });
+                    tag_changes.push(FieldChangeDto::new(field.to_storage_key(), old, new));
                 }
             }
             if !tag_changes.is_empty() {
@@ -1007,6 +1044,9 @@ impl PlanDto {
                     tag_changes: change
                         .tag_changes
                         .iter()
+                        // A rejected value is display-only; never write it, so
+                        // the field keeps its current on-disk value.
+                        .filter(|field_change| !field_change.invalid)
                         .map(|field_change| FieldChange {
                             field: TagField::from_storage_key(&field_change.field),
                             old: field_change.old.clone(),
@@ -1257,6 +1297,59 @@ mod tests {
                 .map(String::as_str),
             Some("Old Artist")
         );
+    }
+
+    #[test]
+    fn invalid_tag_value_is_flagged_in_preview_and_skipped_on_apply() {
+        let dir = TempDir::new("invalid");
+        let track = dir.tagged_flac("x.flac", "Artist", "Title");
+        let mut app = open_app(&dir);
+
+        let path = track.to_string_lossy().into_owned();
+        let edits = vec![
+            // A non-numeric year — must be flagged, not written.
+            TagEditDto {
+                path: path.clone(),
+                field: "year".into(),
+                value: Some("19x6".into()),
+            },
+            // A valid change alongside it — must still apply.
+            TagEditDto {
+                path: path.clone(),
+                field: "album".into(),
+                value: Some("New Album".into()),
+            },
+        ];
+        let plan = app.preview_tag_edits(&edits).unwrap();
+        let by_field = |c: &FileChangeDto, f: &str| {
+            c.tag_changes.iter().find(|fc| fc.field == f).cloned().unwrap()
+        };
+        let year = by_field(&plan.changes[0], "year");
+        let album = by_field(&plan.changes[0], "album");
+        // Rejected value is present in the preview (so the cell can show it) but
+        // flagged; the valid change is not.
+        assert!(year.invalid);
+        assert_eq!(year.new.as_deref(), Some("19x6"));
+        assert!(!album.invalid);
+
+        app.apply(&plan).unwrap();
+        let tags = TagEngine::read(&track).unwrap().tags;
+        // The valid change landed; the invalid year was never written.
+        assert_eq!(tags.get(&TagField::Album).map(String::as_str), Some("New Album"));
+        assert_eq!(tags.get(&TagField::Year), None);
+    }
+
+    #[test]
+    fn field_value_invalid_only_rejects_implausible_years() {
+        // Year: numeric (optionally with a date suffix) passes; anything else fails.
+        assert!(!field_value_invalid("year", Some("1996")));
+        assert!(!field_value_invalid("year", Some("1996-05-01")));
+        assert!(!field_value_invalid("year", None));
+        assert!(!field_value_invalid("year", Some(""))); // clearing is valid
+        assert!(field_value_invalid("year", Some("19x6")));
+        assert!(field_value_invalid("year", Some("MCMXCVI")));
+        // Other fields are not validated (any value is accepted).
+        assert!(!field_value_invalid("artist", Some("19x6")));
     }
 
     #[test]
