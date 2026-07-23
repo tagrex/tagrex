@@ -15,8 +15,8 @@ use tauri::{Manager, State};
 
 use player::{Player, PlayerStatus};
 use tagrex::{
-    App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, ImportSelectionDto, ImportTrackDto,
-    PlanDto, ReleaseDto, SearchQueryDto, TagEditDto, TrackDto, TransformRuleDto,
+    App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto, ImportSelectionDto,
+    ImportTrackDto, PlanDto, ReleaseDto, SearchQueryDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -124,6 +124,25 @@ fn export_cover(
     with_app(&state, |app| {
         app.export_cover(&paths, &basename)
             .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn read_cover_summary(
+    state: State<AppState>,
+    paths: Vec<String>,
+) -> Result<CoverSummaryDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.read_cover_summary(&paths).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn preview_cover_remove(state: State<AppState>, paths: Vec<String>) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_cover_remove(&paths).map_err(|e| e.to_string())
     })
 }
 
@@ -321,6 +340,8 @@ fn main() {
             preview_tag_edits,
             preview_cover_embed,
             export_cover,
+            read_cover_summary,
+            preview_cover_remove,
             export_playlist,
             export_csv,
             export_report,

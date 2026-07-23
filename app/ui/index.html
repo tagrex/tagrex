@@ -203,10 +203,9 @@
 
             <div class="panel-block">
               <h2>Cover art</h2>
-              <div class="panel-actions">
-                <button id="cover-open" title="Embed a cover image into the selected files">Embed cover…</button>
-                <button id="cover-export" title="Export the embedded cover of the selected files to disk (cover.jpg)">Export cover</button>
-              </div>
+              <!-- The cover well (thumbnail + state + actions + drop target) is
+                   built by renderCoverWell for the current selection. -->
+              <div id="cover-well"></div>
             </div>
           </div>
         </section>

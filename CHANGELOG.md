@@ -20,7 +20,16 @@ first release ships.
   at apply; numeric fields render as narrow right-aligned figures. The three
   row states — dirty (unsaved), multiple-values (differs across the selection),
   and error — are visually distinct via a left marker, tint, and label
-  treatment. (The cover-art well is a separate follow-up.)
+  treatment.
+
+- EDITOR cover art is now a **cover well** instead of two bare buttons. It shows
+  the selection's front cover as a thumbnail with three states — one shared
+  cover, no cover (the inert-stripe placeholder), or mixed (a small fan of the
+  differing covers, "N/M with a cover") — and offers Replace / Remove / Export
+  inline. Dragging an image onto the well embeds it (with a drop-target state);
+  the whole well is the click/drop target when there's no cover. Remove routes
+  through the normal preview/apply/undo path. Backed by two new commands,
+  `read_cover_summary` and `preview_cover_remove`.
 
 - Per-field "don't-be-a-fool" validation in the preview. Beyond the year (which
   must be a valid 4-digit timestamp or it corrupts the file), the track, disc,

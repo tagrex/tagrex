@@ -132,6 +132,17 @@ pub struct CoverExportDto {
     pub skipped_no_cover: Vec<String>,
 }
 
+/// Front-cover state across a selection, for the EDITOR cover well: how many
+/// files carry a cover, whether they differ, and up to a few distinct covers to
+/// show (the shared one, or a small fan when the selection is mixed).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CoverSummaryDto {
+    pub total: usize,
+    pub with_cover: usize,
+    pub distinct: bool,
+    pub samples: Vec<CoverArtDto>,
+}
+
 /// A recorded batch, for the history/undo UI.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BatchDto {
@@ -516,6 +527,73 @@ impl App {
         }
         Ok(PlanDto {
             description: "Embed cover art".to_string(),
+            changes,
+        })
+    }
+
+    /// Summarize the front-cover state across `paths` for the cover well: the
+    /// total, how many carry a cover, whether they differ, and up to three
+    /// distinct covers to show (one when shared, a small fan when mixed).
+    pub fn read_cover_summary(&self, paths: &[PathBuf]) -> Result<CoverSummaryDto, AppError> {
+        let mut covers: Vec<Option<CoverArt>> = Vec::with_capacity(paths.len());
+        for path in paths {
+            covers.push(TagEngine::read_cover(path)?);
+        }
+        let total = covers.len();
+        let with_cover = covers.iter().filter(|c| c.is_some()).count();
+
+        // Distinct unless the whole selection shares one identical cover state
+        // (all the same image, or all with none).
+        let mut unique: Vec<&Option<CoverArt>> = Vec::new();
+        for cover in &covers {
+            if !unique.contains(&cover) {
+                unique.push(cover);
+            }
+        }
+        let distinct = unique.len() > 1;
+
+        // Up to three distinct present covers: the shared one, or a mixed fan.
+        let mut samples: Vec<CoverArtDto> = Vec::new();
+        for cover in covers.iter().flatten() {
+            let dto = cover_art_to_dto(cover);
+            if !samples.contains(&dto) {
+                samples.push(dto);
+                if samples.len() == 3 {
+                    break;
+                }
+            }
+        }
+
+        Ok(CoverSummaryDto {
+            total,
+            with_cover,
+            distinct,
+            samples,
+        })
+    }
+
+    /// Preview removing the front cover from every `paths` file that has one,
+    /// through the normal preview/apply/undo path (files without a cover are
+    /// skipped).
+    pub fn preview_cover_remove(&self, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
+        let mut changes = Vec::new();
+        for path in paths {
+            let old = TagEngine::read_cover(path)?;
+            if old.is_none() {
+                continue;
+            }
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes: Vec::new(),
+                cover_change: Some(CoverChangeDto {
+                    old: old.as_ref().map(cover_art_to_dto),
+                    new: None,
+                }),
+            });
+        }
+        Ok(PlanDto {
+            description: "Remove cover art".to_string(),
             changes,
         })
     }

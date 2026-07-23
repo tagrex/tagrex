@@ -55,8 +55,7 @@ const previewBtn = el("preview");
 const previewEditsBtn = el("preview-edits");
 const undoBtn = el("undo");
 const selectAll = el("select-all");
-const coverOpenBtn = el("cover-open");
-const coverExportBtn = el("cover-export");
+const coverWell = el("cover-well");
 const coverFileInput = el("cover-file");
 const statusSel = el("status-sel");
 const playerBar = el("player");
@@ -612,7 +611,21 @@ function chooseCover() {
 
 async function onCoverChosen() {
   const file = coverFileInput.files[0];
-  if (!file) return;
+  if (file) await embedCoverFile(file);
+}
+
+// Read an image File, base64-encode it, and preview embedding it as the front
+// cover of the selection. Shared by the file picker and the well's drag-and-drop.
+async function embedCoverFile(file) {
+  if (!file.type.startsWith("image/")) {
+    toast("Drop an image file", true);
+    return;
+  }
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to embed the cover into first", true);
+    return;
+  }
   const dataUrl = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -624,10 +637,7 @@ async function onCoverChosen() {
   const mime = dataUrl.slice(5, dataUrl.indexOf(";"));
   const data_base64 = dataUrl.slice(comma + 1);
   try {
-    previewPlan = await invoke("preview_cover_embed", {
-      paths: selectedPaths(),
-      cover: { mime, data_base64 },
-    });
+    previewPlan = await invoke("preview_cover_embed", { paths, cover: { mime, data_base64 } });
     previewSource = "cover";
     renderPreview(previewPlan);
     toast(
@@ -638,6 +648,103 @@ async function onCoverChosen() {
   } catch (e) {
     toast(String(e), true);
   }
+}
+
+// Preview removing the embedded cover from the selection, through the normal
+// preview/apply/undo path.
+async function previewCoverRemove() {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks whose cover to remove first", true);
+    return;
+  }
+  try {
+    previewPlan = await invoke("preview_cover_remove", { paths });
+    previewSource = "cover";
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing cover removal on ${previewPlan.changes.length} file(s)`
+        : "None of the selected files have a cover"
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// ---- cover well (#editor design pass) ----
+// A thumbnail + state + actions that replaces the two bare Embed/Export buttons.
+// Reflects the selection's cover state: none / one shared / mixed.
+async function refreshCoverWell() {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    coverWell.className = "cover-well empty";
+    coverWell.innerHTML = `<div class="cover-thumb inert"></div>
+      <div class="cover-body"><div class="cover-title">No selection</div>
+      <div class="cover-hint">Select tracks to edit their cover.</div></div>`;
+    return;
+  }
+  try {
+    const summary = await invoke("read_cover_summary", { paths });
+    renderCoverWell(summary);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+function coverThumbImg(cover, cls) {
+  return `<img class="cover-thumb${cls ? " " + cls : ""}" alt="front cover" src="data:${cover.mime};base64,${cover.data_base64}" />`;
+}
+
+function renderCoverWell(summary) {
+  const { total, with_cover, distinct, samples } = summary;
+  const n = total;
+  const drop = `<div class="cover-drop-cue">Drop image to embed in ${n} file(s)</div>`;
+
+  if (with_cover === 0) {
+    // No cover anywhere — the well itself is the click/drop target.
+    coverWell.className = "cover-well empty";
+    coverWell.innerHTML = `<div class="cover-thumb inert"></div>
+      <div class="cover-body">
+        <div class="cover-title">No cover</div>
+        ${drop}
+        <div class="cover-hint"><b>Embed cover…</b><br>or drag an image here</div>
+      </div>`;
+    return;
+  }
+
+  if (!distinct && samples.length === 1) {
+    // One cover shared across the whole selection.
+    coverWell.className = "cover-well";
+    coverWell.innerHTML = `${coverThumbImg(samples[0])}
+      <div class="cover-body">
+        <div class="cover-title">Front cover</div>
+        <div class="cover-meta">shared across ${n} file(s)</div>
+        ${drop}
+        <div class="cover-actions">
+          <button class="btn" data-cover="replace">Replace…</button>
+          <button class="btn" data-cover="remove">Remove</button>
+          <button class="btn" data-cover="export">Export</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // Mixed — files carry different covers (or some have none). A small fan, never
+  // implying one shared image.
+  const fan = samples.map((c) => coverThumbImg(c)).join("");
+  coverWell.className = "cover-well";
+  coverWell.innerHTML = `<div class="cover-stack">${fan || '<div class="cover-thumb inert"></div>'}</div>
+    <div class="cover-body">
+      <div class="cover-title">Multiple covers</div>
+      <div class="cover-meta">${with_cover}/${n} with a cover</div>
+      ${drop}
+      <div class="cover-actions">
+        <button class="btn" data-cover="replace">Set one…</button>
+        <button class="btn" data-cover="remove">Remove all</button>
+        <button class="btn" data-cover="export">Export</button>
+      </div>
+    </div>`;
 }
 
 // Export the embedded cover of the selected files to disk (cover.<ext> next to
@@ -1076,6 +1183,7 @@ function refreshFieldEditor() {
   el("fields-new-name").value = "";
   el("fields-new-value").value = "";
   renderFieldEditor(paths);
+  refreshCoverWell();
 }
 
 // The core group is what a DJ touches every session; the rest (+ custom fields)
@@ -1833,8 +1941,27 @@ previewBtn.addEventListener("click", preview);
 previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
-coverOpenBtn.addEventListener("click", chooseCover);
-coverExportBtn.addEventListener("click", exportCover);
+// Cover well: action buttons (delegated) + drag-and-drop embed.
+coverWell.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-cover]");
+  const act = btn ? btn.dataset.cover : coverWell.classList.contains("empty") ? "replace" : null;
+  if (act === "replace") chooseCover();
+  else if (act === "remove") previewCoverRemove();
+  else if (act === "export") exportCover();
+});
+coverWell.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  coverWell.classList.add("dragover");
+});
+coverWell.addEventListener("dragleave", (e) => {
+  if (!coverWell.contains(e.relatedTarget)) coverWell.classList.remove("dragover");
+});
+coverWell.addEventListener("drop", (e) => {
+  e.preventDefault();
+  coverWell.classList.remove("dragover");
+  const file = e.dataTransfer.files[0];
+  if (file) embedCoverFile(file);
+});
 el("transform-add").addEventListener("click", addTransformRule);
 el("transform-preview").addEventListener("click", previewTransform);
 el("move-preview").addEventListener("click", previewMove);
@@ -2484,6 +2611,40 @@ function mockInvoke(cmd, args) {
         cover_change: { old: null, new: args.cover },
       }));
       return Promise.resolve({ description: "Embed cover art", changes });
+    }
+    case "read_cover_summary": {
+      // Mock: pretend the mock tracks carry a cover if their tags say so.
+      const svg = (fill) => ({
+        mime: "image/svg+xml",
+        data_base64: btoa(`<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='${fill}'/></svg>`),
+      });
+      const covers = args.paths.map((p) => {
+        const t = findTrack(p);
+        return t && t.cover ? svg(t.cover) : null;
+      });
+      const total = covers.length;
+      const with_cover = covers.filter(Boolean).length;
+      const uniq = [];
+      for (const c of covers) if (!uniq.some((u) => JSON.stringify(u) === JSON.stringify(c))) uniq.push(c);
+      const distinct = uniq.length > 1;
+      const samples = [];
+      for (const c of covers) {
+        if (c && !samples.some((s) => JSON.stringify(s) === JSON.stringify(c))) {
+          samples.push(c);
+          if (samples.length === 3) break;
+        }
+      }
+      return Promise.resolve({ total, with_cover, distinct, samples });
+    }
+    case "preview_cover_remove": {
+      const changes = args.paths
+        .map((p) => {
+          const t = findTrack(p);
+          if (!t || !t.cover) return null;
+          return { path: p, rename_to: null, tag_changes: [], cover_change: { old: { mime: "image/svg+xml", data_base64: "" }, new: null } };
+        })
+        .filter(Boolean);
+      return Promise.resolve({ description: "Remove cover art", changes });
     }
     case "export_cover": {
       // Pretend odd-indexed files have no cover so the skip path is exercised;
