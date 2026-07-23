@@ -226,19 +226,18 @@
                 <option value="filename">File name</option>
               </select>
             </label>
-            <div class="table-wrap panel-list">
-              <table>
-                <tbody id="transform-rules"></tbody>
-              </table>
-              <p id="transform-empty" class="empty inert-panel">No rules yet — add one below.</p>
-            </div>
-            <div class="export-row">
+            <!-- Drag-reorderable rule cards are built by renderTransformRules. -->
+            <div id="transform-rules" class="rule-chain"></div>
+            <p id="transform-empty" class="empty inert-panel rule-chain-empty" hidden>
+              No rules yet — pick a kind and <b>Add rule</b> to start a chain.
+            </p>
+            <div class="gen-add">
               <select id="transform-kind">
                 <option value="replace">Find and replace</option>
                 <option value="case">Change case</option>
                 <option value="diacritics">Remove diacritics</option>
               </select>
-              <button id="transform-add">Add rule</button>
+              <button id="transform-add" class="btn">Add rule</button>
             </div>
             <div class="panel-actions">
               <div class="spacer"></div>
@@ -251,25 +250,27 @@
         <section id="panel-exporter" class="mode-panel" hidden>
           <div class="panel-block">
             <h2>Export <span id="export-count" class="muted"></span></h2>
-            <p class="hint muted" style="padding: 0">
-              Writes into the opened library folder. Read-only — your audio files are not modified.
-            </p>
-            <label class="export-row"
-              >Format
-              <select id="export-kind">
-                <option value="playlist">Playlist (M3U)</option>
-                <option value="csv">CSV of tag columns</option>
-                <option value="report">Text report (mask)</option>
-              </select>
-            </label>
-            <label class="export-row" id="export-mask-row" hidden
-              >Mask
+            <!-- Format as a segmented control (3 formats, all worth showing) with
+                 a single per-format hint that swaps with the selection. -->
+            <div class="exp-format">
+              <span class="exp-format-label">Format</span>
+              <div class="exp-seg" id="export-kind" role="tablist" aria-label="Export format">
+                <button class="seg-btn active" type="button" data-fmt="playlist">Playlist</button>
+                <button class="seg-btn" type="button" data-fmt="csv">CSV</button>
+                <button class="seg-btn" type="button" data-fmt="report">Report</button>
+              </div>
+              <p class="exp-format-hint" id="export-hint"></p>
+            </div>
+            <!-- Mask row reveals only for the report format. -->
+            <div class="exp-mask" id="export-mask-row">
+              <label for="export-mask">Mask</label>
               <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
-            </label>
-            <label class="export-row"
-              >File name
+            </div>
+            <div class="exp-row">
+              <label for="export-name">File name</label>
               <input id="export-name" type="text" spellcheck="false" />
-            </label>
+            </div>
+            <p class="exp-note"><b>Read-only.</b> Written into the opened library folder — your audio files are not modified.</p>
             <div class="panel-actions">
               <div class="spacer"></div>
               <button id="export-run" class="primary">Export</button>

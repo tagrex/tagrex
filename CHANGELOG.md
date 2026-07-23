@@ -10,6 +10,17 @@ first release ships.
 
 ### Added
 
+- GENERATOR and EXPORTER panels redesigned (Claude Design pass) — the last two
+  plain mode panels. **GENERATOR**: the flat rule table becomes drag-reorderable
+  rule cards, each a step number + kind + a per-kind body (find/replace with its
+  flags, change-case as a segmented control, remove-diacritics header-only).
+  Dragging the grip reorders the chain (with a drop indicator and a lifted-card
+  state); ↑/↓ stay as the keyboard/fallback. A live empty state keeps the scope
+  selector and Add-rule row actionable. **EXPORTER**: Format is now a segmented
+  control (Playlist / CSV / Report) with a single hint that swaps per format, a
+  Mask row that reveals only for the report format, aligned rows, and a calm
+  read-only note.
+
 - A Settings screen (#79, Claude Design pass). A top-bar gear (with a dot when a
   Discogs token is set) opens a right-edge slide-over over a scrim — app-wide
   preferences, deliberately outside the per-mode panel flow. **Discogs**: the

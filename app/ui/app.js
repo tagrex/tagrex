@@ -1012,73 +1012,118 @@ function addTransformRule() {
   renderTransformRules();
 }
 
+// The rule being dragged by its grip (index into transformRules), or null.
+let dragRuleIndex = null;
+
+function mkRuleIcon(text, title, disabled, onClick) {
+  const b = document.createElement("button");
+  b.className = "icon";
+  b.textContent = text;
+  b.title = title;
+  b.disabled = disabled;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function moveRule(from, to) {
+  if (to < 0 || to >= transformRules.length) return;
+  [transformRules[from], transformRules[to]] = [transformRules[to], transformRules[from]];
+  renderTransformRules();
+}
+
+function clearRuleDropTargets() {
+  el("transform-rules")
+    .querySelectorAll(".drop-target")
+    .forEach((c) => c.classList.remove("drop-target"));
+}
+
+// Insertion index for a drop at pointer-Y: the first card whose midpoint is
+// below the pointer (or the end of the list).
+function ruleDropIndex(y) {
+  const cards = [...el("transform-rules").querySelectorAll(".rule-card")];
+  for (let i = 0; i < cards.length; i++) {
+    const r = cards[i].getBoundingClientRect();
+    if (y < r.top + r.height / 2) return i;
+  }
+  return cards.length;
+}
+
 function renderTransformRules() {
   const body = el("transform-rules");
   body.innerHTML = "";
   el("transform-empty").hidden = transformRules.length > 0;
 
   transformRules.forEach((rule, index) => {
-    const tr = document.createElement("tr");
-    const cell = document.createElement("td");
-    cell.className = "rule-cell";
+    const card = document.createElement("div");
+    card.className = "rule-card";
+    card.dataset.index = index;
 
-    const header = document.createElement("div");
-    header.className = "rule-head";
-    header.innerHTML = `<span class="rule-index">${index + 1}</span>`;
+    // ---- header: grip · n · kind · ↑ ↓ ✕ ----
+    const head = document.createElement("div");
+    head.className = "rule-head";
 
-    const label = document.createElement("span");
-    label.textContent =
+    const grip = document.createElement("span");
+    grip.className = "rule-grip";
+    grip.textContent = "⋮⋮";
+    grip.title = "Drag to reorder";
+    // Order is semantic (case before/after an acronym fix differs). Drag is the
+    // primary reorder gesture; arm draggable only while the grip is held so a
+    // drag can't start from an input.
+    grip.addEventListener("mousedown", () => (card.draggable = true));
+
+    const n = document.createElement("span");
+    n.className = "rule-n";
+    n.textContent = index + 1;
+
+    const kind = document.createElement("span");
+    kind.className = "rule-kind";
+    kind.textContent =
       rule.kind === "replace"
         ? "Find and replace"
         : rule.kind === "case"
           ? "Change case"
           : "Remove diacritics";
-    header.appendChild(label);
 
-    const spacer = document.createElement("div");
+    const spacer = document.createElement("span");
     spacer.className = "spacer";
-    header.appendChild(spacer);
 
-    // Order matters — case conversion before or after an acronym fix gives
-    // different results — so rules can be moved.
-    const up = document.createElement("button");
-    up.className = "icon";
-    up.textContent = "↑";
-    up.title = "Move up";
-    up.disabled = index === 0;
-    up.addEventListener("click", () => {
-      [transformRules[index - 1], transformRules[index]] = [
-        transformRules[index],
-        transformRules[index - 1],
-      ];
-      renderTransformRules();
-    });
-    const down = document.createElement("button");
-    down.className = "icon";
-    down.textContent = "↓";
-    down.title = "Move down";
-    down.disabled = index === transformRules.length - 1;
-    down.addEventListener("click", () => {
-      [transformRules[index + 1], transformRules[index]] = [
-        transformRules[index],
-        transformRules[index + 1],
-      ];
-      renderTransformRules();
-    });
-    const remove = document.createElement("button");
-    remove.className = "icon";
-    remove.textContent = "✕";
-    remove.title = "Remove rule";
-    remove.addEventListener("click", () => {
+    const acts = document.createElement("span");
+    acts.className = "rule-acts";
+    // ↑/↓ stay as the keyboard / no-pointer fallback for reordering.
+    acts.append(
+      mkRuleIcon("↑", "Move up", index === 0, () => moveRule(index, index - 1)),
+      mkRuleIcon("↓", "Move down", index === transformRules.length - 1, () =>
+        moveRule(index, index + 1)
+      )
+    );
+    const remove = mkRuleIcon("✕", "Remove rule", false, () => {
       transformRules.splice(index, 1);
       renderTransformRules();
     });
-    header.append(up, down, remove);
-    cell.appendChild(header);
+    remove.classList.add("rm");
+    acts.append(remove);
 
+    head.append(grip, n, kind, spacer, acts);
+    card.append(head);
+
+    card.addEventListener("dragstart", (e) => {
+      dragRuleIndex = index;
+      card.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    card.addEventListener("dragend", () => {
+      card.draggable = false;
+      dragRuleIndex = null;
+      card.classList.remove("dragging");
+      clearRuleDropTargets();
+    });
+
+    // ---- body (per-kind); diacritics is header-only ----
     if (rule.kind === "replace") {
-      const row = document.createElement("div");
-      row.className = "rule-body";
+      const b = document.createElement("div");
+      b.className = "rule-body";
+      const fields = document.createElement("div");
+      fields.className = "rule-fields";
       const from = document.createElement("input");
       from.type = "text";
       from.placeholder = "find";
@@ -1091,51 +1136,56 @@ function renderTransformRules() {
       to.value = rule.to;
       to.spellcheck = false;
       to.addEventListener("input", () => (rule.to = to.value));
-      row.append(from, to);
+      fields.append(from, to);
 
+      const flags = document.createElement("div");
+      flags.className = "rule-flags";
       for (const [key, text, hint] of [
         ["regex", "regex", "Treat the pattern as a regular expression"],
         ["whole_word", "whole word", "Only match complete words"],
         ["case_sensitive", "match case", "Distinguish upper and lower case"],
       ]) {
         const label = document.createElement("label");
-        label.className = "rule-flag muted";
+        label.className = "rule-flag";
         label.title = hint;
         const box = document.createElement("input");
         box.type = "checkbox";
         box.checked = rule[key];
         box.addEventListener("change", () => (rule[key] = box.checked));
         label.append(box, document.createTextNode(text));
-        row.appendChild(label);
+        flags.appendChild(label);
       }
-      cell.appendChild(row);
+      b.append(fields, flags);
+      card.append(b);
     } else if (rule.kind === "case") {
-      const row = document.createElement("div");
-      row.className = "rule-body";
-      const style = document.createElement("select");
+      const b = document.createElement("div");
+      b.className = "rule-body";
+      const seg = document.createElement("div");
+      seg.className = "seg";
       for (const [value, text] of [
-        ["title", "Title Case"],
-        ["lower", "lower case"],
-        ["upper", "UPPER CASE"],
-        ["sentence", "Sentence case"],
+        ["title", "Title"],
+        ["lower", "lower"],
+        ["upper", "UPPER"],
+        ["sentence", "Sentence"],
       ]) {
-        const option = document.createElement("option");
-        option.value = value;
-        option.textContent = text;
-        style.appendChild(option);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "seg-btn" + (rule.style === value ? " active" : "");
+        btn.textContent = text;
+        btn.addEventListener("click", () => {
+          rule.style = value;
+          seg.querySelectorAll(".seg-btn").forEach((s) => s.classList.toggle("active", s === btn));
+        });
+        seg.appendChild(btn);
       }
-      style.value = rule.style;
-      style.addEventListener("change", () => (rule.style = style.value));
-      row.appendChild(style);
       const note = document.createElement("span");
-      note.className = "muted";
-      note.textContent = "Known acronyms and roman numerals keep their casing.";
-      row.appendChild(note);
-      cell.appendChild(row);
+      note.className = "rule-note";
+      note.textContent = "Known acronyms & roman numerals keep their casing.";
+      b.append(seg, note);
+      card.append(b);
     }
 
-    tr.appendChild(cell);
-    body.appendChild(tr);
+    body.append(card);
   });
 }
 
@@ -1451,21 +1501,40 @@ const EXPORT_DEFAULTS = {
   csv: "tags.csv",
   report: "report.txt",
 };
+// One-line "what it produces" hint per format, swapped under the segmented
+// control (allows <b> emphasis, so set via innerHTML).
+const EXPORT_HINTS = {
+  playlist: "An <b>.m3u</b> playlist of the selected tracks, in table order.",
+  csv: "One <b>row per track</b> with the tag columns — opens in any spreadsheet.",
+  report: "Each track rendered through the <b>mask</b> below, one line apiece.",
+};
+let exportKind = "playlist";
 
 // Refresh the EXPORTER panel for the current selection (called on entering the
-// mode). Only resets the file name when it's empty, so a name the user typed
-// survives a mode switch.
+// mode). Reflects the current format; only fills the file name when it's empty,
+// so a name the user typed survives a mode switch.
 function refreshExporter() {
   const count = selectedPaths().length;
   el("export-count").textContent = count ? `— ${count} track(s)` : "";
-  if (!el("export-name").value) syncExportKind();
+  reflectExportKind();
+  if (!el("export-name").value) el("export-name").value = EXPORT_DEFAULTS[exportKind];
 }
 
-// Show the mask field only for text reports, and reset the file name to the
-// chosen kind's default.
-function syncExportKind() {
-  const kind = el("export-kind").value;
-  el("export-mask-row").hidden = kind !== "report";
+// Mirror the current format onto the segmented control, the swapping hint, and
+// the conditional Mask row — without touching the file name.
+function reflectExportKind() {
+  el("export-kind")
+    .querySelectorAll(".seg-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.fmt === exportKind));
+  el("export-mask-row").classList.toggle("show", exportKind === "report");
+  el("export-hint").innerHTML = EXPORT_HINTS[exportKind];
+}
+
+// Switch format (from the segmented control): reflect it and reset the file name
+// to the new kind's default.
+function setExportKind(kind) {
+  exportKind = kind;
+  reflectExportKind();
   el("export-name").value = EXPORT_DEFAULTS[kind];
 }
 
@@ -1475,7 +1544,7 @@ async function runExport() {
     toast("Select the tracks to export first", true);
     return;
   }
-  const kind = el("export-kind").value;
+  const kind = exportKind;
   // Named `outName` so it doesn't shadow the `fileName()` helper used below.
   const outName = el("export-name").value.trim();
   try {
@@ -2088,10 +2157,34 @@ coverWell.addEventListener("drop", (e) => {
 });
 el("transform-add").addEventListener("click", addTransformRule);
 el("transform-preview").addEventListener("click", previewTransform);
+// Rule reorder by dragging the grip (#34): show a drop indicator, and move the
+// rule in the chain on drop.
+el("transform-rules").addEventListener("dragover", (e) => {
+  if (dragRuleIndex === null) return;
+  e.preventDefault();
+  clearRuleDropTargets();
+  const cards = el("transform-rules").querySelectorAll(".rule-card");
+  const to = ruleDropIndex(e.clientY);
+  if (to < cards.length) cards[to].classList.add("drop-target");
+});
+el("transform-rules").addEventListener("drop", (e) => {
+  if (dragRuleIndex === null) return;
+  e.preventDefault();
+  let to = ruleDropIndex(e.clientY);
+  const from = dragRuleIndex;
+  const [moved] = transformRules.splice(from, 1);
+  if (from < to) to -= 1;
+  transformRules.splice(to, 0, moved);
+  dragRuleIndex = null;
+  renderTransformRules();
+});
 el("move-preview").addEventListener("click", previewMove);
 el("fields-add").addEventListener("click", addCustomField);
 el("fields-apply").addEventListener("click", applyFieldEditor);
-el("export-kind").addEventListener("change", syncExportKind);
+el("export-kind").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-fmt]");
+  if (btn) setExportKind(btn.dataset.fmt);
+});
 el("export-run").addEventListener("click", runExport);
 coverFileInput.addEventListener("change", onCoverChosen);
 el("discogs-search").addEventListener("click", discogsSearch);

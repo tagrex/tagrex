@@ -1423,53 +1423,282 @@ td.unreadable-note {
   display: none;
 }
 
-/* ---- transformation rules ---- */
-td.rule-cell {
-  white-space: normal;
-  max-width: none;
+/* ============================================================================
+   GENERATOR — ordered cleanup-rule chain (Claude Design pass, #34).
+   Drag-reorderable rule cards (find-and-replace · change-case · remove-
+   diacritics) on the design system. Reuses .export-row (scope/add), .seg
+   (case style), the inert empty state, and the settings grip motif.
+   Renderer: renderTransformRules() in app.js.
+   ============================================================================ */
+.rule-chain {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
+.rule-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+/* header line: [grip] [n] [kind] … [↑][↓][✕] — one row, always scannable */
 .rule-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  margin-bottom: 6px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-1);
 }
-
-.rule-index {
-  display: inline-block;
-  min-width: 18px;
+.rule-grip {
+  color: var(--muted);
+  cursor: grab;
+  padding: 0 2px;
+  font-size: var(--text-sm);
+  line-height: 1;
+  user-select: none;
+}
+.rule-grip:active {
+  cursor: grabbing;
+}
+.rule-n {
+  min-width: 16px;
   text-align: center;
   color: var(--accent-ink);
+  font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-xs);
+}
+.rule-kind {
+  font-size: var(--text-xs);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+}
+.rule-head .spacer {
+  flex: 1;
 }
 
-.rule-body {
+/* per-card actions — ↑/↓ are the keyboard/fallback reorder path */
+.rule-acts {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 2px;
+}
+.rule-acts .icon {
+  padding: 1px var(--space-1);
+  min-width: 18px;
+  box-shadow: none;
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.4;
+  cursor: pointer;
+}
+.rule-acts .icon:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--row-hover);
+}
+.rule-acts .icon:disabled {
+  background: transparent;
+  color: var(--border);
+  cursor: not-allowed;
+}
+.rule-acts .icon.rm:hover:not(:disabled) {
+  color: var(--del);
 }
 
+/* card body (per-kind); diacritics is header-only. Aligned under the kind label. */
+.rule-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3) var(--space-3) 26px;
+}
 .rule-body input[type="text"],
 .rule-body select {
-  flex: 1 1 140px;
-  min-width: 100px;
-  padding: 5px 8px;
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
-  font: inherit;
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+}
+.rule-body .rule-fields {
+  display: flex;
+  gap: var(--space-2);
+  width: 100%;
+}
+.rule-body .rule-fields input {
+  flex: 1;
 }
 
+.rule-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  width: 100%;
+}
 .rule-flag {
   display: flex;
   align-items: center;
-  gap: 4px;
-  flex: 0 0 auto;
-  font-size: 11px;
+  gap: var(--space-1);
+  font-size: var(--text-2xs);
+  color: var(--muted);
   white-space: nowrap;
+  cursor: pointer;
+}
+.rule-flag input {
+  margin: 0;
+}
+.rule-flag:hover {
+  color: var(--text);
+}
+
+.rule-body .seg {
+  flex: none;
+}
+.rule-note {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  line-height: var(--lh-snug);
+}
+
+/* drag state — the dragged card lifts; a drop line opens at the target slot */
+.rule-card.dragging {
+  opacity: 0.9;
+  border-color: var(--accent);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.22), 0 0 0 1px var(--accent);
+  cursor: grabbing;
+}
+.rule-card.drop-target {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+
+/* add-rule row + empty state */
+.gen-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+.gen-add select {
+  flex: 1;
+}
+.rule-chain-empty {
+  margin: var(--space-1) 0;
+}
+.rule-chain-empty b {
+  color: var(--accent-ink);
+  font-weight: var(--fw-medium);
+}
+
+/* ============================================================================
+   EXPORTER — read-only export form (Claude Design pass).
+   Format as a segmented control with a single swapping per-format hint, a
+   conditional Mask row (report only), aligned rows, and a calm read-only note.
+   Renderer: reflectExportKind()/setExportKind() in app.js.
+   ============================================================================ */
+.exp-format {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.exp-format-label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.exp-seg {
+  display: flex;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.exp-seg .seg-btn {
+  flex: 1;
+  text-align: center;
+  padding: var(--space-2);
+}
+.exp-format-hint {
+  margin: 0;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  line-height: var(--lh-snug);
+  min-height: var(--lh-snug);
+}
+.exp-format-hint b {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+
+/* aligned label + input rows, matching EDITOR / Settings */
+.exp-row {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+  column-gap: var(--space-3);
+}
+.exp-row > label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.exp-row input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+}
+
+/* conditional Mask row (report only) — reveals cleanly */
+.exp-mask {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+  column-gap: var(--space-3);
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 140ms ease, opacity 140ms ease;
+}
+.exp-mask.show {
+  max-height: 3em;
+  opacity: 1;
+}
+.exp-mask > label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.exp-mask input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+}
+
+.exp-note {
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  line-height: var(--lh-snug);
+  padding-top: var(--space-1);
+}
+.exp-note b {
+  color: var(--text);
+  font-weight: var(--fw-medium);
 }
 
 /* ---- release picker cards (#27 step 2, from the Claude Design handoff) ---- */
