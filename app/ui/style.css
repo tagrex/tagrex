@@ -313,7 +313,7 @@ body.resizing .col-splitter {
 }
 
 .mode-col {
-  flex: 0 0 340px;
+  flex: 0 0 480px;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -1841,6 +1841,25 @@ td.unreadable-note {
   color: var(--accent-text);
 }
 
+/* Hover must not turn the active (green/white) button into the generic grey
+   button:hover fill — that left white text on grey, unreadable. Keep the
+   accent and just brighten it; inactive buttons get the quiet grey hover. */
+.seg-btn:hover:not(.active):not(:disabled) {
+  background: var(--row-hover);
+  color: var(--text);
+}
+.seg-btn.active:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--accent-text);
+  filter: brightness(1.08);
+}
+
+/* In a settings row the segmented control should hug its buttons, not stretch
+   across the whole field and leave dead space after the last one. */
+.settings-row .seg {
+  width: fit-content;
+}
+
 .release-list {
   display: flex;
   flex-direction: column;
@@ -1908,9 +1927,14 @@ td.unreadable-note {
 .release-title {
   font-weight: var(--fw-medium);
   font-size: var(--text-md);
-  white-space: nowrap;
+  /* Wrap to at most two lines instead of truncating with an ellipsis, so a long
+     "Artist — Album" reads fully — the same treatment the grid tiles get. */
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .release-artist {
@@ -2614,6 +2638,17 @@ td[data-field="year"],
 .col-menu-row.dragging {
   opacity: 0.9;
   box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Drop-position markers for the pointer-based reorder (Columns + Read priority):
+   an accent rule on the edge the dragged item would land against. */
+.col-menu-row.drop-above,
+.prio-item.drop-above {
+  box-shadow: inset 0 2px 0 0 var(--accent);
+}
+.col-menu-row.drop-below,
+.prio-item.drop-below {
+  box-shadow: inset 0 -2px 0 0 var(--accent);
 }
 .col-grip {
   color: var(--muted);

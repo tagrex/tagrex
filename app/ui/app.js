@@ -248,8 +248,49 @@ function applyColumns(cols) {
   renderTracks();
 }
 
+// Pointer-based drag reorder for a vertical list, keyed by each item's
+// `data-key`. WKWebView's HTML5 drag-and-drop is unreliable (dynamically set
+// `draggable` often never starts a drag), which is why the file-table reorder
+// and this helper both use mouse events. `onReorder(dragged, target, below)`
+// receives the dragged key, the key it was dropped onto, and whether it landed
+// in that row's lower half.
+function enablePointerReorder(grip, item, container, itemSelector, onReorder) {
+  grip.addEventListener("mousedown", (e) => {
+    e.preventDefault(); // don't start a text selection
+    const draggedKey = item.dataset.key;
+    item.classList.add("dragging");
+    let targetKey = null;
+    let below = false;
+    const clearMarks = () =>
+      container
+        .querySelectorAll(itemSelector)
+        .forEach((it) => it.classList.remove("drop-above", "drop-below"));
+    const onMove = (ev) => {
+      clearMarks();
+      targetKey = null;
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const row = under && under.closest(itemSelector);
+      if (!row || row === item || !container.contains(row)) return;
+      const rect = row.getBoundingClientRect();
+      below = ev.clientY > rect.top + rect.height / 2;
+      row.classList.add(below ? "drop-below" : "drop-above");
+      targetKey = row.dataset.key;
+    };
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      clearMarks();
+      item.classList.remove("dragging");
+      if (targetKey !== null && targetKey !== draggedKey) {
+        onReorder(draggedKey, targetKey, below);
+      }
+    };
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+}
+
 // ---- column picker popover (#43) ----
-let colDragKey = null; // key of the column row being dragged in the menu
 
 function renderColumnsMenu() {
   const menu = el("columns-menu");
@@ -276,15 +317,15 @@ function colMenuRow(key, visible) {
   grip.textContent = "⋮⋮";
   if (visible && !isFile) {
     grip.title = "Drag to reorder";
-    grip.addEventListener("mousedown", () => (row.draggable = true));
-    row.addEventListener("dragstart", () => {
-      colDragKey = key;
-      row.classList.add("dragging");
-    });
-    row.addEventListener("dragend", () => {
-      row.draggable = false;
-      colDragKey = null;
-      row.classList.remove("dragging");
+    enablePointerReorder(grip, row, el("columns-menu"), ".col-menu-row", (dragged, target, below) => {
+      if (target === "file" || !visibleColumns.includes(target)) return;
+      const order = visibleColumns.filter((k) => k !== "file");
+      order.splice(order.indexOf(dragged), 1);
+      let to = order.indexOf(target);
+      if (below) to += 1;
+      order.splice(to, 0, dragged);
+      applyColumns(order);
+      renderColumnsMenu();
     });
   } else {
     grip.style.visibility = "hidden";
@@ -1955,7 +1996,6 @@ function setId3Choice(choice) {
 const PRIO_KEYS = ["id3v2", "vorbis", "ape"];
 const PRIO_LABELS = { id3v2: "ID3v2", vorbis: "Vorbis Comments", ape: "APE" };
 let readPriority = PRIO_KEYS.slice();
-let prioDragKey = null;
 
 // Normalize a saved/loaded list to exactly the known keys in the given order,
 // appending any known key the list omitted so all three always show.
@@ -1984,15 +2024,13 @@ function prioItem(key) {
   grip.className = "prio-grip";
   grip.textContent = "⋮⋮";
   grip.title = "Drag to reorder";
-  grip.addEventListener("mousedown", () => (li.draggable = true));
-  li.addEventListener("dragstart", () => {
-    prioDragKey = key;
-    li.classList.add("dragging");
-  });
-  li.addEventListener("dragend", () => {
-    li.draggable = false;
-    prioDragKey = null;
-    li.classList.remove("dragging");
+  enablePointerReorder(grip, li, el("set-prio"), ".prio-item", (dragged, target, below) => {
+    const order = readPriority.filter((k) => k !== dragged);
+    let to = order.indexOf(target);
+    if (below) to += 1;
+    order.splice(to, 0, dragged);
+    readPriority = order;
+    renderPrioList();
   });
 
   const label = document.createElement("span");
@@ -2632,24 +2670,6 @@ el("set-id3").addEventListener("click", (e) => {
   if (btn) setId3Choice(btn.dataset.id3);
 });
 
-// Read-priority drag-reorder (#84): drop the dragged item before/after the row
-// under the cursor, then repaint from the new order.
-el("set-prio").addEventListener("dragover", (e) => {
-  if (prioDragKey !== null) e.preventDefault();
-});
-el("set-prio").addEventListener("drop", (e) => {
-  if (prioDragKey === null) return;
-  e.preventDefault();
-  const target = e.target.closest(".prio-item");
-  if (!target || target.dataset.key === prioDragKey) return;
-  const order = readPriority.filter((k) => k !== prioDragKey);
-  let to = order.indexOf(target.dataset.key);
-  const r = target.getBoundingClientRect();
-  if (e.clientY > r.top + r.height / 2) to += 1;
-  order.splice(to, 0, prioDragKey);
-  readPriority = order;
-  renderPrioList();
-});
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !el("settings").hidden) cancelSettings();
 });
@@ -3104,25 +3124,6 @@ document.addEventListener("click", (e) => {
     menu.hidden = true;
   }
 });
-el("columns-menu").addEventListener("dragover", (e) => {
-  if (colDragKey !== null) e.preventDefault();
-});
-el("columns-menu").addEventListener("drop", (e) => {
-  if (colDragKey === null) return;
-  e.preventDefault();
-  const target = e.target.closest(".col-menu-row");
-  if (!target || target.dataset.key === "file" || !visibleColumns.includes(target.dataset.key)) return;
-  const order = visibleColumns.filter((k) => k !== "file");
-  order.splice(order.indexOf(colDragKey), 1);
-  let to = order.indexOf(target.dataset.key);
-  const r = target.getBoundingClientRect();
-  if (e.clientY > r.top + r.height / 2) to += 1;
-  order.splice(to, 0, colDragKey);
-  colDragKey = null;
-  applyColumns(order);
-  renderColumnsMenu();
-});
-
 // Grouping is a view overlay — changing it only re-renders, never reorders
 // `tracks`. Collapsed state is per grouping, so reset it on change.
 el("group-by").addEventListener("change", (e) => {

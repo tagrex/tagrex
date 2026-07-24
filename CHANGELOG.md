@@ -8,6 +8,18 @@ first release ships.
 
 ## [Unreleased]
 
+### Fixed
+
+- Native-app UI issues found in testing (#88). The **Columns** popover and
+  **Read priority** list can be drag-reordered again — both used HTML5
+  drag-and-drop, which is unreliable in the app's WKWebView, and are now on the
+  same pointer-based reorder the file table uses. An **active segmented-control
+  button** (EXPORTER format, Settings › ID3 version) no longer turns unreadable
+  grey-with-white on hover — it keeps its accent and brightens. **List-view
+  release cards** wrap the album title to two lines instead of truncating it
+  with an ellipsis. The settings segmented controls no longer leave dead space
+  after the last button. The side panel starts at 480px (min drag width 240px).
+
 ### Added
 
 - Find duplicate tracks (#40). A new read-only **Duplicates** view scans the
