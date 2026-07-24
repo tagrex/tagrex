@@ -142,6 +142,17 @@ fn read_cover_summary(
 }
 
 #[tauri::command]
+fn read_external_cover(
+    state: State<AppState>,
+    paths: Vec<String>,
+) -> Result<Option<CoverArtDto>, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.read_external_cover(&paths).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn preview_cover_remove(state: State<AppState>, paths: Vec<String>) -> Result<PlanDto, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
@@ -390,6 +401,7 @@ fn main() {
             preview_cover_embed,
             export_cover,
             read_cover_summary,
+            read_external_cover,
             preview_cover_remove,
             export_playlist,
             export_csv,

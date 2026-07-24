@@ -358,6 +358,25 @@
             </div>
             <p class="settings-hint">When a file carries more than one tag block, values are read from the highest one present. Drag to reorder. Most files have a single block, so this rarely matters.</p>
           </div>
+
+          <div class="settings-group">
+            <h3>Cover art</h3>
+            <div class="settings-row">
+              <label for="set-cover-max">Max size</label>
+              <div class="settings-inline">
+                <input id="set-cover-max" type="number" min="0" step="50" class="mono" style="width: 80px" />
+                <span class="settings-hint">px on the longest side — 0 = don't resize</span>
+              </div>
+            </div>
+            <div class="settings-row">
+              <label for="set-cover-quality">JPEG quality</label>
+              <div class="settings-inline">
+                <input id="set-cover-quality" type="number" min="1" max="100" class="mono" style="width: 64px" />
+                <span class="settings-hint">1–100, used when a cover is resized</span>
+              </div>
+            </div>
+            <p class="settings-hint">A larger fetched or chosen cover is downscaled and re-encoded as JPEG before embedding, so it doesn't bloat every file.</p>
+          </div>
         </div>
         <div class="settings-foot">
           <span class="settings-hint">Saved to this machine.</span>

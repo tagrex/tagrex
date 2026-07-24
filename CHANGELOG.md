@@ -10,6 +10,15 @@ first release ships.
 
 ### Added
 
+- Cover art: resize before embedding, and use an external cover file (#41).
+  **Resize** — Settings › Cover art adds a max dimension (0 = off) and JPEG
+  quality; a larger fetched or chosen cover is downscaled to fit and re-encoded
+  as JPEG once, up front, before it reaches the embed path, so it doesn't
+  inflate every file. **External cover** — a `cover.jpg` / `folder.jpg` (also
+  `.jpeg` / `.png`, and `front.*`) sitting next to the tracks is offered as a
+  one-click "Use folder image" in the cover well — the inverse of the sidecar
+  export. Both flow through the existing preview/apply/undo path.
+
 - ISRC as an exact match key (#54). When a local file and a provider track carry
   the same ISRC (the per-recording code, ID3 `TSRC`), auto-match treats it as a
   definitive hit — short-circuiting the fuzzy title/artist/duration comparison

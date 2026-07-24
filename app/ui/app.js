@@ -933,9 +933,34 @@ async function refreshCoverWell() {
   try {
     const summary = await invoke("read_cover_summary", { paths });
     renderCoverWell(summary);
+    await showExternalCoverAction(paths);
   } catch (e) {
     toast(String(e), true);
   }
+}
+
+// The external cover (folder.jpg/cover.jpg next to the tracks), when present —
+// offered as a one-click embed under the well (#41).
+let externalCover = null;
+
+async function showExternalCoverAction(paths) {
+  externalCover = null;
+  let found;
+  try {
+    found = await invoke("read_external_cover", { paths });
+  } catch (e) {
+    return; // best-effort; the well already rendered
+  }
+  if (!found) return;
+  externalCover = found;
+  const body = coverWell.querySelector(".cover-body");
+  if (!body) return;
+  const note = document.createElement("button");
+  note.className = "btn cover-external";
+  note.dataset.cover = "external";
+  note.textContent = "Use folder image";
+  note.title = "Embed the cover.jpg / folder.jpg sitting next to these tracks";
+  body.appendChild(note);
 }
 
 function coverThumbImg(cover, cls) {
@@ -1917,6 +1942,8 @@ async function openSettings() {
     el("set-proxy").value = s.proxy || "";
     el("set-rate").value = s.rate_limit_per_min || 0;
     setId3Choice(s.id3_v23 ? "v23" : "v24");
+    el("set-cover-max").value = s.cover_max_px || 0;
+    el("set-cover-quality").value = s.cover_quality || 85;
     readPriority = normalizePriority(s.read_priority);
   } catch (e) {
     /* defaults already in the DOM */
@@ -1937,6 +1964,8 @@ async function saveSettings() {
     rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
     id3_v23: id3Choice === "v23",
     read_priority: readPriority.slice(),
+    cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
+    cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
   };
   try {
     await invoke("save_discogs_token", { token });
@@ -2311,6 +2340,29 @@ async function embedCoverFrom(card) {
   }
 }
 
+// Embed the external cover file (folder.jpg/cover.jpg) into the selection (#41),
+// through the same preview/apply/undo path as any other cover.
+async function embedExternalCover() {
+  if (!externalCover) return;
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to embed the cover into first", true);
+    return;
+  }
+  try {
+    previewPlan = await invoke("preview_cover_embed", { paths, cover: externalCover });
+    previewSource = "cover";
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing folder image on ${previewPlan.changes.length} file(s) — click Apply`
+        : "Selected files already have this cover",
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 async function importRelease(card) {
   const paths = selectedPaths();
   if (paths.length === 0) {
@@ -2438,6 +2490,7 @@ coverWell.addEventListener("click", (e) => {
   if (act === "replace") chooseCover();
   else if (act === "remove") previewCoverRemove();
   else if (act === "export") exportCover();
+  else if (act === "external") embedExternalCover();
 });
 coverWell.addEventListener("dragover", (e) => {
   e.preventDefault();
@@ -3350,6 +3403,9 @@ function mockInvoke(cmd, args) {
       });
       return Promise.resolve({ written, skipped_no_cover });
     }
+    case "read_external_cover":
+      // Browser mock: no sibling cover unless a test injects one.
+      return Promise.resolve(mockInvoke.state?.externalCover ?? null);
     case "auto_align": {
       // Mock: an equal ISRC is an exact match (#54); otherwise fall back to an
       // exact title match, mirroring the backend. Returns { track, by_isrc }.
@@ -3412,6 +3468,8 @@ function mockInvoke(cmd, args) {
           rate_limit_per_min: 0,
           id3_v23: false,
           read_priority: [],
+          cover_max_px: 0,
+          cover_quality: 85,
         }
       );
     case "save_settings":

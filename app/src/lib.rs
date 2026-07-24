@@ -191,6 +191,23 @@ pub struct SettingsDto {
     /// default order (primary tag, then the first present).
     #[serde(default)]
     pub read_priority: Vec<String>,
+    /// Max cover dimension in pixels before embedding (#41); a larger image is
+    /// downscaled to fit and re-encoded as JPEG. 0 = don't resize.
+    #[serde(default)]
+    pub cover_max_px: u32,
+    /// JPEG quality used when a cover is resized (#41). 0 (unset) means the
+    /// default 85; otherwise 1..=100.
+    #[serde(default)]
+    pub cover_quality: u8,
+}
+
+/// The effective JPEG quality for cover resize: the setting, or 85 when unset.
+fn effective_cover_quality(quality: u8) -> u8 {
+    if quality == 0 {
+        85
+    } else {
+        quality
+    }
 }
 
 /// A recorded batch, for the history/undo UI.
@@ -343,6 +360,10 @@ pub struct App {
     /// so it gets its own timestamp and a hard 1s floor in
     /// [`throttle_musicbrainz`](App::throttle_musicbrainz).
     last_musicbrainz_request: Cell<Option<Instant>>,
+    /// Max cover dimension before embedding, 0 = off (#41), from settings.
+    cover_max_px: Cell<u32>,
+    /// JPEG quality for a resized cover (#41), from settings.
+    cover_quality: Cell<u8>,
 }
 
 impl App {
@@ -357,6 +378,8 @@ impl App {
             discogs_min_interval: Cell::new(None),
             last_discogs_request: Cell::new(None),
             last_musicbrainz_request: Cell::new(None),
+            cover_max_px: Cell::new(0),
+            cover_quality: Cell::new(85),
         })
     }
 
@@ -372,6 +395,9 @@ impl App {
         );
         tagrex_core::model::set_write_id3v23(settings.id3_v23);
         tagrex_core::model::set_read_priority(&settings.read_priority);
+        self.cover_max_px.set(settings.cover_max_px);
+        self.cover_quality
+            .set(effective_cover_quality(settings.cover_quality));
     }
 
     /// Build a Discogs provider using the current proxy setting.
@@ -678,7 +704,16 @@ impl App {
         paths: &[PathBuf],
         cover: &CoverArtDto,
     ) -> Result<PlanDto, AppError> {
-        let new_art = cover_dto_to_art(cover);
+        // Resize/recompress once, up front (#41), so every file embeds the same
+        // trimmed image and the preview shows exactly what will be written.
+        let new_art = cover_dto_to_art(cover).map(|art| {
+            tagrex_core::cover::resize_cover(
+                &art,
+                self.cover_max_px.get(),
+                self.cover_quality.get(),
+            )
+        });
+        let new_dto = new_art.as_ref().map(cover_art_to_dto);
         let mut changes = Vec::new();
         for path in paths {
             let old = TagEngine::read_cover(path)?;
@@ -691,7 +726,7 @@ impl App {
                 tag_changes: Vec::new(),
                 cover_change: Some(CoverChangeDto {
                     old: old.as_ref().map(cover_art_to_dto),
-                    new: Some(cover.clone()),
+                    new: new_dto.clone(),
                 }),
             });
         }
@@ -740,6 +775,32 @@ impl App {
             distinct,
             samples,
         })
+    }
+
+    /// Find an external cover file (`cover.jpg` / `folder.jpg`, and the `.jpeg` /
+    /// `.png` variants) sitting next to the selected tracks (#41) — the inverse
+    /// of the sidecar export. Returns the first match across the selection's
+    /// distinct directories, ready to feed [`preview_cover_embed`]. Read-only.
+    pub fn read_external_cover(&self, paths: &[PathBuf]) -> Result<Option<CoverArtDto>, AppError> {
+        // Distinct parent directories, in selection order.
+        let mut dirs: Vec<&Path> = Vec::new();
+        for path in paths {
+            if let Some(dir) = path.parent() {
+                if !dirs.contains(&dir) {
+                    dirs.push(dir);
+                }
+            }
+        }
+        for dir in dirs {
+            if let Some(found) = external_cover_in(dir) {
+                let data = std::fs::read(&found).map_err(AppError::Io)?;
+                return Ok(Some(CoverArtDto {
+                    mime: mime_for_cover_path(&found).to_string(),
+                    data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
+                }));
+            }
+        }
+        Ok(None)
     }
 
     /// Preview removing the front cover from every `paths` file that has one,
@@ -1237,6 +1298,52 @@ fn track_number_from_position(position: &str) -> Option<String> {
     digits.parse::<u32>().ok().map(|n| n.to_string())
 }
 
+/// The external cover file in `dir`, if any (#41): a `cover`/`folder`/`front`
+/// named `.jpg`/`.jpeg`/`.png`, matched case-insensitively (so it works on
+/// case-sensitive filesystems too) and preferring `cover` over `folder` over
+/// `front`.
+fn external_cover_in(dir: &Path) -> Option<PathBuf> {
+    const PREFERRED: [&str; 3] = ["cover", "folder", "front"];
+    const EXTS: [&str; 3] = ["jpg", "jpeg", "png"];
+    let mut best: Option<(usize, PathBuf)> = None;
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_ascii_lowercase());
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase());
+        let (Some(stem), Some(ext)) = (stem, ext) else {
+            continue;
+        };
+        if !EXTS.contains(&ext.as_str()) {
+            continue;
+        }
+        if let Some(rank) = PREFERRED.iter().position(|p| *p == stem) {
+            if best.as_ref().is_none_or(|(r, _)| rank < *r) {
+                best = Some((rank, path));
+            }
+        }
+    }
+    best.map(|(_, path)| path)
+}
+
+/// The MIME type for an external cover path, by extension (defaults to JPEG).
+fn mime_for_cover_path(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        _ => "image/jpeg",
+    }
+}
+
 fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|v| !v.is_empty())
 }
@@ -1536,7 +1643,11 @@ mod tests {
             rate_limit_per_min: 120,
             id3_v23: true,
             read_priority: vec!["vorbis".into(), "id3v2".into()],
+            cover_max_px: 500,
+            cover_quality: 90,
         });
+        assert_eq!(app.cover_max_px.get(), 500);
+        assert_eq!(app.cover_quality.get(), 90);
         assert_eq!(
             app.discogs_proxy.borrow().as_deref(),
             Some("http://host:3128")
@@ -2158,6 +2269,35 @@ mod tests {
             result.skipped_no_cover,
             vec![without_cover.to_string_lossy()]
         );
+    }
+
+    #[test]
+    fn read_external_cover_finds_sibling_and_prefers_cover_over_folder() {
+        let dir = TempDir::new("ext-cover");
+        let a = dir.tagged_flac("a.flac", "Artist", "Title");
+        // Both a folder.png and a cover.jpg sit next to the track (#41).
+        std::fs::write(dir.0.join("folder.png"), [9u8, 9, 9]).unwrap();
+        std::fs::write(dir.0.join("cover.jpg"), [1u8, 2, 3]).unwrap();
+        let app = open_app(&dir);
+
+        let found = app
+            .read_external_cover(&[a])
+            .unwrap()
+            .expect("a sibling cover");
+        // `cover.jpg` wins over `folder.png`.
+        assert_eq!(found.mime, "image/jpeg");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&found.data_base64)
+            .unwrap();
+        assert_eq!(bytes, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn read_external_cover_returns_none_without_a_sibling() {
+        let dir = TempDir::new("ext-cover-none");
+        let a = dir.tagged_flac("a.flac", "Artist", "Title");
+        let app = open_app(&dir);
+        assert!(app.read_external_cover(&[a]).unwrap().is_none());
     }
 
     #[test]
