@@ -1,0 +1,90 @@
+name: Release build
+
+# Builds the desktop app on native ARM runners for each OS (cross-compiling
+# Tauri from one platform to another isn't practical — each needs its own
+# webview + linker). GitHub's ARM runners are free for public repos.
+#
+# Run it manually from the Actions tab (workflow_dispatch), or push a `v*` tag
+# to also attach the bundles to a GitHub Release. Bundles are always uploaded as
+# downloadable artifacts on the run.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write # only used by the tag-triggered release step
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            runner: macos-14
+            bundles: dmg
+          - name: windows-arm64
+            runner: windows-11-arm
+            bundles: nsis
+          - name: linux-arm64
+            runner: ubuntu-24.04-arm
+            bundles: deb,rpm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      # Same GTK/WebKit/audio system libraries the Linux CI build needs; the
+      # runner doesn't ship them.
+      - name: Install Tauri Linux system dependencies
+        if: matrix.name == 'linux-arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libxdo-dev \
+            libssl-dev \
+            libasound2-dev \
+            patchelf
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version "^2" --locked
+
+      - name: Build the app bundle
+        run: cargo tauri build --bundles ${{ matrix.bundles }}
+
+      - name: Upload bundles as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tagrex-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            target/release/bundle/**/*.dmg
+            target/release/bundle/**/*.exe
+            target/release/bundle/**/*.deb
+            target/release/bundle/**/*.rpm
+
+      # On a version tag, also attach the bundles to the GitHub Release.
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/release/bundle/**/*.dmg
+            target/release/bundle/**/*.exe
+            target/release/bundle/**/*.deb
+            target/release/bundle/**/*.rpm
