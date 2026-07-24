@@ -503,8 +503,9 @@ tbody tr:hover {
   background: var(--sel-tint-hover);
 }
 
-/* error — per-cell (e.g. a value the backend rejected); wins over selection and
-   marks the cell danger-red. Latent until wired in JS. */
+/* error — per-cell: an inline edit whose typed value fails validation (#76).
+   Wins over selection and marks the cell danger-red; the value is never staged,
+   so an apply can't try to write it. */
 td.error {
   background: var(--error-tint);
   color: var(--del);

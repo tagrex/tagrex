@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- Inline-edit validation in the file table (#76). Editing a typed column
+  (year / track / disc / bpm) now validates live with the same rule the EDITOR
+  form and backend use: an invalid value lights up the cell's danger-red error
+  state, is never staged, and keeps "Preview edits" disabled, so an apply can't
+  try to write it. Fixing the value clears the error and stages it as normal.
+  (Wires the previously latent `td.error` main-table cell state.)
+
 - Resizable table columns (#76). Every column header has a drag grip on its
   right edge; dragging sets an exact pixel width (the table scrolls horizontally
   when the columns exceed the pane and fills it when they don't), and a

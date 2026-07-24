@@ -468,12 +468,26 @@ function remapEditsAfterRename(plan) {
 function onCellEdit(td) {
   const { path, field, original } = td.dataset;
   const value = td.textContent.trim();
-  if (value === original) {
-    td.classList.remove("dirty");
+  const unstage = () => {
     if (edits.has(path)) {
       edits.get(path).delete(field);
       if (edits.get(path).size === 0) edits.delete(path);
     }
+  };
+  // Typed fields (year / track / disc / bpm) are validated with the same rule
+  // the EDITOR form and the backend use. An invalid value lights up the cell's
+  // error state and is never staged, so an apply can't try to write it (#76).
+  if (!validateFieldValue(field, value).ok) {
+    td.classList.add("error");
+    td.classList.remove("dirty");
+    unstage();
+    updateEditsButton();
+    return;
+  }
+  td.classList.remove("error");
+  if (value === original) {
+    td.classList.remove("dirty");
+    unstage();
   } else {
     td.classList.add("dirty");
     if (!edits.has(path)) edits.set(path, new Map());
