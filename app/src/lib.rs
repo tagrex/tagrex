@@ -276,6 +276,14 @@ pub struct ImportSelectionDto {
     pub year: Option<String>,
     pub genre: Option<String>,
     pub tracks: Vec<ImportTrackDto>,
+    /// The chosen release's provider id, stored as an album-level tag so the
+    /// table can group by release (#20). Empty/absent writes nothing.
+    #[serde(default)]
+    pub release_id: Option<String>,
+    /// Which provider the id came from ("discogs" | "musicbrainz"), selecting
+    /// the tag key it's written under. Defaults to Discogs.
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 /// One rule in a transformation chain, as the UI describes it.
@@ -1105,6 +1113,12 @@ impl App {
                 ),
                 (TagField::Year, non_empty(selection.year.clone())),
                 (TagField::Genre, non_empty(selection.genre.clone())),
+                // Release id (#20): an album-level identifier the table can group
+                // by, written under the provider's conventional tag key.
+                (
+                    release_id_field(selection.source.as_deref()),
+                    non_empty(selection.release_id.clone()),
+                ),
             ];
             if let Some(track) = selection.tracks.get(index) {
                 let artist = non_empty(Some(track.artist.clone()))
@@ -1149,6 +1163,18 @@ impl App {
             description: "Import Discogs release".to_string(),
             changes,
         })
+    }
+}
+
+/// The tag field a release id is stored under, by provider source (#20).
+/// `MUSICBRAINZ_ALBUMID` is the de-facto standard (what Picard writes); Discogs
+/// has no standard tag, so a matching `DISCOGS_RELEASE_ID` custom field is used.
+/// A `Custom` field round-trips as a TXXX frame / Vorbis comment on every
+/// format, and the table groups on whichever is present.
+fn release_id_field(source: Option<&str>) -> TagField {
+    match source {
+        Some("musicbrainz") => TagField::Custom("MUSICBRAINZ_ALBUMID".to_string()),
+        _ => TagField::Custom("DISCOGS_RELEASE_ID".to_string()),
     }
 }
 
@@ -1704,6 +1730,8 @@ mod tests {
                     duration_secs: None,
                 },
             ],
+            release_id: Some("249504".into()),
+            source: Some("discogs".into()),
         };
 
         let plan = app.preview_import(&[a, b], &selection).unwrap();
@@ -1719,6 +1747,18 @@ mod tests {
         assert_eq!(
             first.get("album").map(String::as_str),
             Some("Some Compilation")
+        );
+        // The Discogs release id is written under DISCOGS_RELEASE_ID for grouping
+        // by release (#20), on every mapped file.
+        assert_eq!(
+            first.get("custom:DISCOGS_RELEASE_ID").map(String::as_str),
+            Some("249504")
+        );
+        assert_eq!(
+            fields(&plan.changes[1])
+                .get("custom:DISCOGS_RELEASE_ID")
+                .map(String::as_str),
+            Some("249504")
         );
         assert_eq!(
             first.get("albumartist").map(String::as_str),
@@ -1736,6 +1776,32 @@ mod tests {
         assert_eq!(second.get("artist").map(String::as_str), Some("Guest"));
         // Position 5, not selection index 2.
         assert_eq!(second.get("track").map(String::as_str), Some("5"));
+    }
+
+    #[test]
+    fn preview_import_stores_musicbrainz_release_id_under_its_own_key() {
+        let dir = TempDir::new("import-mbid");
+        let path = dir.tagged_flac("a.flac", "Old", "Old Title");
+        let app = open_app(&dir);
+
+        let selection = ImportSelectionDto {
+            album: Some("Album".into()),
+            release_id: Some("aeb1c1c0-mbid".into()),
+            source: Some("musicbrainz".into()),
+            ..ImportSelectionDto::default()
+        };
+        let plan = app.preview_import(&[path], &selection).unwrap();
+        let fields: std::collections::BTreeMap<_, _> = plan.changes[0]
+            .tag_changes
+            .iter()
+            .map(|fc| (fc.field.clone(), fc.new.clone().unwrap()))
+            .collect();
+        // MusicBrainz uses MUSICBRAINZ_ALBUMID, not the Discogs key.
+        assert_eq!(
+            fields.get("custom:MUSICBRAINZ_ALBUMID").map(String::as_str),
+            Some("aeb1c1c0-mbid")
+        );
+        assert!(!fields.contains_key("custom:DISCOGS_RELEASE_ID"));
     }
 
     #[test]

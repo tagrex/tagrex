@@ -10,6 +10,15 @@ first release ships.
 
 ### Added
 
+- Group the table by release id (#87, finishing the deferred bullet of #20).
+  Importing a release now writes its provider id to an album-level tag —
+  `MUSICBRAINZ_ALBUMID` for MusicBrainz, `DISCOGS_RELEASE_ID` for Discogs (a
+  custom field, so it round-trips as a TXXX frame / Vorbis comment on every
+  format) — and the previously-disabled **Group › Release id** option is now
+  enabled. Rows cluster by whichever id is present (MusicBrainz UUID first, then
+  Discogs integer; they don't collide), with a short `Release <id>…` header.
+  Grouping stays a view concern — file order is unchanged.
+
 - MusicBrainz as a second metadata source (#33). TAGGER › ONLINE gains a working
   **Source** dropdown (Discogs / MusicBrainz); MusicBrainz needs no token. A new
   `tagrex-providers-musicbrainz` crate implements the `MetadataProvider`

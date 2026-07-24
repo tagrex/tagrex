@@ -318,6 +318,14 @@ function groupKeyOf(track) {
       return track.tags.artist || "";
     case "album":
       return track.tags.album || "";
+    case "release":
+      // Whichever provider id was stored on import (#20). MusicBrainz first;
+      // ids don't collide across providers (UUID vs integer).
+      return (
+        track.tags["custom:MUSICBRAINZ_ALBUMID"] ||
+        track.tags["custom:DISCOGS_RELEASE_ID"] ||
+        ""
+      );
     default:
       return "";
   }
@@ -326,9 +334,16 @@ function groupKeyOf(track) {
 // Human label for a group header ("(no artist)" etc.; folder shows its name).
 function groupLabel(key) {
   if (key === "") {
-    return groupBy === "folder" ? "(no folder)" : `(no ${groupBy})`;
+    if (groupBy === "folder") return "(no folder)";
+    if (groupBy === "release") return "(no release id)";
+    return `(no ${groupBy})`;
   }
-  return groupBy === "folder" ? fileName(key) : key;
+  if (groupBy === "folder") return fileName(key);
+  // Release ids (esp. MusicBrainz UUIDs) are long; show a short, stable prefix.
+  if (groupBy === "release") {
+    return key.length > 12 ? `Release ${key.slice(0, 8)}…` : `Release ${key}`;
+  }
+  return key;
 }
 
 // Build one track row and append it to the body. `groupKey` (when grouping)
@@ -2278,6 +2293,9 @@ async function importRelease(card) {
     year: release.year ? String(release.year) : null,
     genre: genreValues.join("/") || null,
     tracks: enabledTracksOf(card),
+    // Store the release id so the table can group by release (#20).
+    release_id: release.id || null,
+    source: releaseSource,
   };
   try {
     const plan = await invoke("preview_import", { paths, selection });
@@ -3377,6 +3395,10 @@ function mockInvoke(cmd, args) {
         ];
         if (args.selection.genre) {
           tag_changes.push({ field: "genre", old: t ? t.tags.genre || null : null, new: args.selection.genre });
+        }
+        if (args.selection.release_id) {
+          const key = args.selection.source === "musicbrainz" ? "custom:MUSICBRAINZ_ALBUMID" : "custom:DISCOGS_RELEASE_ID";
+          tag_changes.push({ field: key, old: t ? t.tags[key] || null : null, new: args.selection.release_id });
         }
         if (rt) {
           tag_changes.push({ field: "title", old: t ? t.tags.title || null : null, new: rt.title });
