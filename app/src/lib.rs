@@ -33,6 +33,7 @@ use tagrex_core::transform::{
     CaseStyle, ChangeCase, RemoveDiacritics, Replace, ReplaceOptions, TransformChain,
 };
 use tagrex_providers_discogs::DiscogsProvider;
+use tagrex_providers_musicbrainz::MusicBrainzProvider;
 
 /// One audio file as the table view sees it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -311,6 +312,11 @@ pub struct App {
     /// When the last Discogs request went out, for the throttle. Interior
     /// mutability so the read-only command path can update it.
     last_discogs_request: Cell<Option<Instant>>,
+    /// When the last MusicBrainz request went out (#33). MusicBrainz asks
+    /// clients to stay under ~1 req/s regardless of any user rate-limit setting,
+    /// so it gets its own timestamp and a hard 1s floor in
+    /// [`throttle_musicbrainz`](App::throttle_musicbrainz).
+    last_musicbrainz_request: Cell<Option<Instant>>,
 }
 
 impl App {
@@ -324,6 +330,7 @@ impl App {
             discogs_proxy: RefCell::new(None),
             discogs_min_interval: Cell::new(None),
             last_discogs_request: Cell::new(None),
+            last_musicbrainz_request: Cell::new(None),
         })
     }
 
@@ -349,6 +356,23 @@ impl App {
         )?)
     }
 
+    /// Build a MusicBrainz provider using the current proxy setting (#33). No
+    /// token — MusicBrainz is unauthenticated. Reuses the same network proxy the
+    /// Discogs provider uses.
+    fn musicbrainz_provider(&self) -> Result<MusicBrainzProvider, AppError> {
+        Ok(MusicBrainzProvider::with_proxy(
+            self.discogs_proxy.borrow().as_deref(),
+        )?)
+    }
+
+    /// Throttle the next provider request for `source`.
+    fn throttle(&self, source: &str) {
+        match source {
+            "musicbrainz" => self.throttle_musicbrainz(),
+            _ => self.throttle_discogs(),
+        }
+    }
+
     /// Sleep just enough to honor the rate-limit setting before a Discogs
     /// request. Discogs calls are already serialized by the app lock, so a
     /// single shared timestamp is enough to space them out.
@@ -363,6 +387,24 @@ impl App {
             }
         }
         self.last_discogs_request.set(Some(Instant::now()));
+    }
+
+    /// Space MusicBrainz requests out (#33). MusicBrainz etiquette is ~1 req/s
+    /// for anonymous clients, and honoring it is not optional, so the interval
+    /// is the *stricter* of a hard 1s floor and any user rate-limit setting.
+    fn throttle_musicbrainz(&self) {
+        let one_sec = Duration::from_secs(1);
+        let min = self
+            .discogs_min_interval
+            .get()
+            .map_or(one_sec, |user| user.max(one_sec));
+        if let Some(last) = self.last_musicbrainz_request.get() {
+            let elapsed = last.elapsed();
+            if elapsed < min {
+                std::thread::sleep(min - elapsed);
+            }
+        }
+        self.last_musicbrainz_request.set(Some(Instant::now()));
     }
 
     /// Scan the library and read each file's tags. A file whose tags can't be
@@ -880,19 +922,24 @@ impl App {
             .collect())
     }
 
-    /// Search a metadata provider (Discogs) with the given personal token.
+    /// Search a metadata provider (`source` = "discogs" | "musicbrainz") with
+    /// the given personal token (ignored by token-less providers).
     ///
     /// Results are re-scored against the query text and re-sorted: the provider
     /// score is only "the API returned this one first", which is not evidence of
     /// a better match (#53).
-    pub fn search_discogs(
+    pub fn provider_search(
         &self,
+        source: &str,
         token: &str,
         query: &SearchQueryDto,
     ) -> Result<Vec<CandidateDto>, AppError> {
-        self.throttle_discogs();
-        let provider = self.discogs_provider(token)?;
-        let candidates = provider.search(&query.to_search_query())?;
+        self.throttle(source);
+        let search = query.to_search_query();
+        let candidates = match source {
+            "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
+            _ => self.discogs_provider(token)?.search(&search)?,
+        };
         let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
 
         let wanted = [
@@ -914,22 +961,39 @@ impl App {
         Ok(results)
     }
 
-    /// Fetch a full release from Discogs.
-    pub fn fetch_discogs_release(&self, token: &str, id: &str) -> Result<ReleaseDto, AppError> {
-        self.throttle_discogs();
-        let provider = self.discogs_provider(token)?;
-        let release = provider.fetch_release(&ReleaseId(id.to_string()))?;
+    /// Fetch a full release from a provider (`source` selects it).
+    pub fn provider_fetch_release(
+        &self,
+        source: &str,
+        token: &str,
+        id: &str,
+    ) -> Result<ReleaseDto, AppError> {
+        self.throttle(source);
+        let rid = ReleaseId(id.to_string());
+        let release = match source {
+            "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
+            _ => self.discogs_provider(token)?.fetch_release(&rid)?,
+        };
         Ok(ReleaseDto::from(&release))
     }
 
-    /// Download a Discogs image (e.g. a release's cover) and return it as a
+    /// Download a provider image (e.g. a release's cover) and return it as a
     /// cover DTO, ready to feed straight into [`App::preview_cover_embed`] — the
     /// same shape a locally chosen file produces, so the fetched art flows
-    /// through the identical preview/apply/undo path.
-    pub fn fetch_discogs_image(&self, token: &str, url: &str) -> Result<CoverArtDto, AppError> {
-        self.throttle_discogs();
-        let provider = self.discogs_provider(token)?;
-        let image = provider.fetch_image(url)?;
+    /// through the identical preview/apply/undo path. `source` selects the
+    /// provider so its image fetch uses the right host/headers (Discogs' CDN
+    /// needs the token + User-Agent; the Cover Art Archive needs neither).
+    pub fn provider_fetch_image(
+        &self,
+        source: &str,
+        token: &str,
+        url: &str,
+    ) -> Result<CoverArtDto, AppError> {
+        self.throttle(source);
+        let image = match source {
+            "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
+            _ => self.discogs_provider(token)?.fetch_image(url)?,
+        };
         Ok(CoverArtDto {
             mime: image.mime,
             data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),

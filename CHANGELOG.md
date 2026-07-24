@@ -10,6 +10,20 @@ first release ships.
 
 ### Added
 
+- MusicBrainz as a second metadata source (#33). TAGGER › ONLINE gains a working
+  **Source** dropdown (Discogs / MusicBrainz); MusicBrainz needs no token. A new
+  `tagrex-providers-musicbrainz` crate implements the `MetadataProvider`
+  boundary with blocking HTTP, a required descriptive User-Agent, and pure,
+  fixture-tested response mapping; a free-text search uses MusicBrainz `dismax`
+  so a plain "artist album" query matches across fields. Front cover art comes
+  from the Cover Art Archive (`coverartarchive.org/release/<mbid>/front`) through
+  the existing fetch-and-embed path, and the community genre tags feed the genre
+  tag (MusicBrainz has no Discogs-style styles). Requests are spaced to
+  MusicBrainz's ~1 req/s etiquette and a 503 is surfaced as rate-limited. The
+  candidate list and track-mapping flow are unchanged. (The three provider
+  commands are now source-parameterized: `provider_search` /
+  `provider_fetch_release` / `provider_fetch_image`.)
+
 - Tag-read priority (#84). Settings › Tag defaults gains a drag-to-reorder
   **Read priority** list (ID3v2 / Vorbis Comments / APE). When a file carries
   more than one tag block, values are read from the highest listed block that is

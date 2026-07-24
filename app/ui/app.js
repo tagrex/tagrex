@@ -1752,6 +1752,10 @@ async function runExport() {
 // through the same preview/apply/undo path as before.
 let releaseCandidates = []; // last search results (CandidateDto[])
 let releaseLayout = "list"; // "list" | "grid"
+// Which provider produced the current results (#33). Captured at search time so
+// every follow-up fetch (release, cover) hits the same source even if the user
+// changes the Source dropdown afterward.
+let releaseSource = "discogs";
 const releaseCache = new Map(); // releaseId -> fetched ReleaseDto (with tracks)
 const coverCache = new Map(); // releaseId -> CoverArtDto (full cover, for embed)
 // Fetched images as data URIs, so re-rendering (layout toggle) never re-fetches.
@@ -1759,16 +1763,19 @@ const imageCache = new Map(); // releaseId -> { thumb?, cover? }
 const expandedIds = new Set(); // cards currently expanded — survive a re-render
 
 async function discogsSearch() {
+  const source = el("online-source").value;
   const token = el("discogs-token").value.trim();
   const query = el("discogs-query").value.trim();
-  if (!token) {
+  // Only Discogs needs a token; MusicBrainz is unauthenticated (#33).
+  if (source === "discogs" && !token) {
     toast("Enter your Discogs token", true);
     return;
   }
   // Remember the token locally so it's prefilled next time.
-  invoke("save_discogs_token", { token }).catch(() => {});
+  if (token) invoke("save_discogs_token", { token }).catch(() => {});
+  releaseSource = source;
   try {
-    releaseCandidates = await invoke("search_discogs", { token, query: { album: query } });
+    releaseCandidates = await invoke("provider_search", { source, token, query: { album: query } });
     releaseCache.clear();
     coverCache.clear();
     imageCache.clear();
@@ -2031,7 +2038,7 @@ async function applyImage(c) {
   if (!dataUri) {
     const token = el("discogs-token").value.trim();
     try {
-      const img = await invoke("fetch_discogs_image", { token, url });
+      const img = await invoke("provider_fetch_image", { source: releaseSource, token, url });
       dataUri = `data:${img.mime};base64,${img.data_base64}`;
       cached[kind] = dataUri;
       imageCache.set(c.id, cached);
@@ -2060,7 +2067,7 @@ async function prefetchReleaseCounts() {
       const c = queue.shift();
       if (!c || releaseCache.has(c.id)) continue;
       try {
-        releaseCache.set(c.id, await invoke("fetch_discogs_release", { token, releaseId: c.id }));
+        releaseCache.set(c.id, await invoke("provider_fetch_release", { source: releaseSource, token, releaseId: c.id }));
         const pill = countPillOf(c.id);
         if (pill) pill.textContent = countLabel(c.id);
       } catch (e) {
@@ -2100,7 +2107,7 @@ async function toggleCard(card) {
   try {
     let release = releaseCache.get(id);
     if (!release) {
-      release = await invoke("fetch_discogs_release", { token, releaseId: id });
+      release = await invoke("provider_fetch_release", { source: releaseSource, token, releaseId: id });
       releaseCache.set(id, release);
     }
     renderTracklist(card, release);
@@ -2167,7 +2174,7 @@ async function loadFullCover(id, url, card) {
   if (!url || coverCache.has(id)) return;
   const token = el("discogs-token").value.trim();
   try {
-    const cover = await invoke("fetch_discogs_image", { token, url });
+    const cover = await invoke("provider_fetch_image", { source: releaseSource, token, url });
     coverCache.set(id, cover);
     const coverEl = card.querySelector(".release-cover");
     if (coverEl) coverEl.innerHTML = `<img alt="" src="data:${cover.mime};base64,${cover.data_base64}" />`;
@@ -3313,12 +3320,33 @@ function mockInvoke(cmd, args) {
       mockInvoke.state = mockInvoke.state || {};
       mockInvoke.state.settings = args.settings;
       return Promise.resolve();
-    case "search_discogs":
+    case "provider_search":
+      // MusicBrainz hits carry no cover in search and use MBID string ids (#33).
+      if (args.source === "musicbrainz") {
+        return Promise.resolve([
+          { id: "aeb1c1c0-0000-0000-0000-000000000001", artist: "Various Artists", title: "La Bush", year: 1996, score: 1.0, thumb_url: null, cover_url: null, country: "BE", label: "Antler-Subway", format: "CD", catalog_number: "TOTH 006" },
+        ]);
+      }
       return Promise.resolve([
         { id: "316795", artist: "Various", title: "La Bush - Music From The Temple Of House", year: 1996, score: 1.0, thumb_url: "https://img/1t.jpg", cover_url: "https://img/1c.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Compilation, Mixed", catalog_number: "TOTH 006" },
         { id: "764414", artist: "Various", title: "La Bush Vol. 4", year: 1997, score: 0.9, thumb_url: "https://img/2t.jpg", cover_url: "https://img/2c.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Mixed", catalog_number: "TOTH 021" },
       ]);
-    case "fetch_discogs_release":
+    case "provider_fetch_release":
+      if (args.source === "musicbrainz") {
+        return Promise.resolve({
+          id: args.releaseId,
+          artist: "Various Artists",
+          title: "La Bush",
+          year: 1996,
+          genres: ["house", "techno"], // MusicBrainz genre tags; no styles
+          styles: [],
+          tracks: [
+            { position: "1", artist: "The X Factor", title: "Desert Rain", duration_secs: 278 },
+            { position: "2", artist: "Wish Mountain", title: "Radio", duration_secs: 142 },
+          ],
+          cover_image_url: `https://coverartarchive.org/release/${args.releaseId}/front`,
+        });
+      }
       return Promise.resolve({
         id: args.releaseId,
         artist: "Various",
@@ -3333,7 +3361,7 @@ function mockInvoke(cmd, args) {
         ],
         cover_image_url: "https://img.discogs.com/mock/front.jpg",
       });
-    case "fetch_discogs_image":
+    case "provider_fetch_image":
       // A tiny solid-color PNG so the release-view cover has something to show.
       return Promise.resolve({
         mime: "image/png",

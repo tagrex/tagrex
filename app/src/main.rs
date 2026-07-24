@@ -239,42 +239,47 @@ fn history(state: State<AppState>) -> Result<Vec<BatchDto>, String> {
     with_app(&state, |app| app.history().map_err(|e| e.to_string()))
 }
 
-// The three Discogs commands are `async` so Tauri runs them off the main thread:
-// their bodies do blocking HTTP (ureq), and a synchronous command would freeze
-// the webview for the whole request — very visible when the picker prefetches a
-// release per candidate. No `.await` inside, so no MutexGuard crosses one.
+// The three provider commands are `async` so Tauri runs them off the main
+// thread: their bodies do blocking HTTP (ureq), and a synchronous command would
+// freeze the webview for the whole request — very visible when the picker
+// prefetches a release per candidate. No `.await` inside, so no MutexGuard
+// crosses one. `source` selects the provider ("discogs" | "musicbrainz"); the
+// token is ignored by token-less providers.
 #[tauri::command]
-async fn search_discogs(
+async fn provider_search(
     state: State<'_, AppState>,
+    source: String,
     token: String,
     query: SearchQueryDto,
 ) -> Result<Vec<CandidateDto>, String> {
     with_app(&state, |app| {
-        app.search_discogs(&token, &query)
+        app.provider_search(&source, &token, &query)
             .map_err(|e| e.to_string())
     })
 }
 
 #[tauri::command]
-async fn fetch_discogs_release(
+async fn provider_fetch_release(
     state: State<'_, AppState>,
+    source: String,
     token: String,
     release_id: String,
 ) -> Result<ReleaseDto, String> {
     with_app(&state, |app| {
-        app.fetch_discogs_release(&token, &release_id)
+        app.provider_fetch_release(&source, &token, &release_id)
             .map_err(|e| e.to_string())
     })
 }
 
 #[tauri::command]
-async fn fetch_discogs_image(
+async fn provider_fetch_image(
     state: State<'_, AppState>,
+    source: String,
     token: String,
     url: String,
 ) -> Result<CoverArtDto, String> {
     with_app(&state, |app| {
-        app.fetch_discogs_image(&token, &url)
+        app.provider_fetch_image(&source, &token, &url)
             .map_err(|e| e.to_string())
     })
 }
@@ -392,9 +397,9 @@ fn main() {
             apply_plan,
             undo,
             history,
-            search_discogs,
-            fetch_discogs_release,
-            fetch_discogs_image,
+            provider_search,
+            provider_fetch_release,
+            provider_fetch_image,
             preview_import,
             auto_align,
             saved_discogs_token,

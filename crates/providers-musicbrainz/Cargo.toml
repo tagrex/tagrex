@@ -1,0 +1,14 @@
+[package]
+name = "tagrex-providers-musicbrainz"
+description = "MusicBrainz metadata provider for TagRex (no token; Cover Art Archive for covers)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde_json = "1.0.150"
+tagrex-core.workspace = true
+ureq = "3.2.1"

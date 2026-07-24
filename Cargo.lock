@@ -3445,6 +3445,7 @@ dependencies = [
  "serde_json",
  "tagrex-core",
  "tagrex-providers-discogs",
+ "tagrex-providers-musicbrainz",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -3464,6 +3465,15 @@ dependencies = [
 
 [[package]]
 name = "tagrex-providers-discogs"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "tagrex-core",
+ "ureq",
+]
+
+[[package]]
+name = "tagrex-providers-musicbrainz"
 version = "0.1.0"
 dependencies = [
  "serde_json",
