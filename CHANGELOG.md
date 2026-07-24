@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- Tag-read priority (#84). Settings › Tag defaults gains a drag-to-reorder
+  **Read priority** list (ID3v2 / Vorbis Comments / APE). When a file carries
+  more than one tag block, values are read from the highest listed block that is
+  present, instead of the tag backend's fixed primary-tag order; a prioritized
+  block that isn't present is skipped, falling back to what's there. The order
+  persists in `settings.json` and applies on the next library open. Most files
+  carry a single block, so the default order is almost always transparent.
+
 - Inline-edit validation in the file table (#76). Editing a typed column
   (year / track / disc / bpm) now validates live with the same rule the EDITOR
   form and backend use: an invalid value lights up the cell's danger-red error

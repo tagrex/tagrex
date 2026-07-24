@@ -183,6 +183,12 @@ pub struct SettingsDto {
     /// Write ID3v2 tags as v2.3 instead of the default v2.4.
     #[serde(default)]
     pub id3_v23: bool,
+    /// Ordered tag-block read priority (#84): keys like `"id3v2"`, `"vorbis"`,
+    /// `"ape"`. When a file carries more than one tag block, values are read
+    /// from the first listed block that is present. Empty = the backend's
+    /// default order (primary tag, then the first present).
+    #[serde(default)]
+    pub read_priority: Vec<String>,
 }
 
 /// A recorded batch, for the history/undo UI.
@@ -321,9 +327,9 @@ impl App {
         })
     }
 
-    /// Apply saved settings (#79): the Discogs proxy + rate-limit throttle, and
-    /// the app-wide ID3v2 write version. Called on open and whenever settings
-    /// are saved.
+    /// Apply saved settings (#79): the Discogs proxy + rate-limit throttle, the
+    /// app-wide ID3v2 write version, and the tag-read priority (#84). Called on
+    /// open and whenever settings are saved.
     pub fn apply_settings(&self, settings: &SettingsDto) {
         let proxy = settings.proxy.trim();
         *self.discogs_proxy.borrow_mut() = (!proxy.is_empty()).then(|| proxy.to_string());
@@ -332,6 +338,7 @@ impl App {
                 .then(|| Duration::from_secs_f64(60.0 / settings.rate_limit_per_min as f64)),
         );
         tagrex_core::model::set_write_id3v23(settings.id3_v23);
+        tagrex_core::model::set_read_priority(&settings.read_priority);
     }
 
     /// Build a Discogs provider using the current proxy setting.
@@ -1386,6 +1393,7 @@ mod tests {
             proxy: "http://host:3128".into(),
             rate_limit_per_min: 120,
             id3_v23: true,
+            read_priority: vec!["vorbis".into(), "id3v2".into()],
         });
         assert_eq!(
             app.discogs_proxy.borrow().as_deref(),

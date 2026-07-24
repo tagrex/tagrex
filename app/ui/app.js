@@ -1807,6 +1807,60 @@ function setId3Choice(choice) {
     .forEach((b) => b.classList.toggle("active", b.dataset.id3 === choice));
 }
 
+// Tag-read priority (#84): the order tag blocks are consulted when a file
+// carries more than one. Persisted as an ordered list of keys; the default
+// order matches the common case (ID3v2 first).
+const PRIO_KEYS = ["id3v2", "vorbis", "ape"];
+const PRIO_LABELS = { id3v2: "ID3v2", vorbis: "Vorbis Comments", ape: "APE" };
+let readPriority = PRIO_KEYS.slice();
+let prioDragKey = null;
+
+// Normalize a saved/loaded list to exactly the known keys in the given order,
+// appending any known key the list omitted so all three always show.
+function normalizePriority(list) {
+  const known = new Set(PRIO_KEYS);
+  const seen = [];
+  for (const k of Array.isArray(list) ? list : []) {
+    if (known.has(k) && !seen.includes(k)) seen.push(k);
+  }
+  for (const k of PRIO_KEYS) if (!seen.includes(k)) seen.push(k);
+  return seen;
+}
+
+function renderPrioList() {
+  const list = el("set-prio");
+  list.innerHTML = "";
+  for (const key of readPriority) list.appendChild(prioItem(key));
+}
+
+function prioItem(key) {
+  const li = document.createElement("li");
+  li.className = "prio-item";
+  li.dataset.key = key;
+
+  const grip = document.createElement("span");
+  grip.className = "prio-grip";
+  grip.textContent = "⋮⋮";
+  grip.title = "Drag to reorder";
+  grip.addEventListener("mousedown", () => (li.draggable = true));
+  li.addEventListener("dragstart", () => {
+    prioDragKey = key;
+    li.classList.add("dragging");
+  });
+  li.addEventListener("dragend", () => {
+    li.draggable = false;
+    prioDragKey = null;
+    li.classList.remove("dragging");
+  });
+
+  const label = document.createElement("span");
+  label.className = "prio-label";
+  label.textContent = PRIO_LABELS[key] || key;
+
+  li.append(grip, label);
+  return li;
+}
+
 async function openSettings() {
   // Populate from saved values (the token is already in #discogs-token).
   try {
@@ -1814,9 +1868,12 @@ async function openSettings() {
     el("set-proxy").value = s.proxy || "";
     el("set-rate").value = s.rate_limit_per_min || 0;
     setId3Choice(s.id3_v23 ? "v23" : "v24");
+    readPriority = normalizePriority(s.read_priority);
   } catch (e) {
     /* defaults already in the DOM */
+    readPriority = PRIO_KEYS.slice();
   }
+  renderPrioList();
   el("settings").hidden = false;
 }
 
@@ -1830,6 +1887,7 @@ async function saveSettings() {
     proxy: el("set-proxy").value.trim(),
     rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
     id3_v23: id3Choice === "v23",
+    read_priority: readPriority.slice(),
   };
   try {
     await invoke("save_discogs_token", { token });
@@ -2390,6 +2448,25 @@ el("settings-save").addEventListener("click", saveSettings);
 el("set-id3").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-id3]");
   if (btn) setId3Choice(btn.dataset.id3);
+});
+
+// Read-priority drag-reorder (#84): drop the dragged item before/after the row
+// under the cursor, then repaint from the new order.
+el("set-prio").addEventListener("dragover", (e) => {
+  if (prioDragKey !== null) e.preventDefault();
+});
+el("set-prio").addEventListener("drop", (e) => {
+  if (prioDragKey === null) return;
+  e.preventDefault();
+  const target = e.target.closest(".prio-item");
+  if (!target || target.dataset.key === prioDragKey) return;
+  const order = readPriority.filter((k) => k !== prioDragKey);
+  let to = order.indexOf(target.dataset.key);
+  const r = target.getBoundingClientRect();
+  if (e.clientY > r.top + r.height / 2) to += 1;
+  order.splice(to, 0, prioDragKey);
+  readPriority = order;
+  renderPrioList();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !el("settings").hidden) cancelSettings();
@@ -3225,7 +3302,12 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case "load_settings":
       return Promise.resolve(
-        mockInvoke.state?.settings || { proxy: "", rate_limit_per_min: 0, id3_v23: false }
+        mockInvoke.state?.settings || {
+          proxy: "",
+          rate_limit_per_min: 0,
+          id3_v23: false,
+          read_priority: [],
+        }
       );
     case "save_settings":
       mockInvoke.state = mockInvoke.state || {};
