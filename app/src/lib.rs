@@ -171,6 +171,28 @@ pub struct CoverSummaryDto {
     pub samples: Vec<CoverArtDto>,
 }
 
+/// One file in a duplicate group (#40), with the columns needed to tell copies
+/// apart. Read-only — detection never modifies or deletes anything.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DuplicateFileDto {
+    pub path: String,
+    pub artist: String,
+    pub title: String,
+    pub album: String,
+    pub duration_secs: u64,
+    pub size_bytes: u64,
+    pub bitrate_kbps: Option<u32>,
+}
+
+/// A set of files judged duplicates of each other under the chosen criterion
+/// (#40): the shared key and its ≥2 members.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DuplicateGroupDto {
+    /// Human-readable key the group shares (e.g. `"artist — title"`).
+    pub key: String,
+    pub files: Vec<DuplicateFileDto>,
+}
+
 /// App-wide preferences (Settings, #79), persisted as JSON in the config dir.
 /// Every field has a serde default so an older/partial file still loads.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -477,6 +499,96 @@ impl App {
             .collect();
         tracks.sort_by(|a, b| a.path.cmp(&b.path));
         tracks
+    }
+
+    /// Find likely duplicate files across the opened library (#40), by
+    /// `criterion`: `"artist_title"`, `"album_track"`, `"duration"`, `"size"`,
+    /// or `"hash"` (identical bytes). Strictly read-only — returns groups of two
+    /// or more files sharing the key, each with the columns needed to tell
+    /// copies apart, largest groups first. Unreadable files, and files lacking
+    /// the data a criterion needs (e.g. no artist/title), are skipped.
+    pub fn find_duplicates(&self, criterion: &str) -> Result<Vec<DuplicateGroupDto>, AppError> {
+        use std::collections::BTreeMap;
+        use std::hash::{Hash, Hasher};
+
+        // internal key -> (human-readable key, members)
+        let mut groups: BTreeMap<String, (String, Vec<DuplicateFileDto>)> = BTreeMap::new();
+
+        for path in
+            scanner::scan(&self.library_root, &ScanOptions::default()).filter_map(Result::ok)
+        {
+            let Ok(track) = TagEngine::read(&path) else {
+                continue;
+            };
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            let props = TagEngine::read_audio_props(&path).ok();
+            let duration = props.map(|p| p.duration_secs).unwrap_or(0);
+            let bitrate = props.and_then(|p| p.bitrate_kbps);
+            let field = |key| track.tags.get(key).cloned().unwrap_or_default();
+            let artist: String = field(&TagField::Artist);
+            let title: String = field(&TagField::Title);
+            let album: String = field(&TagField::Album);
+
+            let keyed = match criterion {
+                "album_track" => {
+                    let trackno = field(&TagField::TrackNumber);
+                    let (a, t) = (norm_key(&album), norm_key(&trackno));
+                    (!a.is_empty() && !t.is_empty()).then(|| {
+                        (
+                            format!("album_track:{a}\u{1}{t}"),
+                            format!("{album} · #{trackno}"),
+                        )
+                    })
+                }
+                "duration" => {
+                    (duration > 0).then(|| (format!("duration:{duration}"), format!("{duration}s")))
+                }
+                "size" => (size > 0).then(|| (format!("size:{size}"), format!("{size} bytes"))),
+                "hash" => std::fs::read(&path).ok().map(|bytes| {
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    bytes.hash(&mut hasher);
+                    (
+                        format!("hash:{:016x}", hasher.finish()),
+                        "identical bytes".to_string(),
+                    )
+                }),
+                // default: artist + title
+                _ => {
+                    let (a, t) = (norm_key(&artist), norm_key(&title));
+                    (!a.is_empty() && !t.is_empty())
+                        .then(|| (format!("at:{a}\u{1}{t}"), format!("{artist} — {title}")))
+                }
+            };
+            let Some((key, display)) = keyed else {
+                continue;
+            };
+
+            groups
+                .entry(key)
+                .or_insert_with(|| (display, Vec::new()))
+                .1
+                .push(DuplicateFileDto {
+                    path: path.to_string_lossy().into_owned(),
+                    artist,
+                    title,
+                    album,
+                    duration_secs: duration,
+                    size_bytes: size,
+                    bitrate_kbps: bitrate,
+                });
+        }
+
+        let mut result: Vec<DuplicateGroupDto> = groups
+            .into_values()
+            .filter(|(_, files)| files.len() >= 2)
+            .map(|(key, mut files)| {
+                files.sort_by(|a, b| a.path.cmp(&b.path));
+                DuplicateGroupDto { key, files }
+            })
+            .collect();
+        // Largest groups first; stable by key.
+        result.sort_by(|a, b| b.files.len().cmp(&a.files.len()).then(a.key.cmp(&b.key)));
+        Ok(result)
     }
 
     /// Build a rename plan from a mask over the given files, without writing.
@@ -1296,6 +1408,16 @@ fn track_number_from_position(position: &str) -> Option<String> {
         .collect();
     // Normalize leading zeros ("05" -> "5") via a round-trip through u32.
     digits.parse::<u32>().ok().map(|n| n.to_string())
+}
+
+/// Normalize a tag value into a duplicate-grouping key (#40): lower-cased with
+/// runs of whitespace collapsed, so "The  Field" and "the field" group together.
+fn norm_key(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase()
 }
 
 /// The external cover file in `dir`, if any (#41): a `cover`/`folder`/`front`
@@ -2298,6 +2420,26 @@ mod tests {
         let a = dir.tagged_flac("a.flac", "Artist", "Title");
         let app = open_app(&dir);
         assert!(app.read_external_cover(&[a]).unwrap().is_none());
+    }
+
+    #[test]
+    fn find_duplicates_groups_by_normalized_artist_and_title() {
+        let dir = TempDir::new("dups");
+        dir.tagged_flac("a.flac", "The Field", "Over the Ice");
+        // Same track after case/whitespace normalization -> a duplicate.
+        dir.tagged_flac("b.flac", "the  field", "over the ice");
+        // A unique track is never a group on its own.
+        dir.tagged_flac("c.flac", "Someone Else", "Another Song");
+        let app = open_app(&dir);
+
+        let groups = app.find_duplicates("artist_title").unwrap();
+        assert_eq!(groups.len(), 1, "only the shared track is a duplicate");
+        assert_eq!(groups[0].files.len(), 2);
+        // Members carry the columns needed to tell copies apart (#40).
+        assert!(groups[0].files.iter().all(|f| f.size_bytes > 0));
+
+        // A criterion the files can't satisfy (no album/track) yields nothing.
+        assert!(app.find_duplicates("album_track").unwrap().is_empty());
     }
 
     #[test]

@@ -16,8 +16,8 @@ use tauri::{Manager, State};
 use player::{Player, PlayerStatus};
 use tagrex::{
     AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto,
-    ImportSelectionDto, ImportTrackDto, PlanDto, ReleaseDto, SearchQueryDto, SettingsDto,
-    TagEditDto, TrackDto, TransformRuleDto,
+    DuplicateGroupDto, ImportSelectionDto, ImportTrackDto, PlanDto, ReleaseDto, SearchQueryDto,
+    SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -57,6 +57,16 @@ fn open_library(state: State<AppState>, app: tauri::AppHandle, root: String) -> 
 #[tauri::command]
 fn list_tracks(state: State<AppState>) -> Result<Vec<TrackDto>, String> {
     with_app(&state, |app| Ok(app.list_tracks()))
+}
+
+#[tauri::command]
+fn find_duplicates(
+    state: State<AppState>,
+    criterion: String,
+) -> Result<Vec<DuplicateGroupDto>, String> {
+    with_app(&state, |app| {
+        app.find_duplicates(&criterion).map_err(|e| e.to_string())
+    })
 }
 
 #[tauri::command]
@@ -394,6 +404,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open_library,
             list_tracks,
+            find_duplicates,
             preview_rename,
             preview_move,
             preview_transform,

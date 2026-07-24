@@ -515,15 +515,83 @@ function updateEditsButton() {
   previewEditsBtn.disabled = edits.size === 0;
 }
 
-// Switch the files column between the table ("files") and the change-plan diff
-// ("preview"). The Preview tab is only reachable while a plan is staged.
+// Switch the files column between the table ("files"), the change-plan diff
+// ("preview"), and the duplicate finder ("duplicates"). The Preview tab is only
+// reachable while a plan is staged.
 function showView(which) {
-  const preview = which === "preview";
-  el("files-view").hidden = preview;
-  el("preview-view").hidden = !preview;
-  el("view-files").classList.toggle("active", !preview);
-  el("view-preview").classList.toggle("active", preview);
-  el("view-preview").disabled = !preview && !previewPlan;
+  el("files-view").hidden = which !== "files";
+  el("preview-view").hidden = which !== "preview";
+  el("duplicates-view").hidden = which !== "duplicates";
+  el("view-files").classList.toggle("active", which === "files");
+  el("view-preview").classList.toggle("active", which === "preview");
+  el("view-duplicates").classList.toggle("active", which === "duplicates");
+  el("view-preview").disabled = which !== "preview" && !previewPlan;
+}
+
+// ---- duplicate finder (#40): a read-only library scan, grouped ----
+async function runDuplicateScan() {
+  const criterion = el("dup-criterion").value;
+  el("dup-summary").textContent = "Scanning…";
+  el("dup-results").innerHTML = "";
+  try {
+    const groups = await invoke("find_duplicates", { criterion });
+    renderDuplicates(groups);
+  } catch (e) {
+    el("dup-summary").textContent = "";
+    toast(String(e), true);
+  }
+}
+
+function humanSize(bytes) {
+  if (!bytes) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let n = bytes;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+}
+
+function mmss(secs) {
+  if (!secs) return "";
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function renderDuplicates(groups) {
+  const results = el("dup-results");
+  const fileCount = groups.reduce((n, g) => n + g.files.length, 0);
+  el("dup-summary").textContent = groups.length
+    ? `${groups.length} group(s), ${fileCount} files`
+    : "No duplicates found";
+  if (!groups.length) {
+    results.innerHTML = `<p class="empty inert-panel">Nothing matched — the library looks clean by this criterion.</p>`;
+    return;
+  }
+  const rows = groups
+    .map((g) => {
+      const head = `<tr class="dup-group"><td colspan="6">${escapeHtml(g.key)} <span class="muted">· ${g.files.length} copies</span></td></tr>`;
+      const files = g.files
+        .map(
+          (f) => `<tr>
+            <td class="dup-path" title="${escapeHtml(f.path)}">${escapeHtml(fileName(f.path))}</td>
+            <td>${escapeHtml(f.artist)}</td>
+            <td>${escapeHtml(f.title)}</td>
+            <td>${escapeHtml(f.album)}</td>
+            <td class="num">${mmss(f.duration_secs)}</td>
+            <td class="num">${humanSize(f.size_bytes)}${f.bitrate_kbps ? ` · ${f.bitrate_kbps}k` : ""}</td>
+          </tr>`,
+        )
+        .join("");
+      return head + files;
+    })
+    .join("");
+  results.innerHTML = `<table class="dup-table">
+    <thead><tr><th>File</th><th>Artist</th><th>Title</th><th>Album</th><th>Length</th><th>Size · Rate</th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
 }
 
 function discardPreview() {
@@ -2457,6 +2525,8 @@ el("view-files").addEventListener("click", () => showView("files"));
 el("view-preview").addEventListener("click", () => {
   if (previewPlan) showView("preview");
 });
+el("view-duplicates").addEventListener("click", () => showView("duplicates"));
+el("dup-scan").addEventListener("click", runDuplicateScan);
 el("discard").addEventListener("click", discardPreview);
 // "Show old values" (#80 Q1): reveal the struck-through old value under each
 // changed cell. A density toggle over the default single-line (new-only) diff.
@@ -3406,6 +3476,17 @@ function mockInvoke(cmd, args) {
     case "read_external_cover":
       // Browser mock: no sibling cover unless a test injects one.
       return Promise.resolve(mockInvoke.state?.externalCover ?? null);
+    case "find_duplicates":
+      // Mock: pretend the first track has a copy in a /dupes subfolder.
+      return Promise.resolve(
+        (mockInvoke.state?.tracks || []).slice(0, 1).map((t) => ({
+          key: `${t.tags.artist} — ${t.tags.title}`,
+          files: [
+            { path: t.path, artist: t.tags.artist, title: t.tags.title, album: t.tags.album || "", duration_secs: 278, size_bytes: 8123456, bitrate_kbps: 320 },
+            { path: `/music/dupes/${fileName(t.path)}`, artist: t.tags.artist, title: t.tags.title, album: t.tags.album || "", duration_secs: 278, size_bytes: 5242880, bitrate_kbps: 192 },
+          ],
+        })),
+      );
     case "auto_align": {
       // Mock: an equal ISRC is an exact match (#54); otherwise fall back to an
       // exact title match, mirroring the backend. Returns { track, by_isrc }.

@@ -231,6 +231,14 @@ pub struct CoverArt {
     pub data: Vec<u8>,
 }
 
+/// A file's audio properties beyond its tags (#40).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AudioProps {
+    pub duration_secs: u64,
+    /// Audio bitrate in kbps, when the backend reports one.
+    pub bitrate_kbps: Option<u32>,
+}
+
 /// A single audio file as seen by the table model.
 #[derive(Debug, Clone)]
 pub struct TrackFile {
@@ -322,6 +330,17 @@ impl TagEngine {
     pub fn read_duration(path: &Path) -> Result<std::time::Duration, TagIoError> {
         let tagged = Probe::open(path)?.guess_file_type()?.read()?;
         Ok(tagged.properties().duration())
+    }
+
+    /// Read duration and audio bitrate together from one probe (#40): the two
+    /// distinguishing properties the duplicate view needs beyond file size.
+    pub fn read_audio_props(path: &Path) -> Result<AudioProps, TagIoError> {
+        let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+        let props = tagged.properties();
+        Ok(AudioProps {
+            duration_secs: props.duration().as_secs(),
+            bitrate_kbps: props.audio_bitrate(),
+        })
     }
 
     /// Read the file's front cover (or the first embedded image if there's no

@@ -41,6 +41,7 @@
         <div class="view-tabs">
           <button id="view-files" class="view-tab active" data-view="files">Files <span id="track-count" class="muted"></span></button>
           <button id="view-preview" class="view-tab" data-view="preview" disabled>Preview</button>
+          <button id="view-duplicates" class="view-tab" data-view="duplicates" title="Find likely duplicate files in the library">Duplicates</button>
           <div class="spacer"></div>
           <span class="hint muted edit-hint">Double-click a cell to edit</span>
           <label class="group-ctl muted"
@@ -95,6 +96,28 @@
                The mount is its own horizontal/vertical scroll surface so the header
                and File column can stay pinned. -->
           <div id="preview-diff" class="diff-wrap"></div>
+        </div>
+
+        <!-- Duplicates view (#40): a read-only library scan grouped by a chosen
+             criterion. Nothing here modifies files. -->
+        <div id="duplicates-view" hidden>
+          <div class="preview-bar dup-bar">
+            <label class="group-ctl muted"
+              >By
+              <select id="dup-criterion" title="How to decide two files are duplicates">
+                <option value="artist_title">Artist + Title</option>
+                <option value="album_track">Album + Track</option>
+                <option value="duration">Duration</option>
+                <option value="size">File size</option>
+                <option value="hash">Identical bytes</option>
+              </select>
+            </label>
+            <button id="dup-scan" class="primary">Scan library</button>
+            <span id="dup-summary" class="hint muted" style="padding: 0"></span>
+            <div class="spacer"></div>
+            <span class="hint muted" style="padding: 0">Read-only — nothing is changed.</span>
+          </div>
+          <div id="dup-results" class="dup-wrap"></div>
         </div>
       </section>
 

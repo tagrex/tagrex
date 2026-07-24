@@ -454,6 +454,48 @@ td.dirty:focus {
   min-height: 0;
 }
 
+/* ---- duplicate finder (#40) ---- */
+.dup-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.dup-wrap {
+  flex: 1;
+  overflow: auto;
+  min-height: 0;
+}
+.dup-table {
+  font-size: var(--text-xs);
+}
+.dup-table thead th {
+  position: sticky;
+  top: 0;
+}
+.dup-table tbody td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 280px;
+}
+.dup-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.dup-table .dup-path {
+  font-family: var(--font-mono-bundled);
+}
+/* Group header row: a labelled divider between duplicate sets. */
+.dup-table tr.dup-group td {
+  background: var(--panel);
+  font-weight: var(--fw-medium);
+  border-top: 2px solid var(--border);
+  padding: 6px 10px;
+  white-space: normal;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- Find duplicate tracks (#40). A new read-only **Duplicates** view scans the
+  open library and groups likely copies by a chosen criterion — artist+title,
+  album+track (both normalized for case/whitespace), identical duration, file
+  size, or identical bytes — showing each group with the columns to tell copies
+  apart (file, artist/title/album, length, size, bitrate). Detection never
+  modifies or deletes anything; any cleanup stays an explicit, separate action.
+
 - Cover art: resize before embedding, and use an external cover file (#41).
   **Resize** — Settings › Cover art adds a max dimension (0 = off) and JPEG
   quality; a larger fetched or chosen cover is downscaled to fit and re-encoded
