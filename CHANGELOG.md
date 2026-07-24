@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- Tag-read priority (#84). Settings › Tag defaults gains a drag-to-reorder
+  **Read priority** list (ID3v2 / Vorbis Comments / APE). When a file carries
+  more than one tag block, values are read from the highest listed block that is
+  present, instead of the tag backend's fixed primary-tag order; a prioritized
+  block that isn't present is skipped, falling back to what's there. The order
+  persists in `settings.json` and applies on the next library open. Most files
+  carry a single block, so the default order is almost always transparent.
+
 - User-configurable table columns (#43). A "Columns" popover in the table
   toolbar lets you show/hide any modeled tag field and drag to reorder them; the
   File column stays pinned first. The header and rows are built from the chosen

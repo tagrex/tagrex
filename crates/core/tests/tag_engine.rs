@@ -298,6 +298,39 @@ fn wav_write_preserves_non_text_frames() {
     std::fs::remove_file(&path).ok();
 }
 
+/// A read priority that names blocks the file doesn't carry must fall back to
+/// the present one, not drop the tags (#84). This FLAC has only a Vorbis block;
+/// prioritizing ID3v2/APE (both absent) should still read the Vorbis values.
+#[test]
+fn read_priority_falls_back_to_present_block() {
+    let path = temp_flac_path("read-priority");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Vorbis Artist".to_string());
+    tags.insert(TagField::Title, "Vorbis Title".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags,
+    })
+    .expect("write vorbis tags");
+
+    tagrex_core::model::set_read_priority(&["id3v2".to_string(), "ape".to_string()]);
+    let read = TagEngine::read(&path).expect("read back");
+    // Reset the process-global before asserting so a failure can't leak it into
+    // other tests sharing this binary.
+    tagrex_core::model::set_read_priority(&[]);
+
+    assert_eq!(
+        read.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Vorbis Artist"),
+        "an absent prioritized block should fall back to the present one"
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
 /// A minimal PCM WAV (8 kHz mono 8-bit silence) lofty accepts.
 fn minimal_wav() -> Vec<u8> {
     let samples: u32 = 800;

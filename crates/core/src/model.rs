@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::RwLock;
 
 use lofty::aac::AacFile;
 use lofty::config::{ParseOptions, WriteOptions};
@@ -31,6 +32,46 @@ pub fn set_write_id3v23(v23: bool) {
 /// The write options for an ID3v2 save, honoring the version preference.
 fn id3_write_options() -> WriteOptions {
     WriteOptions::default().use_id3v23(WRITE_ID3V23.load(Ordering::Relaxed))
+}
+
+/// User-preferred order for choosing which tag block a multi-tag file is read
+/// from (Settings › Tag defaults › Read priority, #84). Empty (the default) =
+/// follow lofty's order: the primary tag, then the first present. App-wide,
+/// rarely changed, set from saved settings via [`set_read_priority`] — the same
+/// process-global model as [`WRITE_ID3V23`]. Held behind a lock rather than an
+/// atomic because it is an ordered list, not a flag.
+static READ_PRIORITY: RwLock<Vec<TagType>> = RwLock::new(Vec::new());
+
+/// Map a settings key to a lofty [`TagType`]. Unknown keys are ignored so a
+/// stale or partial setting can never break reading.
+fn tag_type_from_key(key: &str) -> Option<TagType> {
+    match key {
+        "id3v2" => Some(TagType::Id3v2),
+        "id3v1" => Some(TagType::Id3v1),
+        "vorbis" => Some(TagType::VorbisComments),
+        "ape" => Some(TagType::Ape),
+        "mp4" => Some(TagType::Mp4Ilst),
+        _ => None,
+    }
+}
+
+/// Set the app-wide tag-read priority from an ordered list of settings keys
+/// (e.g. `["id3v2", "vorbis", "ape"]`). Later reads pick their values from the
+/// first listed tag block that is present in the file. An empty list restores
+/// the backend's default order.
+pub fn set_read_priority(order: &[String]) {
+    let mapped: Vec<TagType> = order.iter().filter_map(|k| tag_type_from_key(k)).collect();
+    if let Ok(mut guard) = READ_PRIORITY.write() {
+        *guard = mapped;
+    }
+}
+
+/// Choose which tag block to read from, given the tag types `present` in the
+/// file and the configured `priority` order. Returns the first prioritized type
+/// that is present, or `None` (the caller then falls back to lofty's primary /
+/// first tag) when the priority is empty or none of its types are present.
+fn choose_priority_type(present: &[TagType], priority: &[TagType]) -> Option<TagType> {
+    priority.iter().copied().find(|tt| present.contains(tt))
 }
 
 /// Audio container formats we read and write. Covers everything the tag backend
@@ -209,9 +250,20 @@ impl TagEngine {
         let tagged_file = Probe::open(path)?.guess_file_type()?.read()?;
         let format = AudioFormat::from_lofty(tagged_file.file_type())?;
 
+        // Honor the user's read priority (#84) when the file carries more than
+        // one tag block: pick the first prioritized block that is present, then
+        // fall back to lofty's primary/first tag. Resolve to a `TagType` while
+        // the lock is held, then re-fetch the borrow so no guard outlives it.
+        let present: Vec<TagType> = tagged_file.tags().iter().map(|t| t.tag_type()).collect();
+        let priority_type = READ_PRIORITY
+            .read()
+            .ok()
+            .and_then(|order| choose_priority_type(&present, &order));
+
         let mut tags = TagMap::new();
-        if let Some(tag) = tagged_file
-            .primary_tag()
+        if let Some(tag) = priority_type
+            .and_then(|tt| tagged_file.tag(tt))
+            .or_else(|| tagged_file.primary_tag())
             .or_else(|| tagged_file.first_tag())
         {
             for item in tag.items() {
@@ -654,5 +706,45 @@ mod tests {
         let key = tag_field_to_item_key(&field);
         assert_eq!(key, ItemKey::Unknown("MOOD".to_string()));
         assert_eq!(item_key_to_tag_field(&key), field);
+    }
+
+    #[test]
+    fn read_priority_keys_map_to_tag_types() {
+        assert_eq!(tag_type_from_key("id3v2"), Some(TagType::Id3v2));
+        assert_eq!(tag_type_from_key("id3v1"), Some(TagType::Id3v1));
+        assert_eq!(tag_type_from_key("vorbis"), Some(TagType::VorbisComments));
+        assert_eq!(tag_type_from_key("ape"), Some(TagType::Ape));
+        assert_eq!(tag_type_from_key("mp4"), Some(TagType::Mp4Ilst));
+        // Unknown / stale keys are ignored, never a hard error.
+        assert_eq!(tag_type_from_key("flac"), None);
+        assert_eq!(tag_type_from_key(""), None);
+    }
+
+    #[test]
+    fn choose_priority_type_picks_first_present_in_order() {
+        let present = [TagType::Id3v2, TagType::Ape];
+
+        // First listed present type wins, regardless of the file's block order.
+        assert_eq!(
+            choose_priority_type(&present, &[TagType::Ape, TagType::Id3v2]),
+            Some(TagType::Ape)
+        );
+        assert_eq!(
+            choose_priority_type(&present, &[TagType::Id3v2, TagType::Ape]),
+            Some(TagType::Id3v2)
+        );
+
+        // A prioritized-but-absent type is skipped to the next present one.
+        assert_eq!(
+            choose_priority_type(&present, &[TagType::VorbisComments, TagType::Id3v2]),
+            Some(TagType::Id3v2)
+        );
+
+        // No overlap, or an empty priority, means "fall back to lofty's default".
+        assert_eq!(
+            choose_priority_type(&present, &[TagType::VorbisComments]),
+            None
+        );
+        assert_eq!(choose_priority_type(&present, &[]), None);
     }
 }

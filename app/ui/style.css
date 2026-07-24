@@ -2406,6 +2406,63 @@ td[data-field="year"],
   line-height: var(--lh-snug);
 }
 
+/* Read-priority list (#84): a compact drag-reorder stack where the top row is
+   the tag block consulted first. Full-width, so the row stacks its label above
+   the list instead of the default 116px-label grid. */
+.settings-row.col {
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+.prio-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  counter-reset: prio;
+}
+.prio-item {
+  counter-increment: prio;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  font-size: var(--text-xs);
+}
+/* Rank number reinforces "highest first"; tabular so 1/2/3 stay aligned. */
+.prio-item::before {
+  content: counter(prio);
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.prio-item:hover {
+  border-color: color-mix(in srgb, var(--border) 40%, var(--muted));
+}
+.prio-item.dragging {
+  opacity: 0.9;
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.prio-grip {
+  color: var(--muted);
+  cursor: grab;
+  user-select: none;
+  font-size: var(--text-sm);
+  line-height: 1;
+}
+.prio-grip:active {
+  cursor: grabbing;
+}
+.prio-label {
+  color: var(--text);
+}
+
 /* ============================================================================
    Column picker popover (#43) — pick which tag-field columns show, and drag to
    reorder them. Opened from the "Columns" button in the view-tabs row.
