@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- ISRC as an exact match key (#54). When a local file and a provider track carry
+  the same ISRC (the per-recording code, ID3 `TSRC`), auto-match treats it as a
+  definitive hit — short-circuiting the fuzzy title/artist/duration comparison
+  entirely, even when the titles differ — and the match summary calls out how
+  many were matched "exact by ISRC". MusicBrainz now fetches per-recording ISRCs
+  (`inc=isrcs`) and import writes the ISRC onto files missing one; Discogs
+  doesn't expose ISRCs. (ISRC identifies a recording, not a pressing.)
+
 - Camelot / Open Key musical-key notation (#55). GENERATOR gains a **Key
   notation** rule that converts the musical key between Camelot (8A, 5B — what
   harmonic mixing uses), Open Key (1m, 1d), and compact musical (Am, F#) — scope

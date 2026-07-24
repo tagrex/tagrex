@@ -15,9 +15,9 @@ use tauri::{Manager, State};
 
 use player::{Player, PlayerStatus};
 use tagrex::{
-    App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto, ImportSelectionDto,
-    ImportTrackDto, PlanDto, ReleaseDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto,
-    TransformRuleDto,
+    AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto,
+    ImportSelectionDto, ImportTrackDto, PlanDto, ReleaseDto, SearchQueryDto, SettingsDto,
+    TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -289,7 +289,7 @@ fn auto_align(
     state: State<AppState>,
     paths: Vec<String>,
     tracks: Vec<ImportTrackDto>,
-) -> Result<Vec<Option<usize>>, String> {
+) -> Result<Vec<Option<AlignMatchDto>>, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
         app.auto_align(&paths, &tracks).map_err(|e| e.to_string())

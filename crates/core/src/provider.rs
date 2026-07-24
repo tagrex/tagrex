@@ -66,6 +66,9 @@ pub struct ReleaseTrack {
     /// transcribed by hand from the sleeve, so treat it as a hint rather than
     /// ground truth (#64).
     pub duration_secs: Option<u64>,
+    /// ISRC (per-recording code), when the provider exposes it — a definitive
+    /// match key (#54). MusicBrainz supplies these; Discogs does not.
+    pub isrc: Option<String>,
 }
 
 /// A fully fetched release, ready to be mapped onto local files.

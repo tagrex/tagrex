@@ -64,16 +64,49 @@ pub struct TrackRef<'a> {
     pub title: &'a str,
     pub artist: Option<&'a str>,
     pub duration_secs: Option<u64>,
+    /// ISRC (ID3 `TSRC` and its equivalents) — a per-recording code. When both
+    /// sides expose it, an equal ISRC is a definitive match with no fuzzy
+    /// comparison at all (#54).
+    pub isrc: Option<&'a str>,
 }
 
 /// Why a candidate matched — worth surfacing so the user can tell a confident
 /// match from a lucky one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchReason {
-    /// Identical after normalization.
+    /// Equal ISRC — an exact, per-recording identity match (#54).
+    Isrc,
+    /// Identical title after normalization.
     Exact,
     /// Accepted on similarity alone.
     Fuzzy,
+}
+
+/// Normalize an ISRC for comparison: upper-case, keeping only alphanumerics, so
+/// `GB-AYE-12-34567`, `gbaye1234567` and `GBAYE1234567` all compare equal.
+fn normalize_isrc(isrc: &str) -> String {
+    isrc.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(char::to_uppercase)
+        .collect()
+}
+
+/// Whether two tracks carry the same ISRC (both present and equal after
+/// normalization).
+fn isrc_matches(local: &TrackRef<'_>, candidate: &TrackRef<'_>) -> bool {
+    match (local.isrc, candidate.isrc) {
+        (Some(a), Some(b)) => {
+            let (a, b) = (normalize_isrc(a), normalize_isrc(b));
+            !a.is_empty() && a == b
+        }
+        _ => false,
+    }
+}
+
+/// Public form of [`isrc_matches`], for callers that already hold two
+/// [`TrackRef`]s and want to know if a match was ISRC-driven (#54).
+pub fn is_isrc_match(local: &TrackRef<'_>, candidate: &TrackRef<'_>) -> bool {
+    isrc_matches(local, candidate)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -121,6 +154,21 @@ pub fn match_track(
     candidate: &TrackRef<'_>,
     options: &MatchOptions,
 ) -> Option<Match> {
+    // An equal ISRC is a definitive per-recording match: short-circuit every
+    // gate and fuzzy comparison (#54). It stands even if titles were mistyped or
+    // durations disagree — the recording identity is not in doubt.
+    if isrc_matches(local, candidate) {
+        let duration_delta = match (local.duration_secs, candidate.duration_secs) {
+            (Some(a), Some(b)) => Some(a.abs_diff(b)),
+            _ => None,
+        };
+        return Some(Match {
+            score: 1.0,
+            reason: MatchReason::Isrc,
+            duration_delta,
+        });
+    }
+
     if let (Some(max), Some(a), Some(b)) = (
         options.max_duration_diff_secs,
         local.duration_secs,
@@ -442,6 +490,7 @@ mod tests {
             title,
             artist,
             duration_secs: None,
+            isrc: None,
         }
     }
 
@@ -523,6 +572,7 @@ mod tests {
             title: "Radio",
             artist: Some("Wishmountain"),
             duration_secs: Some(142),
+            isrc: None,
         };
 
         // Same title, wildly different length -> not the same recording.
@@ -530,6 +580,7 @@ mod tests {
             title: "Radio",
             artist: Some("Wishmountain"),
             duration_secs: Some(400),
+            isrc: None,
         };
         assert!(match_track(&local, &long, &options).is_none());
 
@@ -538,6 +589,7 @@ mod tests {
             title: "Radio",
             artist: Some("Wish Mountain"),
             duration_secs: Some(140),
+            isrc: None,
         };
         assert!(match_track(&local, &spaced, &options).is_some());
 
@@ -546,6 +598,7 @@ mod tests {
             title: "Radio",
             artist: Some("Gigi D'Agostino"),
             duration_secs: Some(140),
+            isrc: None,
         };
         assert!(match_track(&local, &other, &options).is_none());
     }
@@ -555,6 +608,7 @@ mod tests {
             title,
             artist: None,
             duration_secs: Some(secs),
+            isrc: None,
         }
     }
 
@@ -681,5 +735,47 @@ mod tests {
         let candidates = [track("Desert Rain", None)];
         let aligned = align(&locals, &candidates, &options);
         assert_eq!(aligned, vec![Some(0), None]);
+    }
+
+    fn with_isrc<'a>(title: &'a str, isrc: &'a str) -> TrackRef<'a> {
+        TrackRef {
+            title,
+            isrc: Some(isrc),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn equal_isrc_matches_exactly_regardless_of_title() {
+        let options = MatchOptions {
+            // Even a strict gate is bypassed by an ISRC hit.
+            require_artist: true,
+            max_duration_diff_secs: Some(1),
+            ..MatchOptions::default()
+        };
+        // Different titles, but the same recording code — a definitive match.
+        let local = with_isrc("Track One (rip)", "GB-AYE-12-34567");
+        let candidate = with_isrc("gbaye1234567 differs entirely", "gbaye1234567");
+        let found = match_track(&local, &candidate, &options).expect("ISRC should match");
+        assert_eq!(found.reason, MatchReason::Isrc);
+        assert_eq!(found.score, 1.0);
+        assert!(is_isrc_match(&local, &candidate));
+    }
+
+    #[test]
+    fn differing_or_absent_isrc_falls_through_to_fuzzy() {
+        let options = MatchOptions::default();
+        // Different ISRCs don't force a match — fall through to the title, which
+        // here also differs, so nothing matches.
+        let a = with_isrc("Alpha", "US-AAA-11-11111");
+        let b = with_isrc("Beta", "US-BBB-22-22222");
+        assert!(match_track(&a, &b, &options).is_none());
+        assert!(!is_isrc_match(&a, &b));
+
+        // One side missing an ISRC → the title still carries the match.
+        let tagged = with_isrc("Desert Rain", "US-AAA-11-11111");
+        let untagged = track("desert rain", None);
+        let found = match_track(&tagged, &untagged, &options).expect("title should match");
+        assert_eq!(found.reason, MatchReason::Exact);
     }
 }

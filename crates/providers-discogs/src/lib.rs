@@ -362,6 +362,8 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
                         .get("duration")
                         .and_then(Value::as_str)
                         .and_then(parse_duration),
+                    // Discogs tracklists don't carry ISRCs.
+                    isrc: None,
                 })
                 .collect()
         })

@@ -33,8 +33,9 @@ const API_BASE: &str = "https://musicbrainz.org/ws/2";
 const COVER_ART_BASE: &str = "https://coverartarchive.org";
 const SEARCH_LIMIT: &str = "25";
 /// `inc` parameters needed to map a full release: its tracks (recordings),
-/// per-track and release artists, label/catalogue numbers, and genre tags.
-const RELEASE_INC: &str = "recordings+artist-credits+labels+genres";
+/// per-track and release artists, label/catalogue numbers, genre tags, and the
+/// per-recording ISRCs used as an exact match key (#54).
+const RELEASE_INC: &str = "recordings+artist-credits+labels+genres+isrcs";
 const USER_AGENT: &str = concat!(
     "TagRex/",
     env!("CARGO_PKG_VERSION"),
@@ -372,6 +373,14 @@ fn parse_track(track: &Value) -> ReleaseTrack {
                     .and_then(Value::as_u64)
             })
             .map(|ms| ms / 1000),
+        // ISRCs live on the recording (with inc=isrcs); take the first (#54).
+        isrc: track
+            .get("recording")
+            .and_then(|r| r.get("isrcs"))
+            .and_then(Value::as_array)
+            .and_then(|codes| codes.first())
+            .and_then(Value::as_str)
+            .map(str::to_string),
     }
 }
 
@@ -605,7 +614,7 @@ mod tests {
                 {
                     "format": "CD",
                     "tracks": [
-                        { "position": 1, "recording": { "title": "Roygbiv", "length": 137000 } }
+                        { "position": 1, "recording": { "title": "Roygbiv", "length": 137000, "isrcs": ["GBAYE9800011"] } }
                     ]
                 }
             ]
@@ -633,6 +642,9 @@ mod tests {
         assert_eq!(release.tracks[2].position, "1");
         assert_eq!(release.tracks[2].title, "Roygbiv");
         assert_eq!(release.tracks[2].duration_secs, Some(137));
+        // ISRC comes from the recording (#54); tracks without one stay None.
+        assert_eq!(release.tracks[2].isrc.as_deref(), Some("GBAYE9800011"));
+        assert_eq!(release.tracks[0].isrc, None);
     }
 
     #[test]

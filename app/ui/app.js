@@ -2207,6 +2207,7 @@ function enabledTracksOf(card) {
       artist: t.artist || release.artist,
       title: t.title,
       duration_secs: t.duration_secs ?? null,
+      isrc: t.isrc ?? null,
     };
   });
 }
@@ -2237,8 +2238,10 @@ async function autoMatchToRelease(card) {
     artist: t.artist || release.artist,
     title: t.title,
     duration_secs: t.duration_secs ?? null,
+    isrc: t.isrc ?? null,
   }));
   try {
+    // Each entry is { track, by_isrc } or null (#54).
     const aligned = await invoke("auto_align", { paths, tracks: releaseTracks });
     // Place each matched file at the position of the release track it matched,
     // so import's position mapping (file[i] <-> track[i]) lines up. A file that
@@ -2250,7 +2253,7 @@ async function autoMatchToRelease(card) {
     const slots = new Array(n).fill(null);
     const leftovers = [];
     paths.forEach((path, i) => {
-      const k = aligned[i];
+      const k = aligned[i] ? aligned[i].track : null;
       if (k !== null && k !== undefined && k < n && slots[k] === null) {
         slots[k] = path;
       } else {
@@ -2267,10 +2270,14 @@ async function autoMatchToRelease(card) {
     tracks = tracks.map((t) => (selected.has(t.path) ? byPath.get(slots[next++]) : t));
     sortKey = null;
     renderTracks();
-    const matched = aligned.filter((i) => i !== null && i !== undefined).length;
+    const hits = aligned.filter((m) => m);
+    const matched = hits.length;
+    const byIsrc = hits.filter((m) => m.by_isrc).length;
+    // Surface *why* — an ISRC match is exact, worth calling out (#54).
+    const isrcNote = byIsrc ? ` (${byIsrc} exact by ISRC)` : "";
     toast(
       matched
-        ? `Matched ${matched}/${paths.length} file(s) — reordered to line up`
+        ? `Matched ${matched}/${paths.length} file(s)${isrcNote} — reordered to line up`
         : "No confident matches — leaving the order alone",
       matched === 0,
     );
@@ -3344,13 +3351,20 @@ function mockInvoke(cmd, args) {
       return Promise.resolve({ written, skipped_no_cover });
     }
     case "auto_align": {
-      // Mock: match by exact title, mirroring what the backend does on real data.
+      // Mock: an equal ISRC is an exact match (#54); otherwise fall back to an
+      // exact title match, mirroring the backend. Returns { track, by_isrc }.
+      const norm = (s) => (s || "").replace(/[^a-z0-9]/gi, "").toUpperCase();
       const titles = args.tracks.map((t) => t.title.toLowerCase());
+      const isrcs = args.tracks.map((t) => norm(t.isrc));
       return Promise.resolve(
         args.paths.map((p) => {
           const t = findTrack(p);
-          const i = t ? titles.indexOf((t.tags.title || "").toLowerCase()) : -1;
-          return i >= 0 ? i : null;
+          if (!t) return null;
+          const localIsrc = norm(t.tags["isrc"]);
+          const byIsrc = localIsrc ? isrcs.findIndex((c) => c && c === localIsrc) : -1;
+          if (byIsrc >= 0) return { track: byIsrc, by_isrc: true };
+          const i = titles.indexOf((t.tags.title || "").toLowerCase());
+          return i >= 0 ? { track: i, by_isrc: false } : null;
         })
       );
     }

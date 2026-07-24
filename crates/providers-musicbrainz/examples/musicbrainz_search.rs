@@ -69,7 +69,15 @@ fn main() {
             }
             for track in &release.tracks {
                 let artist = track.artist.as_deref().unwrap_or(&release.artist);
-                println!("  {:>4}  {} - {}", track.position, artist, track.title);
+                let isrc = track
+                    .isrc
+                    .as_deref()
+                    .map(|c| format!("  [ISRC {c}]"))
+                    .unwrap_or_default();
+                println!(
+                    "  {:>4}  {} - {}{}",
+                    track.position, artist, track.title, isrc
+                );
             }
         }
         Err(err) => {

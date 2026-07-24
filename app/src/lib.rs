@@ -236,6 +236,9 @@ pub struct ReleaseTrackDto {
     pub title: String,
     /// Length the release lists for this track, in seconds, when it states one.
     pub duration_secs: Option<u64>,
+    /// Per-recording ISRC, when the provider exposes it (#54).
+    #[serde(default)]
+    pub isrc: Option<String>,
 }
 
 /// A fully fetched release.
@@ -265,6 +268,19 @@ pub struct ImportTrackDto {
     /// Length from the release listing, used to corroborate a match (#64).
     #[serde(default)]
     pub duration_secs: Option<u64>,
+    /// Per-recording ISRC from the provider (#54): an exact match key, and
+    /// written to the file on import when it's missing one.
+    #[serde(default)]
+    pub isrc: Option<String>,
+}
+
+/// One file's auto-align result (#53/#54): the release-track index it lined up
+/// with, and whether the match was driven by an exact ISRC hit (so the UI can
+/// say *why* it matched).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AlignMatchDto {
+    pub track: usize,
+    pub by_isrc: bool,
 }
 
 /// A user-resolved import: the album-level fields plus the ordered list of
@@ -1023,8 +1039,8 @@ impl App {
         &self,
         paths: &[PathBuf],
         tracks: &[ImportTrackDto],
-    ) -> Result<Vec<Option<usize>>, AppError> {
-        let locals: Vec<(String, String, Option<u64>)> = paths
+    ) -> Result<Vec<Option<AlignMatchDto>>, AppError> {
+        let locals: Vec<(String, String, Option<u64>, Option<String>)> = paths
             .iter()
             .map(|path| {
                 let track = TagEngine::read(path).ok();
@@ -1041,20 +1057,25 @@ impl App {
                     .as_ref()
                     .and_then(|track| track.tags.get(&TagField::Artist).cloned())
                     .unwrap_or_default();
+                let isrc = track
+                    .as_ref()
+                    .and_then(|track| track.tags.get(&TagField::Isrc).cloned())
+                    .filter(|isrc| !isrc.is_empty());
                 let duration = TagEngine::read_duration(path)
                     .ok()
                     .map(|duration| duration.as_secs())
                     .filter(|secs| *secs > 0);
-                (title, artist, duration)
+                (title, artist, duration, isrc)
             })
             .collect();
 
         let local_refs: Vec<TrackRef> = locals
             .iter()
-            .map(|(title, artist, duration)| TrackRef {
+            .map(|(title, artist, duration, isrc)| TrackRef {
                 title,
                 artist: Some(artist.as_str()).filter(|artist| !artist.is_empty()),
                 duration_secs: *duration,
+                isrc: isrc.as_deref(),
             })
             .collect();
         let candidate_refs: Vec<TrackRef> = tracks
@@ -1063,8 +1084,24 @@ impl App {
                 title: &track.title,
                 artist: Some(track.artist.as_str()).filter(|artist| !artist.is_empty()),
                 duration_secs: track.duration_secs,
+                isrc: track.isrc.as_deref().filter(|isrc| !isrc.is_empty()),
             })
             .collect();
+
+        // Tag each aligned pair with whether an ISRC drove it, so the UI can say
+        // why a file matched (#54). Duration-sequence matches are never ISRC.
+        let annotate = |aligned: Vec<Option<usize>>| -> Vec<Option<AlignMatchDto>> {
+            aligned
+                .into_iter()
+                .enumerate()
+                .map(|(i, slot)| {
+                    slot.map(|track| AlignMatchDto {
+                        track,
+                        by_isrc: matching::is_isrc_match(&local_refs[i], &candidate_refs[track]),
+                    })
+                })
+                .collect()
+        };
 
         let by_content = matching::align(&local_refs, &candidate_refs, &MatchOptions::default());
         let content_hits = by_content.iter().flatten().count();
@@ -1081,10 +1118,10 @@ impl App {
                 matching::DURATION_SEQUENCE_TOLERANCE_SECS,
             );
             if by_duration.iter().flatten().count() > content_hits {
-                return Ok(by_duration);
+                return Ok(annotate(by_duration));
             }
         }
-        Ok(by_content)
+        Ok(annotate(by_content))
     }
 
     /// Preview importing a user-resolved release selection onto `paths`,
@@ -1127,6 +1164,9 @@ impl App {
                     .or_else(|| non_empty(selection.album_artist.clone()));
                 desired.push((TagField::Title, non_empty(Some(track.title.clone()))));
                 desired.push((TagField::Artist, artist));
+                // Write the provider's ISRC when the file is missing one (#54);
+                // preview_import only emits a change when it actually differs.
+                desired.push((TagField::Isrc, non_empty(track.isrc.clone())));
 
                 // Track number from the release position, but leave the file's
                 // existing number alone if it already means the same thing --
@@ -1392,6 +1432,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                     artist: track.artist.clone(),
                     title: track.title.clone(),
                     duration_secs: track.duration_secs,
+                    isrc: track.isrc.clone(),
                 })
                 .collect(),
             cover_image_url: release.cover_image_url.clone(),
@@ -1733,12 +1774,14 @@ mod tests {
                     artist: String::new(),
                     title: "First".into(),
                     duration_secs: None,
+                    isrc: None,
                 },
                 ImportTrackDto {
                     position: "5".into(),
                     artist: "Guest".into(),
                     title: "Fifth".into(),
                     duration_secs: None,
+                    isrc: None,
                 },
             ],
             release_id: Some("249504".into()),
@@ -1832,6 +1875,7 @@ mod tests {
                 artist: "Artist".into(),
                 title: "Title".into(),
                 duration_secs: None,
+                isrc: None,
             }],
             ..ImportSelectionDto::default()
         };
@@ -2198,20 +2242,56 @@ mod tests {
                 // Punctuation/decoration differs from the local tag.
                 title: "Seven Days & One Week (Original Mix)".into(),
                 duration_secs: None,
+                isrc: None,
             },
             ImportTrackDto {
                 position: "14".into(),
                 artist: "Plastic".into(),
                 title: "Sexy Groove".into(),
                 duration_secs: None,
+                isrc: None,
             },
         ];
 
         // Each file finds its own track despite the order and the decoration.
-        assert_eq!(
-            app.auto_align(&[a, b], &tracks).unwrap(),
-            vec![Some(1), Some(0)]
-        );
+        let aligned = app.auto_align(&[a, b], &tracks).unwrap();
+        assert_eq!(aligned[0].map(|m| m.track), Some(1));
+        assert_eq!(aligned[1].map(|m| m.track), Some(0));
+        // These matched on title, not ISRC.
+        assert!(aligned.iter().flatten().all(|m| !m.by_isrc));
+    }
+
+    #[test]
+    fn auto_align_uses_isrc_as_an_exact_key() {
+        let dir = TempDir::new("align-isrc");
+        let path = dir.tagged_flac("a.flac", "Someone", "Totally Different Local Title");
+        // Give the file an ISRC the release track also carries.
+        let mut file = TagEngine::read(&path).unwrap();
+        file.tags.insert(TagField::Isrc, "GB-AYE-12-34567".into());
+        TagEngine::write(&file).unwrap();
+        let app = open_app(&dir);
+
+        let tracks = vec![
+            ImportTrackDto {
+                position: "1".into(),
+                artist: "Nobody".into(),
+                title: "Unrelated Release Title".into(),
+                duration_secs: None,
+                isrc: Some("gbaye1234567".into()), // same ISRC, different formatting
+            },
+            ImportTrackDto {
+                position: "2".into(),
+                artist: "Nobody".into(),
+                title: "Totally Different Local Title".into(),
+                duration_secs: None,
+                isrc: None,
+            },
+        ];
+
+        // The ISRC wins over the (closer) title of track 1, and is flagged.
+        let aligned = app.auto_align(&[path], &tracks).unwrap();
+        assert_eq!(aligned[0].map(|m| m.track), Some(0));
+        assert!(aligned[0].unwrap().by_isrc);
     }
 
     #[test]
