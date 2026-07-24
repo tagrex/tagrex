@@ -344,12 +344,21 @@ fn parse_track(track: &Value) -> ReleaseTrack {
         // `number` is the printed position ("1", "A1", "1-05"); fall back to the
         // numeric `position` when it's absent.
         position: string_field(track, "number")
-            .or_else(|| track.get("position").and_then(Value::as_u64).map(|n| n.to_string()))
+            .or_else(|| {
+                track
+                    .get("position")
+                    .and_then(Value::as_u64)
+                    .map(|n| n.to_string())
+            })
             .unwrap_or_default(),
         artist: join_artist_credit(track.get("artist-credit")),
         // The track title lives on the track, or on its nested recording.
         title: string_field(track, "title")
-            .or_else(|| track.get("recording").and_then(|r| string_field(r, "title")))
+            .or_else(|| {
+                track
+                    .get("recording")
+                    .and_then(|r| string_field(r, "title"))
+            })
             .unwrap_or_default(),
         // `length` is milliseconds; the track's own value wins, else the
         // recording's.
@@ -527,7 +536,10 @@ mod tests {
         assert_eq!(candidates.len(), 2);
 
         let first = &candidates[0];
-        assert_eq!(first.id, ReleaseId("aeb1c1c0-0000-0000-0000-000000000001".into()));
+        assert_eq!(
+            first.id,
+            ReleaseId("aeb1c1c0-0000-0000-0000-000000000001".into())
+        );
         assert_eq!(first.artist, "Various Artists");
         assert_eq!(first.title, "La Bush");
         assert_eq!(first.year, Some(1996));
@@ -563,7 +575,10 @@ mod tests {
         );
         // Falls back to the nested artist name when the credit has no `name`.
         let nested = serde_json::json!([{ "artist": { "name": "Aphex Twin" } }]);
-        assert_eq!(join_artist_credit(Some(&nested)).as_deref(), Some("Aphex Twin"));
+        assert_eq!(
+            join_artist_credit(Some(&nested)).as_deref(),
+            Some("Aphex Twin")
+        );
     }
 
     #[test]
@@ -624,12 +639,19 @@ mod tests {
     fn status_503_is_rate_limited() {
         assert!(matches!(
             status_to_error(503, Some("2")),
-            ProviderError::RateLimited { retry_after_secs: 2 }
+            ProviderError::RateLimited {
+                retry_after_secs: 2
+            }
         ));
         assert!(matches!(
             status_to_error(503, None),
-            ProviderError::RateLimited { retry_after_secs: 1 }
+            ProviderError::RateLimited {
+                retry_after_secs: 1
+            }
         ));
-        assert!(matches!(status_to_error(404, None), ProviderError::NotFound));
+        assert!(matches!(
+            status_to_error(404, None),
+            ProviderError::NotFound
+        ));
     }
 }
