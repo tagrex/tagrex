@@ -33,6 +33,26 @@ const DEFAULT_COLUMNS = ["file", "artist", "title", "album", "year"];
 let visibleColumns = DEFAULT_COLUMNS.slice();
 const COLUMNS_STORAGE_KEY = "tagrex.columns";
 
+// Per-column pixel widths, keyed by column key, persisted across sessions (#76:
+// resizable columns). A missing key falls back to `defaultColumnWidth`. The
+// table is `table-layout: fixed`, so a header-cell width governs its column.
+let columnWidths = {};
+const COLUMN_WIDTHS_STORAGE_KEY = "tagrex.colWidths";
+const COLUMN_MIN_WIDTH = 48;
+
+// Sensible starting width for a column the user hasn't resized yet. The file
+// name is the widest; short numeric/code fields start narrow.
+function defaultColumnWidth(key) {
+  if (key === "file") return 240;
+  if (["year", "track", "tracktotal", "disc", "bpm", "key"].includes(key)) return 70;
+  if (["artist", "title", "album", "albumartist", "composer"].includes(key)) return 160;
+  return 130;
+}
+
+function columnWidth(key) {
+  return columnWidths[key] || defaultColumnWidth(key);
+}
+
 // View state (does not change what's on disk). Sorting reorders the `tracks`
 // array itself so position-based mapping (rename masks, Discogs import) follows
 // the visible order; filtering only hides rows.
@@ -160,7 +180,12 @@ function renderTableHead() {
     const th = document.createElement("th");
     th.dataset.sort = key;
     th.className = "sortable";
-    th.innerHTML = `${escapeHtml(columnLabel(key))}<span class="sort-ind"></span>`;
+    th.style.width = `${columnWidth(key)}px`;
+    // A drag grip on the right edge resizes the column; a label span keeps the
+    // header text clipping (ellipsis) independent of the grip.
+    th.innerHTML =
+      `<span class="th-label">${escapeHtml(columnLabel(key))}<span class="sort-ind"></span></span>` +
+      `<span class="col-resize" data-key="${escapeHtml(key)}"></span>`;
     row.appendChild(th);
   }
   updateSortIndicators();
@@ -171,6 +196,31 @@ function saveColumns() {
     localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
   } catch (e) {
     /* localStorage unavailable — columns just won't persist */
+  }
+}
+
+function saveColumnWidths() {
+  try {
+    localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(columnWidths));
+  } catch (e) {
+    /* localStorage unavailable — widths just won't persist */
+  }
+}
+
+// Load saved widths; keep only known keys with a sane positive number.
+function loadColumnWidths() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY));
+    if (saved && typeof saved === "object") {
+      const known = new Set(allColumnKeys());
+      for (const [key, w] of Object.entries(saved)) {
+        if (known.has(key) && Number.isFinite(w) && w >= COLUMN_MIN_WIDTH) {
+          columnWidths[key] = Math.round(w);
+        }
+      }
+    }
+  } catch (e) {
+    /* keep defaults */
   }
 }
 
@@ -418,12 +468,26 @@ function remapEditsAfterRename(plan) {
 function onCellEdit(td) {
   const { path, field, original } = td.dataset;
   const value = td.textContent.trim();
-  if (value === original) {
-    td.classList.remove("dirty");
+  const unstage = () => {
     if (edits.has(path)) {
       edits.get(path).delete(field);
       if (edits.get(path).size === 0) edits.delete(path);
     }
+  };
+  // Typed fields (year / track / disc / bpm) are validated with the same rule
+  // the EDITOR form and the backend use. An invalid value lights up the cell's
+  // error state and is never staged, so an apply can't try to write it (#76).
+  if (!validateFieldValue(field, value).ok) {
+    td.classList.add("error");
+    td.classList.remove("dirty");
+    unstage();
+    updateEditsButton();
+    return;
+  }
+  td.classList.remove("error");
+  if (value === original) {
+    td.classList.remove("dirty");
+    unstage();
   } else {
     td.classList.add("dirty");
     if (!edits.has(path)) edits.set(path, new Map());
@@ -2687,6 +2751,64 @@ tracksBody.addEventListener("keydown", (e) => {
   }
 })();
 
+// ---- resize a table column by dragging its header grip (#76) ----
+// Delegated on the header (mousedown), because the sortable ths are rebuilt on
+// every column change (#43). Dragging past a threshold suppresses the header's
+// sort click. Same manual-mouse approach as the panel splitter (WKWebView).
+(function initColumnResize() {
+  const thead = el("tracks").querySelector("thead");
+  let key = null;
+  let startX = 0;
+  let startWidth = 0;
+  let moved = false;
+  let th = null;
+
+  thead.addEventListener("mousedown", (e) => {
+    const grip = e.target.closest(".col-resize");
+    if (!grip) return;
+    e.preventDefault();
+    e.stopPropagation(); // don't let the header treat this as a sort click
+    key = grip.dataset.key;
+    th = grip.closest("th");
+    startX = e.clientX;
+    startWidth = th.getBoundingClientRect().width;
+    moved = false;
+    document.body.classList.add("resizing-col");
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  });
+
+  function onMove(e) {
+    if (key === null) return;
+    const width = Math.max(startWidth + (e.clientX - startX), COLUMN_MIN_WIDTH);
+    if (Math.abs(e.clientX - startX) > 2) moved = true;
+    columnWidths[key] = Math.round(width);
+    if (th) th.style.width = `${columnWidths[key]}px`;
+  }
+
+  function onUp() {
+    if (key === null) return;
+    // A grip drag that never moved is a stray click — don't persist or block sort.
+    if (moved) saveColumnWidths();
+    key = null;
+    th = null;
+    document.body.classList.remove("resizing-col");
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+  }
+
+  // Double-click a grip to reset that column to its default width.
+  thead.addEventListener("dblclick", (e) => {
+    const grip = e.target.closest(".col-resize");
+    if (!grip) return;
+    e.preventDefault();
+    e.stopPropagation();
+    delete columnWidths[grip.dataset.key];
+    saveColumnWidths();
+    renderTableHead();
+  });
+})();
+
 // Sort by clicking a column header (toggles direction). Reorders `tracks`
 // itself so position-based mapping follows the visible order.
 function sortBy(key) {
@@ -2705,6 +2827,7 @@ function sortBy(key) {
 // Sort clicks are delegated on the header so dynamically-built columns (#43)
 // stay sortable.
 el("tracks").querySelector("thead").addEventListener("click", (e) => {
+  if (e.target.closest(".col-resize")) return; // grip click is a resize, not a sort
   const th = e.target.closest("th.sortable");
   if (th) sortBy(th.dataset.sort);
 });
@@ -2820,6 +2943,7 @@ loadSavedToken();
 // Apply the saved column choice (#43) and build the header before any library
 // is opened.
 loadColumns();
+loadColumnWidths();
 renderTableHead();
 
 // Browser-only fake of the native player: a wall-clock timer advances position,

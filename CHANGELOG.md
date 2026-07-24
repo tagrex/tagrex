@@ -10,6 +10,27 @@ first release ships.
 
 ### Added
 
+- Inline-edit validation in the file table (#76). Editing a typed column
+  (year / track / disc / bpm) now validates live with the same rule the EDITOR
+  form and backend use: an invalid value lights up the cell's danger-red error
+  state, is never staged, and keeps "Preview edits" disabled, so an apply can't
+  try to write it. Fixing the value clears the error and stages it as normal.
+  (Wires the previously latent `td.error` main-table cell state.)
+
+- Resizable table columns (#76). Every column header has a drag grip on its
+  right edge; dragging sets an exact pixel width (the table scrolls horizontally
+  when the columns exceed the pane and fills it when they don't), and a
+  double-click on the grip resets that column to its default. Widths persist
+  across sessions (localStorage) and are keyed by column, so they follow the
+  configurable column set (#43). Header clicks still sort; grip drags never do.
+
+- Bundled disambiguating monospace (#76). JetBrains Mono Regular (Apache-2.0),
+  subset to Latin + Cyrillic + punctuation and embedded as a data-URI woff2, now
+  backs the file table, mask inputs, catalogue numbers and the release
+  tracklist. It distinguishes 0/O/o and 1/l/I/i at 11px, covers Cyrillic tags,
+  and has its code ligatures stripped so file names never fuse (e.g. "->" stays
+  two glyphs). The system mono stack remains the fallback for uncovered glyphs.
+
 - User-configurable table columns (#43). A "Columns" popover in the table
   toolbar lets you show/hide any modeled tag field and drag to reorder them; the
   File column stays pinned first. The header and rows are built from the chosen
