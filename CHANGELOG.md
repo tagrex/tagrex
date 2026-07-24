@@ -10,6 +10,20 @@ first release ships.
 
 ### Added
 
+- Resizable table columns (#76). Every column header has a drag grip on its
+  right edge; dragging sets an exact pixel width (the table scrolls horizontally
+  when the columns exceed the pane and fills it when they don't), and a
+  double-click on the grip resets that column to its default. Widths persist
+  across sessions (localStorage) and are keyed by column, so they follow the
+  configurable column set (#43). Header clicks still sort; grip drags never do.
+
+- Bundled disambiguating monospace (#76). JetBrains Mono Regular (Apache-2.0),
+  subset to Latin + Cyrillic + punctuation and embedded as a data-URI woff2, now
+  backs the file table, mask inputs, catalogue numbers and the release
+  tracklist. It distinguishes 0/O/o and 1/l/I/i at 11px, covers Cyrillic tags,
+  and has its code ligatures stripped so file names never fuse (e.g. "->" stays
+  two glyphs). The system mono stack remains the fallback for uncovered glyphs.
+
 - User-configurable table columns (#43). A "Columns" popover in the table
   toolbar lets you show/hide any modeled tag field and drag to reorder them; the
   File column stays pinned first. The header and rows are built from the chosen
