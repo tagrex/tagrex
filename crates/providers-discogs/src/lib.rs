@@ -20,7 +20,7 @@
 use serde_json::Value;
 use tagrex_core::provider::{
     FetchedImage, MetadataProvider, ProviderError, Release, ReleaseCandidate, ReleaseId,
-    ReleaseTrack, SearchQuery,
+    ReleaseLabel, ReleaseTrack, SearchQuery,
 };
 use tagrex_core::transform::{TransformChain, TransformStep};
 
@@ -377,8 +377,40 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         genres,
         styles,
         tracks,
+        labels: parse_labels(root.get("labels")),
         cover_image_url: primary_image_url(root.get("images")),
     })
+}
+
+/// Label / catalogue-number pairs from a Discogs release `labels` array, in
+/// order (`[{ "name": "Antler-Subway", "catno": "AS 5606" }, …]`). Entries
+/// without a usable name are skipped; a `"none"`/empty catno becomes `None`.
+fn parse_labels(value: Option<&Value>) -> Vec<ReleaseLabel> {
+    value
+        .and_then(Value::as_array)
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(|entry| {
+                    let name = entry
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty())?;
+                    let catalog_number = entry
+                        .get("catno")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|catno| !catno.is_empty() && !catno.eq_ignore_ascii_case("none"))
+                        .map(str::to_string);
+                    Some(ReleaseLabel {
+                        name: name.to_string(),
+                        catalog_number,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Parse a listed track length into seconds.
@@ -617,6 +649,11 @@ mod tests {
             "artists": [{"name": "Rick Astley (2)"}],
             "genres": ["Electronic"],
             "styles": ["Synth-pop"],
+            "labels": [
+                {"name": "Antler-Subway", "catno": "AS 5606"},
+                {"name": "Antler-Subway", "catno": "7243 8 52174 2 5"},
+                {"name": "No Catno Label", "catno": "none"}
+            ],
             "images": [
                 {"type": "secondary", "uri": "https://img.discogs.com/back.jpg"},
                 {"type": "primary", "uri": "https://img.discogs.com/front.jpg", "uri150": "https://img.discogs.com/front-150.jpg"}
@@ -640,6 +677,15 @@ mod tests {
             release.cover_image_url.as_deref(),
             Some("https://img.discogs.com/front.jpg")
         );
+        // All label/catno pairs kept in order (#90); a "none" catno → None.
+        assert_eq!(release.labels.len(), 3);
+        assert_eq!(release.labels[0].name, "Antler-Subway");
+        assert_eq!(release.labels[0].catalog_number.as_deref(), Some("AS 5606"));
+        assert_eq!(
+            release.labels[1].catalog_number.as_deref(),
+            Some("7243 8 52174 2 5")
+        );
+        assert_eq!(release.labels[2].catalog_number, None);
         // Heading filtered out; two real tracks remain.
         assert_eq!(release.tracks.len(), 2);
         assert_eq!(release.tracks[0].position, "A");

@@ -293,9 +293,19 @@ pub struct ReleaseDto {
     /// import writes to the genre tag by preference (#26).
     pub styles: Vec<String>,
     pub tracks: Vec<ReleaseTrackDto>,
+    /// Label / catalogue-number pairs (#90); the UI picks which one to import.
+    #[serde(default)]
+    pub labels: Vec<ReleaseLabelDto>,
     /// URL of the release's primary image, if any. Fetch its bytes with
     /// [`App::fetch_discogs_image`] to preview or embed it.
     pub cover_image_url: Option<String>,
+}
+
+/// One label / catalogue-number pair of a release (#90).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReleaseLabelDto {
+    pub name: String,
+    pub catalog_number: Option<String>,
 }
 
 /// One release track the user chose to import, as sent back from the UI.
@@ -340,6 +350,12 @@ pub struct ImportSelectionDto {
     /// the tag key it's written under. Defaults to Discogs.
     #[serde(default)]
     pub source: Option<String>,
+    /// The chosen label imprint → written to the Publisher tag (#90).
+    #[serde(default)]
+    pub label: Option<String>,
+    /// The chosen catalogue number → written to the CatalogNumber tag (#90).
+    #[serde(default)]
+    pub catalog_number: Option<String>,
 }
 
 /// One rule in a transformation chain, as the UI describes it.
@@ -1331,6 +1347,13 @@ impl App {
                     release_id_field(selection.source.as_deref()),
                     non_empty(selection.release_id.clone()),
                 ),
+                // Label + catalogue number (#90): the user's chosen single pair
+                // (label → Publisher, catno → CatalogNumber), never merged.
+                (TagField::Publisher, non_empty(selection.label.clone())),
+                (
+                    TagField::CatalogNumber,
+                    non_empty(selection.catalog_number.clone()),
+                ),
             ];
             if let Some(track) = selection.tracks.get(index) {
                 let artist = non_empty(Some(track.artist.clone()))
@@ -1662,6 +1685,14 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                     title: track.title.clone(),
                     duration_secs: track.duration_secs,
                     isrc: track.isrc.clone(),
+                })
+                .collect(),
+            labels: release
+                .labels
+                .iter()
+                .map(|label| ReleaseLabelDto {
+                    name: label.name.clone(),
+                    catalog_number: label.catalog_number.clone(),
                 })
                 .collect(),
             cover_image_url: release.cover_image_url.clone(),
@@ -2019,6 +2050,8 @@ mod tests {
             ],
             release_id: Some("249504".into()),
             source: Some("discogs".into()),
+            label: Some("Antler-Subway".into()),
+            catalog_number: Some("AS 5606".into()),
         };
 
         let plan = app.preview_import(&[a, b], &selection).unwrap();
@@ -2040,6 +2073,15 @@ mod tests {
         assert_eq!(
             first.get("custom:DISCOGS_RELEASE_ID").map(String::as_str),
             Some("249504")
+        );
+        // The chosen label + catalogue number (#90): Publisher + CatalogNumber.
+        assert_eq!(
+            first.get("publisher").map(String::as_str),
+            Some("Antler-Subway")
+        );
+        assert_eq!(
+            first.get("catalognumber").map(String::as_str),
+            Some("AS 5606")
         );
         assert_eq!(
             fields(&plan.changes[1])

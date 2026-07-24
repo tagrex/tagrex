@@ -26,7 +26,7 @@
 use serde_json::Value;
 use tagrex_core::provider::{
     FetchedImage, MetadataProvider, ProviderError, Release, ReleaseCandidate, ReleaseId,
-    ReleaseTrack, SearchQuery,
+    ReleaseLabel, ReleaseTrack, SearchQuery,
 };
 
 const API_BASE: &str = "https://musicbrainz.org/ws/2";
@@ -336,6 +336,7 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         genres,
         styles: Vec::new(),
         tracks,
+        labels: parse_labels(root.get("label-info")),
         cover_image_url: Some(cover_art_front_url(&id)),
     })
 }
@@ -417,6 +418,38 @@ fn genre_names(value: Option<&Value>) -> Vec<String> {
                 .iter()
                 .filter_map(|g| g.get("name").and_then(Value::as_str))
                 .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Label / catalogue-number pairs from a `label-info` array (#90), in order
+/// (`[{ "catalog-number": "…", "label": { "name": "…" } }, …]`). Entries with no
+/// usable label name are skipped.
+fn parse_labels(value: Option<&Value>) -> Vec<ReleaseLabel> {
+    value
+        .and_then(Value::as_array)
+        .map(|infos| {
+            infos
+                .iter()
+                .filter_map(|info| {
+                    let name = info
+                        .get("label")
+                        .and_then(|l| l.get("name"))
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|name| !name.is_empty())?;
+                    let catalog_number = info
+                        .get("catalog-number")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|catno| !catno.is_empty())
+                        .map(str::to_string);
+                    Some(ReleaseLabel {
+                        name: name.to_string(),
+                        catalog_number,
+                    })
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -598,6 +631,10 @@ mod tests {
             "date": "1998",
             "artist-credit": [{ "name": "Boards of Canada" }],
             "genres": [{ "name": "electronic", "count": 5 }, { "name": "idm", "count": 3 }],
+            "label-info": [
+                { "catalog-number": "WARP CD 55", "label": { "name": "Warp Records" } },
+                { "label": { "name": "Skam" } }
+            ],
             "media": [
                 {
                     "format": "CD",
@@ -625,6 +662,15 @@ mod tests {
         assert_eq!(release.year, Some(1998));
         assert_eq!(release.genres, vec!["electronic", "idm"]);
         assert!(release.styles.is_empty());
+        // Label/catno pairs from label-info (#90); a missing catno → None.
+        assert_eq!(release.labels.len(), 2);
+        assert_eq!(release.labels[0].name, "Warp Records");
+        assert_eq!(
+            release.labels[0].catalog_number.as_deref(),
+            Some("WARP CD 55")
+        );
+        assert_eq!(release.labels[1].name, "Skam");
+        assert_eq!(release.labels[1].catalog_number, None);
         assert_eq!(
             release.cover_image_url.as_deref(),
             Some("https://coverartarchive.org/release/aeb1c1c0-0000-0000-0000-000000000001/front")

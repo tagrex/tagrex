@@ -86,11 +86,23 @@ pub struct Release {
     /// Specific styles (Discogs `styles`, e.g. `Trance`, `Tribal`, `Techno`).
     pub styles: Vec<String>,
     pub tracks: Vec<ReleaseTrack>,
+    /// Label / catalogue-number pairs the release lists (#90). A release can
+    /// carry several — even from the same label — so the caller picks which one
+    /// to write (label → Publisher, catno → CatalogNumber) rather than merging
+    /// them. In listing order; the first is the primary.
+    pub labels: Vec<ReleaseLabel>,
     /// URL of the release's primary image (full resolution), if it has one.
     /// The bytes still have to be downloaded with the provider's auth + User-
     /// Agent headers — the webview can't load it directly — so this is only a
     /// handle, fetched on demand via the provider's image download.
     pub cover_image_url: Option<String>,
+}
+
+/// One label imprint of a release, with its catalogue number when stated (#90).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseLabel {
+    pub name: String,
+    pub catalog_number: Option<String>,
 }
 
 /// An image downloaded from a provider: raw bytes plus the MIME type reported

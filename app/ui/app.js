@@ -2312,6 +2312,20 @@ function renderTracklist(card, release) {
       </tr>`,
     )
     .join("");
+  // Label / catalogue-number picker (#90): a release can list several pairs
+  // (even from one label); the user picks the single one to write. One pair (or
+  // none) needs no picker — importRelease falls back to the first.
+  const labels = release.labels || [];
+  const labelPicker =
+    labels.length > 1
+      ? `<div class="tracklist-label"><label>Label · cat#
+          <select class="label-picker" title="Which label and catalogue number to write">${labels
+            .map(
+              (l, i) =>
+                `<option value="${i}">${escapeHtml(l.name)}${l.catalog_number ? " — " + escapeHtml(l.catalog_number) : ""}</option>`,
+            )
+            .join("")}</select></label></div>`
+      : "";
   card.querySelector(".release-tracklist").innerHTML = `
     <div class="tracklist-actions">
       <button class="btn-sm" data-act="enable-all">Enable all</button>
@@ -2320,6 +2334,7 @@ function renderTracklist(card, release) {
       <button class="btn-sm" data-act="embed" title="Embed this release's cover into the selected files">Embed cover</button>
       <span class="muted tk-selcount" style="margin-left:auto"></span>
     </div>
+    ${labelPicker}
     <table><tbody>${rows}</tbody></table>
     <div class="tracklist-apply"><button class="primary" data-act="import">Import to selected files</button></div>`;
   updateTracklistCount(card);
@@ -2479,6 +2494,11 @@ async function importRelease(card) {
   // Prefer Discogs "styles" over the coarse "genres" for the genre tag (#26),
   // joined with "/" to match the user's library convention.
   const genreValues = release.styles.length ? release.styles : release.genres;
+  // The chosen label / catalogue-number pair (#90): the picker's selection, or
+  // the first pair when there's no picker (0 or 1 label).
+  const labels = release.labels || [];
+  const picker = card.querySelector(".label-picker");
+  const chosen = labels[picker ? Number(picker.value) : 0];
   const selection = {
     album: release.title,
     album_artist: release.artist,
@@ -2488,6 +2508,8 @@ async function importRelease(card) {
     // Store the release id so the table can group by release (#20).
     release_id: release.id || null,
     source: releaseSource,
+    label: chosen ? chosen.name : null,
+    catalog_number: chosen ? chosen.catalog_number || null : null,
   };
   try {
     const plan = await invoke("preview_import", { paths, selection });
@@ -3582,6 +3604,7 @@ function mockInvoke(cmd, args) {
             { position: "1", artist: "The X Factor", title: "Desert Rain", duration_secs: 278 },
             { position: "2", artist: "Wish Mountain", title: "Radio", duration_secs: 142 },
           ],
+          labels: [{ name: "Antler-Subway", catalog_number: "AS 5606" }],
           cover_image_url: `https://coverartarchive.org/release/${args.releaseId}/front`,
         });
       }
@@ -3596,6 +3619,11 @@ function mockInvoke(cmd, args) {
           { position: "1", artist: "The X Factor", title: "Desert Rain", duration_secs: 278 },
           { position: "2", artist: "Wish Mountain", title: "Radio", duration_secs: 142 },
           { position: "3", artist: "West Coast Connection", title: "Voodoo Rhythm", duration_secs: 321 },
+        ],
+        // Two catalogue numbers from the same label (#90) — exercises the picker.
+        labels: [
+          { name: "Antler-Subway", catalog_number: "AS 5606" },
+          { name: "Antler-Subway", catalog_number: "7243 8 52174 2 5" },
         ],
         cover_image_url: "https://img.discogs.com/mock/front.jpg",
       });
@@ -3619,6 +3647,12 @@ function mockInvoke(cmd, args) {
         if (args.selection.release_id) {
           const key = args.selection.source === "musicbrainz" ? "custom:MUSICBRAINZ_ALBUMID" : "custom:DISCOGS_RELEASE_ID";
           tag_changes.push({ field: key, old: t ? t.tags[key] || null : null, new: args.selection.release_id });
+        }
+        if (args.selection.label) {
+          tag_changes.push({ field: "publisher", old: t ? t.tags.publisher || null : null, new: args.selection.label });
+        }
+        if (args.selection.catalog_number) {
+          tag_changes.push({ field: "catalognumber", old: t ? t.tags.catalognumber || null : null, new: args.selection.catalog_number });
         }
         if (rt) {
           tag_changes.push({ field: "title", old: t ? t.tags.title || null : null, new: rt.title });

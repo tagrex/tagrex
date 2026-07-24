@@ -22,6 +22,15 @@ first release ships.
 
 ### Added
 
+- Write the label and catalogue number on import (#90). Importing a release now
+  fills the **Publisher** (label) and **CatalogNumber** tags — previously the
+  catalogue number was shown on the card but never written. A release can list
+  several label/catalogue-number pairs (even from one label, e.g. La Bush has
+  *AS 5606* and *7243 8 52174 2 5*); when there's more than one, the release card
+  shows a small **picker** to choose the single pair to write (default: the
+  first). Never concatenated, never put in ISRC. Both Discogs (`labels`) and
+  MusicBrainz (`label-info`) supply the pairs.
+
 - Find duplicate tracks (#40). A new read-only **Duplicates** view scans the
   open library and groups likely copies by a chosen criterion — artist+title,
   album+track (both normalized for case/whitespace), identical duration, file
