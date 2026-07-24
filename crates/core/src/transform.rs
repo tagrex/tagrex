@@ -293,6 +293,193 @@ pub enum TransformError {
     BadPattern(String),
 }
 
+/// Target notation for [`KeyNotation`] (#55).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyStyle {
+    /// Camelot wheel code, e.g. `8A` (A minor), `8B` (C major) — what harmonic
+    /// mixing uses.
+    Camelot,
+    /// Open Key code, e.g. `1m` / `1d`.
+    OpenKey,
+    /// Compact musical name, e.g. `Am`, `C`, `F#`.
+    Musical,
+}
+
+/// Camelot number for each pitch class (0 = C … 11 = B) in the major (B side)
+/// and minor (A side) rings of the wheel. Relative major/minor share a number
+/// (A minor = C major = 8), which is exactly why the wheel works.
+const MAJOR_CAMELOT: [u8; 12] = [8, 3, 10, 5, 12, 7, 2, 9, 4, 11, 6, 1];
+const MINOR_CAMELOT: [u8; 12] = [5, 12, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10];
+
+/// Preferred compact spelling per pitch class for `Musical` output (the flat
+/// spelling most tag data and DJ software use).
+const MUSICAL_NAMES: [&str; 12] = [
+    "C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
+];
+
+/// A parsed musical key: pitch class (0 = C … 11 = B) and whether it's minor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Key {
+    pitch: u8,
+    minor: bool,
+}
+
+/// Convert a musical key between notations (#55): musical ↔ Camelot ↔ Open Key.
+/// A [`TransformStep`], so it composes into a chain like the other steps and can
+/// batch-convert a whole library's Key field. An unrecognised value is left
+/// untouched — the field may legitimately hold something we don't model.
+pub struct KeyNotation {
+    style: KeyStyle,
+}
+
+impl KeyNotation {
+    pub fn new(style: KeyStyle) -> Self {
+        Self { style }
+    }
+}
+
+impl TransformStep for KeyNotation {
+    fn name(&self) -> &str {
+        match self.style {
+            KeyStyle::Camelot => "key → Camelot",
+            KeyStyle::OpenKey => "key → Open Key",
+            KeyStyle::Musical => "key → musical",
+        }
+    }
+
+    fn apply(&self, input: &str) -> String {
+        match parse_key(input) {
+            Some(key) => format_key(key, self.style),
+            None => input.to_string(),
+        }
+    }
+}
+
+/// Parse a key in musical (`Am`, `F# minor`, `Db`), Camelot (`8A`) or Open Key
+/// (`1m`) notation into a [`Key`]. Returns `None` for anything unrecognised.
+fn parse_key(input: &str) -> Option<Key> {
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    // A leading digit means a Camelot (`8A`) or Open Key (`1m`) code.
+    if trimmed.as_bytes()[0].is_ascii_digit() {
+        return parse_wheel_code(trimmed);
+    }
+    parse_musical(trimmed)
+}
+
+/// Parse `<1-12><A|B>` (Camelot) or `<1-12><m|d>` (Open Key).
+fn parse_wheel_code(input: &str) -> Option<Key> {
+    let last = input.chars().last()?;
+    let number: u8 = input[..input.len() - last.len_utf8()].trim().parse().ok()?;
+    if !(1..=12).contains(&number) {
+        return None;
+    }
+    let minor = match last.to_ascii_uppercase() {
+        'A' | 'M' => true,  // Camelot A / Open Key m = minor
+        'B' | 'D' => false, // Camelot B / Open Key d = major
+        _ => return None,
+    };
+    let table = if minor {
+        &MINOR_CAMELOT
+    } else {
+        &MAJOR_CAMELOT
+    };
+    // Camelot 'A'/'B' number IS the wheel number; Open Key 'm'/'d' is offset by
+    // 5 from Camelot. Try to read the number as Camelot first, else Open Key.
+    let camelot = if matches!(last.to_ascii_uppercase(), 'A' | 'B') {
+        number
+    } else {
+        // Open Key n → Camelot (n + 7) wrapped into 1..=12.
+        (number + 6) % 12 + 1
+    };
+    let pitch = (0u8..12).find(|&p| table[p as usize] == camelot)?;
+    Some(Key { pitch, minor })
+}
+
+/// Parse a musical key: a note (`A`–`G` with an optional `#`/`b`/`♯`/`♭`) plus
+/// an optional mode (`m`/`min`/`minor`/`-` = minor; bare or `maj`/`major` =
+/// major).
+fn parse_musical(input: &str) -> Option<Key> {
+    let mut chars = input.chars();
+    let letter = chars.next()?.to_ascii_uppercase();
+    let base = match letter {
+        'C' => 0,
+        'D' => 2,
+        'E' => 4,
+        'F' => 5,
+        'G' => 7,
+        'A' => 9,
+        'B' => 11,
+        _ => return None,
+    };
+    let mut rest = chars.as_str();
+    let mut pitch = base as i8;
+    match rest.chars().next() {
+        Some('#') | Some('♯') | Some('s') => {
+            pitch += 1;
+            rest = &rest[rest.chars().next().unwrap().len_utf8()..];
+        }
+        Some('b') | Some('♭') => {
+            pitch -= 1;
+            rest = &rest[rest.chars().next().unwrap().len_utf8()..];
+        }
+        _ => {}
+    }
+    let pitch = pitch.rem_euclid(12) as u8;
+
+    // Drop spaces and dashes so "A minor", "A-min" and "Amin" read alike.
+    let mode: String = rest
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .flat_map(char::to_lowercase)
+        .collect();
+    let minor = if mode.is_empty() || mode.starts_with("maj") {
+        false
+    } else if mode == "m" || mode.starts_with("min") {
+        true
+    } else {
+        // Unknown trailing text (e.g. "A7", "Ddim") — not a key we model.
+        return None;
+    };
+    Some(Key { pitch, minor })
+}
+
+fn format_key(key: Key, style: KeyStyle) -> String {
+    match style {
+        KeyStyle::Camelot => {
+            let table = if key.minor {
+                MINOR_CAMELOT
+            } else {
+                MAJOR_CAMELOT
+            };
+            format!(
+                "{}{}",
+                table[key.pitch as usize],
+                if key.minor { 'A' } else { 'B' }
+            )
+        }
+        KeyStyle::OpenKey => {
+            let table = if key.minor {
+                MINOR_CAMELOT
+            } else {
+                MAJOR_CAMELOT
+            };
+            // Camelot n → Open Key (n + 5) wrapped into 1..=12.
+            let open = (table[key.pitch as usize] + 4) % 12 + 1;
+            format!("{}{}", open, if key.minor { 'm' } else { 'd' })
+        }
+        KeyStyle::Musical => {
+            format!(
+                "{}{}",
+                MUSICAL_NAMES[key.pitch as usize],
+                if key.minor { "m" } else { "" }
+            )
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -462,5 +649,49 @@ mod tests {
             chain.apply("dj_kicks_björk_vol_iii"),
             "DJ Kicks Bjork Vol III"
         );
+    }
+
+    #[test]
+    fn key_to_camelot_covers_the_wheel() {
+        let camelot = KeyNotation::new(KeyStyle::Camelot);
+        // Relative major/minor share a number (the whole point of the wheel).
+        assert_eq!(camelot.apply("Am"), "8A");
+        assert_eq!(camelot.apply("C"), "8B");
+        assert_eq!(camelot.apply("Cm"), "5A");
+        assert_eq!(camelot.apply("Eb"), "5B");
+        // Sharps, flats, unicode accidentals, and mode spellings all parse.
+        assert_eq!(camelot.apply("F#"), "2B");
+        assert_eq!(camelot.apply("Gb"), "2B"); // enharmonic with F#
+        assert_eq!(camelot.apply("F♯ minor"), "11A");
+        assert_eq!(camelot.apply("bb min"), "3A"); // Bb minor, lower-case
+        assert_eq!(camelot.apply("A major"), "11B");
+    }
+
+    #[test]
+    fn key_converts_between_wheel_and_musical() {
+        // Camelot in, musical out.
+        let musical = KeyNotation::new(KeyStyle::Musical);
+        assert_eq!(musical.apply("8A"), "Am");
+        assert_eq!(musical.apply("8B"), "C");
+        assert_eq!(musical.apply("2B"), "F#");
+        // Open Key in, Camelot out (8A == 1m).
+        let camelot = KeyNotation::new(KeyStyle::Camelot);
+        assert_eq!(camelot.apply("1m"), "8A");
+        assert_eq!(camelot.apply("1d"), "8B");
+        // Musical in, Open Key out.
+        let open = KeyNotation::new(KeyStyle::OpenKey);
+        assert_eq!(open.apply("Am"), "1m");
+        assert_eq!(open.apply("C"), "1d");
+    }
+
+    #[test]
+    fn key_leaves_unrecognized_values_untouched() {
+        let camelot = KeyNotation::new(KeyStyle::Camelot);
+        assert_eq!(camelot.apply(""), "");
+        assert_eq!(camelot.apply("Ddim"), "Ddim"); // not a plain major/minor key
+        assert_eq!(camelot.apply("not a key"), "not a key");
+        assert_eq!(camelot.apply("13A"), "13A"); // out of the 1..=12 range
+                                                 // Already-Camelot input is idempotent.
+        assert_eq!(camelot.apply("8A"), "8A");
     }
 }

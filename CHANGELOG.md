@@ -10,6 +10,16 @@ first release ships.
 
 ### Added
 
+- Camelot / Open Key musical-key notation (#55). GENERATOR gains a **Key
+  notation** rule that converts the musical key between Camelot (8A, 5B — what
+  harmonic mixing uses), Open Key (1m, 1d), and compact musical (Am, F#) — scope
+  it to the new **Key** field to convert a whole set. The converter understands
+  sharps/flats (incl. ♯/♭), mode spellings (`m`/`min`/`minor`/`-`, bare or
+  `maj`), and already-wheel input, and leaves anything it doesn't recognize
+  untouched. (BPM and Key are already modeled tag fields, read/write/sortable as
+  columns; this adds the notation conversion. Detecting key/BPM from audio stays
+  out of scope.)
+
 - Group the table by release id (#87, finishing the deferred bullet of #20).
   Importing a release now writes its provider id to an album-level tag —
   `MUSICBRAINZ_ALBUMID` for MusicBrainz, `DISCOGS_RELEASE_ID` for Discogs (a

@@ -1202,7 +1202,7 @@ function addTransformRule() {
     regex: false,
     whole_word: false,
     case_sensitive: false,
-    style: kind === "case" ? "title" : "",
+    style: kind === "case" ? "title" : kind === "key" ? "camelot" : "",
   });
   renderTransformRules();
 }
@@ -1277,7 +1277,9 @@ function renderTransformRules() {
         ? "Find and replace"
         : rule.kind === "case"
           ? "Change case"
-          : "Remove diacritics";
+          : rule.kind === "key"
+            ? "Key notation"
+            : "Remove diacritics";
 
     const spacer = document.createElement("span");
     spacer.className = "spacer";
@@ -1376,6 +1378,31 @@ function renderTransformRules() {
       const note = document.createElement("span");
       note.className = "rule-note";
       note.textContent = "Known acronyms & roman numerals keep their casing.";
+      b.append(seg, note);
+      card.append(b);
+    } else if (rule.kind === "key") {
+      const b = document.createElement("div");
+      b.className = "rule-body";
+      const seg = document.createElement("div");
+      seg.className = "seg";
+      for (const [value, text] of [
+        ["camelot", "Camelot"],
+        ["openkey", "Open Key"],
+        ["musical", "Musical"],
+      ]) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "seg-btn" + (rule.style === value ? " active" : "");
+        btn.textContent = text;
+        btn.addEventListener("click", () => {
+          rule.style = value;
+          seg.querySelectorAll(".seg-btn").forEach((s) => s.classList.toggle("active", s === btn));
+        });
+        seg.appendChild(btn);
+      }
+      const note = document.createElement("span");
+      note.className = "rule-note";
+      note.textContent = "Converts the musical key (best scoped to the Key field). Unrecognized values are left as-is.";
       b.append(seg, note);
       card.append(b);
     }
@@ -3092,6 +3119,43 @@ const mockPlayer = {
   },
 };
 
+// Compact Camelot/Open Key/musical converter — the browser-only mirror of the
+// backend KeyNotation step, so the transform preview shows real conversions.
+function mockKeyNotation(value, style) {
+  const MAJOR = [8, 3, 10, 5, 12, 7, 2, 9, 4, 11, 6, 1];
+  const MINOR = [5, 12, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10];
+  const NAMES = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+  const s = String(value).trim();
+  if (!s) return value;
+  let pitch, minor;
+  if (/^\d/.test(s)) {
+    const m = s.match(/^(\d{1,2})\s*([ABmd])$/i);
+    if (!m) return value;
+    const num = +m[1];
+    if (num < 1 || num > 12) return value;
+    const letter = m[2].toUpperCase();
+    minor = letter === "A" || letter === "M";
+    const table = minor ? MINOR : MAJOR;
+    const camelot = letter === "A" || letter === "B" ? num : ((num + 6) % 12) + 1;
+    pitch = table.indexOf(camelot);
+    if (pitch < 0) return value;
+  } else {
+    const m = s.match(/^([A-Ga-g])([#♯sb♭]?)\s*(.*)$/);
+    if (!m) return value;
+    const base = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[m[1].toUpperCase()];
+    let p = base + (/[#♯s]/.test(m[2]) ? 1 : /[b♭]/.test(m[2]) ? -1 : 0);
+    pitch = ((p % 12) + 12) % 12;
+    const mode = m[3].replace(/[\s-]/g, "").toLowerCase();
+    if (mode === "" || mode.startsWith("maj")) minor = false;
+    else if (mode === "m" || mode.startsWith("min")) minor = true;
+    else return value;
+  }
+  if (style === "musical") return NAMES[pitch] + (minor ? "m" : "");
+  const table = minor ? MINOR : MAJOR;
+  if (style === "openkey") return (((table[pitch] + 4) % 12) + 1) + (minor ? "m" : "d");
+  return table[pitch] + (minor ? "A" : "B"); // camelot
+}
+
 // ---- browser-only mock (no effect inside Tauri) ----
 function mockInvoke(cmd, args) {
   mockInvoke.state = mockInvoke.state || {
@@ -3141,6 +3205,8 @@ function mockInvoke(cmd, args) {
             out = out.toLowerCase();
           } else if (rule.kind === "case" && rule.style === "upper") {
             out = out.toUpperCase();
+          } else if (rule.kind === "key") {
+            out = mockKeyNotation(out, rule.style);
           }
         }
         return out;

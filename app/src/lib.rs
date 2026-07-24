@@ -30,7 +30,8 @@ use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChan
 use tagrex_core::provider::{MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
 use tagrex_core::transform::{
-    CaseStyle, ChangeCase, RemoveDiacritics, Replace, ReplaceOptions, TransformChain,
+    CaseStyle, ChangeCase, KeyNotation, KeyStyle, RemoveDiacritics, Replace, ReplaceOptions,
+    TransformChain,
 };
 use tagrex_providers_discogs::DiscogsProvider;
 use tagrex_providers_musicbrainz::MusicBrainzProvider;
@@ -289,7 +290,7 @@ pub struct ImportSelectionDto {
 /// One rule in a transformation chain, as the UI describes it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TransformRuleDto {
-    /// `replace`, `case` or `diacritics`.
+    /// `replace`, `case`, `diacritics` or `key`.
     pub kind: String,
     #[serde(default)]
     pub from: String,
@@ -301,7 +302,8 @@ pub struct TransformRuleDto {
     pub whole_word: bool,
     #[serde(default)]
     pub case_sensitive: bool,
-    /// For `case`: `lower`, `upper`, `title` or `sentence`.
+    /// For `case`: `lower`, `upper`, `title` or `sentence`. For `key`: the
+    /// target notation `camelot`, `openkey` or `musical`.
     #[serde(default)]
     pub style: String,
 }
@@ -1226,6 +1228,15 @@ fn build_chain(rules: &[TransformRuleDto]) -> Result<TransformChain, AppError> {
                 chain.push(Box::new(ChangeCase::new(style)));
             }
             "diacritics" => chain.push(Box::new(RemoveDiacritics)),
+            "key" => {
+                let style = match rule.style.as_str() {
+                    "camelot" => KeyStyle::Camelot,
+                    "openkey" => KeyStyle::OpenKey,
+                    "musical" => KeyStyle::Musical,
+                    other => return Err(AppError::UnknownTransform(other.to_string())),
+                };
+                chain.push(Box::new(KeyNotation::new(style)));
+            }
             other => return Err(AppError::UnknownTransform(other.to_string())),
         }
     }
