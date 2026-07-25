@@ -64,10 +64,11 @@ first release ships.
   **File name** (without extension), or **Artist + Title** — and runs the search;
   typing switches it back to **Manual**.
 
-- Release builds for **x86-64** as well as ARM64. The release workflow now builds
-  the desktop app on native runners for both architectures across macOS, Windows
-  and Linux (six bundles total), each on its own runner since Tauri can't be
-  cross-compiled between platforms.
+- Release builds for **x86-64** as well as ARM64. The release workflow builds the
+  desktop app on native runners: macOS on Apple Silicon (ARM64), and Windows and
+  Linux on both ARM64 and x86-64 — five bundles, each on its own runner since
+  Tauri can't be cross-compiled between platforms. (macOS Intel is intentionally
+  omitted.)
 
 - Write the label and catalogue number on import (#90). Importing a release now
   fills the **Publisher** (label) and **CatalogNumber** tags — previously the

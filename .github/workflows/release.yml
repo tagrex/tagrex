@@ -1,9 +1,10 @@
 name: Release build
 
-# Builds the desktop app on native runners for each OS and architecture
-# (ARM64 + x86-64), because cross-compiling Tauri from one platform to another
-# isn't practical — each needs its own webview + linker. All of these runners
-# are free for public repos.
+# Builds the desktop app on native runners per OS/architecture, because cross-
+# compiling Tauri from one platform to another isn't practical — each needs its
+# own webview + linker. Coverage: macOS ARM64 only; Windows and Linux on both
+# ARM64 and x86-64. (macOS x64/Intel is intentionally left out.) All of these
+# runners are free for public repos.
 #
 # Run it manually from the Actions tab (workflow_dispatch), or push a `v*` tag
 # to also attach the bundles to a GitHub Release. Bundles are always uploaded as
@@ -38,10 +39,8 @@ jobs:
           - name: linux-arm64
             runner: ubuntu-24.04-arm
             bundles: deb,rpm
-          # x86-64
-          - name: macos-x64
-            runner: macos-13
-            bundles: dmg
+          # x86-64 (macOS x64 / Intel intentionally omitted — Apple Silicon only
+          # for macOS; the macos-13 Intel runners also queue for a long time)
           - name: windows-x64
             runner: windows-latest
             bundles: nsis
