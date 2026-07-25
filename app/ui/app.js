@@ -1938,7 +1938,35 @@ const coverCache = new Map(); // releaseId -> CoverArtDto (full cover, for embed
 const imageCache = new Map(); // releaseId -> { thumb?, cover? }
 const expandedIds = new Set(); // cards currently expanded — survive a re-render
 
+// Paged search (#95/#96): results come in batches of `searchPerPage`; "Load
+// more" pulls the next page and appends. `searchGen` is bumped on every new
+// search and on Stop, so any in-flight page fetch or background count sweep from
+// an older batch bails instead of writing stale cards.
+let searchPerPage = 10; // batch size; mirrors the #search-per-page select
+let searchPage = 0; // last page fetched (0 = none yet)
+let searchHasMore = false; // provider likely has another page
+let searchGen = 0; // generation token
+let loadingResults = false; // a page fetch / count sweep is in flight
+
 async function discogsSearch() {
+  return runSearch(true);
+}
+
+async function loadMoreResults() {
+  if (loadingResults || !searchHasMore) return;
+  return runSearch(false);
+}
+
+// Stop the background loading (#96) without discarding what's already shown:
+// bumping the generation makes in-flight workers bail; the "Load more" button
+// stays available so the user can resume.
+function stopLoading() {
+  searchGen++;
+  loadingResults = false;
+  updateLoadMoreUi();
+}
+
+async function runSearch(reset) {
   const source = el("online-source").value;
   const token = el("discogs-token").value.trim();
   const query = el("discogs-query").value.trim();
@@ -1949,18 +1977,57 @@ async function discogsSearch() {
   }
   // Remember the token locally so it's prefilled next time.
   if (token) invoke("save_discogs_token", { token }).catch(() => {});
-  releaseSource = source;
-  try {
-    releaseCandidates = await invoke("provider_search", { source, token, query: { album: query } });
+
+  if (reset) {
+    releaseSource = source;
+    searchPerPage = Number(el("search-per-page").value) || 10;
+    searchPage = 0;
+    searchHasMore = false;
+    releaseCandidates = [];
     releaseCache.clear();
     coverCache.clear();
     imageCache.clear();
     expandedIds.clear();
+    searchGen++;
+  }
+  const gen = searchGen;
+  const page = searchPage + 1;
+  loadingResults = true;
+  updateLoadMoreUi();
+  try {
+    const hits = await invoke("provider_search", {
+      source: releaseSource,
+      token,
+      query: { album: query, page, per_page: searchPerPage },
+    });
+    if (gen !== searchGen) return; // a newer search / Stop superseded this
+    searchPage = page;
+    // A full page back suggests there's more to fetch.
+    searchHasMore = hits.length >= searchPerPage;
+    // Append, skipping ids already shown in case pages overlap.
+    const seen = new Set(releaseCandidates.map((c) => c.id));
+    const added = hits.filter((c) => !seen.has(c.id));
+    releaseCandidates.push(...added);
     renderReleaseList();
-    prefetchReleaseCounts(); // fill track/disc counts up front, in the background
+    prefetchReleaseCounts(added, gen); // count only the newly added page
   } catch (e) {
     toast(String(e), true);
+  } finally {
+    if (gen === searchGen) {
+      loadingResults = false;
+      updateLoadMoreUi();
+    }
   }
+}
+
+// Show/hide the Load more / Stop footer to match the current loading state.
+function updateLoadMoreUi() {
+  const wrap = el("release-more");
+  if (!wrap) return;
+  wrap.hidden = releaseCandidates.length === 0;
+  el("load-more").hidden = loadingResults || !searchHasMore;
+  el("stop-loading").hidden = !loadingResults;
+  el("load-more-spin").hidden = !loadingResults;
 }
 
 async function loadSavedToken() {
@@ -2163,6 +2230,58 @@ function renderReleaseList() {
       card.querySelector(".release-tracklist").dataset.loaded = "1";
     }
   }
+  updateLoadMoreUi();
+}
+
+// ---- query presets (#97) ----
+// Fill the search box from the current selection instead of only manual typing.
+function baseNameNoExt(path) {
+  const base = fileName(path);
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(0, dot) : base;
+}
+
+function folderNameOf(path) {
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  const dir = i >= 0 ? path.slice(0, i) : "";
+  const j = Math.max(dir.lastIndexOf("/"), dir.lastIndexOf("\\"));
+  return j >= 0 ? dir.slice(j + 1) : dir;
+}
+
+// The track a preset draws from: the first selected row, else the first loaded.
+function presetSourceTrack() {
+  const byPath = trackByPath();
+  const first = selectedPaths()[0];
+  return (first && byPath.get(first)) || tracks[0] || null;
+}
+
+function queryFromPreset(kind) {
+  const t = presetSourceTrack();
+  if (!t) return "";
+  switch (kind) {
+    case "folder":
+      return folderNameOf(t.path);
+    case "filename":
+      return baseNameNoExt(t.path);
+    case "artist-title":
+      return [t.tags.artist, t.tags.title].filter(Boolean).join(" ").trim();
+    default:
+      return "";
+  }
+}
+
+// Apply the chosen preset: fill the box (leaving "manual" alone) and, if we have
+// something to search for, run the search straight away.
+function applyQueryPreset() {
+  const kind = el("query-preset").value;
+  if (kind === "manual") return;
+  const text = queryFromPreset(kind);
+  if (!text) {
+    toast("Nothing selected to build the query from", true);
+    return;
+  }
+  el("discogs-query").value = text;
+  discogsSearch();
 }
 
 function cardMarkup(c) {
@@ -2234,13 +2353,13 @@ async function applyImage(c) {
 // a card and toggling layout are then instant.
 const PREFETCH_CONCURRENCY = 4;
 
-async function prefetchReleaseCounts() {
+async function prefetchReleaseCounts(items, gen) {
   const token = el("discogs-token").value.trim();
-  const batch = releaseCandidates;
-  const queue = batch.filter((c) => !releaseCache.has(c.id));
+  const queue = (items || releaseCandidates).filter((c) => !releaseCache.has(c.id));
   async function worker() {
     while (queue.length) {
-      if (releaseCandidates !== batch) return; // a newer search superseded this
+      // A newer search, or Stop (#96), bumps the generation → bail.
+      if (gen !== undefined && gen !== searchGen) return;
       const c = queue.shift();
       if (!c || releaseCache.has(c.id)) continue;
       try {
@@ -2669,6 +2788,17 @@ el("export-run").addEventListener("click", runExport);
 coverFileInput.addEventListener("change", onCoverChosen);
 el("discogs-search").addEventListener("click", discogsSearch);
 el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
+// Typing switches the preset back to manual so a stale label doesn't mislead.
+el("discogs-query").addEventListener("input", () => {
+  el("query-preset").value = "manual";
+});
+el("query-preset").addEventListener("change", applyQueryPreset);
+el("load-more").addEventListener("click", loadMoreResults);
+el("stop-loading").addEventListener("click", stopLoading);
+el("search-per-page").addEventListener("change", () => {
+  // Re-run from page 1 at the new page size if we already have results.
+  if (releaseCandidates.length) discogsSearch();
+});
 
 // TAGGER sub-tabs: ONLINE (Discogs) vs EDITOR (tag fields + cover).
 function setSubtab(name) {
@@ -3587,10 +3717,32 @@ function mockInvoke(cmd, args) {
           { id: "aeb1c1c0-0000-0000-0000-000000000001", artist: "Various Artists", title: "La Bush", year: 1996, score: 1.0, thumb_url: null, cover_url: null, country: "BE", label: "Antler-Subway", format: "CD", catalog_number: "TOTH 006" },
         ]);
       }
-      return Promise.resolve([
-        { id: "316795", artist: "Various", title: "La Bush - Music From The Temple Of House", year: 1996, score: 1.0, thumb_url: "https://img/1t.jpg", cover_url: "https://img/1c.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Compilation, Mixed", catalog_number: "TOTH 006" },
-        { id: "764414", artist: "Various", title: "La Bush Vol. 4", year: 1997, score: 0.9, thumb_url: "https://img/2t.jpg", cover_url: "https://img/2c.jpg", country: "Belgium", label: "Antler-Subway", format: "CD, Mixed", catalog_number: "TOTH 021" },
-      ]);
+      {
+        // Fake a paginated Discogs response so "Load more" / Stop (#95/#96) can
+        // be exercised in the browser mock: 23 hits total, sliced by page.
+        const TOTAL = 23;
+        const per = args.query?.per_page || 10;
+        const page = args.query?.page || 1;
+        const start = (page - 1) * per;
+        const hits = [];
+        for (let i = start; i < Math.min(start + per, TOTAL); i++) {
+          const n = i + 1;
+          hits.push({
+            id: String(300000 + n),
+            artist: "Various",
+            title: `La Bush Vol. ${n}`,
+            year: 1996,
+            score: 1 - i * 0.01,
+            thumb_url: "https://img/1t.jpg",
+            cover_url: "https://img/1c.jpg",
+            country: "Belgium",
+            label: "Antler-Subway",
+            format: "CD, Mixed",
+            catalog_number: `TOTH ${String(n).padStart(3, "0")}`,
+          });
+        }
+        return Promise.resolve(hits);
+      }
     case "provider_fetch_release":
       if (args.source === "musicbrainz") {
         return Promise.resolve({

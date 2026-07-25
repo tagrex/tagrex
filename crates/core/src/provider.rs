@@ -22,6 +22,12 @@ pub struct SearchQuery {
     /// Catalog number or barcode — first-class because it is the highest
     /// precision key on Discogs.
     pub catalog_number: Option<String>,
+    /// 1-based page for paginated search; 0 is treated as page 1. Lets the UI
+    /// pull results in batches ("Load more") instead of a whole page at once,
+    /// keeping traffic to the provider down (#95).
+    pub page: u32,
+    /// Results per page; 0 means "use the provider's default page size".
+    pub per_page: u32,
 }
 
 /// Provider-scoped release identifier.

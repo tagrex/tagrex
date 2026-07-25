@@ -1818,6 +1818,25 @@ td.unreadable-note {
   padding: 4px 0 8px;
 }
 
+.release-toolbar .per-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.release-toolbar .per-page select {
+  padding: 2px 4px;
+}
+
+/* "Load more" / Stop footer under the results list (#95/#96). */
+.release-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 0 4px;
+}
+
 .seg {
   display: flex;
   border: 1px solid var(--border);

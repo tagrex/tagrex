@@ -184,12 +184,25 @@
                 <div class="spacer"></div>
               </div>
               <div class="mask-row">
+                <select id="query-preset" title="Build the query from…">
+                  <option value="manual">Manual</option>
+                  <option value="folder">Folder name</option>
+                  <option value="filename">File name</option>
+                  <option value="artist-title">Artist + Title</option>
+                </select>
                 <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
                 <button id="discogs-search">Search</button>
               </div>
               <div class="release-toolbar" id="release-toolbar" hidden>
                 <span class="hint muted">Found <span id="release-count">0</span> entries</span>
                 <div class="spacer"></div>
+                <label class="hint muted per-page">Show
+                  <select id="search-per-page" title="Results per page">
+                    <option value="5">5</option>
+                    <option value="10" selected>10</option>
+                    <option value="15">15</option>
+                  </select>
+                </label>
                 <div class="seg" id="release-layout" role="tablist" aria-label="Layout">
                   <button class="seg-btn active" data-layout="list">☰ List</button>
                   <button class="seg-btn" data-layout="grid">▦ Grid</button>
@@ -200,6 +213,11 @@
               <!-- Cards (list or grid). Each expands to its tracklist, fetched
                    lazily; import is per-card. -->
               <div id="release-list" class="release-list"></div>
+              <div id="release-more" class="release-more" hidden>
+                <button id="load-more" type="button">Load more results</button>
+                <button id="stop-loading" type="button" hidden>Stop</button>
+                <span id="load-more-spin" class="muted" hidden>Loading…</span>
+              </div>
               <p id="discogs-empty" class="empty inert-panel">Search Discogs to see releases.</p>
             </div>
           </div>

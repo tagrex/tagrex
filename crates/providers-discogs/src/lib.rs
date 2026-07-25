@@ -166,6 +166,17 @@ impl MetadataProvider for DiscogsProvider {
             params.push(("catno", catalog));
         }
 
+        // Pagination (#95). Discogs takes 1-based `page` and `per_page`; only
+        // send them when the caller asked for a specific page size, otherwise
+        // let the API use its own default.
+        let (page, per_page);
+        if query.per_page > 0 {
+            page = query.page.max(1).to_string();
+            per_page = query.per_page.to_string();
+            params.push(("page", &page));
+            params.push(("per_page", &per_page));
+        }
+
         let body = self.get(&format!("{API_BASE}/database/search"), &params)?;
         parse_search_response(&body)
     }

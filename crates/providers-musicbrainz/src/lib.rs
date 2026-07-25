@@ -165,11 +165,21 @@ impl MetadataProvider for MusicBrainzProvider {
         if query_str.is_empty() {
             return Ok(Vec::new());
         }
-        let mut params: Vec<(&str, &str)> = vec![
-            ("query", &query_str),
-            ("fmt", "json"),
-            ("limit", SEARCH_LIMIT),
-        ];
+        // Pagination (#95): MusicBrainz uses `limit` + a 0-based `offset`. Fall
+        // back to the default page size when the caller didn't set one.
+        let (limit, offset);
+        let limit_str: &str = if query.per_page > 0 {
+            limit = query.per_page.to_string();
+            &limit
+        } else {
+            SEARCH_LIMIT
+        };
+        let mut params: Vec<(&str, &str)> =
+            vec![("query", &query_str), ("fmt", "json"), ("limit", limit_str)];
+        if query.per_page > 0 && query.page > 1 {
+            offset = (query.per_page * (query.page - 1)).to_string();
+            params.push(("offset", &offset));
+        }
         // dismax matches a plain user query across fields (see `build_query`).
         if dismax {
             params.push(("dismax", "true"));
@@ -518,6 +528,7 @@ mod tests {
             title: None,
             album: Some("Music Has the Right".into()),
             catalog_number: Some("warp55".into()),
+            ..Default::default()
         };
         // Fielded clauses are ANDed; the free-text album rides along as a phrase.
         assert_eq!(

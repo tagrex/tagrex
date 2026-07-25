@@ -22,6 +22,24 @@ first release ships.
 
 ### Added
 
+- Paged release search with **Load more** and **Stop** (#95, #96). Online search
+  now fetches results a page at a time (choose 5/10/15 with the **Show** control)
+  instead of a whole page at once, cutting traffic to the provider. A **Load more
+  results** button pulls the next batch and appends it; a **Stop** button cancels
+  the in-progress background loading once the wanted release is already visible,
+  keeping what's shown. Works for both Discogs (`page`/`per_page`) and MusicBrainz
+  (`limit`/`offset`).
+
+- Build the search query from a preset, not just manual typing (#97). A selector
+  next to the search box fills it from the current selection — **Folder name**,
+  **File name** (without extension), or **Artist + Title** — and runs the search;
+  typing switches it back to **Manual**.
+
+- Release builds for **x86-64** as well as ARM64. The release workflow now builds
+  the desktop app on native runners for both architectures across macOS, Windows
+  and Linux (six bundles total), each on its own runner since Tauri can't be
+  cross-compiled between platforms.
+
 - Write the label and catalogue number on import (#90). Importing a release now
   fills the **Publisher** (label) and **CatalogNumber** tags — previously the
   catalogue number was shown on the card but never written. A release can list

@@ -247,6 +247,13 @@ pub struct SearchQueryDto {
     pub title: Option<String>,
     pub album: Option<String>,
     pub catalog_number: Option<String>,
+    /// 1-based page for "Load more" pagination (#95). Defaults to 0 (page 1)
+    /// so older callers that omit it keep working.
+    #[serde(default)]
+    pub page: u32,
+    /// Results per page; 0 lets the provider use its default page size.
+    #[serde(default)]
+    pub per_page: u32,
 }
 
 /// A provider search hit.
@@ -1645,6 +1652,8 @@ impl SearchQueryDto {
             title: self.title.clone(),
             album: self.album.clone(),
             catalog_number: self.catalog_number.clone(),
+            page: self.page,
+            per_page: self.per_page,
         }
     }
 }
