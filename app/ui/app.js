@@ -2285,19 +2285,25 @@ function applyQueryPreset() {
 }
 
 function cardMarkup(c) {
+  // Four lines, top to bottom (#98): catalogue no. + track/disc count, then
+  // album artist, then album title, then the rest (country · year · format).
   const catno = c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : "";
+  const artist = c.artist ? `<span class="release-artist" title="${escapeHtml(c.artist)}">${escapeHtml(c.artist)}</span>` : "";
+  const meta = candidateMeta(c);
+  const metaLine = meta ? `<span class="release-meta muted">${escapeHtml(meta)}</span>` : "";
   return `
     <article class="release-card" data-id="${escapeHtml(c.id)}" aria-expanded="false">
       <button class="release-head" type="button">
         <span class="release-cover"></span>
         <span class="release-info">
-          <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.artist ? c.artist + " — " : "")}${escapeHtml(c.title)}</span>
-          <span class="release-meta">${catno}<span class="muted">${escapeHtml(candidateMeta(c))}</span></span>
+          <span class="release-line1">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></span>
+          ${artist}
+          <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
+          ${metaLine}
         </span>
         <span class="release-caret" aria-hidden="true">▸</span>
       </button>
       <div class="release-facts">
-        <span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span>
         <button class="release-details" type="button">details…</button>
       </div>
       <div class="release-tracklist"></div>

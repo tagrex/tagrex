@@ -20,6 +20,14 @@ first release ships.
   with an ellipsis. The settings segmented controls no longer leave dead space
   after the last button. The side panel starts at 480px (min drag width 240px).
 
+### Changed
+
+- Restructured the List-view release card into four clear lines (#98): line 1 is
+  the catalogue number and track/disc count, line 2 the album artist, line 3 the
+  album title, line 4 the rest (country · year · format). Previously the artist
+  and title shared one line and the count sat in a separate footer row. The
+  media-type disc masks / badges from the same issue are a follow-up Design task.
+
 ### Added
 
 - Paged release search with **Load more** and **Stop** (#95, #96). Online search

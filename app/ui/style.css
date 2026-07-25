@@ -1956,8 +1956,21 @@ td.unreadable-note {
   overflow: hidden;
 }
 
+/* Line 1 of a list card (#98): catalogue no. + track/disc count. */
+.release-line1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Line 2: album artist — a touch heavier than the meta, one line. */
 .release-artist {
   font-size: var(--text-xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .release-meta {
