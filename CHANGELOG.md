@@ -10,6 +10,11 @@ first release ships.
 
 ### Fixed
 
+- The **GENERATOR rule chain** now reorders with the same pointer-based drag as
+  the other lists (#88 follow-up), instead of HTML5 drag-and-drop that is
+  unreliable in the app's WKWebView. Dragging a rule's grip moves it; the ↑/↓
+  buttons stay as the fallback. This was the last list still on the old DnD.
+
 - Native-app UI issues found in testing (#88). The **Columns** popover and
   **Read priority** list can be drag-reordered again — both used HTML5
   drag-and-drop, which is unreliable in the app's WKWebView, and are now on the
@@ -39,6 +44,12 @@ first release ships.
   `style.css` by a third. The font is still fully offline — no external request.
 
 ### Added
+
+- **Reset to default** on the reorderable lists (#91). The **Columns** popover
+  has a "Reset to default" footer that restores the default set, order,
+  visibility, and widths (File · Artist · Title · Album · Year); **Settings ›
+  Read priority** has a "Reset" that restores ID3v2 · Vorbis · APE (applied on
+  Save, like the rest of the panel).
 
 - Paged release search with **Load more** and **Stop** (#95, #96). Online search
   now fetches results a page at a time (choose 5/10/15 with the **Show** control)

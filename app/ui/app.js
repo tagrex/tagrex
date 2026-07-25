@@ -248,6 +248,18 @@ function applyColumns(cols) {
   renderTracks();
 }
 
+// Reset columns to the default set, visibility, and widths (#91).
+function resetColumns() {
+  columnWidths = {};
+  try {
+    localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
+  } catch (e) {
+    /* nothing persisted to clear */
+  }
+  applyColumns(DEFAULT_COLUMNS.slice()); // persists + rebuilds head/rows
+  renderColumnsMenu();
+}
+
 // Pointer-based drag reorder for a vertical list, keyed by each item's
 // `data-key`. WKWebView's HTML5 drag-and-drop is unreliable (dynamically set
 // `draggable` often never starts a drag), which is why the file-table reorder
@@ -304,6 +316,17 @@ function renderColumnsMenu() {
     menu.appendChild(sep);
     for (const key of hidden) menu.appendChild(colMenuRow(key, false));
   }
+  // Reset-to-default footer (#91): default set, order, visibility, and widths.
+  const foot = document.createElement("div");
+  foot.className = "col-menu-foot";
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "text-btn";
+  reset.textContent = "Reset to default";
+  reset.title = "File · Artist · Title · Album · Year, default widths";
+  reset.addEventListener("click", resetColumns);
+  foot.appendChild(reset);
+  menu.appendChild(foot);
 }
 
 function colMenuRow(key, visible) {
@@ -1318,6 +1341,9 @@ tracksBody.addEventListener("click", (e) => {
 // live here only for the length of the dialog; naming and saving chains is
 // tracked separately (#57).
 let transformRules = [];
+// Stable per-rule id, so pointer-based reorder (#88) can key on identity rather
+// than a shifting array index.
+let ruleIdCounter = 0;
 
 // Refresh the GENERATOR panel for the current selection (called on entering the
 // mode). The rule chain persists across mode switches within a session.
@@ -1330,6 +1356,7 @@ function refreshGenerator() {
 function addTransformRule() {
   const kind = el("transform-kind").value;
   transformRules.push({
+    id: ++ruleIdCounter,
     kind,
     from: "",
     to: "",
@@ -1340,9 +1367,6 @@ function addTransformRule() {
   });
   renderTransformRules();
 }
-
-// The rule being dragged by its grip (index into transformRules), or null.
-let dragRuleIndex = null;
 
 function mkRuleIcon(text, title, disabled, onClick) {
   const b = document.createElement("button");
@@ -1360,23 +1384,6 @@ function moveRule(from, to) {
   renderTransformRules();
 }
 
-function clearRuleDropTargets() {
-  el("transform-rules")
-    .querySelectorAll(".drop-target")
-    .forEach((c) => c.classList.remove("drop-target"));
-}
-
-// Insertion index for a drop at pointer-Y: the first card whose midpoint is
-// below the pointer (or the end of the list).
-function ruleDropIndex(y) {
-  const cards = [...el("transform-rules").querySelectorAll(".rule-card")];
-  for (let i = 0; i < cards.length; i++) {
-    const r = cards[i].getBoundingClientRect();
-    if (y < r.top + r.height / 2) return i;
-  }
-  return cards.length;
-}
-
 function renderTransformRules() {
   const body = el("transform-rules");
   body.innerHTML = "";
@@ -1386,6 +1393,7 @@ function renderTransformRules() {
     const card = document.createElement("div");
     card.className = "rule-card";
     card.dataset.index = index;
+    card.dataset.key = rule.id; // identity key for pointer reorder (#88)
 
     // ---- header: grip · n · kind · ↑ ↓ ✕ ----
     const head = document.createElement("div");
@@ -1395,10 +1403,19 @@ function renderTransformRules() {
     grip.className = "rule-grip";
     grip.textContent = "⋮⋮";
     grip.title = "Drag to reorder";
-    // Order is semantic (case before/after an acronym fix differs). Drag is the
-    // primary reorder gesture; arm draggable only while the grip is held so a
-    // drag can't start from an input.
-    grip.addEventListener("mousedown", () => (card.draggable = true));
+    // Order is semantic (case before/after an acronym fix differs). Pointer-based
+    // reorder — WKWebView's HTML5 DnD is unreliable (#88); ↑/↓ stay as fallback.
+    enablePointerReorder(grip, card, el("transform-rules"), ".rule-card", (draggedKey, targetKey, below) => {
+      const dragged = transformRules.find((r) => String(r.id) === draggedKey);
+      if (!dragged) return;
+      const order = transformRules.filter((r) => r !== dragged);
+      let to = order.findIndex((r) => String(r.id) === targetKey);
+      if (to < 0) return;
+      if (below) to += 1;
+      order.splice(to, 0, dragged);
+      transformRules = order;
+      renderTransformRules();
+    });
 
     const n = document.createElement("span");
     n.className = "rule-n";
@@ -1436,18 +1453,6 @@ function renderTransformRules() {
 
     head.append(grip, n, kind, spacer, acts);
     card.append(head);
-
-    card.addEventListener("dragstart", (e) => {
-      dragRuleIndex = index;
-      card.classList.add("dragging");
-      e.dataTransfer.effectAllowed = "move";
-    });
-    card.addEventListener("dragend", () => {
-      card.draggable = false;
-      dragRuleIndex = null;
-      card.classList.remove("dragging");
-      clearRuleDropTargets();
-    });
 
     // ---- body (per-kind); diacritics is header-only ----
     if (rule.kind === "replace") {
@@ -2080,6 +2085,13 @@ function renderPrioList() {
   const list = el("set-prio");
   list.innerHTML = "";
   for (const key of readPriority) list.appendChild(prioItem(key));
+}
+
+// Reset read priority to the default order (#91). Takes effect on Save, like the
+// rest of the settings panel.
+function resetPriority() {
+  readPriority = PRIO_KEYS.slice();
+  renderPrioList();
 }
 
 function prioItem(key) {
@@ -2807,27 +2819,8 @@ coverWell.addEventListener("drop", (e) => {
 });
 el("transform-add").addEventListener("click", addTransformRule);
 el("transform-preview").addEventListener("click", previewTransform);
-// Rule reorder by dragging the grip (#34): show a drop indicator, and move the
-// rule in the chain on drop.
-el("transform-rules").addEventListener("dragover", (e) => {
-  if (dragRuleIndex === null) return;
-  e.preventDefault();
-  clearRuleDropTargets();
-  const cards = el("transform-rules").querySelectorAll(".rule-card");
-  const to = ruleDropIndex(e.clientY);
-  if (to < cards.length) cards[to].classList.add("drop-target");
-});
-el("transform-rules").addEventListener("drop", (e) => {
-  if (dragRuleIndex === null) return;
-  e.preventDefault();
-  let to = ruleDropIndex(e.clientY);
-  const from = dragRuleIndex;
-  const [moved] = transformRules.splice(from, 1);
-  if (from < to) to -= 1;
-  transformRules.splice(to, 0, moved);
-  dragRuleIndex = null;
-  renderTransformRules();
-});
+// Rule reorder is wired per-card in renderTransformRules via enablePointerReorder
+// (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 el("move-preview").addEventListener("click", previewMove);
 el("fields-add").addEventListener("click", addCustomField);
 el("fields-apply").addEventListener("click", applyFieldEditor);
@@ -2872,6 +2865,7 @@ el("set-id3").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-id3]");
   if (btn) setId3Choice(btn.dataset.id3);
 });
+el("set-prio-reset").addEventListener("click", resetPriority);
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !el("settings").hidden) cancelSettings();
