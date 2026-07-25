@@ -25,8 +25,18 @@ first release ships.
 - Restructured the List-view release card into four clear lines (#98): line 1 is
   the catalogue number and track/disc count, line 2 the album artist, line 3 the
   album title, line 4 the rest (country · year · format). Previously the artist
-  and title shared one line and the count sat in a separate footer row. The
-  media-type disc masks / badges from the same issue are a follow-up Design task.
+  and title shared one line and the count sat in a separate footer row.
+
+- **Media-type badge on the release cover** (#98, Design pass). A small corner
+  badge on the 56px cover shows the medium inferred from the release `format`
+  (vinyl / CD / digital / generic glyph) and, for multi-disc sets, the disc
+  count (`×2`). It stays legible over both the artwork and the striped
+  placeholder. The media glyph shows immediately; the disc count fills in once
+  the release is fetched. Applies to both List cards and Grid tiles.
+
+- **Bundled monospace font moved out of the CSS into `assets/tagrex-mono.woff2`**
+  (a local bundled asset) instead of a ~33 KB base64 data-URI, shrinking
+  `style.css` by a third. The font is still fully offline — no external request.
 
 ### Added
 

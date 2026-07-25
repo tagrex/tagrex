@@ -2205,6 +2205,46 @@ function discCount(release) {
   return max;
 }
 
+// ---- media-type badge on the cover (#98, per the Design spec) ----
+// Infer the medium from the provider's free `format` text; first hit wins in
+// this order (vinyl → cd → digital → generic). Case-insensitive substring.
+function mediaKind(format) {
+  const f = (format || "").toLowerCase();
+  const has = (...ks) => ks.some((k) => f.includes(k));
+  if (has("vinyl", "lp", "ep", '7"', '10"', '12"', "shellac")) return "vinyl";
+  if (has("sacd", "hdcd", "cdr", "compact disc", "cd")) return "cd";
+  if (has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming")) return "digital";
+  return "generic";
+}
+
+const MEDIA_LABEL = { vinyl: "Vinyl", cd: "CD", digital: "Digital", generic: "" };
+
+// Inline SVG glyphs (currentColor, CSP-safe) — from the Design deliverable.
+const MEDIA_GLYPH = {
+  vinyl: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="8" r="4.2" fill="none" stroke="currentColor" stroke-width=".8" opacity=".55"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/></svg>`,
+  cd: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="8" r="2.5" fill="none" stroke="currentColor" stroke-width="1"/></svg>`,
+  digital: `<svg viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="2.2" y="6" width="1.6" height="4" rx=".8"/><rect x="5.2" y="3" width="1.6" height="10" rx=".8"/><rect x="8.2" y="5" width="1.6" height="6" rx=".8"/><rect x="11.2" y="7" width="1.6" height="2" rx=".8"/></g></svg>`,
+  generic: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="11.5" r="2.2" fill="currentColor"/><rect x="7.9" y="3" width="1.3" height="8.5" fill="currentColor"/><path d="M8.2 3.2q4 .6 4 3.8" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`,
+};
+
+// The badge for a candidate. The media glyph is known up front (from `format`);
+// the ×N disc count only appears once the release is fetched (disc count needs
+// its tracklist), so re-render it via `updateMediaBadge` after the prefetch.
+function mediaBadgeMarkup(c) {
+  const kind = mediaKind(c.format);
+  const release = releaseCache.get(c.id);
+  const discs = release ? discCount(release) : 1;
+  const n = discs > 1 ? `<span class="n">×${discs}</span>` : "";
+  const label = MEDIA_LABEL[kind];
+  return `<span class="media-badge"${label ? ` title="${label}"` : ""}>${MEDIA_GLYPH[kind]}${n}</span>`;
+}
+
+// Refresh the badge (its ×N) for one release after its tracklist is fetched.
+function updateMediaBadge(c) {
+  const badge = coverElOf(c.id)?.querySelector(".media-badge");
+  if (badge) badge.outerHTML = mediaBadgeMarkup(c);
+}
+
 function renderReleaseList() {
   const list = releaseList();
   list.innerHTML = "";
@@ -2294,7 +2334,7 @@ function cardMarkup(c) {
   return `
     <article class="release-card" data-id="${escapeHtml(c.id)}" aria-expanded="false">
       <button class="release-head" type="button">
-        <span class="release-cover"></span>
+        <span class="release-cover">${mediaBadgeMarkup(c)}</span>
         <span class="release-info">
           <span class="release-line1">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></span>
           ${artist}
@@ -2317,7 +2357,7 @@ function tileMarkup(c) {
   // country/year/format · track (and disc) count.
   return `
     <article class="release-tile" data-id="${escapeHtml(c.id)}">
-      <div class="tile-cover"></div>
+      <div class="tile-cover">${mediaBadgeMarkup(c)}</div>
       <div class="tile-info">
         <div class="tile-top">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></div>
         ${artist}
@@ -2349,7 +2389,11 @@ async function applyImage(c) {
     }
   }
   const cover = coverElOf(c.id);
-  if (cover) cover.innerHTML = `<img alt="" src="${dataUri}" />`;
+  if (cover) {
+    // Drop in the art without wiping the media badge (#98) that shares the well.
+    cover.querySelector("img")?.remove();
+    cover.insertAdjacentHTML("afterbegin", `<img alt="" src="${dataUri}" />`);
+  }
 }
 
 // Fetch each release once, in the background, to fill the track/disc count on
@@ -2372,6 +2416,7 @@ async function prefetchReleaseCounts(items, gen) {
         releaseCache.set(c.id, await invoke("provider_fetch_release", { source: releaseSource, token, releaseId: c.id }));
         const pill = countPillOf(c.id);
         if (pill) pill.textContent = countLabel(c.id);
+        updateMediaBadge(c); // fill the badge's ×N now that disc count is known
       } catch (e) {
         /* skip this one; the card just keeps its dash */
       }
