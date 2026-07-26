@@ -10,6 +10,11 @@ first release ships.
 
 ### Fixed
 
+- Grid tiles no longer show a strip under the cover art. The cover image was
+  rendered inline, leaving a baseline gap that revealed the striped placeholder
+  below it, and a divider border added to the effect — the image is now a block
+  and the divider is gone, so the art meets the info cleanly.
+
 - The media badge no longer disappears when a release card is expanded — swapping
   in the full-resolution cover on expand used to overwrite the whole cover well
   and wipe the badge with it.

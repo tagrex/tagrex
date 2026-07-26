@@ -1974,6 +1974,7 @@ td.unreadable-note {
 }
 
 .release-cover img {
+  display: block; /* avoid the inline baseline gap under the thumbnail */
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -2229,12 +2230,15 @@ td.unreadable-note {
 
 .tile-cover {
   aspect-ratio: 1 / 1;
-  border-bottom: 1px solid var(--border);
+  /* No divider under the cover — it left a visible strip (and a 1px sliver of the
+     striped placeholder) between the art and the info. The tile's own border
+     separates cards. */
   background: repeating-linear-gradient(
     45deg, var(--bg), var(--bg) 6px, var(--row-hover) 6px, var(--row-hover) 12px);
 }
 
 .tile-cover img {
+  display: block; /* kill the inline baseline gap that showed a strip below */
   width: 100%;
   height: 100%;
   object-fit: cover;
