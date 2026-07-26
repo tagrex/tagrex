@@ -10,6 +10,10 @@ first release ships.
 
 ### Fixed
 
+- The media badge no longer disappears when a release card is expanded — swapping
+  in the full-resolution cover on expand used to overwrite the whole cover well
+  and wipe the badge with it.
+
 - The **GENERATOR rule chain** now reorders with the same pointer-based drag as
   the other lists (#88 follow-up), instead of HTML5 drag-and-drop that is
   unreliable in the app's WKWebView. Dragging a rule's grip moves it; the ↑/↓
@@ -26,6 +30,17 @@ first release ships.
   after the last button. The side panel starts at 480px (min drag width 240px).
 
 ### Changed
+
+- Release-card polish from testing. **List cards:** the cover is a bit larger
+  (56→64px), the expand caret is bigger and highlights on hover/expand so it
+  reads as a control rather than a hint, and the redundant "details…" row is
+  gone (clicking the card still expands it). The **tracklist** now uses the UI
+  (proportional) font with tighter rows, so long track/artist names that the
+  monospace clipped ("West Coast Connection", …) now fit. The **search box** uses
+  the UI font too (the monospace looked out of place; the RENAMER mask keeps it).
+  **Grid tiles** no longer carry the media badge — as an overlay on the full-bleed
+  cover it read like the artwork was clipped; disc count and format are already on
+  the tile's text lines. (The badge stays on List cards.)
 
 - Restructured the List-view release card into four clear lines (#98): line 1 is
   the catalogue number and track/disc count, line 2 the album artist, line 3 the
@@ -44,6 +59,14 @@ first release ships.
   `style.css` by a third. The font is still fully offline — no external request.
 
 ### Added
+
+- **Catalogue number** is now surfaced in the UI — a "Catalogue #" column (hidden
+  by default, toggle it in the Columns popover) and an editable field in the tag
+  editor. The value was already written to the CatalogNumber tag on import; it
+  just had nowhere to show before.
+
+- An **Album** option in the search-query presets — fills the search box from the
+  selected track's album tag.
 
 - **Reset to default** on the reorderable lists (#91). The **Columns** popover
   has a "Reset to default" footer that restores the default set, order,

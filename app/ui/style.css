@@ -675,6 +675,13 @@ body.resizing-col {
   font-family: var(--font-mono-bundled);
 }
 
+/* The release-search box reads as plain text (a title/artist), not a mask, so it
+   uses the UI font — the monospace looked out of place. The RENAMER mask input
+   keeps the monospace above (it aligns %placeholders%). */
+#discogs-query {
+  font-family: var(--font-ui);
+}
+
 .hint {
   padding: 0;
   font-size: var(--text-xs);
@@ -1916,8 +1923,8 @@ td.unreadable-note {
 
 .release-cover {
   position: relative; /* anchors the media badge (#98) */
-  width: 56px;
-  height: 56px;
+  width: 64px;
+  height: 64px;
   flex: none;
   border-radius: 6px;
   border: 1px solid var(--border);
@@ -2034,18 +2041,18 @@ td.unreadable-note {
 .release-caret {
   flex: none;
   align-self: center;
-  font-size: 13px;
+  font-size: 19px;
+  line-height: 1;
   color: var(--muted);
+  transition: color 0.12s;
 }
 
-.release-facts {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  font-size: 10.5px;
+/* Make the expand affordance a clear target, not just a hint. */
+.release-head:hover .release-caret {
+  color: var(--accent-ink);
+}
+.release-card[aria-expanded="true"] .release-caret {
+  color: var(--text);
 }
 
 .pill {
@@ -2054,17 +2061,6 @@ td.unreadable-note {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 1px 7px;
-}
-
-.release-details {
-  margin-left: auto;
-  color: var(--accent-ink);
-  background: none;
-  border: none;
-  box-shadow: none;
-  padding: 0;
-  font: inherit;
-  cursor: pointer;
 }
 
 /* Subtle inline text button — "Reset to default" on reorderable lists (#91). */
@@ -2147,8 +2143,10 @@ td.unreadable-note {
 .release-tracklist table {
   width: 100%;
   border-collapse: collapse;
-  font-family: var(--font-mono-bundled);
-  font-size: 10.5px;
+  /* Proportional font: fits far more of a long track/artist before truncating
+     than the monospace did, and the columns aren't user-resizable here. */
+  font-family: var(--font-ui);
+  font-size: 11px;
 }
 
 .release-tracklist tr {
@@ -2160,7 +2158,7 @@ td.unreadable-note {
 }
 
 .release-tracklist td {
-  padding: 4px 6px;
+  padding: 3px 6px;
   border-bottom: none;
   max-width: none;
 }
@@ -2183,11 +2181,11 @@ td.unreadable-note {
 }
 
 .release-tracklist td.tk-title {
-  max-width: 120px;
+  max-width: 150px;
 }
 
 .release-tracklist td.tk-artist {
-  max-width: 90px;
+  max-width: 110px;
   color: var(--muted);
 }
 
@@ -2230,7 +2228,6 @@ td.unreadable-note {
 }
 
 .tile-cover {
-  position: relative; /* anchors the media badge (#98) */
   aspect-ratio: 1 / 1;
   border-bottom: 1px solid var(--border);
   background: repeating-linear-gradient(
@@ -2286,7 +2283,6 @@ button:focus-visible,
 .view-tab:focus-visible,
 .seg-btn:focus-visible,
 .release-head:focus-visible,
-.release-details:focus-visible,
 .release-tile:focus-visible {
   outline: none;
   box-shadow: var(--ring);

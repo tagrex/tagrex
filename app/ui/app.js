@@ -1617,6 +1617,7 @@ const EXTENDED_FIELDS = [
   ["comment", "Comment"],
   ["composer", "Composer"],
   ["publisher", "Publisher"],
+  ["catalognumber", "Catalogue #"],
   ["bpm", "BPM"],
   ["isrc", "ISRC"],
   ["key", "Key"],
@@ -2315,6 +2316,8 @@ function queryFromPreset(kind) {
       return folderNameOf(t.path);
     case "filename":
       return baseNameNoExt(t.path);
+    case "album":
+      return (t.tags.album || "").trim();
     case "artist-title":
       return [t.tags.artist, t.tags.title].filter(Boolean).join(" ").trim();
     default:
@@ -2355,9 +2358,6 @@ function cardMarkup(c) {
         </span>
         <span class="release-caret" aria-hidden="true">▸</span>
       </button>
-      <div class="release-facts">
-        <button class="release-details" type="button">details…</button>
-      </div>
       <div class="release-tracklist"></div>
     </article>`;
 }
@@ -2369,7 +2369,7 @@ function tileMarkup(c) {
   // country/year/format · track (and disc) count.
   return `
     <article class="release-tile" data-id="${escapeHtml(c.id)}">
-      <div class="tile-cover">${mediaBadgeMarkup(c)}</div>
+      <div class="tile-cover"></div>
       <div class="tile-info">
         <div class="tile-top">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></div>
         ${artist}
@@ -2552,7 +2552,11 @@ async function loadFullCover(id, url, card) {
     const cover = await invoke("provider_fetch_image", { source: releaseSource, token, url });
     coverCache.set(id, cover);
     const coverEl = card.querySelector(".release-cover");
-    if (coverEl) coverEl.innerHTML = `<img alt="" src="data:${cover.mime};base64,${cover.data_base64}" />`;
+    if (coverEl) {
+      // Swap in the full-res cover without wiping the media badge (#98).
+      coverEl.querySelector("img")?.remove();
+      coverEl.insertAdjacentHTML("afterbegin", `<img alt="" src="data:${cover.mime};base64,${cover.data_base64}" />`);
+    }
   } catch (e) {
     /* embedding just won't be available for this card */
   }
@@ -2904,7 +2908,7 @@ el("release-list").addEventListener("click", (e) => {
     embedCoverFrom(card);
   } else if (act === "import") {
     importRelease(card);
-  } else if (e.target.closest(".release-head") || e.target.closest(".release-details")) {
+  } else if (e.target.closest(".release-head")) {
     toggleCard(card);
   }
 });
