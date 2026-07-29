@@ -56,6 +56,16 @@ first release ships.
 
 ### Changed
 
+- **Compact List-view release card** (#98, Design pass). The card is denser and
+  more image-forward: the cover now fills the header's full height (a square
+  driven by the text beside it) instead of a fixed 64px thumbnail; the header is
+  three tight lines (catalogue no. + count · album title · album artist +
+  country · year · format) instead of four; and the expanded tracklist is a
+  tight table — a leading checkbox + track number, a combined **title · artist**
+  cell (the per-track artist shows only when it differs from the album artist),
+  and a right-aligned duration — with minimal row height. Grid tiles are
+  unchanged.
+
 - The window now opens at 1280×800 and can't be shrunk below that, so the layout
   always has room (was 1100×720, min 720×480).
 

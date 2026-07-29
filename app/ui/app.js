@@ -2341,21 +2341,23 @@ function applyQueryPreset() {
 }
 
 function cardMarkup(c) {
-  // Four lines, top to bottom (#98): catalogue no. + track/disc count, then
-  // album artist, then album title, then the rest (country · year · format).
+  // Compact three-line header (#98): line 1 = catalogue no. + track/disc count
+  // (the two mono match-key chips), line 2 = album title (dominant), line 3 =
+  // album artist + country · year · format on one truncating run. The cover
+  // fills the header's full height.
   const catno = c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : "";
   const artist = c.artist ? `<span class="release-artist" title="${escapeHtml(c.artist)}">${escapeHtml(c.artist)}</span>` : "";
   const meta = candidateMeta(c);
-  const metaLine = meta ? `<span class="release-meta muted">${escapeHtml(meta)}</span>` : "";
+  const metaEl = meta ? `<span class="release-meta">${escapeHtml(meta)}</span>` : "";
+  const sub = artist || metaEl ? `<span class="release-sub">${artist}${metaEl}</span>` : "";
   return `
     <article class="release-card" data-id="${escapeHtml(c.id)}" aria-expanded="false">
       <button class="release-head" type="button">
         <span class="release-cover">${mediaBadgeMarkup(c)}</span>
         <span class="release-info">
           <span class="release-line1">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></span>
-          ${artist}
           <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
-          ${metaLine}
+          ${sub}
         </span>
         <span class="release-caret" aria-hidden="true">▸</span>
       </button>
@@ -2484,16 +2486,18 @@ async function toggleCard(card) {
 
 function renderTracklist(card, release) {
   const rows = release.tracks
-    .map(
-      (t, i) => `
+    .map((t, i) => {
+      // Show the per-track artist only when it differs from the album artist —
+      // otherwise it's noise on every row; it truncates before the title.
+      const differs = t.artist && t.artist !== release.artist;
+      const artistEl = differs ? `<span class="tk-a">${escapeHtml(t.artist)}</span>` : "";
+      return `
       <tr>
-        <td class="sel"><input type="checkbox" checked data-i="${i}" /></td>
-        <td class="tk-num">${escapeHtml(t.position)}</td>
-        <td class="tk-title" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</td>
-        <td class="tk-artist">${escapeHtml(t.artist || release.artist)}</td>
+        <td class="tk-lead"><span class="tk-lead-inner"><input type="checkbox" checked data-i="${i}" /><span class="tk-num">${escapeHtml(t.position)}</span></span></td>
+        <td class="tk-track"><span class="tk-track-inner"><span class="tk-t" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</span>${artistEl}</span></td>
         <td class="tk-dur">${t.duration_secs ? fmtTime(t.duration_secs) : "—"}</td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join("");
   // Label / catalogue-number picker (#90): a release can list several pairs
   // (even from one label); the user picks the single one to write. One pair (or
@@ -2524,7 +2528,7 @@ function renderTracklist(card, release) {
 }
 
 function updateTracklistCount(card) {
-  const boxes = [...card.querySelectorAll(".release-tracklist .sel input")];
+  const boxes = [...card.querySelectorAll(".release-tracklist .tk-lead input")];
   const on = boxes.filter((b) => b.checked).length;
   const label = card.querySelector(".tk-selcount");
   if (label) label.textContent = `${on} / ${boxes.length} selected`;
@@ -2533,7 +2537,7 @@ function updateTracklistCount(card) {
 // The enabled tracks of a card, shaped for import / auto-align.
 function enabledTracksOf(card) {
   const release = releaseCache.get(card.dataset.id);
-  return [...card.querySelectorAll(".release-tracklist .sel input:checked")].map((cb) => {
+  return [...card.querySelectorAll(".release-tracklist .tk-lead input:checked")].map((cb) => {
     const t = release.tracks[Number(cb.dataset.i)];
     return {
       position: t.position,
@@ -2905,7 +2909,7 @@ el("release-list").addEventListener("click", (e) => {
   if (!card) return;
   const act = e.target.closest("[data-act]")?.dataset.act;
   if (act === "enable-all" || act === "disable-all") {
-    card.querySelectorAll(".release-tracklist .sel input").forEach((cb) => (cb.checked = act === "enable-all"));
+    card.querySelectorAll(".release-tracklist .tk-lead input").forEach((cb) => (cb.checked = act === "enable-all"));
     updateTracklistCount(card);
   } else if (act === "automatch") {
     autoMatchToRelease(card);
@@ -2920,7 +2924,7 @@ el("release-list").addEventListener("click", (e) => {
 
 // Live "N / M selected" as track checkboxes toggle.
 el("release-list").addEventListener("change", (e) => {
-  if (e.target.matches(".release-tracklist .sel input")) {
+  if (e.target.matches(".release-tracklist .tk-lead input")) {
     updateTracklistCount(e.target.closest(".release-card"));
   }
 });
