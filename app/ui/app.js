@@ -2341,23 +2341,23 @@ function applyQueryPreset() {
 }
 
 function cardMarkup(c) {
-  // Compact three-line header (#98): line 1 = catalogue no. + track/disc count
-  // (the two mono match-key chips), line 2 = album title (dominant), line 3 =
-  // album artist + country · year · format on one truncating run. The cover
-  // fills the header's full height.
+  // Four lines, top to bottom (#98): (1) catalogue no. + track/disc count (the
+  // two mono match-key chips), (2) album artist, (3) album title, (4) the rest
+  // (country · year · format). The cover fills the header's full height, so it
+  // spans all four lines.
   const catno = c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : "";
   const artist = c.artist ? `<span class="release-artist" title="${escapeHtml(c.artist)}">${escapeHtml(c.artist)}</span>` : "";
   const meta = candidateMeta(c);
-  const metaEl = meta ? `<span class="release-meta">${escapeHtml(meta)}</span>` : "";
-  const sub = artist || metaEl ? `<span class="release-sub">${artist}${metaEl}</span>` : "";
+  const metaLine = meta ? `<span class="release-meta">${escapeHtml(meta)}</span>` : "";
   return `
     <article class="release-card" data-id="${escapeHtml(c.id)}" aria-expanded="false">
       <button class="release-head" type="button">
         <span class="release-cover">${mediaBadgeMarkup(c)}</span>
         <span class="release-info">
           <span class="release-line1">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></span>
+          ${artist}
           <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
-          ${sub}
+          ${metaLine}
         </span>
         <span class="release-caret" aria-hidden="true">▸</span>
       </button>
