@@ -107,6 +107,41 @@ function applyTableFont(px) {
   }
 }
 
+// Theme: Auto (follow OS) / Light / Dark. "auto" resolves to light/dark from the
+// OS preference and re-resolves when it changes; light/dark force a palette via
+// a data-theme attribute the stylesheet keys off. Persisted in localStorage.
+const THEME_STORAGE_KEY = "tagrex.theme";
+const THEME_MODES = ["auto", "light", "dark"];
+const prefersDarkMq = window.matchMedia("(prefers-color-scheme: dark)");
+function themeMode() {
+  try {
+    const v = localStorage.getItem(THEME_STORAGE_KEY);
+    return THEME_MODES.includes(v) ? v : "auto";
+  } catch (e) {
+    return "auto";
+  }
+}
+function resolveTheme(mode) {
+  if (mode === "light" || mode === "dark") return mode;
+  return prefersDarkMq.matches ? "dark" : "light";
+}
+function applyTheme(mode) {
+  document.documentElement.dataset.theme = resolveTheme(mode);
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, mode);
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+// Follow OS changes only while in Auto.
+prefersDarkMq.addEventListener("change", () => {
+  if (themeMode() === "auto") {
+    document.documentElement.dataset.theme = resolveTheme("auto");
+  }
+});
+// Apply as early as app.js runs, before the settings sheet is ever opened.
+applyTheme(themeMode());
+
 // Sensible starting width for a column the user hasn't resized yet. The file
 // name is the widest; short numeric/code fields start narrow.
 function defaultColumnWidth(key) {
@@ -1402,12 +1437,18 @@ function currentPlayTarget() {
 }
 
 function playPauseFromBar() {
-  if (playingPath) {
+  // While actually playing, the button is a pause button — pause the current
+  // track (don't jump to whatever row is selected).
+  if (playingPath && !plPaused) {
     togglePlay();
     return;
   }
+  // Paused or idle, the button is a play button: play the current target.
+  // playTrack() resumes when the target IS the paused track, and switches to it
+  // otherwise — so pausing A, selecting B, then Play now plays B (not A).
   const path = currentPlayTarget();
   if (path) playTrack(path);
+  else if (playingPath) togglePlay();
 }
 
 plToggle.addEventListener("click", playPauseFromBar);
@@ -2152,6 +2193,15 @@ function setId3Choice(choice) {
     .forEach((b) => b.classList.toggle("active", b.dataset.id3 === choice));
 }
 
+// Reflect + apply a theme choice from the segmented control (live, like the font
+// slider — persisted immediately so the preview sticks).
+function setThemeChoice(mode) {
+  applyTheme(mode);
+  el("set-theme")
+    .querySelectorAll(".seg-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.themeMode === mode));
+}
+
 // Tag-read priority (#84): the order tag blocks are consulted when a file
 // carries more than one. Persisted as an ordered list of keys; the default
 // order matches the common case (ID3v2 first).
@@ -2225,6 +2275,7 @@ async function openSettings() {
     readPriority = PRIO_KEYS.slice();
   }
   // Display prefs live in localStorage, not the backend settings.
+  setThemeChoice(themeMode());
   el("set-checkbox-col").checked = checkboxColEnabled();
   el("set-condensed").checked = condensedTableEnabled();
   el("set-table-font").value = tableFontPx();
@@ -2977,6 +3028,11 @@ el("settings-save").addEventListener("click", saveSettings);
 el("set-id3").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-id3]");
   if (btn) setId3Choice(btn.dataset.id3);
+});
+// Theme is a live control — switch immediately on click.
+el("set-theme").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-theme-mode]");
+  if (btn) setThemeChoice(btn.dataset.themeMode);
 });
 el("set-prio-reset").addEventListener("click", resetPriority);
 // Table font size is a live control: drag to apply (and persist) immediately so

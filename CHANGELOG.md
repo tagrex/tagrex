@@ -10,6 +10,12 @@ first release ships.
 
 ### Fixed
 
+- The bottom **Play button no longer resumes the wrong track**. After pausing a
+  track and then selecting a different one, pressing Play started the *paused*
+  track instead of the newly-selected one. Play now pauses only while actually
+  playing; when paused or idle it plays the current row (resuming when it's the
+  same track, switching when it isn't).
+
 - **Applying a change could silently drop the Year and Publisher**, even though
   the Preview showed them. Two ID3v2 round-trip bugs: (1) the year is a `TDRC`
   timestamp frame, which the writer didn't recognise as one of its own, so a
@@ -123,10 +129,13 @@ first release ships.
   **optional** (Settings › Display, off by default) — rows select on click, with
   Cmd/Shift-click for a range or to toggle — so the file name leads the table.
 
-- **Display preferences** (Settings › Display): an optional **condensed table
-  font** (a narrower sans so more of each value fits before it truncates; uses a
-  system condensed face until a bundled subset is added), and an **adjustable
-  table font size** (10–20px, applied live to whichever face is active).
+- **Display preferences** (Settings › Display): a **theme selector**
+  (Auto / Light / Dark — Auto follows the system appearance and switches live
+  when it changes; Light/Dark force one); an optional **condensed table font**
+  (a narrower sans so more of each value fits before it truncates; uses a system
+  condensed face until a bundled subset is added); and an **adjustable table font
+  size** (10–20px, applied live to whichever face is active). Selected table rows
+  also use a stronger tint so the selection is legible on a dense dark table.
 
 - Import now also writes the **total track count** (so a file's track reads as
   `N/total`), the **release country** (to a portable `RELEASECOUNTRY` tag —

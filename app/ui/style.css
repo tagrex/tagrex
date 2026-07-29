@@ -136,6 +136,10 @@
   /* selection / dirty / error tints (inner vars resolve per theme at use) */
   --sel-tint: color-mix(in srgb, var(--accent) 10%, var(--bg));
   --sel-tint-hover: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  /* Stronger tint for selected table rows — the general --sel-tint reads too
+     faint on a dense dark table, especially with the checkbox column hidden. */
+  --row-sel: color-mix(in srgb, var(--accent) 24%, var(--bg));
+  --row-sel-hover: color-mix(in srgb, var(--accent) 32%, var(--bg));
   --dirty-tint: color-mix(in srgb, var(--accent) 14%, transparent);
   --error-tint: color-mix(in srgb, var(--del) 12%, transparent);
 
@@ -149,8 +153,14 @@
   --diff-file-w: 210px; /* pinned File column width */
 }
 
+/* ---- dark palette ----
+   Applied two ways: by the OS preference in Auto mode (until app.js resolves the
+   Theme setting and stamps an explicit data-theme on <html>), and by an explicit
+   Dark choice. The token list is duplicated across the two selectors because CSS
+   can't share a declaration block between a media query and an attribute
+   selector — keep them in sync. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #16181d;
     --panel: #1e2128;
     --border: #2c313b;
@@ -164,6 +174,24 @@
     --row-hover: #242832;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
+}
+:root[data-theme="dark"] {
+  --bg: #16181d;
+  --panel: #1e2128;
+  --border: #2c313b;
+  --text: #e6e8ec;
+  --muted: #9aa1ac;
+  --accent: #0d8f6a;
+  --accent-text: #ffffff;
+  --accent-ink: #14a67d;
+  --add: #4ade80;
+  --del: #f87171;
+  --row-hover: #242832;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * {
@@ -636,13 +664,16 @@ tbody tr:hover {
    hover → base. Orthogonal: playing = left bar, focus = inset ring, error =
    del marker. */
 
-/* selected — row tint; dirty/error cells opt out so they keep their own fill */
+/* selected — row tint; dirty/error cells opt out so they keep their own fill.
+   Uses a stronger row-specific tint than the general --sel-tint so the selection
+   is legible in a dense table (esp. dark), where a faint wash was hard to read
+   with the checkbox column hidden. */
 #tracks tbody tr.selected td:not(.dirty):not(.error) {
-  background: var(--sel-tint);
+  background: var(--row-sel);
 }
 
 #tracks tbody tr.selected:hover td:not(.dirty):not(.error) {
-  background: var(--sel-tint-hover);
+  background: var(--row-sel-hover);
 }
 
 /* error — per-cell: an inline edit whose typed value fails validation (#76).
