@@ -390,6 +390,7 @@ fn field_from_name(name: &str) -> Result<TagField, MaskError> {
         "isrc" => Ok(TagField::Isrc),
         "key" => Ok(TagField::InitialKey),
         "catalognumber" => Ok(TagField::CatalogNumber),
+        "url" => Ok(TagField::Url),
         _ => Err(MaskError::UnknownPlaceholder(name.to_string())),
     }
 }
@@ -412,6 +413,7 @@ fn field_name(field: &TagField) -> &'static str {
         TagField::Isrc => "isrc",
         TagField::InitialKey => "key",
         TagField::CatalogNumber => "catalognumber",
+        TagField::Url => "url",
         TagField::Custom(_) => "custom",
     }
 }

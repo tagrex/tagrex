@@ -158,6 +158,9 @@ pub enum TagField {
     InitialKey,
     /// Label catalogue number — also the highest-precision Discogs search key.
     CatalogNumber,
+    /// A webpage for the release/recording, written to the ID3v2 `WOAF` URL
+    /// frame (a proper URL link, not plain text) so players treat it as a link.
+    Url,
     Custom(String),
 }
 
@@ -185,6 +188,7 @@ impl TagField {
             Self::Isrc => "isrc".to_string(),
             Self::InitialKey => "key".to_string(),
             Self::CatalogNumber => "catalognumber".to_string(),
+            Self::Url => "url".to_string(),
             Self::Custom(name) => format!("custom:{name}"),
         }
     }
@@ -211,6 +215,7 @@ impl TagField {
             "isrc" => Self::Isrc,
             "key" => Self::InitialKey,
             "catalognumber" => Self::CatalogNumber,
+            "url" => Self::Url,
             // Only reachable if the database holds a key this build didn't
             // write; preserve it verbatim rather than losing it.
             other => Self::Custom(other.to_string()),
@@ -275,8 +280,19 @@ impl TagEngine {
             .or_else(|| tagged_file.first_tag())
         {
             for item in tag.items() {
-                if let Some(text) = item.value().text() {
-                    tags.insert(item_key_to_tag_field(item.key()), text.to_string());
+                // Text items (most fields), plus the release URL — its value is a
+                // URL *locator*, not text. Only the one URL frame the model owns
+                // (WOAF / AudioFileUrl) is read; other URL frames are left alone
+                // so they survive as non-model frames instead of becoming text.
+                let value = match item.value() {
+                    ItemValue::Text(text) => Some(text.clone()),
+                    ItemValue::Locator(url) if matches!(item.key(), ItemKey::AudioFileUrl) => {
+                        Some(url.clone())
+                    }
+                    _ => None,
+                };
+                if let Some(value) = value {
+                    tags.insert(item_key_to_tag_field(item.key()), value);
                 }
             }
         }
@@ -419,7 +435,7 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
     for (field, value) in tags {
         generic.insert_unchecked(TagItem::new(
             tag_field_to_item_key(field),
-            ItemValue::Text(value.clone()),
+            item_value_for(field, value),
         ));
     }
     let mut updated = Id3v2Tag::from(generic);
@@ -445,7 +461,7 @@ fn is_model_text_frame(frame: &Frame<'_>) -> bool {
     matches!(
         frame,
         Frame::Text(_) | Frame::UserText(_) | Frame::Comment(_)
-    ) || frame.id().as_str() == "TDRC"
+    ) || matches!(frame.id().as_str(), "TDRC" | "WOAF")
 }
 
 /// The file's concrete ID3v2 tag, if it has one. Dispatches on the container so
@@ -500,7 +516,7 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
         // `insert_text`/`insert` silently drop `ItemKey::Unknown` (Custom
         // fields) since they refuse to write keys without a known mapping for
         // the tag type. `insert_unchecked` is the documented escape hatch.
-        tag.insert_unchecked(TagItem::new(key, ItemValue::Text(value.clone())));
+        tag.insert_unchecked(TagItem::new(key, item_value_for(field, value)));
     }
     tag.save_to_path(&file.path, WriteOptions::default())?;
     Ok(())
@@ -516,6 +532,16 @@ fn load_or_new_tag(path: &Path) -> Result<Tag, TagIoError> {
         .or_else(|| tagged.first_tag())
         .cloned()
         .unwrap_or_else(|| Tag::new(tag_type)))
+}
+
+/// The `ItemValue` a field's string should be written as. Almost everything is
+/// plain `Text`; the URL field is a `Locator` so it lands in a real URL frame
+/// (ID3v2 `WOAF`) that players recognise as a link, not a text frame.
+fn item_value_for(field: &TagField, value: &str) -> ItemValue {
+    match field {
+        TagField::Url => ItemValue::Locator(value.to_string()),
+        _ => ItemValue::Text(value.to_string()),
+    }
 }
 
 fn tag_field_to_item_key(field: &TagField) -> ItemKey {
@@ -542,6 +568,9 @@ fn tag_field_to_item_key(field: &TagField) -> ItemKey {
         TagField::Isrc => ItemKey::Isrc,
         TagField::InitialKey => ItemKey::InitialKey,
         TagField::CatalogNumber => ItemKey::CatalogNumber,
+        // WOAF (Official audio file webpage). Its value is a URL locator, not
+        // text — the write path uses `ItemValue::Locator` for this field.
+        TagField::Url => ItemKey::AudioFileUrl,
         TagField::Custom(key) => ItemKey::Unknown(key.clone()),
     }
 }
@@ -580,6 +609,7 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         ItemKey::Isrc => TagField::Isrc,
         ItemKey::InitialKey => TagField::InitialKey,
         ItemKey::CatalogNumber => TagField::CatalogNumber,
+        ItemKey::AudioFileUrl => TagField::Url,
         ItemKey::Unknown(key) => TagField::Custom(key.clone()),
         other => TagField::Custom(format!("{other:?}")),
     }

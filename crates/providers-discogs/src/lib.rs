@@ -394,6 +394,13 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .map(str::to_string),
+        // The public release page (Discogs `uri`), e.g.
+        // https://www.discogs.com/release/316795-…
+        url: root
+            .get("uri")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string),
         cover_image_url: primary_image_url(root.get("images")),
     })
 }

@@ -100,9 +100,14 @@ first release ships.
 ### Added
 
 - Import now also writes the **total track count** (so a file's track reads as
-  `N/total`) and the **release country** (to a portable `RELEASECOUNTRY` tag —
+  `N/total`), the **release country** (to a portable `RELEASECOUNTRY` tag —
   `TXXX:RELEASECOUNTRY` on MP3, the same key in Vorbis/APE — with the full
-  country name, e.g. `Belgium`). Both are album-level.
+  country name, e.g. `Belgium`), and the **release webpage URL** (to the ID3v2
+  `WOAF` URL frame, so players treat it as a real link, not plain text).
+
+- A new **URL** tag field (backed by the `WOAF` frame). The tag reader/writer
+  now handles URL-link frames (stored as a URL locator, not text) rather than
+  dropping them, and `%url%` is available as a mask placeholder.
 
 - **Catalogue number** is now surfaced in the UI — a "Catalogue #" column (hidden
   by default, toggle it in the Columns popover) and an editable field in the tag

@@ -306,6 +306,9 @@ pub struct ReleaseDto {
     /// Release country, e.g. `Belgium`.
     #[serde(default)]
     pub country: Option<String>,
+    /// Public webpage for the release, if any.
+    #[serde(default)]
+    pub url: Option<String>,
     /// URL of the release's primary image, if any. Fetch its bytes with
     /// [`App::fetch_discogs_image`] to preview or embed it.
     pub cover_image_url: Option<String>,
@@ -374,6 +377,9 @@ pub struct ImportSelectionDto {
     /// a file's track reads as N/total. Album-level (same for every file).
     #[serde(default)]
     pub track_total: Option<String>,
+    /// The release's public webpage → written to the URL frame (`WOAF`).
+    #[serde(default)]
+    pub url: Option<String>,
 }
 
 /// One rule in a transformation chain, as the UI describes it.
@@ -1383,6 +1389,8 @@ impl App {
                     TagField::Custom("RELEASECOUNTRY".to_string()),
                     non_empty(selection.country.clone()),
                 ),
+                // Release webpage → WOAF URL frame.
+                (TagField::Url, non_empty(selection.url.clone())),
             ];
             if let Some(track) = selection.tracks.get(index) {
                 let artist = non_empty(Some(track.artist.clone()))
@@ -1727,6 +1735,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                 })
                 .collect(),
             country: release.country.clone(),
+            url: release.url.clone(),
             cover_image_url: release.cover_image_url.clone(),
         }
     }
@@ -2086,6 +2095,7 @@ mod tests {
             catalog_number: Some("AS 5606".into()),
             country: Some("Belgium".into()),
             track_total: Some("15".into()),
+            url: Some("https://www.discogs.com/release/249504".into()),
         };
 
         let plan = app.preview_import(&[a, b], &selection).unwrap();
@@ -2139,6 +2149,10 @@ mod tests {
         assert_eq!(
             first.get("custom:RELEASECOUNTRY").map(String::as_str),
             Some("Belgium")
+        );
+        assert_eq!(
+            first.get("url").map(String::as_str),
+            Some("https://www.discogs.com/release/249504")
         );
 
         let second = fields(&plan.changes[1]);

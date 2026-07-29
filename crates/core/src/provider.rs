@@ -99,6 +99,8 @@ pub struct Release {
     pub labels: Vec<ReleaseLabel>,
     /// Release country, e.g. `Belgium` (full name as the provider states it).
     pub country: Option<String>,
+    /// Public webpage for the release (the provider's release page), if any.
+    pub url: Option<String>,
     /// URL of the release's primary image (full resolution), if it has one.
     /// The bytes still have to be downloaded with the provider's auth + User-
     /// Agent headers — the webview can't load it directly — so this is only a

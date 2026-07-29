@@ -352,6 +352,7 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .map(str::to_string),
+        url: Some(format!("https://musicbrainz.org/release/{id}")),
         cover_image_url: Some(cover_art_front_url(&id)),
     })
 }
