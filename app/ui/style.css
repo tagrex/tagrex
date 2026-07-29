@@ -300,7 +300,9 @@ button.icon {
   display: flex;
   align-items: stretch;
   gap: 6px;
-  padding: 0 10px;
+  /* Match the top bar's 14px horizontal inset so the mode tabs line up under the
+     brand and the collapse toggle's right edge lines up with the gear above. */
+  padding: 0 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
