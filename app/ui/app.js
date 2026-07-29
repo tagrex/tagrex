@@ -59,21 +59,49 @@ function applyCondensedTable(on) {
   }
 }
 
-// Pin Sel/Play/File columns (#99). Default on; a stored value overrides. Also a
-// pure display choice, so it lives in localStorage.
-const PIN_COLS_STORAGE_KEY = "tagrex.pinCols";
-function pinColsEnabled() {
+// Show the selection-checkbox column (#99 redesign). Off by default — rows
+// select on click (Cmd/Shift+click for range/toggle), so the checkboxes are an
+// optional convenience rather than the primary affordance.
+const CHECKBOX_COL_STORAGE_KEY = "tagrex.checkboxCol";
+function checkboxColEnabled() {
   try {
-    const v = localStorage.getItem(PIN_COLS_STORAGE_KEY);
-    return v === null ? true : v === "1";
+    return localStorage.getItem(CHECKBOX_COL_STORAGE_KEY) === "1";
   } catch (e) {
-    return true;
+    return false;
   }
 }
-function applyPinCols(on) {
-  document.body.classList.toggle("pin-cols", on);
+function applyCheckboxCol(on) {
+  document.body.classList.toggle("show-checkbox", on);
   try {
-    localStorage.setItem(PIN_COLS_STORAGE_KEY, on ? "1" : "0");
+    localStorage.setItem(CHECKBOX_COL_STORAGE_KEY, on ? "1" : "0");
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
+// Table font size (#100), 10–20px, applied live to both the monospace and the
+// condensed face through a CSS var. A pure display choice → localStorage.
+const TABLE_FONT_STORAGE_KEY = "tagrex.tableFontPx";
+const TABLE_FONT_MIN = 10;
+const TABLE_FONT_MAX = 20;
+const TABLE_FONT_DEFAULT = 10;
+function clampTableFont(px) {
+  return Math.min(TABLE_FONT_MAX, Math.max(TABLE_FONT_MIN, px || TABLE_FONT_DEFAULT));
+}
+function tableFontPx() {
+  try {
+    const v = parseInt(localStorage.getItem(TABLE_FONT_STORAGE_KEY), 10);
+    if (Number.isFinite(v)) return clampTableFont(v);
+  } catch (e) {
+    /* fall through to default */
+  }
+  return TABLE_FONT_DEFAULT;
+}
+function applyTableFont(px) {
+  const v = clampTableFont(px);
+  document.documentElement.style.setProperty("--table-font-size", `${v}px`);
+  try {
+    localStorage.setItem(TABLE_FONT_STORAGE_KEY, String(v));
   } catch (e) {
     /* localStorage unavailable — preference just won't persist */
   }
@@ -466,7 +494,6 @@ function appendTrackRow(track, groupKey) {
     tr.classList.add("unreadable");
     tr.innerHTML = `
       <td class="sel"><input type="checkbox" disabled title="This file's tags couldn't be read" /></td>
-      <td class="play"></td>
       <td class="file" title="${escapeHtml(track.path)} — tags couldn't be read">${escapeHtml(fileName(track.path))}</td>
       <td class="unreadable-note" colspan="${visibleColumns.length - 1}">couldn't read tags — file left untouched</td>`;
     tracksBody.appendChild(tr);
@@ -477,10 +504,8 @@ function appendTrackRow(track, groupKey) {
   // so re-rendering never changes what's selected.
   const isSel = selection.has(track.path);
   if (isSel) tr.classList.add("selected");
-  const playGlyph = track.path === playingPath && !plPaused ? "❚❚" : "▶";
   tr.innerHTML = `
       <td class="sel"><input type="checkbox" ${isSel ? "checked" : ""} data-path="${escapeHtml(track.path)}" /></td>
-      <td class="play"><button class="play-btn" data-path="${escapeHtml(track.path)}" title="Preview">${playGlyph}</button></td>
       <td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
   for (const field of visibleColumns) {
     if (field === "file") continue; // rendered above (structural, always first)
@@ -1231,8 +1256,9 @@ function fmtTime(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Stop/seek only make sense with a loaded track; the play/pause button stays
+// enabled even when idle so it can start the current track (#99 redesign).
 function setPlayerControlsEnabled(on) {
-  plToggle.disabled = !on;
   plStop.disabled = !on;
   plSeek.disabled = !on;
 }
@@ -1242,6 +1268,7 @@ function setPlayerControlsEnabled(on) {
 function showPlayerBar() {
   playerBar.hidden = false;
   playerIdle();
+  plToggle.disabled = false; // usable even when idle: starts the current track
   if (!plPollTimer) plPollTimer = setInterval(pollPlayerStatus, 300);
 }
 
@@ -1308,10 +1335,7 @@ function stopPlayback() {
 // re-render (which would drop pending edits mid-typing).
 function markPlayingRow() {
   tracksBody.querySelectorAll("tr").forEach((tr) => {
-    const isPlaying = tr.dataset.path === playingPath;
-    tr.classList.toggle("playing", isPlaying);
-    const btn = tr.querySelector("td.play button");
-    if (btn) btn.textContent = isPlaying && !plPaused ? "❚❚" : "▶";
+    tr.classList.toggle("playing", tr.dataset.path === playingPath);
   });
   plToggle.textContent = playingPath && !plPaused ? "❚❚" : "▶";
 }
@@ -1358,7 +1382,35 @@ async function pollPlayerStatus() {
   plToggle.textContent = plPaused ? "▶" : "❚❚";
 }
 
-plToggle.addEventListener("click", togglePlay);
+// The track the bottom Play button starts when nothing is playing: the active
+// (last-clicked / keyboard) row, else the first selected, else the top of the
+// list — then the backend auto-advances down the list to the end (#99 redesign,
+// the per-row play button was removed).
+function currentPlayTarget() {
+  const rows = [...tracksBody.querySelectorAll("tr")].filter(
+    (r) =>
+      r.dataset.path &&
+      !r.classList.contains("hidden-row") &&
+      !r.classList.contains("unreadable"),
+  );
+  if (!rows.length) return null;
+  if (activeRowPath && rows.some((r) => r.dataset.path === activeRowPath)) {
+    return activeRowPath;
+  }
+  const sel = rows.find((r) => selection.has(r.dataset.path));
+  return sel ? sel.dataset.path : rows[0].dataset.path;
+}
+
+function playPauseFromBar() {
+  if (playingPath) {
+    togglePlay();
+    return;
+  }
+  const path = currentPlayTarget();
+  if (path) playTrack(path);
+}
+
+plToggle.addEventListener("click", playPauseFromBar);
 plStop.addEventListener("click", stopPlayback);
 // While dragging, show the target time locally and suppress poll overrides;
 // commit the seek to the backend on release.
@@ -1372,12 +1424,6 @@ plSeek.addEventListener("change", () => {
   invoke("player_seek", { secs });
   plSeeking = false;
 });
-// Play buttons live in dynamically-rendered rows — delegate.
-tracksBody.addEventListener("click", (e) => {
-  const btn = e.target.closest("td.play button");
-  if (btn) playTrack(btn.dataset.path);
-});
-
 // ---- transformations (#34) ----
 // An ordered chain of cleanup rules applied to tags or filenames. The rules
 // live here only for the length of the dialog; naming and saving chains is
@@ -2179,8 +2225,10 @@ async function openSettings() {
     readPriority = PRIO_KEYS.slice();
   }
   // Display prefs live in localStorage, not the backend settings.
-  el("set-pin-cols").checked = pinColsEnabled();
+  el("set-checkbox-col").checked = checkboxColEnabled();
   el("set-condensed").checked = condensedTableEnabled();
+  el("set-table-font").value = tableFontPx();
+  el("set-table-font-val").textContent = `${tableFontPx()}px`;
   renderPrioList();
   el("settings").hidden = false;
 }
@@ -2200,8 +2248,10 @@ async function saveSettings() {
     cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
   };
   // Display prefs are local-only; apply + persist before the backend round-trip.
-  applyPinCols(el("set-pin-cols").checked);
+  // (Table font size already applies live on input; persisted here too.)
+  applyCheckboxCol(el("set-checkbox-col").checked);
   applyCondensedTable(el("set-condensed").checked);
+  applyTableFont(parseInt(el("set-table-font").value, 10));
   try {
     await invoke("save_discogs_token", { token });
     await invoke("save_settings", { settings });
@@ -2929,6 +2979,13 @@ el("set-id3").addEventListener("click", (e) => {
   if (btn) setId3Choice(btn.dataset.id3);
 });
 el("set-prio-reset").addEventListener("click", resetPriority);
+// Table font size is a live control: drag to apply (and persist) immediately so
+// the effect is visible behind the settings sheet.
+el("set-table-font").addEventListener("input", (e) => {
+  const px = clampTableFont(parseInt(e.target.value, 10));
+  applyTableFont(px);
+  el("set-table-font-val").textContent = `${px}px`;
+});
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !el("settings").hidden) cancelSettings();
@@ -3173,7 +3230,6 @@ function beginCellEdit(cell) {
 }
 
 tracksBody.addEventListener("click", (e) => {
-  if (e.target.closest("td.play")) return; // play button handles itself
   if (e.target.closest("td.sel")) return; // checkbox toggle → change listener
   if (e.target.closest("tr.group-head")) return; // caret handles collapse
   const tr = e.target.closest("tr");
@@ -3189,6 +3245,16 @@ tracksBody.addEventListener("dblclick", (e) => {
     // Caret double-click just toggles collapse (handled by the click listener);
     // double-clicking the name toggles the group's selection.
     if (!e.target.closest(".group-caret")) toggleGroupSelection(head.dataset.group);
+    return;
+  }
+  // Double-clicking the file name plays the track (the per-row play button was
+  // removed, #99 redesign); tag cells still double-click to edit.
+  const fileCell = e.target.closest("td.file");
+  if (fileCell) {
+    const tr = e.target.closest("tr");
+    if (tr && tr.dataset.path && !tr.classList.contains("unreadable")) {
+      playTrack(tr.dataset.path);
+    }
     return;
   }
   const cell = e.target.closest("td.editable");
@@ -3521,7 +3587,8 @@ loadColumns();
 loadColumnWidths();
 renderTableHead();
 applyCondensedTable(condensedTableEnabled());
-applyPinCols(pinColsEnabled());
+applyCheckboxCol(checkboxColEnabled());
+applyTableFont(tableFontPx());
 
 // Browser-only fake of the native player: a wall-clock timer advances position,
 // auto-advances to the queued `next` on end, and reports status — enough to

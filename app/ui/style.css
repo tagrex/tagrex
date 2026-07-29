@@ -666,24 +666,21 @@ td.error {
    across every column so track numbers, filenames and tag values line up. */
 #tracks tbody td {
   font-family: var(--font-mono-bundled);
-  /* Compact rows, matching the release-card tracklist density. */
-  font-size: var(--text-2xs);
+  /* Compact rows; size is user-adjustable (Settings › Display), default 10px. */
+  font-size: var(--table-font-size, var(--text-2xs));
   padding: 2px 10px;
 }
 
 /* Condensed-table preference (#100): swap the aligned monospace for a narrower
    sans so more of each value fits. Toggled from Settings; trades column
-   alignment for width. A condensed sans reads small at the mono's 10px, so bump
-   it a notch — the narrower face still nets more characters per column. */
+   alignment for width. Size is governed by --table-font-size (shared control). */
 body.condensed-table #tracks tbody td {
   font-family: var(--font-ui-condensed);
-  font-size: var(--text-xs);
 }
 
 /* Match the header to the tighter body rows. */
 #tracks thead th {
   padding: 4px 10px;
-  z-index: 2; /* header above body cells (incl. the sticky pinned columns) */
 }
 
 /* Editable cells only show the text caret while actually editing. */
@@ -722,14 +719,6 @@ th.sortable:hover {
      horizontally); still fills the pane when the columns are few. */
   width: max-content;
   min-width: 100%;
-  /* Separate borders so the sticky Sel/Play/File columns (#99) stay put in
-     WebKit — collapsed borders make sticky cells unreliable there. */
-  border-collapse: separate;
-  border-spacing: 0;
-}
-#tracks th.play,
-#tracks td.play {
-  width: 30px;
 }
 #tracks thead th.sortable {
   position: sticky; /* re-assert: anchors the absolutely-positioned grip */
@@ -769,66 +758,11 @@ body.resizing-col {
   user-select: none;
 }
 
-/* ---- sticky Sel / Play / File columns (#99) ----
-   Keep a row's identity fixed while wide tag columns scroll horizontally.
-   Mirrors the Preview-diff prior art: opaque fills on every pinned cell for
-   every row state (so scrolled cells never show through), left-offsets stacked
-   from the two fixed-width columns (Sel 28 + Play 30). File is the last pinned
-   column, so its user-resizable width never shifts anything to its right.
-   Gated behind body.pin-cols so the "Pin columns" toggle (Settings › Display)
-   can turn it off — a plain table with no sticky cells, so WebKit's
-   scroll-time width recompute of sticky cells never kicks in. */
-body.pin-cols #tracks th.sel,
-body.pin-cols #tracks td.sel,
-body.pin-cols #tracks th.play,
-body.pin-cols #tracks td.play,
-body.pin-cols #tracks thead th[data-sort="file"],
-body.pin-cols #tracks td.file {
-  position: sticky;
-  z-index: 1;
-  background: var(--bg);
-}
-body.pin-cols #tracks th.sel,
-body.pin-cols #tracks td.sel {
-  left: 0;
-}
-body.pin-cols #tracks th.play,
-body.pin-cols #tracks td.play {
-  left: 28px; /* after Sel (28px) */
-}
-body.pin-cols #tracks thead th[data-sort="file"],
-body.pin-cols #tracks td.file {
-  left: 58px; /* after Sel + Play (28 + 30) */
-  box-shadow: 1px 0 0 0 var(--border); /* seam: scrolled cells tuck under */
-}
-/* Pinned header cells beat both the body pinned column and the sticky header. */
-body.pin-cols #tracks thead th.sel,
-body.pin-cols #tracks thead th.play,
-body.pin-cols #tracks thead th[data-sort="file"] {
-  z-index: 3;
-  background: var(--panel);
-}
-/* Opaque fill per row state — a transparent pinned cell would let the scrolled
-   tag cells bleed through it. */
-body.pin-cols #tracks tbody tr:hover td.sel,
-body.pin-cols #tracks tbody tr:hover td.play,
-body.pin-cols #tracks tbody tr:hover td.file {
-  background: var(--row-hover);
-}
-body.pin-cols #tracks tbody tr.selected td.sel,
-body.pin-cols #tracks tbody tr.selected td.play,
-body.pin-cols #tracks tbody tr.selected td.file {
-  background: var(--sel-tint);
-}
-body.pin-cols #tracks tbody tr.selected:hover td.sel,
-body.pin-cols #tracks tbody tr.selected:hover td.play,
-body.pin-cols #tracks tbody tr.selected:hover td.file {
-  background: var(--sel-tint-hover);
-}
-body.pin-cols #tracks tbody tr.unreadable td.sel,
-body.pin-cols #tracks tbody tr.unreadable td.play,
-body.pin-cols #tracks tbody tr.unreadable td.file {
-  background: var(--inert-stripes-soft);
+/* Selection-checkbox column is optional (Settings › Display, off by default) —
+   rows select on click, so hide the column unless it's turned on. */
+body:not(.show-checkbox) #tracks th.sel,
+body:not(.show-checkbox) #tracks td.sel {
+  display: none;
 }
 
 #filter {
@@ -1161,37 +1095,14 @@ tr.drop-below td {
   color: #fff;
 }
 
-/* ---- preview player ---- */
-th.play,
-td.play {
-  width: 30px;
-  text-align: center;
-  padding: 0;
-}
-
-button.play-btn {
-  padding: 2px 6px;
-  font-size: 12px;
-  line-height: 1;
-  box-shadow: none;
-  background: transparent;
-  border-color: transparent;
-  color: var(--muted);
-}
-
-button.play-btn:hover {
-  color: var(--accent-ink);
-  border-color: var(--border);
-}
-
 /* Playing — an orthogonal left-edge bar (not a full-row tint), so it reads
-   alongside a selected/dirty row instead of overwriting its background. */
-tr.playing td:first-child {
+   alongside a selected/dirty row instead of overwriting its background. The bar
+   sits on the leftmost *visible* cell: the File cell by default, or the Sel cell
+   when the checkbox column is shown (it's `display:none` otherwise, so the bar
+   would be invisible on it). */
+body:not(.show-checkbox) tr.playing td.file,
+body.show-checkbox tr.playing td.sel {
   box-shadow: inset 3px 0 0 0 var(--accent);
-}
-
-tr.playing td.play button.play-btn {
-  color: var(--accent-ink);
 }
 
 /* ---- status bar ---- */

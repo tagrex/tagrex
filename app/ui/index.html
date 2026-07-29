@@ -69,7 +69,6 @@
             <thead>
               <tr>
                 <th class="sel"><input id="select-all" type="checkbox" /></th>
-                <th class="play"></th>
                 <th data-sort="file" class="sortable">File<span class="sort-ind"></span></th>
                 <th data-sort="artist" class="sortable">Artist<span class="sort-ind"></span></th>
                 <th data-sort="title" class="sortable">Title<span class="sort-ind"></span></th>
@@ -425,15 +424,23 @@
           <div class="settings-group">
             <h3>Display</h3>
             <div class="settings-row">
-              <label for="set-pin-cols">Pin Sel / Play / File columns</label>
-              <input id="set-pin-cols" type="checkbox" />
+              <label for="set-checkbox-col">Selection checkbox column</label>
+              <input id="set-checkbox-col" type="checkbox" />
             </div>
-            <p class="settings-hint">Keep the checkbox, play and file-name columns fixed while the tag columns scroll horizontally. Off scrolls the whole table.</p>
+            <p class="settings-hint">Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.</p>
             <div class="settings-row">
               <label for="set-condensed">Condensed table font</label>
               <input id="set-condensed" type="checkbox" />
             </div>
             <p class="settings-hint">Use a narrower sans-serif for the file table so more of each value fits before it truncates. Off keeps the aligned monospace.</p>
+            <div class="settings-row">
+              <label for="set-table-font">Table font size</label>
+              <div class="settings-inline">
+                <input id="set-table-font" type="range" min="10" max="20" step="1" />
+                <span id="set-table-font-val" class="settings-hint"></span>
+              </div>
+            </div>
+            <p class="settings-hint">Applies to the file table in either font. Drag to preview live.</p>
           </div>
         </div>
         <div class="settings-foot">

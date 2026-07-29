@@ -116,16 +116,17 @@ first release ships.
 
 ### Added
 
-- The **Sel, Play and File columns of the file table now stay pinned** while the
-  rest of the columns scroll horizontally, so a wide set of tag columns never
-  scrolls the row's identity (checkbox, play, filename) out of view. Toggleable
-  in Settings › Display ("Pin Sel / Play / File columns", on by default); turning
-  it off scrolls the whole table.
+- **Leaner file table.** The per-row Play button column is gone: play a track by
+  **double-clicking its file name**, or press the **Play button in the bottom
+  bar** to start the current row (the last-clicked / selected one, else the top)
+  and auto-advance down the list to the end. The selection-checkbox column is now
+  **optional** (Settings › Display, off by default) — rows select on click, with
+  Cmd/Shift-click for a range or to toggle — so the file name leads the table.
 
-- An optional **condensed table font** (Settings › Display). It swaps the file
-  table's monospace for a narrower sans so more of each value fits before it
-  truncates, trading column alignment for width; off by default. Uses a system
-  condensed face until a bundled subset is added.
+- **Display preferences** (Settings › Display): an optional **condensed table
+  font** (a narrower sans so more of each value fits before it truncates; uses a
+  system condensed face until a bundled subset is added), and an **adjustable
+  table font size** (10–20px, applied live to whichever face is active).
 
 - Import now also writes the **total track count** (so a file's track reads as
   `N/total`), the **release country** (to a portable `RELEASECOUNTRY` tag —
