@@ -56,6 +56,13 @@ first release ships.
 
 ### Changed
 
+- Release-card tracklist: the **title · artist** column now sizes to the longest
+  row and scrolls horizontally, while the **checkbox + track number** and
+  **duration** columns stay pinned either side — so a long track/artist is no
+  longer truncated. The middot between title and artist is more visible (was
+  nearly invisible). The main file table's rows are also **more compact** (tighter
+  row height and a smaller cell font), matching the tracklist's density.
+
 - **Compact List-view release card** (#98, Design pass). The card is denser and
   more image-forward: the cover now fills the header's full height (a square
   driven by the text beside it) instead of a fixed 64px thumbnail; the header is

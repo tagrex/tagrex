@@ -580,7 +580,13 @@ td.error {
    across every column so track numbers, filenames and tag values line up. */
 #tracks tbody td {
   font-family: var(--font-mono-bundled);
-  font-size: 11px;
+  /* Compact rows, matching the release-card tracklist density. */
+  font-size: var(--text-2xs);
+  padding: 2px 10px;
+}
+
+/* Match the header to the tighter body rows. */
+#tracks thead th {
   padding: 4px 10px;
 }
 
@@ -2056,7 +2062,7 @@ td.unreadable-note {
 .release-sub .release-meta::before {
   content: "·";
   margin-right: 5px;
-  color: var(--border);
+  color: var(--muted);
 }
 
 /* Catalogue number — the DJ's fastest match key; accent-as-text -> ink. */
@@ -2189,37 +2195,49 @@ td.unreadable-note {
 }
 
 /* Tight combined-cell tracklist (#98): checkbox+№ · title+artist · duration.
-   Monospace so the track number, title/artist and duration share one set of
-   metrics — the number then sits on the same line as the title (a proportional
-   title left the smaller mono number looking off-baseline). */
+   Monospace so the number, title/artist and duration share one set of metrics.
+   The middle title·artist cell sizes to its longest row and scrolls
+   horizontally; the checkbox+№ and duration columns are pinned either side. */
+.tracklist-scroll {
+  overflow-x: auto;
+}
 .release-tracklist table {
-  width: 100%;
-  border-collapse: collapse;
+  /* Grow to the longest row (so nothing truncates) but fill the card at least. */
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate; /* sticky cells need separate borders */
+  border-spacing: 0;
   font-family: var(--font-mono-bundled);
   font-size: var(--text-xs);
-}
-
-.release-tracklist tr {
-  border-top: 1px solid var(--border);
-}
-.release-tracklist tbody tr:first-child {
-  border-top: none;
-}
-.release-tracklist tr:hover {
-  background: var(--row-hover);
 }
 
 .release-tracklist td {
   padding: 2px var(--space-2);
   line-height: var(--lh-tight);
   vertical-align: middle;
+  /* Opaque so the scrolling middle cell tucks under the pinned columns. */
+  background: var(--bg);
+  /* Override the generic tbody-cell clamp so the middle cell can grow to the
+     longest row instead of truncating at 320px. */
+  max-width: none;
+  overflow: visible;
+}
+.release-tracklist tbody tr:not(:first-child) td {
+  border-top: 1px solid var(--border);
+}
+.release-tracklist tr:hover td {
+  background: var(--row-hover);
 }
 
-/* Leading group: checkbox + track number, tied together; left inset = header. */
+/* Leading group, pinned left: checkbox + track number. */
 .release-tracklist td.tk-lead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
   width: 1%;
   white-space: nowrap;
   padding-left: var(--space-2);
+  box-shadow: 1px 0 0 0 var(--border); /* seam so scrolled content tucks under */
 }
 .tk-lead-inner {
   display: flex;
@@ -2234,54 +2252,50 @@ td.unreadable-note {
   flex: none;
 }
 .tk-num {
-  /* Same size as the title (table is mono now) so the digits sit on the row's
-     text line, level with the track name. */
+  /* Same size as the title so the digits sit level with the track name. */
   font-size: var(--text-xs);
   color: var(--muted);
   min-width: 20px;
   text-align: right;
 }
 
-/* Combined title + artist in one cell, single line. The artist shows (muted,
-   after a middot) only when it differs from the album artist, and truncates
-   first so the title keeps its room. */
+/* Middle cell (scrolls): title + artist, sized to the longest row, never
+   truncated. The per-track artist shows (muted, after a middot) only when it
+   differs from the album artist. */
 .release-tracklist td.tk-track {
-  width: 100%;
-  overflow: hidden;
+  white-space: nowrap;
 }
 .tk-track-inner {
   display: flex;
   align-items: center;
   gap: 5px;
-  min-width: 0;
 }
 .tk-t {
   color: var(--text);
-  flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .tk-a {
   color: var(--muted);
-  flex: 0 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .tk-a::before {
   content: "·";
   margin-right: 5px;
-  color: var(--border);
+  color: var(--muted);
 }
 
+/* Duration, pinned right. */
 .release-tracklist td.tk-dur {
+  position: sticky;
+  right: 0;
+  z-index: 1;
   width: 1%;
   text-align: right;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   padding-right: var(--space-3);
   white-space: nowrap;
+  box-shadow: -1px 0 0 0 var(--border);
 }
 
 .tracklist-apply {

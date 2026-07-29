@@ -2522,7 +2522,7 @@ function renderTracklist(card, release) {
       <span class="muted tk-selcount" style="margin-left:auto"></span>
     </div>
     ${labelPicker}
-    <table><tbody>${rows}</tbody></table>
+    <div class="tracklist-scroll"><table><tbody>${rows}</tbody></table></div>
     <div class="tracklist-apply"><button class="primary" data-act="import">Import to selected files</button></div>`;
   updateTracklistCount(card);
 }
