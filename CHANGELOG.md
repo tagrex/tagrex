@@ -41,6 +41,9 @@ first release ships.
 
 ### Changed
 
+- The window now opens at 1280×800 and can't be shrunk below that, so the layout
+  always has room (was 1100×720, min 720×480).
+
 - Aligned the heights of the Files-toolbar controls. The Group dropdown, Filter
   box and Columns button rendered at 28/26/24px because a `<select>`, `<input>`
   and `<button>` have different intrinsic heights; they (and Expand/Collapse) are
