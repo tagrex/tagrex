@@ -118,7 +118,9 @@ first release ships.
 
 - The **Sel, Play and File columns of the file table now stay pinned** while the
   rest of the columns scroll horizontally, so a wide set of tag columns never
-  scrolls the row's identity (checkbox, play, filename) out of view.
+  scrolls the row's identity (checkbox, play, filename) out of view. Toggleable
+  in Settings › Display ("Pin Sel / Play / File columns", on by default); turning
+  it off scrolls the whole table.
 
 - An optional **condensed table font** (Settings › Display). It swaps the file
   table's monospace for a narrower sans so more of each value fits before it

@@ -673,9 +673,11 @@ td.error {
 
 /* Condensed-table preference (#100): swap the aligned monospace for a narrower
    sans so more of each value fits. Toggled from Settings; trades column
-   alignment for width. */
+   alignment for width. A condensed sans reads small at the mono's 10px, so bump
+   it a notch — the narrower face still nets more characters per column. */
 body.condensed-table #tracks tbody td {
   font-family: var(--font-ui-condensed);
+  font-size: var(--text-xs);
 }
 
 /* Match the header to the tighter body rows. */
@@ -772,57 +774,60 @@ body.resizing-col {
    Mirrors the Preview-diff prior art: opaque fills on every pinned cell for
    every row state (so scrolled cells never show through), left-offsets stacked
    from the two fixed-width columns (Sel 28 + Play 30). File is the last pinned
-   column, so its user-resizable width never shifts anything to its right. */
-#tracks th.sel,
-#tracks td.sel,
-#tracks th.play,
-#tracks td.play,
-#tracks thead th[data-sort="file"],
-#tracks td.file {
+   column, so its user-resizable width never shifts anything to its right.
+   Gated behind body.pin-cols so the "Pin columns" toggle (Settings › Display)
+   can turn it off — a plain table with no sticky cells, so WebKit's
+   scroll-time width recompute of sticky cells never kicks in. */
+body.pin-cols #tracks th.sel,
+body.pin-cols #tracks td.sel,
+body.pin-cols #tracks th.play,
+body.pin-cols #tracks td.play,
+body.pin-cols #tracks thead th[data-sort="file"],
+body.pin-cols #tracks td.file {
   position: sticky;
   z-index: 1;
   background: var(--bg);
 }
-#tracks th.sel,
-#tracks td.sel {
+body.pin-cols #tracks th.sel,
+body.pin-cols #tracks td.sel {
   left: 0;
 }
-#tracks th.play,
-#tracks td.play {
+body.pin-cols #tracks th.play,
+body.pin-cols #tracks td.play {
   left: 28px; /* after Sel (28px) */
 }
-#tracks thead th[data-sort="file"],
-#tracks td.file {
+body.pin-cols #tracks thead th[data-sort="file"],
+body.pin-cols #tracks td.file {
   left: 58px; /* after Sel + Play (28 + 30) */
   box-shadow: 1px 0 0 0 var(--border); /* seam: scrolled cells tuck under */
 }
 /* Pinned header cells beat both the body pinned column and the sticky header. */
-#tracks thead th.sel,
-#tracks thead th.play,
-#tracks thead th[data-sort="file"] {
+body.pin-cols #tracks thead th.sel,
+body.pin-cols #tracks thead th.play,
+body.pin-cols #tracks thead th[data-sort="file"] {
   z-index: 3;
   background: var(--panel);
 }
 /* Opaque fill per row state — a transparent pinned cell would let the scrolled
    tag cells bleed through it. */
-#tracks tbody tr:hover td.sel,
-#tracks tbody tr:hover td.play,
-#tracks tbody tr:hover td.file {
+body.pin-cols #tracks tbody tr:hover td.sel,
+body.pin-cols #tracks tbody tr:hover td.play,
+body.pin-cols #tracks tbody tr:hover td.file {
   background: var(--row-hover);
 }
-#tracks tbody tr.selected td.sel,
-#tracks tbody tr.selected td.play,
-#tracks tbody tr.selected td.file {
+body.pin-cols #tracks tbody tr.selected td.sel,
+body.pin-cols #tracks tbody tr.selected td.play,
+body.pin-cols #tracks tbody tr.selected td.file {
   background: var(--sel-tint);
 }
-#tracks tbody tr.selected:hover td.sel,
-#tracks tbody tr.selected:hover td.play,
-#tracks tbody tr.selected:hover td.file {
+body.pin-cols #tracks tbody tr.selected:hover td.sel,
+body.pin-cols #tracks tbody tr.selected:hover td.play,
+body.pin-cols #tracks tbody tr.selected:hover td.file {
   background: var(--sel-tint-hover);
 }
-#tracks tbody tr.unreadable td.sel,
-#tracks tbody tr.unreadable td.play,
-#tracks tbody tr.unreadable td.file {
+body.pin-cols #tracks tbody tr.unreadable td.sel,
+body.pin-cols #tracks tbody tr.unreadable td.play,
+body.pin-cols #tracks tbody tr.unreadable td.file {
   background: var(--inert-stripes-soft);
 }
 

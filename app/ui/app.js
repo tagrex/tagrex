@@ -59,6 +59,26 @@ function applyCondensedTable(on) {
   }
 }
 
+// Pin Sel/Play/File columns (#99). Default on; a stored value overrides. Also a
+// pure display choice, so it lives in localStorage.
+const PIN_COLS_STORAGE_KEY = "tagrex.pinCols";
+function pinColsEnabled() {
+  try {
+    const v = localStorage.getItem(PIN_COLS_STORAGE_KEY);
+    return v === null ? true : v === "1";
+  } catch (e) {
+    return true;
+  }
+}
+function applyPinCols(on) {
+  document.body.classList.toggle("pin-cols", on);
+  try {
+    localStorage.setItem(PIN_COLS_STORAGE_KEY, on ? "1" : "0");
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
 // Sensible starting width for a column the user hasn't resized yet. The file
 // name is the widest; short numeric/code fields start narrow.
 function defaultColumnWidth(key) {
@@ -2159,6 +2179,7 @@ async function openSettings() {
     readPriority = PRIO_KEYS.slice();
   }
   // Display prefs live in localStorage, not the backend settings.
+  el("set-pin-cols").checked = pinColsEnabled();
   el("set-condensed").checked = condensedTableEnabled();
   renderPrioList();
   el("settings").hidden = false;
@@ -2179,6 +2200,7 @@ async function saveSettings() {
     cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
   };
   // Display prefs are local-only; apply + persist before the backend round-trip.
+  applyPinCols(el("set-pin-cols").checked);
   applyCondensedTable(el("set-condensed").checked);
   try {
     await invoke("save_discogs_token", { token });
@@ -3499,6 +3521,7 @@ loadColumns();
 loadColumnWidths();
 renderTableHead();
 applyCondensedTable(condensedTableEnabled());
+applyPinCols(pinColsEnabled());
 
 // Browser-only fake of the native player: a wall-clock timer advances position,
 // auto-advances to the queued `next` on end, and reports status — enough to
