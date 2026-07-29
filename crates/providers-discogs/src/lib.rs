@@ -474,16 +474,46 @@ fn is_track(entry: &Value) -> bool {
 
 fn join_artists(value: Option<&Value>, cleaner: &TransformChain) -> Option<String> {
     let artists = value?.as_array()?;
-    let names: Vec<String> = artists
-        .iter()
-        .filter_map(|artist| artist.get("name").and_then(Value::as_str))
-        .map(|name| cleaner.apply(name))
-        .filter(|name| !name.is_empty())
-        .collect();
-    if names.is_empty() {
+    let mut result = String::new();
+    let count = artists.len();
+    for (index, artist) in artists.iter().enumerate() {
+        // Prefer the release-specific artist-name variation (`anv`) over the
+        // canonical `name`: it's how the artist is credited *on this release*
+        // (what the Discogs page shows), e.g. `Wishmountain` is credited as
+        // `Wish Mountain`, `Al-Faris` as `Al Faris`. Fall back to `name`.
+        let anv = artist
+            .get("anv")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim();
+        let name = artist.get("name").and_then(Value::as_str).unwrap_or("");
+        let display = cleaner.apply(if anv.is_empty() { name } else { anv });
+        if display.is_empty() {
+            continue;
+        }
+        result.push_str(&display);
+        // Discogs' `join` connects this artist to the next (e.g. `Presents`,
+        // `Feat.`, `&`). Use it between credits; a comma is the neutral default.
+        if index + 1 < count {
+            let join = artist
+                .get("join")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .trim();
+            match join {
+                "" | "," => result.push_str(", "),
+                other => {
+                    result.push(' ');
+                    result.push_str(other);
+                    result.push(' ');
+                }
+            }
+        }
+    }
+    if result.is_empty() {
         None
     } else {
-        Some(names.join(", "))
+        Some(result)
     }
 }
 
@@ -566,6 +596,36 @@ mod tests {
         );
         // Digits in parentheses that are part of the name, not a suffix.
         assert_eq!(step.apply("Apollo (440) Sound"), "Apollo (440) Sound");
+    }
+
+    #[test]
+    fn track_artists_prefer_anv_and_honour_join() {
+        let cleaner = artist_cleaner();
+        // `anv` (release-specific credit) wins over `name`.
+        let wish = serde_json::json!([{"name": "Wishmountain", "anv": "Wish Mountain"}]);
+        assert_eq!(
+            join_artists(Some(&wish), &cleaner).as_deref(),
+            Some("Wish Mountain")
+        );
+        // Empty `anv` falls back to `name` (still suffix-cleaned).
+        let oxygen = serde_json::json!([{"name": "Oxygen (9)", "anv": ""}]);
+        assert_eq!(
+            join_artists(Some(&oxygen), &cleaner).as_deref(),
+            Some("Oxygen")
+        );
+        // `join` connects credits ("Zolex Presents Carat Trax 3"), and `anv`
+        // still applies to each part.
+        let zolex = serde_json::json!([
+            {"name": "Zolex", "anv": "", "join": "Presents"},
+            {"name": "Carat Trax", "anv": "Carat Trax 3", "join": ""}
+        ]);
+        assert_eq!(
+            join_artists(Some(&zolex), &cleaner).as_deref(),
+            Some("Zolex Presents Carat Trax 3")
+        );
+        // No `join` between multiple artists → comma default.
+        let pair = serde_json::json!([{"name": "A"}, {"name": "B"}]);
+        assert_eq!(join_artists(Some(&pair), &cleaner).as_deref(), Some("A, B"));
     }
 
     #[test]

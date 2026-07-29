@@ -438,10 +438,14 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
 /// Whether a frame is one the text-only [`TagMap`] already represents, and so
 /// must come from the model rather than being carried over from the old tag.
 fn is_model_text_frame(frame: &Frame<'_>) -> bool {
+    // TDRC (recording time) is a `Timestamp` frame, not `Text`, but the model
+    // round-trips it as `Year`. Without excluding the original, a file left with
+    // a stale/duplicate TDRC (e.g. two TDRC frames from another tagger) leaks the
+    // old year back on write and overwrites the value we just set.
     matches!(
         frame,
         Frame::Text(_) | Frame::UserText(_) | Frame::Comment(_)
-    )
+    ) || frame.id().as_str() == "TDRC"
 }
 
 /// The file's concrete ID3v2 tag, if it has one. Dispatches on the container so
@@ -565,7 +569,11 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         ItemKey::Genre => TagField::Genre,
         ItemKey::Comment => TagField::Comment,
         ItemKey::Composer => TagField::Composer,
-        ItemKey::Publisher => TagField::Publisher,
+        // In ID3v2, lofty maps the publisher frame (TPUB) to `ItemKey::Label`,
+        // not `ItemKey::Publisher` — so a `Publisher` we wrote reads back as
+        // `Label`. Accept both so it round-trips instead of landing in a stray
+        // `Custom("Label")` field (and dropping out of the Publisher column).
+        ItemKey::Publisher | ItemKey::Label => TagField::Publisher,
         // Accept either BPM spelling on read, the same way Year accepts both
         // the legacy and modern frame; writing always picks `IntegerBpm`.
         ItemKey::Bpm | ItemKey::IntegerBpm => TagField::Bpm,

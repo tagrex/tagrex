@@ -10,6 +10,21 @@ first release ships.
 
 ### Fixed
 
+- **Applying a change could silently drop the Year and Publisher**, even though
+  the Preview showed them. Two ID3v2 round-trip bugs: (1) the year is a `TDRC`
+  timestamp frame, which the writer didn't recognise as one of its own, so a
+  file left with a stale or duplicate `TDRC` (e.g. two of them, from another
+  tagger) leaked the old year back over the value just written; (2) lofty reads
+  the publisher frame (`TPUB`) back as `Label`, so a written Publisher never
+  round-tripped and vanished from the column. Both now persist correctly.
+
+- **Import: artist names now use the Discogs release credit.** The importer took
+  the canonical artist `name`; it now prefers the release-specific name variation
+  (`anv`) when present — how the artist is actually credited on that release
+  (e.g. `Wishmountain` → `Wish Mountain`) — and honours the `join` between
+  credits (e.g. `Zolex Presents Carat Trax 3`). This stops needless changes to
+  artists that already match the release credit.
+
 - The **Catalogue #** change now appears in the Preview diff after importing a
   release. The diff only rendered a column for a fixed set of known extra fields
   and silently dropped any other change — catalogue number was written but never
