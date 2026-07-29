@@ -450,6 +450,8 @@ function appendTrackRow(track, groupKey) {
     const value = edited ? pending.get(field) : original;
     const td = document.createElement("td");
     td.className = "editable";
+    // The old persistent toolbar hint moved here — surfaced on hover instead.
+    td.title = "Double-click to edit";
     // Not editable until double-clicked (single click selects the row).
     td.contentEditable = "false";
     td.spellcheck = false;

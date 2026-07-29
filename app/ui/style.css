@@ -431,10 +431,6 @@ body.panel-collapsed .col-splitter {
   background: var(--sel-tint);
 }
 
-.edit-hint {
-  font-size: var(--text-xs);
-}
-
 #preview-view {
   display: flex;
   flex-direction: column;
