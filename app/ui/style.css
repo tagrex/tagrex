@@ -266,6 +266,22 @@ button.icon {
   box-shadow: none;
 }
 
+/* Chrome icon buttons (top-bar gear, mode-bar collapse toggle) sat a few px
+   short of the standard control height, so the gear looked stunted next to
+   Undo and the two stacked buttons had mismatched widths. Pin them to a square
+   at --ctl-h and centre the glyph. Scoped by id so the compact rule-chain
+   icons (mkRuleIcon) keep their small size. */
+#settings-open,
+#panel-toggle {
+  box-sizing: border-box;
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* Discard / Apply parity: both a fixed height, and a defined edge on the primary
    so its solid fill doesn't read as taller than the outlined secondary. Scoped
    to the preview bar so other primary buttons keep their borderless look. */
