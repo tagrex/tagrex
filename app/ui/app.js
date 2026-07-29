@@ -2745,7 +2745,9 @@ const MODE_REFRESH = {
   generator: refreshGenerator,
   exporter: refreshExporter,
 };
-let currentMode = "renamer";
+// TAGGER is the primary tool, so it's the default tab (see index.html). Keep
+// this in sync with the tab/panel marked active/visible there.
+let currentMode = "tagger";
 
 function setMode(name) {
   currentMode = name;

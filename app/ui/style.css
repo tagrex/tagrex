@@ -1860,6 +1860,12 @@ td.unreadable-note {
   gap: 8px;
   padding: 10px 0 4px;
 }
+/* The explicit `display` above overrides the `hidden` attribute's UA
+   `display: none`, so honour `hidden` explicitly (else the footer shows before
+   the first search). */
+.release-more[hidden] {
+  display: none;
+}
 
 .seg {
   display: flex;

@@ -25,8 +25,8 @@
          Table is the subject (noun), each tab is a verb applied to it. -->
     <nav class="modebar">
       <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="renamer" title="Rename files and reorganize them into folders">RENAMER</button>
-        <button class="mode-tab" data-mode="tagger" title="Edit tags — from Discogs, by hand, and cover art">TAGGER</button>
+        <button class="mode-tab active" data-mode="tagger" title="Edit tags — from Discogs, by hand, and cover art">TAGGER</button>
+        <button class="mode-tab" data-mode="renamer" title="Rename files and reorganize them into folders">RENAMER</button>
         <button class="mode-tab" data-mode="generator" title="Generate and clean up tag/filename values">GENERATOR</button>
         <button class="mode-tab" data-mode="exporter" title="Export playlists, CSV, and reports">EXPORTER</button>
       </div>
@@ -126,7 +126,7 @@
       <!-- Mode panels: exactly one is shown, matching the active tab. -->
       <aside class="mode-col">
         <!-- RENAMER: rename by mask + reorganize into folders. -->
-        <section id="panel-renamer" class="mode-panel">
+        <section id="panel-renamer" class="mode-panel" hidden>
           <div class="panel-block">
             <h2>Rename by mask</h2>
             <div class="mask-row">
@@ -164,7 +164,7 @@
 
         <!-- TAGGER: tags from two angles — ONLINE (a metadata source) and EDITOR
              (hand-edit fields + cover). Sub-tabs keep the panel uncluttered. -->
-        <section id="panel-tagger" class="mode-panel" hidden>
+        <section id="panel-tagger" class="mode-panel">
           <div class="subtabs" role="tablist" aria-label="Tagging mode">
             <button class="subtab active" data-subtab="online" type="button">ONLINE</button>
             <button class="subtab" data-subtab="editor" type="button">EDITOR</button>
