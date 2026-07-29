@@ -13,6 +13,12 @@
 }
 
 :root {
+  /* Opt every native control (scrollbars, <select> popups, checkboxes, range,
+     spinners, focus rings) into the OS light/dark preference. Without this the
+     app paints a dark theme via prefers-color-scheme while the browser still
+     renders bright-white native chrome over it. */
+  color-scheme: light dark;
+
   --bg: #ffffff;
   --panel: #f6f7f9;
   --border: #e2e5ea;
