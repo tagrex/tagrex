@@ -173,6 +173,10 @@
     --del: #f87171;
     --row-hover: #242832;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    /* Dark needs a much stronger row-selection tint than light to read on the
+       near-black table. */
+    --row-sel: color-mix(in srgb, var(--accent) 46%, var(--bg));
+    --row-sel-hover: color-mix(in srgb, var(--accent) 58%, var(--bg));
   }
 }
 :root[data-theme="dark"] {
@@ -188,6 +192,10 @@
   --del: #f87171;
   --row-hover: #242832;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  /* Dark needs a much stronger row-selection tint than light to read on the
+     near-black table. */
+  --row-sel: color-mix(in srgb, var(--accent) 46%, var(--bg));
+  --row-sel-hover: color-mix(in srgb, var(--accent) 58%, var(--bg));
   color-scheme: dark;
 }
 :root[data-theme="light"] {
