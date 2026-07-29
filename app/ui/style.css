@@ -392,17 +392,20 @@ body.panel-collapsed .col-splitter {
   background: transparent;
   color: var(--muted);
   font-weight: var(--fw-medium);
-  padding: 4px 4px;
-  border-bottom: 2px solid transparent;
+  padding: 3px 10px;
+  border-radius: 6px;
 }
 
 .view-tab:hover:not(.active):not(:disabled) {
   color: var(--text);
+  background: var(--row-hover);
 }
 
+/* Selected view = an accent-tinted pill, so which of Files/Preview/Duplicates is
+   active reads at a glance (the plain green text + underline was too faint). */
 .view-tab.active {
   color: var(--accent-ink);
-  border-bottom-color: var(--accent);
+  background: var(--sel-tint);
 }
 
 .edit-hint {
