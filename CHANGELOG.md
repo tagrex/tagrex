@@ -41,6 +41,13 @@ first release ships.
 
 ### Changed
 
+- Aligned the heights of the Files-toolbar controls. The Group dropdown, Filter
+  box and Columns button rendered at 28/26/24px because a `<select>`, `<input>`
+  and `<button>` have different intrinsic heights; they (and Expand/Collapse) are
+  now pinned to a single 28px. The Discard/Apply buttons were already the same
+  height — the primary now also carries a defined edge so its solid fill no
+  longer reads as taller than the outlined secondary.
+
 - The track/disc count chip on release cards and tiles now uses the same
   monospace font and size as the catalogue-number chip next to it, so the two
   read as a matched pair.

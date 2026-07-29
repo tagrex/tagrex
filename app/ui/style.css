@@ -243,6 +243,19 @@ button.icon {
   box-shadow: none;
 }
 
+/* Discard / Apply parity: both a fixed height, and a defined edge on the primary
+   so its solid fill doesn't read as taller than the outlined secondary. Scoped
+   to the preview bar so other primary buttons keep their borderless look. */
+.preview-bar button {
+  box-sizing: border-box;
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.preview-bar button.primary {
+  border-color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
 /* ---- mode tabs ---- */
 .modebar {
   display: flex;
@@ -2734,6 +2747,21 @@ td[data-field="year"],
 #columns-btn {
   padding: 4px 9px;
   box-shadow: none;
+}
+
+/* Uniform height for the Files-toolbar controls. A <select>, an <input> and a
+   <button> render at different intrinsic heights even with equal padding
+   (28/26/24px here), so pin them all to one border-box height. */
+.view-tabs .group-ctl select,
+.view-tabs #filter,
+.view-tabs #columns-btn,
+.view-tabs #expand-all,
+.view-tabs #collapse-all {
+  box-sizing: border-box;
+  height: 28px;
+  padding-top: 0;
+  padding-bottom: 0;
+  white-space: nowrap; /* keep labels on one line at the fixed height */
 }
 .col-menu {
   position: absolute;
