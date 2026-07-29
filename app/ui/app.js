@@ -719,13 +719,13 @@ const DIFF_MAIN_COLS = ["file", "artist", "title", "album", "year"];
 // Extra (non-main) fields, in the order they appear as added columns.
 const DIFF_EXTRA_ORDER = [
   "albumartist", "track", "tracktotal", "disc", "genre",
-  "composer", "publisher", "bpm", "isrc", "key", "comment",
+  "composer", "publisher", "catalognumber", "bpm", "isrc", "key", "comment",
 ];
 const DIFF_LABELS = {
   file: "File", artist: "Artist", title: "Title", album: "Album", year: "Year",
   albumartist: "Album Artist", track: "Track", tracktotal: "Track Total",
   disc: "Disc", genre: "Genre", composer: "Composer", publisher: "Publisher",
-  bpm: "BPM", isrc: "ISRC", key: "Key", comment: "Comment",
+  catalognumber: "Catalogue #", bpm: "BPM", isrc: "ISRC", key: "Key", comment: "Comment",
 };
 
 function diffLabel(field) {

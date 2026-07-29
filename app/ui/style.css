@@ -2057,6 +2057,10 @@ td.unreadable-note {
 }
 
 .pill {
+  /* Same mono face + size as the catalogue-number chip, so the two chips on
+     line 1 read as a matched pair. */
+  font-family: var(--font-mono-bundled);
+  font-size: 10px;
   font-weight: 600;
   background: var(--panel);
   border: 1px solid var(--border);

@@ -10,6 +10,11 @@ first release ships.
 
 ### Fixed
 
+- The **Catalogue #** change now appears in the Preview diff after importing a
+  release. The diff only rendered a column for a fixed set of known extra fields
+  and silently dropped any other change — catalogue number was written but never
+  shown. It's now in that set (labelled "Catalogue #").
+
 - Grid tiles no longer show a strip under the cover art. The cover image was
   rendered inline, leaving a baseline gap that revealed the striped placeholder
   below it, and a divider border added to the effect — the image is now a block
@@ -35,6 +40,10 @@ first release ships.
   after the last button. The side panel starts at 480px (min drag width 240px).
 
 ### Changed
+
+- The track/disc count chip on release cards and tiles now uses the same
+  monospace font and size as the catalogue-number chip next to it, so the two
+  read as a matched pair.
 
 - Release-card polish from testing. **List cards:** the cover is a bit larger
   (56→64px), the expand caret is bigger and highlights on hover/expand so it
