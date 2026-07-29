@@ -450,9 +450,10 @@ function appendTrackRow(track, groupKey) {
     const value = edited ? pending.get(field) : original;
     const td = document.createElement("td");
     td.className = "editable";
-    // The old persistent toolbar hint moved here — surfaced on hover instead.
-    td.title = "Double-click to edit";
     // Not editable until double-clicked (single click selects the row).
+    // The "double-click to edit" hint is a self-managed tooltip (see cellTip
+    // below), not a native title — same-text neighbours made the OS bubble
+    // linger over the wrong cell.
     td.contentEditable = "false";
     td.spellcheck = false;
     td.dataset.path = track.path;
@@ -3146,7 +3147,10 @@ tracksBody.addEventListener("dblclick", (e) => {
     return;
   }
   const cell = e.target.closest("td.editable");
-  if (cell) beginCellEdit(cell);
+  if (cell) {
+    hideCellTip();
+    beginCellEdit(cell);
+  }
 });
 
 // contentEditable is turned off again when a cell loses focus (blur doesn't
@@ -3160,6 +3164,58 @@ tracksBody.addEventListener(
   },
   true,
 );
+
+// ---- editable-cell hover hint ----
+// A self-managed tooltip rather than the native `title`: every editable cell
+// carries the same text, so the OS bubble stayed anchored to the first cell when
+// the pointer moved onto an identical neighbour. This one hides the instant the
+// pointer leaves a cell, re-arms on the next, and never shows mid-edit.
+const cellTip = document.createElement("div");
+cellTip.className = "cell-tip";
+cellTip.textContent = "Double-click to edit";
+cellTip.hidden = true;
+document.body.appendChild(cellTip);
+
+let cellTipCell = null;
+let cellTipTimer = 0;
+
+function hideCellTip() {
+  clearTimeout(cellTipTimer);
+  cellTipTimer = 0;
+  cellTipCell = null;
+  cellTip.hidden = true;
+}
+
+function showCellTipAt(x, y) {
+  cellTip.hidden = false;
+  // Clamp to the viewport so the bubble never spills off-screen at the edges.
+  const left = Math.min(x + 14, window.innerWidth - cellTip.offsetWidth - 6);
+  const top = Math.min(y + 18, window.innerHeight - cellTip.offsetHeight - 6);
+  cellTip.style.left = `${left}px`;
+  cellTip.style.top = `${top}px`;
+}
+
+tracksBody.addEventListener("pointermove", (e) => {
+  if (e.pointerType && e.pointerType !== "mouse") return; // no hover on touch
+  const cell = e.target.closest("td.editable");
+  if (!cell || cell.isContentEditable) {
+    if (cellTipCell) hideCellTip();
+    return;
+  }
+  if (cell !== cellTipCell) {
+    // Onto a new cell: drop any showing/pending bubble and re-arm the delay.
+    clearTimeout(cellTipTimer);
+    cellTip.hidden = true;
+    cellTipCell = cell;
+    const { clientX, clientY } = e;
+    cellTipTimer = window.setTimeout(() => showCellTipAt(clientX, clientY), 350);
+  }
+});
+
+tracksBody.addEventListener("pointerleave", hideCellTip);
+tracksBody.addEventListener("pointerdown", hideCellTip);
+// Scrolling moves the cells out from under a fixed-position bubble — drop it.
+window.addEventListener("scroll", hideCellTip, true);
 
 // ---- keyboard row navigation (roving tabindex) ----
 // Exactly one data row is tabbable (tabindex 0); ↑/↓ move focus between visible
