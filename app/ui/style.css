@@ -74,6 +74,13 @@
   --radius-md: 6px;
   --radius-lg: 10px;
 
+  /* control heights: one standard field/button height shared by inputs, selects
+     and buttons so a row lines up, plus a compact tier for dense toolbars, the
+     release-card tracklist header, and rule-chain fields. Single source of
+     truth — every pinned height below references these. */
+  --ctl-h: 28px;
+  --ctl-h-sm: 24px;
+
   /* focus ring — keyboard-visible; two layers so it reads on any background:
      a --bg gap, then the accent. --ring for free-standing controls,
      --ring-inset for clipped table cells/rows. */
@@ -207,6 +214,22 @@ input[type="checkbox"] {
   accent-color: var(--accent);
 }
 
+/* Base <select> box model. An unstyled select takes an engine-dependent
+   intrinsic height (native macOS renders it tall, the webview short), which is
+   why dropdowns drifted out of line with the input/button beside them across
+   panels. Pin every select to the shared control height so a row is uniform;
+   the few deliberately-compact contexts drop to --ctl-h-sm below. */
+select {
+  height: var(--ctl-h);
+  box-sizing: border-box;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
 button {
   padding: 6px 12px;
   border: 1px solid var(--border);
@@ -248,7 +271,7 @@ button.icon {
    to the preview bar so other primary buttons keep their borderless look. */
 .preview-bar button {
   box-sizing: border-box;
-  height: 28px;
+  height: var(--ctl-h);
   padding-top: 0;
   padding-bottom: 0;
 }
@@ -1660,6 +1683,8 @@ td.unreadable-note {
 .rule-body input[type="text"],
 .rule-body select {
   min-width: 0;
+  height: var(--ctl-h-sm);
+  box-sizing: border-box;
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -1852,6 +1877,7 @@ td.unreadable-note {
 }
 
 .release-toolbar .per-page select {
+  height: var(--ctl-h-sm);
   padding: 2px 4px;
 }
 
@@ -2174,6 +2200,7 @@ td.unreadable-note {
   gap: 6px;
 }
 .tracklist-label select {
+  height: var(--ctl-h-sm);
   font-size: var(--text-xs);
   font-family: var(--font-mono-bundled);
   padding: 1px 4px;
@@ -2838,7 +2865,7 @@ td[data-field="year"],
 .view-tabs #expand-all,
 .view-tabs #collapse-all {
   box-sizing: border-box;
-  height: 28px;
+  height: var(--ctl-h);
   padding-top: 0;
   padding-bottom: 0;
   white-space: nowrap; /* keep labels on one line at the fixed height */
