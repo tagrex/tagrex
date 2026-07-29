@@ -261,18 +261,11 @@ button.primary:hover:not(:disabled) {
   background: var(--accent);
 }
 
+/* Icon buttons are uniform squares at the control height with the glyph centred,
+   so every chrome icon — top-bar gear, mode-bar collapse toggle, player
+   transport, settings close — matches and never renders a glyph-dependent
+   width. The compact rule-chain reorder icons opt out just below. */
 button.icon {
-  padding: 4px 9px;
-  box-shadow: none;
-}
-
-/* Chrome icon buttons (top-bar gear, mode-bar collapse toggle) sat a few px
-   short of the standard control height, so the gear looked stunted next to
-   Undo and the two stacked buttons had mismatched widths. Pin them to a square
-   at --ctl-h and centre the glyph. Scoped by id so the compact rule-chain
-   icons (mkRuleIcon) keep their small size. */
-#settings-open,
-#panel-toggle {
   box-sizing: border-box;
   width: var(--ctl-h);
   height: var(--ctl-h);
@@ -280,6 +273,15 @@ button.icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow: none;
+}
+
+/* Rule-chain reorder icons (↑ ↓ ✕) sit inline in a dense rule header — keep
+   them small rather than full control-height squares. */
+.rule-acts .icon {
+  width: auto;
+  height: auto;
+  padding: 1px var(--space-1);
 }
 
 /* Discard / Apply parity: both a fixed height, and a defined edge on the primary
@@ -1930,6 +1932,16 @@ td.unreadable-note {
   display: none;
 }
 
+/* One height for every segmented control regardless of its per-context padding
+   (List/Grid, export format, ID3 version were rendering 22 / 25 / 21px). The
+   height lives on the container so its outer box matches the compact selects it
+   sits beside; the buttons just fill it. */
+.seg,
+.exp-seg {
+  box-sizing: border-box;
+  height: var(--ctl-h-sm);
+}
+
 .seg {
   display: flex;
   border: 1px solid var(--border);
@@ -1938,6 +1950,10 @@ td.unreadable-note {
 }
 
 .seg-btn {
+  height: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 4px 10px;
   border: none;
   border-radius: 0;
