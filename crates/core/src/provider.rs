@@ -97,6 +97,8 @@ pub struct Release {
     /// to write (label → Publisher, catno → CatalogNumber) rather than merging
     /// them. In listing order; the first is the primary.
     pub labels: Vec<ReleaseLabel>,
+    /// Release country, e.g. `Belgium` (full name as the provider states it).
+    pub country: Option<String>,
     /// URL of the release's primary image (full resolution), if it has one.
     /// The bytes still have to be downloaded with the provider's auth + User-
     /// Agent headers — the webview can't load it directly — so this is only a

@@ -347,6 +347,11 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         styles: Vec::new(),
         tracks,
         labels: parse_labels(root.get("label-info")),
+        country: root
+            .get("country")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string),
         cover_image_url: Some(cover_art_front_url(&id)),
     })
 }

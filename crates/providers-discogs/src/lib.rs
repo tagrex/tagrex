@@ -389,6 +389,11 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         styles,
         tracks,
         labels: parse_labels(root.get("labels")),
+        country: root
+            .get("country")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string),
         cover_image_url: primary_image_url(root.get("images")),
     })
 }

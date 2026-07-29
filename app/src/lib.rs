@@ -303,6 +303,9 @@ pub struct ReleaseDto {
     /// Label / catalogue-number pairs (#90); the UI picks which one to import.
     #[serde(default)]
     pub labels: Vec<ReleaseLabelDto>,
+    /// Release country, e.g. `Belgium`.
+    #[serde(default)]
+    pub country: Option<String>,
     /// URL of the release's primary image, if any. Fetch its bytes with
     /// [`App::fetch_discogs_image`] to preview or embed it.
     pub cover_image_url: Option<String>,
@@ -363,6 +366,14 @@ pub struct ImportSelectionDto {
     /// The chosen catalogue number → written to the CatalogNumber tag (#90).
     #[serde(default)]
     pub catalog_number: Option<String>,
+    /// Release country → written to a `RELEASECOUNTRY` tag (the portable,
+    /// cross-format key). Full name as the provider states it (e.g. `Belgium`).
+    #[serde(default)]
+    pub country: Option<String>,
+    /// Total number of tracks on the release → written to the TrackTotal tag, so
+    /// a file's track reads as N/total. Album-level (same for every file).
+    #[serde(default)]
+    pub track_total: Option<String>,
 }
 
 /// One rule in a transformation chain, as the UI describes it.
@@ -1361,6 +1372,17 @@ impl App {
                     TagField::CatalogNumber,
                     non_empty(selection.catalog_number.clone()),
                 ),
+                // Album-level total track count → TrackTotal (so a file reads
+                // N/total), and the release country → a portable RELEASECOUNTRY
+                // custom tag.
+                (
+                    TagField::TrackTotal,
+                    non_empty(selection.track_total.clone()),
+                ),
+                (
+                    TagField::Custom("RELEASECOUNTRY".to_string()),
+                    non_empty(selection.country.clone()),
+                ),
             ];
             if let Some(track) = selection.tracks.get(index) {
                 let artist = non_empty(Some(track.artist.clone()))
@@ -1704,6 +1726,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                     catalog_number: label.catalog_number.clone(),
                 })
                 .collect(),
+            country: release.country.clone(),
             cover_image_url: release.cover_image_url.clone(),
         }
     }
@@ -2061,6 +2084,8 @@ mod tests {
             source: Some("discogs".into()),
             label: Some("Antler-Subway".into()),
             catalog_number: Some("AS 5606".into()),
+            country: Some("Belgium".into()),
+            track_total: Some("15".into()),
         };
 
         let plan = app.preview_import(&[a, b], &selection).unwrap();
@@ -2109,6 +2134,12 @@ mod tests {
         assert_eq!(first.get("artist").map(String::as_str), Some("Various"));
         // Track number comes from the release position (1), not the index.
         assert_eq!(first.get("track").map(String::as_str), Some("1"));
+        // Album-level total track count and release country.
+        assert_eq!(first.get("tracktotal").map(String::as_str), Some("15"));
+        assert_eq!(
+            first.get("custom:RELEASECOUNTRY").map(String::as_str),
+            Some("Belgium")
+        );
 
         let second = fields(&plan.changes[1]);
         assert_eq!(second.get("artist").map(String::as_str), Some("Guest"));

@@ -99,6 +99,11 @@ first release ships.
 
 ### Added
 
+- Import now also writes the **total track count** (so a file's track reads as
+  `N/total`) and the **release country** (to a portable `RELEASECOUNTRY` tag —
+  `TXXX:RELEASECOUNTRY` on MP3, the same key in Vorbis/APE — with the full
+  country name, e.g. `Belgium`). Both are album-level.
+
 - **Catalogue number** is now surfaced in the UI — a "Catalogue #" column (hidden
   by default, toggle it in the Columns popover) and an editable field in the tag
   editor. The value was already written to the CatalogNumber tag on import; it

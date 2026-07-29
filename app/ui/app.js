@@ -2696,6 +2696,9 @@ async function importRelease(card) {
     source: releaseSource,
     label: chosen ? chosen.name : null,
     catalog_number: chosen ? chosen.catalog_number || null : null,
+    country: release.country || null,
+    // Total tracks on the release (album-level), so a file reads as N/total.
+    track_total: release.tracks && release.tracks.length ? String(release.tracks.length) : null,
   };
   try {
     const plan = await invoke("preview_import", { paths, selection });
