@@ -2188,11 +2188,14 @@ td.unreadable-note {
   font-size: var(--text-2xs);
 }
 
-/* Tight combined-cell tracklist (#98): checkbox+№ · title+artist · duration. */
+/* Tight combined-cell tracklist (#98): checkbox+№ · title+artist · duration.
+   Monospace so the track number, title/artist and duration share one set of
+   metrics — the number then sits on the same line as the title (a proportional
+   title left the smaller mono number looking off-baseline). */
 .release-tracklist table {
   width: 100%;
   border-collapse: collapse;
-  font-family: var(--font-ui);
+  font-family: var(--font-mono-bundled);
   font-size: var(--text-xs);
 }
 
@@ -2219,7 +2222,7 @@ td.unreadable-note {
   padding-left: var(--space-2);
 }
 .tk-lead-inner {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--space-2);
 }
@@ -2231,10 +2234,11 @@ td.unreadable-note {
   flex: none;
 }
 .tk-num {
-  font-family: var(--font-mono-bundled);
-  font-size: var(--text-2xs);
+  /* Same size as the title (table is mono now) so the digits sit on the row's
+     text line, level with the track name. */
+  font-size: var(--text-xs);
   color: var(--muted);
-  min-width: 18px;
+  min-width: 20px;
   text-align: right;
 }
 
@@ -2247,7 +2251,7 @@ td.unreadable-note {
 }
 .tk-track-inner {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 5px;
   min-width: 0;
 }
