@@ -40,6 +40,25 @@ let columnWidths = {};
 const COLUMN_WIDTHS_STORAGE_KEY = "tagrex.colWidths";
 const COLUMN_MIN_WIDTH = 48;
 
+// Condensed-table font preference (#100). A pure display choice, so it persists
+// in localStorage like the column prefs rather than in the backend settings.
+const CONDENSED_STORAGE_KEY = "tagrex.condensedTable";
+function condensedTableEnabled() {
+  try {
+    return localStorage.getItem(CONDENSED_STORAGE_KEY) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+function applyCondensedTable(on) {
+  document.body.classList.toggle("condensed-table", on);
+  try {
+    localStorage.setItem(CONDENSED_STORAGE_KEY, on ? "1" : "0");
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
 // Sensible starting width for a column the user hasn't resized yet. The file
 // name is the widest; short numeric/code fields start narrow.
 function defaultColumnWidth(key) {
@@ -2139,6 +2158,8 @@ async function openSettings() {
     /* defaults already in the DOM */
     readPriority = PRIO_KEYS.slice();
   }
+  // Display prefs live in localStorage, not the backend settings.
+  el("set-condensed").checked = condensedTableEnabled();
   renderPrioList();
   el("settings").hidden = false;
 }
@@ -2157,6 +2178,8 @@ async function saveSettings() {
     cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
     cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
   };
+  // Display prefs are local-only; apply + persist before the backend round-trip.
+  applyCondensedTable(el("set-condensed").checked);
   try {
     await invoke("save_discogs_token", { token });
     await invoke("save_settings", { settings });
@@ -3475,6 +3498,7 @@ loadSavedToken();
 loadColumns();
 loadColumnWidths();
 renderTableHead();
+applyCondensedTable(condensedTableEnabled());
 
 // Browser-only fake of the native player: a wall-clock timer advances position,
 // auto-advances to the queued `next` on end, and reports status — enough to

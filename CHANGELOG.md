@@ -116,6 +116,15 @@ first release ships.
 
 ### Added
 
+- The **Sel, Play and File columns of the file table now stay pinned** while the
+  rest of the columns scroll horizontally, so a wide set of tag columns never
+  scrolls the row's identity (checkbox, play, filename) out of view.
+
+- An optional **condensed table font** (Settings › Display). It swaps the file
+  table's monospace for a narrower sans so more of each value fits before it
+  truncates, trading column alignment for width; off by default. Uses a system
+  condensed face until a bundled subset is added.
+
 - Import now also writes the **total track count** (so a file's track reads as
   `N/total`), the **release country** (to a portable `RELEASECOUNTRY` tag —
   `TXXX:RELEASECOUNTRY` on MP3, the same key in Vorbis/APE — with the full

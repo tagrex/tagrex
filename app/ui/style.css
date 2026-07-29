@@ -12,6 +12,19 @@
   src: url(assets/tagrex-mono.woff2) format("woff2");
 }
 
+/* Optional condensed UI face for the dense file table (#100): a narrow sans so
+   more of each value fits before it truncates. Bundled-asset slot on the same
+   pattern as the mono above — drop a Latin+Cyrillic subset woff2 at
+   assets/tagrex-ui-condensed.woff2 and it takes over; until then the token's
+   fallback stack uses a system condensed face where one exists. */
+@font-face {
+  font-family: "TagRex Condensed";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(assets/tagrex-ui-condensed.woff2) format("woff2");
+}
+
 :root {
   /* Opt every native control (scrollbars, <select> popups, checkboxes, range,
      spinners, focus rings) into the OS light/dark preference. Without this the
@@ -49,6 +62,11 @@
   /* Bundled disambiguating mono; falls back to the system stack until a
      data-URI binary is dropped into a "TagRex Mono" @font-face. */
   --font-mono-bundled: "TagRex Mono", var(--font-mono);
+  /* Optional condensed table face (#100). Prefers the bundled subset, then a
+     system condensed sans where the OS ships one, then the normal UI stack. */
+  --font-ui-condensed: "TagRex Condensed", "Avenir Next Condensed",
+    "Roboto Condensed", "Fira Sans Condensed", "Bahnschrift SemiCondensed",
+    var(--font-ui);
 
   /* type: scale (tidies the ad-hoc 10/10.5/11/11.5/12/12.5/13px) */
   --text-2xs: 10px;
@@ -651,6 +669,13 @@ td.error {
   /* Compact rows, matching the release-card tracklist density. */
   font-size: var(--text-2xs);
   padding: 2px 10px;
+}
+
+/* Condensed-table preference (#100): swap the aligned monospace for a narrower
+   sans so more of each value fits. Toggled from Settings; trades column
+   alignment for width. */
+body.condensed-table #tracks tbody td {
+  font-family: var(--font-ui-condensed);
 }
 
 /* Match the header to the tighter body rows. */
