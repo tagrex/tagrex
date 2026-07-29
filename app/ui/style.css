@@ -741,7 +741,8 @@ table.diff {
   border-collapse: separate; /* separate so sticky cell borders don't detach */
   border-spacing: 0;
   font-family: var(--font-mono-bundled);
-  font-size: var(--text-xs);
+  /* Match the compact main file table (#tracks). */
+  font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums; /* durations/years/counts line up */
 }
 
@@ -758,7 +759,7 @@ table.diff {
   letter-spacing: var(--ls-caps-tight);
   color: var(--muted);
   white-space: nowrap;
-  padding: var(--space-2) var(--space-4);
+  padding: 4px var(--space-4);
   border-bottom: 1px solid var(--border);
 }
 /* A changed-field column added to the diff — accent-inked header + underline so
@@ -770,7 +771,7 @@ table.diff {
 
 /* ---- body cells ---- */
 .diff tbody td {
-  padding: var(--space-1) var(--space-4);
+  padding: 2px var(--space-4);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
   overflow: hidden;
@@ -1949,8 +1950,8 @@ td.unreadable-note {
    was taller than it was wide). Anchors the media badge (#98). */
 .release-cover {
   position: relative;
-  width: 64px;
-  height: 64px;
+  width: 72px;
+  height: 72px;
   flex: none;
   align-self: center;
   border-radius: var(--radius-md);
@@ -2036,10 +2037,10 @@ td.unreadable-note {
   text-overflow: ellipsis;
 }
 
-/* Line 3: album title — the dominant line, single-line ellipsis. */
+/* Line 3: album title — same size as the album artist (line 2), medium weight. */
 .release-title {
   font-weight: var(--fw-medium);
-  font-size: var(--text-md);
+  font-size: var(--text-xs);
   line-height: var(--lh-tight);
   white-space: nowrap;
   overflow: hidden;
