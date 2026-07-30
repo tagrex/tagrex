@@ -2386,13 +2386,13 @@ async function runSearch(reset) {
 
 // Show/hide the Load more / Stop footer to match the current loading state.
 function updateLoadMoreUi() {
+  const busy = searchBusy();
+  // Stop lives beside Search (#111): visible only while a search is working.
+  el("stop-loading").hidden = !busy;
   const wrap = el("release-more");
   if (!wrap) return;
-  const busy = searchBusy();
   wrap.hidden = releaseCandidates.length === 0;
   el("load-more").hidden = busy || !searchHasMore;
-  el("stop-loading").hidden = !busy;
-  el("load-more-spin").hidden = !busy;
 }
 
 async function loadSavedToken() {

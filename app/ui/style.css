@@ -336,6 +336,19 @@ button.icon {
   box-shadow: none;
 }
 
+/* SVG glyphs inside icon buttons (search / stop, #111) render at a fixed size
+   in the button's currentColor. */
+button.icon > svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+/* The Stop icon reads as an interrupt — tint it with the accent so it stands out
+   from the neutral Search magnifier beside it. */
+button.icon.stop-icon > svg {
+  fill: var(--accent);
+}
+
 /* Rule-chain reorder icons (↑ ↓ ✕) sit inline in a dense rule header — keep
    them small rather than full control-height squares. */
 .rule-acts .icon {
@@ -1969,17 +1982,6 @@ td.unreadable-note {
   flex-wrap: wrap;
   gap: 6px 8px;
   padding: 4px 0 8px;
-}
-
-/* Loading indicator + Stop, pinned in the toolbar so they're reachable without
-   scrolling to the bottom of the results (#108). */
-.release-toolbar .load-spin {
-  font-size: var(--text-2xs);
-}
-.release-toolbar .stop-btn {
-  height: var(--ctl-h-sm);
-  padding: 0 8px;
-  font-size: var(--text-2xs);
 }
 
 .release-toolbar .per-page {
