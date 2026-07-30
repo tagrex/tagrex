@@ -1354,6 +1354,11 @@ impl App {
         vinyl_sides_to_disc: bool,
     ) -> Result<PlanDto, AppError> {
         let mut changes = Vec::new();
+        // Per-side running track number, used only for vinyl positions that carry
+        // a side but no digit ("B" = the single track on side B): each side (disc)
+        // restarts at 1, in the order the tracks are imported.
+        let mut side_track_counters: std::collections::HashMap<u32, u32> =
+            std::collections::HashMap::new();
         for (index, path) in paths.iter().enumerate() {
             let current = TagEngine::read(path)?;
 
@@ -1402,13 +1407,36 @@ impl App {
                 // preview_import only emits a change when it actually differs.
                 desired.push((TagField::Isrc, non_empty(track.isrc.clone())));
 
-                // Track number from the release position, but leave the file's
-                // existing number alone if it already means the same thing --
-                // so an aligned "01" isn't reformatted to "1". Compare
-                // numerically (both normalized) and only change on a real
-                // difference.
-                let position_number = track_number_from_position(&track.position)
-                    .unwrap_or_else(|| (index + 1).to_string());
+                // Vinyl side -> disc (#105): a vinyl-side position ("A1", the
+                // reverse "1A", or a bare side "B") can't keep its letter in the
+                // integer track-number tag, so -- when the toggle is on -- the
+                // side maps to a disc number (A->1, B->2, ...) and the track
+                // number restarts per side. This is an explicit per-import opt-in,
+                // so it overwrites a disc (a file's default "disc 1" must not
+                // block side B becoming disc 2).
+                let side_disc = if vinyl_sides_to_disc {
+                    side_disc_from_position(&track.position)
+                } else {
+                    None
+                };
+                let position_number = match side_disc {
+                    // Digits in the position are already per-side ("A1" -> 1);
+                    // a bare side ("B") has none, so take the next per-side number.
+                    Some(disc) => {
+                        track_number_from_position(&track.position).unwrap_or_else(|| {
+                            let counter = side_track_counters.entry(disc).or_insert(0);
+                            *counter += 1;
+                            counter.to_string()
+                        })
+                    }
+                    // Not a vinyl side: the position's number, else the row index.
+                    None => track_number_from_position(&track.position)
+                        .unwrap_or_else(|| (index + 1).to_string()),
+                };
+
+                // Track number: leave the file's existing number alone when it
+                // already means the same thing (an aligned "01" isn't reformatted
+                // to "1") -- compare numerically, change only on a real difference.
                 let current_number = current
                     .tags
                     .get(&TagField::TrackNumber)
@@ -1416,21 +1444,12 @@ impl App {
                 if current_number.as_deref() != Some(position_number.as_str()) {
                     desired.push((TagField::TrackNumber, Some(position_number)));
                 }
-
-                // Vinyl side -> disc (#105): a vinyl-side position ("A1"/"1A")
-                // can't keep its letter in the integer track-number tag, so map
-                // the side to a disc number (A->1, B->2, ...) instead -- but only
-                // when the file has no disc yet, so an explicit disc is never
-                // overwritten (matches how media servers lay vinyl onto discs).
-                if vinyl_sides_to_disc {
-                    let has_disc = current
-                        .tags
-                        .get(&TagField::DiscNumber)
-                        .is_some_and(|value| !value.is_empty());
-                    if !has_disc {
-                        if let Some(disc) = side_disc_from_position(&track.position) {
-                            desired.push((TagField::DiscNumber, Some(disc.to_string())));
-                        }
+                if let Some(disc) = side_disc {
+                    let disc = disc.to_string();
+                    if current.tags.get(&TagField::DiscNumber).map(String::as_str)
+                        != Some(disc.as_str())
+                    {
+                        desired.push((TagField::DiscNumber, Some(disc)));
                     }
                 }
             }
@@ -1489,27 +1508,28 @@ fn track_number_from_position(position: &str) -> Option<String> {
 }
 
 /// Map a vinyl-side track *position* to a disc number (#105): the side letter
-/// becomes A->1, B->2, ... . Handles the common "A1" (side-first) and the
-/// reverse "1A"; the numeric part must be plain digits. Returns `None` for a
-/// plain number ("5"), a disc-track pair ("1-05"), or anything without a single
-/// A-Z side. Only the side matters here -- the track number itself still comes
-/// from [`track_number_from_position`], which keeps the digits.
+/// becomes A->1, B->2, ... . Handles a bare side ("B"), the common side-first
+/// "A1", and the reverse "1A"; any numeric part must be plain digits. Returns
+/// `None` for a plain number ("5"), a disc-track pair ("1-05"), or anything
+/// without a single A-Z side. Only the side matters here -- the track number
+/// itself comes from [`track_number_from_position`] (or a per-side counter).
 fn side_disc_from_position(position: &str) -> Option<u32> {
-    let s = position.trim();
-    let bytes = s.as_bytes();
-    if bytes.len() < 2 {
+    let bytes = position.trim().as_bytes();
+    if bytes.is_empty() {
         return None;
     }
-    let (side, num) = if bytes[0].is_ascii_alphabetic() && bytes[1].is_ascii_digit() {
-        (bytes[0], &s[1..]) // side-first, e.g. "A1"
-    } else if bytes[0].is_ascii_digit() && bytes[bytes.len() - 1].is_ascii_alphabetic() {
-        (bytes[bytes.len() - 1], &s[..bytes.len() - 1]) // reverse, e.g. "1A"
+    // Side-first: a leading A-Z followed by nothing or only digits ("B", "A1").
+    let side = if bytes[0].is_ascii_alphabetic() && bytes[1..].iter().all(u8::is_ascii_digit) {
+        bytes[0]
+    // Reverse: one or more digits ending in a single A-Z ("1A", "12B").
+    } else if bytes.len() >= 2
+        && bytes[bytes.len() - 1].is_ascii_alphabetic()
+        && bytes[..bytes.len() - 1].iter().all(u8::is_ascii_digit)
+    {
+        bytes[bytes.len() - 1]
     } else {
         return None;
     };
-    if num.is_empty() || !num.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
     let ordinal = u32::from(side.to_ascii_uppercase() - b'A') + 1;
     (1..=26).contains(&ordinal).then_some(ordinal)
 }
@@ -2279,60 +2299,75 @@ mod tests {
         assert_eq!(side_disc_from_position("B2"), Some(2));
         assert_eq!(side_disc_from_position("C15"), Some(3)); // C = 3rd side
         assert_eq!(side_disc_from_position("1A"), Some(1)); // reverse notation
+        assert_eq!(side_disc_from_position("12B"), Some(2)); // reverse, multi-digit
         assert_eq!(side_disc_from_position("2b"), Some(2)); // lower-case side
-                                                            // Not a vinyl side:
+        assert_eq!(side_disc_from_position("A"), Some(1)); // bare side, whole side is one track
+        assert_eq!(side_disc_from_position("B"), Some(2));
+        // Not a vinyl side:
         assert_eq!(side_disc_from_position("5"), None); // plain number
         assert_eq!(side_disc_from_position("1-05"), None); // disc-track pair
-        assert_eq!(side_disc_from_position("A"), None); // no track digits
+        assert_eq!(side_disc_from_position("AB"), None); // not a side + track
         assert_eq!(side_disc_from_position(""), None);
     }
 
     #[test]
-    fn import_maps_vinyl_side_to_disc_only_when_enabled_and_disc_is_empty() {
+    fn import_maps_vinyl_sides_to_discs_with_per_side_track_numbers() {
         let dir = TempDir::new("import-vinyl");
-        let path = dir.tagged_flac("a.flac", "Old", "Old");
+        // A vinyl release: side A tracks A1..A2, side B is a single bare "B".
+        let a1 = dir.tagged_flac("f1.flac", "Old", "Old");
+        let a2 = dir.tagged_flac("f2.flac", "Old", "Old");
+        let b = dir.tagged_flac("f3.flac", "Old", "Old");
+        // Every file already carries the ubiquitous default disc 1 -- which must
+        // not stop side B from becoming disc 2.
+        for path in [&a1, &a2, &b] {
+            let mut file = TagEngine::read(path).unwrap();
+            file.tags.insert(TagField::DiscNumber, "1".into());
+            TagEngine::write(&file).unwrap();
+        }
         let app = open_app(&dir);
+        let track = |position: &str| ImportTrackDto {
+            position: position.into(),
+            artist: "X".into(),
+            title: "T".into(),
+            duration_secs: None,
+            isrc: None,
+        };
         let selection = ImportSelectionDto {
             album: Some("Album".into()),
-            tracks: vec![ImportTrackDto {
-                position: "B2".into(),
-                artist: "X".into(),
-                title: "T".into(),
-                duration_secs: None,
-                isrc: None,
-            }],
+            tracks: vec![track("A1"), track("A2"), track("B")],
             ..ImportSelectionDto::default()
         };
-        let fields = |plan: &PlanDto| {
-            plan.changes[0]
+        let td = |change: &FileChangeDto| {
+            let m = change
                 .tag_changes
                 .iter()
                 .map(|fc| (fc.field.clone(), fc.new.clone().unwrap()))
-                .collect::<std::collections::BTreeMap<_, _>>()
+                .collect::<std::collections::BTreeMap<_, _>>();
+            (
+                m.get("track").cloned(),
+                m.get("disc").cloned().or_else(|| Some("<none>".into())),
+            )
         };
 
-        // Enabled, no existing disc: side B -> disc 2, track digits -> 2.
         let on = app
-            .preview_import(std::slice::from_ref(&path), &selection, true)
+            .preview_import(&[a1.clone(), a2.clone(), b.clone()], &selection, true)
             .unwrap();
-        let on = fields(&on);
-        assert_eq!(on.get("track").map(String::as_str), Some("2"));
-        assert_eq!(on.get("disc").map(String::as_str), Some("2"));
+        // A1/A2 -> disc 1 (already set, so no disc change) / tracks 1,2; the bare
+        // "B" -> disc 2 (overwrites the default disc 1) / track 1 (per-side restart).
+        assert_eq!(
+            td(&on.changes[0]),
+            (Some("1".into()), Some("<none>".into()))
+        );
+        assert_eq!(
+            td(&on.changes[1]),
+            (Some("2".into()), Some("<none>".into()))
+        );
+        assert_eq!(td(&on.changes[2]), (Some("1".into()), Some("2".into())));
 
-        // Disabled: no disc mapping (track number still lands).
-        let off = app
-            .preview_import(std::slice::from_ref(&path), &selection, false)
-            .unwrap();
-        assert!(!fields(&off).contains_key("disc"));
-
-        // Enabled but the file already carries a disc: never overwritten.
-        let mut with_disc = TagEngine::read(&path).unwrap();
-        with_disc.tags.insert(TagField::DiscNumber, "4".into());
-        TagEngine::write(&with_disc).unwrap();
-        let kept = app
-            .preview_import(std::slice::from_ref(&path), &selection, true)
-            .unwrap();
-        assert!(!fields(&kept).contains_key("disc"));
+        // Toggle off: sides are not mapped; bare "B" falls back to the row index.
+        let off = app.preview_import(&[a1, a2, b], &selection, false).unwrap();
+        assert_eq!(td(&off.changes[2]).1, Some("<none>".into())); // no disc change
+        assert_eq!(td(&off.changes[2]).0, Some("3".into())); // index-based fallback
     }
 
     fn replace_rule(from: &str, to: &str) -> TransformRuleDto {

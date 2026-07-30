@@ -137,13 +137,14 @@ first release ships.
   path. (Track numbers are stored as plain integers — zero-padding is a file-name
   concern, handled by the RENAMER mask `%track:2%`.)
 
-- **Vinyl sides → disc.** A vinyl-side position (`A1`, `B2`, or the reverse `1A`)
-  can't keep its side letter in the integer track-number tag, so the side now
-  maps to a **disc number** instead: side A → disc 1, B → disc 2, … (`A1` →
-  track 1 / disc 1). On **release import** an optional "Vinyl side → disc" toggle
-  sets the disc from the side, only when the file has no disc yet; a **"Split
-  side → disc"** action in the Generator does the same for files already tagged
-  `A1`/`B2` by another tool.
+- **Vinyl sides → disc.** A vinyl-side position (`A1`, a bare side `B`, or the
+  reverse `1A`) can't keep its side letter in the integer track-number tag, so
+  the side now maps to a **disc number** instead: side A → disc 1, B → disc 2, …
+  and the track number restarts per side (`A1 A2 … B` → disc 1 tracks 1,2,… then
+  disc 2 track 1). On **release import** an optional "Vinyl side → disc" toggle
+  applies this — overwriting a file's default `disc 1` so side B really becomes
+  disc 2; a **"Split side → disc"** action in the Generator does the same for
+  files already tagged `A1`/`B2` by another tool.
 
 - **Leaner file table.** The per-row Play button column is gone: play a track by
   **double-clicking its file name**, or press the **Play button in the bottom

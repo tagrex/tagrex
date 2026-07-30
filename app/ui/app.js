@@ -1561,37 +1561,36 @@ async function numberTracks() {
 }
 
 // ---- vinyl sides -> disc (#105) ----
-// Parse a vinyl-side track value: the side letter maps to a disc ordinal
-// (A=1, B=2, …) and the digits to a track number. Handles "A1" (side-first) and
-// the reverse "1A"; the numeric part must be plain digits. Returns
-// { track, disc } as strings, or null for a plain number / non-vinyl value.
-// Mirrors `side_disc_from_position` + `track_number_from_position` in the backend.
+// Parse a vinyl-side track value into its side (as a disc ordinal, A=1, B=2, …)
+// and its per-side track digits. Handles a bare side ("B"), side-first "A1", and
+// the reverse "1A"; any numeric part must be plain digits. Returns
+// { disc, track } where `track` is the digit string or null (a bare side has no
+// digit — the caller supplies a track number). Returns null for a plain number
+// or non-vinyl value. Mirrors `side_disc_from_position` in the backend.
 function parseVinylPosition(value) {
   const v = String(value || "").trim();
-  if (v.length < 2) return null;
-  const first = v[0];
-  const last = v[v.length - 1];
+  if (v.length < 1) return null;
   let side;
   let num;
-  if (/[A-Za-z]/.test(first) && /[0-9]/.test(v[1])) {
-    side = first; // "A1"
+  if (/[A-Za-z]/.test(v[0]) && /^\d*$/.test(v.slice(1))) {
+    side = v[0]; // "B", "A1"
     num = v.slice(1);
-  } else if (/[0-9]/.test(first) && /[A-Za-z]/.test(last)) {
-    side = last; // reverse "1A"
+  } else if (v.length >= 2 && /[A-Za-z]/.test(v[v.length - 1]) && /^\d+$/.test(v.slice(0, -1))) {
+    side = v[v.length - 1]; // reverse "1A", "12B"
     num = v.slice(0, -1);
   } else {
     return null;
   }
-  if (!/^\d+$/.test(num)) return null;
   const disc = side.toUpperCase().charCodeAt(0) - 64; // 'A' -> 1
   if (disc < 1 || disc > 26) return null;
-  return { track: String(parseInt(num, 10)), disc: String(disc) };
+  return { disc: String(disc), track: num ? String(parseInt(num, 10)) : null };
 }
 
 // Decompose vinyl-side track values in the selection into a plain track number
 // plus a disc number, staged into the pending-edits buffer. For files already
 // tagged "A1"/"B2" (e.g. by another tool) — the side can't live in the integer
-// track tag, so it moves to the disc field.
+// track tag, so it moves to the disc field. A bare side ("B", the whole side is
+// one track) has no digit, so its track becomes 1.
 async function splitVinylSides() {
   const paths = selectedPaths();
   if (paths.length === 0) {
@@ -1604,7 +1603,7 @@ async function splitVinylSides() {
     if (!parsed) continue;
     if (!edits.has(path)) edits.set(path, new Map());
     const fields = edits.get(path);
-    fields.set("track", parsed.track);
+    fields.set("track", parsed.track ?? "1");
     fields.set("disc", parsed.disc);
     changed += 1;
   }
@@ -4230,6 +4229,7 @@ function mockInvoke(cmd, args) {
           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
       });
     case "preview_import": {
+      const sideCounters = {}; // per-disc running track number for bare vinyl sides
       const changes = args.paths.map((p, i) => {
         const t = findTrack(p);
         const rt = args.selection.tracks[i];
@@ -4252,16 +4252,24 @@ function mockInvoke(cmd, args) {
         if (rt) {
           tag_changes.push({ field: "title", old: t ? t.tags.title || null : null, new: rt.title });
           tag_changes.push({ field: "artist", old: t ? t.tags.artist || null : null, new: rt.artist });
-          // Mirror the backend: track number from the position's trailing digits,
-          // and (when enabled, and no disc set) the vinyl side mapped to a disc.
-          const digits = String(rt.position || "").match(/\d+$/);
-          const num = digits ? String(parseInt(digits[0], 10)) : String(i + 1);
-          tag_changes.push({ field: "track", old: t ? t.tags.track || null : null, new: num });
-          if (args.vinylSidesToDisc && !(t && t.tags.disc)) {
-            const parsed = parseVinylPosition(rt.position);
-            if (parsed) {
-              tag_changes.push({ field: "disc", old: t ? t.tags.disc || null : null, new: parsed.disc });
+          // Mirror the backend: when the vinyl toggle is on and the position is a
+          // side, map the side to a disc (overwriting a default disc) and restart
+          // the track number per side; otherwise the plain number / row index.
+          const parsed = args.vinylSidesToDisc ? parseVinylPosition(rt.position) : null;
+          let num;
+          if (parsed) {
+            num = parsed.track ?? String((sideCounters[parsed.disc] = (sideCounters[parsed.disc] || 0) + 1));
+            const curDisc = t ? t.tags.disc || null : null;
+            if (curDisc !== parsed.disc) {
+              tag_changes.push({ field: "disc", old: curDisc, new: parsed.disc });
             }
+          } else {
+            const digits = String(rt.position || "").match(/\d+$/);
+            num = digits ? String(parseInt(digits[0], 10)) : String(i + 1);
+          }
+          const curTrack = t ? t.tags.track || null : null;
+          if (curTrack !== num) {
+            tag_changes.push({ field: "track", old: curTrack, new: num });
           }
         }
         return { path: p, rename_to: null, tag_changes };
