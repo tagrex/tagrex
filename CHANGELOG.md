@@ -10,6 +10,12 @@ first release ships.
 
 ### Fixed
 
+- **Mode-panel selection counts stay in sync.** The GENERATOR and EXPORTER panel
+  headings ("Number tracks — N selected", "Transform — N file(s)", "Export — N
+  track(s)") only recomputed their count when you entered the mode, so changing
+  the selection with the panel already open left a stale number. They now update
+  live as the selection changes.
+
 - The bottom **Play button no longer resumes the wrong track**. After pausing a
   track and then selecting a different one, pressing Play started the *paused*
   track instead of the newly-selected one. Play now pauses only while actually

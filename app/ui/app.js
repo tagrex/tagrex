@@ -3307,9 +3307,22 @@ function syncSelectionUI() {
   selectAll.checked = checked > 0 && checked === rows.length;
   selectAll.indeterminate = checked > 0 && checked < rows.length;
   updateStatus();
+  // Mode-panel headings show a selection count ("— N selected"); they otherwise
+  // only refresh on mode entry, so keep them live as the selection changes.
+  updatePanelCounts();
   // The TAGGER field grid shows the current selection's values, so keep it in
   // step as the selection changes while that mode is open.
   if (currentMode === "tagger") refreshFieldEditor();
+}
+
+// Selection-dependent counts in the GENERATOR/EXPORTER panel headings. Cheap
+// text updates safe to run on every selection change (the panels stay in the
+// DOM even while hidden); the full panel refresh still happens on mode entry.
+function updatePanelCounts() {
+  const count = selectedPaths().length;
+  el("transform-count").textContent = count ? `— ${count} file(s)` : "";
+  el("autonum-count").textContent = count ? `— ${count} selected` : "";
+  el("export-count").textContent = count ? `— ${count} track(s)` : "";
 }
 
 function selectRow(tr, e) {
