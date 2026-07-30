@@ -1479,7 +1479,83 @@ let ruleIdCounter = 0;
 function refreshGenerator() {
   const count = selectedPaths().length;
   el("transform-count").textContent = count ? `— ${count} file(s)` : "";
+  el("autonum-count").textContent = count ? `— ${count} selected` : "";
   renderTransformRules();
+}
+
+// ---- auto-number selected tracks (#39) ----
+// A "meaningful non-numeric position" — a vinyl side like "A1"/"B2" or a bare
+// side letter — that we preserve rather than flatten: non-empty and not a plain
+// run of digits.
+function isVinylSide(value) {
+  const v = (value || "").trim();
+  return v !== "" && !/^\d+$/.test(v);
+}
+
+// Fill TrackNumber across the selection (mapping order) into the pending-edits
+// buffer, then preview — so it flows through the usual apply/undo path. Options:
+// start value, zero padding, optional TrackTotal + disc, per-group restart when
+// a grouping is active, and preserving existing vinyl-side positions.
+async function numberTracks() {
+  const paths = selectedPaths(); // mapping order; reads `selection`, survives re-render
+  if (paths.length === 0) {
+    toast("Select the tracks to number first", true);
+    return;
+  }
+  const start = Math.max(0, Math.floor(Number(el("autonum-start").value) || 1));
+  const width = Number(el("autonum-format").value) || 1;
+  const writeTotal = el("autonum-total").checked;
+  const perGroup = el("autonum-per-group").checked && !!groupBy;
+  const keepSides = el("autonum-keep-sides").checked;
+  const discRaw = el("autonum-disc").value.trim();
+  if (discRaw && !/^\d+$/.test(discRaw)) {
+    toast("Disc # must be a whole number", true);
+    return;
+  }
+  const disc = discRaw ? String(Number(discRaw)) : "";
+
+  const trackByPath = new Map(tracks.map((t) => [t.path, t]));
+  // Assign a number to each writable file. A preserved vinyl side neither gets a
+  // number nor consumes one, so the rest stay contiguous.
+  const assigned = []; // { path, number, gkey }
+  const groupNext = new Map(); // groupKey -> next number
+  let flat = start;
+  for (const path of paths) {
+    const track = trackByPath.get(path);
+    if (!track) continue;
+    if (keepSides && isVinylSide(track.tags.track)) continue;
+    const gkey = perGroup ? groupKeyOf(track) : "";
+    let n;
+    if (perGroup) {
+      n = groupNext.has(gkey) ? groupNext.get(gkey) : start;
+      groupNext.set(gkey, n + 1);
+    } else {
+      n = flat++;
+    }
+    assigned.push({ path, number: n, gkey });
+  }
+  if (assigned.length === 0) {
+    toast("Nothing to number — every selected position was preserved");
+    return;
+  }
+
+  // TrackTotal (unpadded): per group when restarting, else the whole run.
+  const groupTotals = new Map();
+  if (writeTotal && perGroup) {
+    for (const a of assigned) groupTotals.set(a.gkey, (groupTotals.get(a.gkey) || 0) + 1);
+  }
+
+  const pad = (n) => String(n).padStart(width, "0");
+  for (const a of assigned) {
+    if (!edits.has(a.path)) edits.set(a.path, new Map());
+    const fields = edits.get(a.path);
+    fields.set("track", pad(a.number));
+    if (writeTotal) fields.set("tracktotal", String(perGroup ? groupTotals.get(a.gkey) : assigned.length));
+    if (disc) fields.set("disc", disc);
+  }
+  renderTracks();
+  await previewEdits();
+  toast(`Numbered ${assigned.length} track(s)${perGroup ? " (restarted per group)" : ""}`);
 }
 
 function addTransformRule() {
@@ -2983,6 +3059,7 @@ coverWell.addEventListener("drop", (e) => {
 });
 el("transform-add").addEventListener("click", addTransformRule);
 el("transform-preview").addEventListener("click", previewTransform);
+el("autonum-run").addEventListener("click", numberTracks);
 // Rule reorder is wired per-card in renderTransformRules via enablePointerReorder
 // (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 el("move-preview").addEventListener("click", previewMove);

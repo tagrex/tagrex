@@ -122,6 +122,14 @@ first release ships.
 
 ### Added
 
+- **Number tracks** (Generator panel). Fills the track number across the selected
+  files in table order without going through a provider import: a start value,
+  optional leading zeros (`1` / `01` / `001` / `0001`), an optional track total
+  and disc number, and an optional **restart per group** when a grouping is
+  active. Existing non-numeric positions (vinyl sides like `A1`/`B2`) are left
+  untouched rather than flattened. Staged into the pending-edits buffer, so it
+  previews and applies through the usual apply/undo path.
+
 - **Leaner file table.** The per-row Play button column is gone: play a track by
   **double-clicking its file name**, or press the **Play button in the bottom
   bar** to start the current row (the last-clicked / selected one, else the top)

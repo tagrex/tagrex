@@ -1806,6 +1806,11 @@ td.unreadable-note {
 .rule-flag input {
   margin: 0;
 }
+/* Auto-number (#39) flag row sits between the export-style inputs and the
+   action button; give it a little vertical breathing room. */
+.autonum-flags {
+  margin: var(--space-2) 0;
+}
 .rule-flag:hover {
   color: var(--text);
 }

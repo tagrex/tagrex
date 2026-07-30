@@ -292,6 +292,45 @@
               <button id="transform-preview" class="primary">Preview changes</button>
             </div>
           </div>
+
+          <!-- Auto-number (#39): fill TrackNumber 1..N across the selection in
+               mapping order, staged through the pending-edits preview/apply/undo. -->
+          <div class="panel-block">
+            <h2>Number tracks <span id="autonum-count" class="muted"></span></h2>
+            <p class="hint muted" style="padding: 0">
+              Fill track numbers across the selected files in table order. Staged to the preview — nothing is written until you Apply.
+            </p>
+            <div class="export-row">
+              <label for="autonum-start">Start at</label>
+              <input id="autonum-start" type="number" min="0" step="1" value="1" />
+              <label for="autonum-format">Format</label>
+              <select id="autonum-format" title="Leading zeros for the track number">
+                <option value="1">1, 2, 3</option>
+                <option value="2">01, 02, 03</option>
+                <option value="3">001, 002, 003</option>
+                <option value="4">0001, 0002</option>
+              </select>
+            </div>
+            <div class="export-row">
+              <label for="autonum-disc">Disc #</label>
+              <input id="autonum-disc" type="text" placeholder="leave blank to skip" spellcheck="false" />
+            </div>
+            <div class="rule-flags autonum-flags">
+              <label class="rule-flag" title="Also write the track total (the count of numbered files) to every file">
+                <input id="autonum-total" type="checkbox" />track total
+              </label>
+              <label class="rule-flag" title="Restart at the start value for each group when a grouping is active">
+                <input id="autonum-per-group" type="checkbox" />restart per group
+              </label>
+              <label class="rule-flag" title="Leave non-numeric positions like vinyl sides (A1, B2) untouched instead of renumbering them">
+                <input id="autonum-keep-sides" type="checkbox" checked />keep vinyl sides
+              </label>
+            </div>
+            <div class="panel-actions">
+              <div class="spacer"></div>
+              <button id="autonum-run" class="primary">Number tracks</button>
+            </div>
+          </div>
         </section>
 
         <!-- EXPORTER: playlists / CSV / mask report, written into the library. -->
