@@ -2362,7 +2362,7 @@ async function runSearch(reset) {
     const hits = await invoke("provider_search", {
       source: releaseSource,
       token,
-      query: { album: query, page, per_page: searchPerPage },
+      query: { album: query, format: el("search-format").value || null, page, per_page: searchPerPage },
     });
     if (gen !== searchGen) return; // a newer search / Stop superseded this
     searchPage = page;
@@ -3269,6 +3269,12 @@ el("search-per-page").addEventListener("change", (e) => {
   }
   // Re-run from page 1 at the new page size if we already have results.
   if (releaseCandidates.length) discogsSearch();
+});
+
+// Media-type filter (#103): re-run the search from page 1 when it changes and
+// there's already a query in play.
+el("search-format").addEventListener("change", () => {
+  if (releaseCandidates.length || el("discogs-query").value.trim()) discogsSearch();
 });
 
 // TAGGER sub-tabs: ONLINE (Discogs) vs EDITOR (tag fields + cover).
@@ -4334,11 +4340,15 @@ function mockInvoke(cmd, args) {
             cover_url: "https://img/1c.jpg",
             country: "Belgium",
             label: "Antler-Subway",
-            format: "CD, Mixed",
+            format: n % 2 ? "Vinyl, LP" : "CD, Mixed",
             catalog_number: `TOTH ${String(n).padStart(3, "0")}`,
           });
         }
-        return Promise.resolve(hits);
+        // Media-type filter (#103): mirror the provider's `format` narrowing.
+        const fmt = args.query?.format;
+        return Promise.resolve(
+          fmt ? hits.filter((h) => h.format.toLowerCase().includes(fmt.toLowerCase())) : hits
+        );
       }
     case "provider_fetch_release":
       if (args.source === "musicbrainz") {

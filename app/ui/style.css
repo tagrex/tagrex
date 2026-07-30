@@ -822,6 +822,7 @@ body:not(.show-checkbox) #tracks td.sel {
 
 .mask-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 

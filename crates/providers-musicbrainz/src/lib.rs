@@ -224,8 +224,13 @@ fn build_query(query: &SearchQuery) -> (String, bool) {
     if let Some(catno) = non_empty(query.catalog_number.as_deref()) {
         fielded.push(format!("catno:{}", lucene_phrase(catno)));
     }
+    // Media-type filter (#103): map the UI's descriptor onto a MusicBrainz format
+    // token and add it as a Lucene `format:` term. A format filter forces a
+    // fielded query (dismax can't carry a fielded term).
+    let format_term = non_empty(query.format.as_deref())
+        .map(|value| format!("format:{}", lucene_phrase(mb_format(value))));
     let album = non_empty(query.album.as_deref());
-    if fielded.is_empty() {
+    if fielded.is_empty() && format_term.is_none() {
         // Free-text only → hand the plain query to dismax.
         return match album {
             Some(text) => (text.to_string(), true),
@@ -235,7 +240,21 @@ fn build_query(query: &SearchQuery) -> (String, bool) {
     if let Some(text) = album {
         fielded.push(lucene_phrase(text));
     }
+    if let Some(term) = format_term {
+        fielded.push(term);
+    }
     (fielded.join(" AND "), false)
+}
+
+/// Map the UI's format descriptor to a MusicBrainz format token. MusicBrainz
+/// spells the digital format `Digital Media` and has no bare `LP` (it's a vinyl
+/// size); `CD`/`Vinyl` match its tokens directly.
+fn mb_format(value: &str) -> &str {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "file" | "digital" => "Digital Media",
+        "lp" => "Vinyl",
+        _ => value.trim(),
+    }
 }
 
 fn non_empty(value: Option<&str>) -> Option<&str> {
@@ -562,6 +581,35 @@ mod tests {
         );
         // Nothing to search → empty, so the provider skips the request.
         assert_eq!(build_query(&SearchQuery::default()), (String::new(), false));
+    }
+
+    #[test]
+    fn format_filter_adds_a_fielded_term_and_maps_the_descriptor() {
+        // A format filter forces a fielded query (dismax can't carry it); the
+        // free-text album rides along as a phrase.
+        let with_album = SearchQuery {
+            album: Some("la bush".into()),
+            format: Some("Vinyl".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            build_query(&with_album),
+            ("\"la bush\" AND format:\"Vinyl\"".to_string(), false)
+        );
+        // Descriptor mapping: File -> Digital Media, LP -> Vinyl.
+        let file = SearchQuery {
+            format: Some("File".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            build_query(&file),
+            ("format:\"Digital Media\"".to_string(), false)
+        );
+        let lp = SearchQuery {
+            format: Some("lp".into()),
+            ..Default::default()
+        };
+        assert_eq!(build_query(&lp), ("format:\"Vinyl\"".to_string(), false));
     }
 
     #[test]

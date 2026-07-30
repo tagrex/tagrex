@@ -165,6 +165,11 @@ impl MetadataProvider for DiscogsProvider {
         if let Some(catalog) = &query.catalog_number {
             params.push(("catno", catalog));
         }
+        // Media-type filter (#103): Discogs' `format` param takes the descriptor
+        // directly (CD / Vinyl / LP / File).
+        if let Some(format) = &query.format {
+            params.push(("format", format));
+        }
 
         // Pagination (#95). Discogs takes 1-based `page` and `per_page`; only
         // send them when the caller asked for a specific page size, otherwise

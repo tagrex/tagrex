@@ -22,6 +22,10 @@ pub struct SearchQuery {
     /// Catalog number or barcode — first-class because it is the highest
     /// precision key on Discogs.
     pub catalog_number: Option<String>,
+    /// Media-type filter (#103): `CD` / `Vinyl` / `LP` / `File`, or `None` for
+    /// no filter. Maps to the Discogs `format` search param; MusicBrainz folds it
+    /// into its Lucene `format:` field where it maps sensibly.
+    pub format: Option<String>,
     /// 1-based page for paginated search; 0 is treated as page 1. Lets the UI
     /// pull results in batches ("Load more") instead of a whole page at once,
     /// keeping traffic to the provider down (#95).

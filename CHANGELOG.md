@@ -128,6 +128,11 @@ first release ships.
 
 ### Added
 
+- **Filter release search by media type** (#103). A selector by the search box
+  narrows results to **CD / Vinyl / LP / File** (or All). It maps to the Discogs
+  `format` search parameter; MusicBrainz folds it into its `format:` query
+  (`File` → `Digital Media`, `LP` → `Vinyl`). Changing it re-runs the search.
+
 - **Media type + vinyl position view.** Release import now writes the **media
   type** (`Vinyl` / `CD` / `Cassette` / `File`) to the standard media tag (ID3v2
   `TMED`, Vorbis `MEDIA`), and there's a **Media** column and a `%media%` rename

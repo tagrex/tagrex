@@ -247,6 +247,9 @@ pub struct SearchQueryDto {
     pub title: Option<String>,
     pub album: Option<String>,
     pub catalog_number: Option<String>,
+    /// Media-type filter (#103): `CD` / `Vinyl` / `LP` / `File`; absent = all.
+    #[serde(default)]
+    pub format: Option<String>,
     /// 1-based page for "Load more" pagination (#95). Defaults to 0 (page 1)
     /// so older callers that omit it keep working.
     #[serde(default)]
@@ -1755,6 +1758,7 @@ impl SearchQueryDto {
             title: self.title.clone(),
             album: self.album.clone(),
             catalog_number: self.catalog_number.clone(),
+            format: self.format.clone(),
             page: self.page,
             per_page: self.per_page,
         }
