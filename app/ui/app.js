@@ -164,8 +164,26 @@ let filterText = "";
 // Grouping is purely a view concern (#20): "" | "folder" | "artist" | "album".
 // It regroups rows visually but never reorders the `tracks` array, so the file
 // order used by mapping (rename masks, Discogs import) is unaffected. Collapsed
-// group keys persist across renders.
-let groupBy = "";
+// group keys persist across renders. The choice is a display preference,
+// persisted in localStorage and defaulting to Folder (#108).
+const GROUP_STORAGE_KEY = "tagrex.groupBy";
+const GROUP_VALUES = ["", "folder", "artist", "album", "release"];
+function groupByPref() {
+  try {
+    const v = localStorage.getItem(GROUP_STORAGE_KEY);
+    return GROUP_VALUES.includes(v) ? v : "folder";
+  } catch (e) {
+    return "folder";
+  }
+}
+function saveGroupBy(value) {
+  try {
+    localStorage.setItem(GROUP_STORAGE_KEY, value);
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+let groupBy = groupByPref();
 const collapsedGroups = new Set();
 
 // ---- elements ----
@@ -1015,9 +1033,9 @@ async function openLibrary() {
     sortDir = 1;
     filterText = "";
     el("filter").value = "";
-    groupBy = "";
+    groupBy = groupByPref();
     collapsedGroups.clear();
-    el("group-by").value = "";
+    el("group-by").value = groupBy;
     renderTracks();
     el("view-preview").disabled = true;
     showView("files");
@@ -2267,11 +2285,29 @@ const expandedIds = new Set(); // cards currently expanded — survive a re-rend
 // more" pulls the next page and appends. `searchGen` is bumped on every new
 // search and on Stop, so any in-flight page fetch or background count sweep from
 // an older batch bails instead of writing stale cards.
-let searchPerPage = 10; // batch size; mirrors the #search-per-page select
+// Batch size; mirrors the #search-per-page select. A display preference,
+// persisted and defaulting to 5 (#108).
+const PERPAGE_STORAGE_KEY = "tagrex.searchPerPage";
+function searchPerPagePref() {
+  try {
+    const v = parseInt(localStorage.getItem(PERPAGE_STORAGE_KEY), 10);
+    return [5, 10, 15].includes(v) ? v : 5;
+  } catch (e) {
+    return 5;
+  }
+}
+let searchPerPage = searchPerPagePref();
 let searchPage = 0; // last page fetched (0 = none yet)
 let searchHasMore = false; // provider likely has another page
 let searchGen = 0; // generation token
-let loadingResults = false; // a page fetch / count sweep is in flight
+let loadingResults = false; // a page fetch is in flight
+let prefetching = false; // the background per-release detail sweep is running
+
+// Whether a search is doing background work the user might want to interrupt
+// (#108) — a page fetch or the per-release prefetch sweep.
+function searchBusy() {
+  return loadingResults || prefetching;
+}
 
 async function discogsSearch() {
   return runSearch(true);
@@ -2286,9 +2322,12 @@ async function loadMoreResults() {
 // bumping the generation makes in-flight workers bail; the "Load more" button
 // stays available so the user can resume.
 function stopLoading() {
+  if (!searchBusy()) return;
   searchGen++;
   loadingResults = false;
+  prefetching = false;
   updateLoadMoreUi();
+  toast("Stopped loading results");
 }
 
 async function runSearch(reset) {
@@ -2305,7 +2344,7 @@ async function runSearch(reset) {
 
   if (reset) {
     releaseSource = source;
-    searchPerPage = Number(el("search-per-page").value) || 10;
+    searchPerPage = Number(el("search-per-page").value) || 5;
     searchPage = 0;
     searchHasMore = false;
     releaseCandidates = [];
@@ -2349,10 +2388,11 @@ async function runSearch(reset) {
 function updateLoadMoreUi() {
   const wrap = el("release-more");
   if (!wrap) return;
+  const busy = searchBusy();
   wrap.hidden = releaseCandidates.length === 0;
-  el("load-more").hidden = loadingResults || !searchHasMore;
-  el("stop-loading").hidden = !loadingResults;
-  el("load-more-spin").hidden = !loadingResults;
+  el("load-more").hidden = busy || !searchHasMore;
+  el("stop-loading").hidden = !busy;
+  el("load-more-spin").hidden = !busy;
 }
 
 async function loadSavedToken() {
@@ -2769,6 +2809,10 @@ const PREFETCH_CONCURRENCY = 4;
 async function prefetchReleaseCounts(items, gen) {
   const token = el("discogs-token").value.trim();
   const queue = (items || releaseCandidates).filter((c) => !releaseCache.has(c.id));
+  if (queue.length === 0) return;
+  // The sweep is interruptible background work — show Stop while it runs (#108).
+  prefetching = true;
+  updateLoadMoreUi();
   async function worker() {
     while (queue.length) {
       // A newer search, or Stop (#96), bumps the generation → bail.
@@ -2786,6 +2830,12 @@ async function prefetchReleaseCounts(items, gen) {
     }
   }
   await Promise.all(Array.from({ length: PREFETCH_CONCURRENCY }, worker));
+  // Only the sweep for the current generation owns the flag (Stop / a newer
+  // search may have moved on already).
+  if (gen === undefined || gen === searchGen) {
+    prefetching = false;
+    updateLoadMoreUi();
+  }
 }
 
 // CSS.escape isn't guaranteed in every webview; ids are numeric strings anyway.
@@ -3210,7 +3260,13 @@ el("discogs-query").addEventListener("input", () => {
 el("query-preset").addEventListener("change", applyQueryPreset);
 el("load-more").addEventListener("click", loadMoreResults);
 el("stop-loading").addEventListener("click", stopLoading);
-el("search-per-page").addEventListener("change", () => {
+el("search-per-page").addEventListener("change", (e) => {
+  const v = parseInt(e.target.value, 10);
+  try {
+    localStorage.setItem(PERPAGE_STORAGE_KEY, String(v));
+  } catch (err) {
+    /* localStorage unavailable — preference just won't persist */
+  }
   // Re-run from page 1 at the new page size if we already have results.
   if (releaseCandidates.length) discogsSearch();
 });
@@ -3251,7 +3307,19 @@ el("set-table-font").addEventListener("input", (e) => {
 });
 
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && !el("settings").hidden) cancelSettings();
+  if (e.key !== "Escape") return;
+  // Settings sheet takes precedence.
+  if (!el("settings").hidden) {
+    cancelSettings();
+    return;
+  }
+  // Esc interrupts an in-progress search sweep (#108) — e.g. the wanted release
+  // is already visible. Don't hijack Esc while editing a cell.
+  const editing = document.activeElement && document.activeElement.isContentEditable;
+  if (!editing && searchBusy()) {
+    stopLoading();
+    e.preventDefault();
+  }
 });
 
 // List/Grid layout toggle.
@@ -3786,6 +3854,7 @@ document.addEventListener("click", (e) => {
 // `tracks`. Collapsed state is per grouping, so reset it on change.
 el("group-by").addEventListener("change", (e) => {
   groupBy = e.target.value;
+  saveGroupBy(groupBy);
   collapsedGroups.clear();
   renderTracks();
 });
@@ -3866,6 +3935,9 @@ renderTableHead();
 applyCondensedTable(condensedTableEnabled());
 applyCheckboxCol(checkboxColEnabled());
 applyTableFont(tableFontPx());
+// Reflect saved defaults onto the grouping + search page-size selects (#108).
+el("group-by").value = groupBy;
+el("search-per-page").value = String(searchPerPage);
 
 // Browser-only fake of the native player: a wall-clock timer advances position,
 // auto-advances to the queued `next` on end, and reports status — enough to
