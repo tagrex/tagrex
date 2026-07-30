@@ -1963,8 +1963,20 @@ td.unreadable-note {
 .release-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
   padding: 4px 0 8px;
+}
+
+/* Loading indicator + Stop, pinned in the toolbar so they're reachable without
+   scrolling to the bottom of the results (#108). */
+.release-toolbar .load-spin {
+  font-size: var(--text-2xs);
+}
+.release-toolbar .stop-btn {
+  height: var(--ctl-h-sm);
+  padding: 0 8px;
+  font-size: var(--text-2xs);
 }
 
 .release-toolbar .per-page {

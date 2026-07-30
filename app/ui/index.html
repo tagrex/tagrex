@@ -195,6 +195,10 @@
               </div>
               <div class="release-toolbar" id="release-toolbar" hidden>
                 <span class="hint muted">Found <span id="release-count">0</span> entries</span>
+                <!-- Loading indicator + Stop live here (top), visible while the
+                     background sweep runs so it's reachable without scrolling. -->
+                <span id="load-more-spin" class="muted load-spin" hidden>Loading…</span>
+                <button id="stop-loading" type="button" class="stop-btn" hidden>Stop</button>
                 <div class="spacer"></div>
                 <label class="hint muted" title="On import, map a vinyl side (A1/B2) to the disc number: side A → disc 1, B → disc 2, …">
                   <input id="import-vinyl-disc" type="checkbox" /> Vinyl side → disc
@@ -218,8 +222,6 @@
               <div id="release-list" class="release-list"></div>
               <div id="release-more" class="release-more" hidden>
                 <button id="load-more" type="button">Load more results</button>
-                <button id="stop-loading" type="button" hidden>Stop</button>
-                <span id="load-more-spin" class="muted" hidden>Loading…</span>
               </div>
               <p id="discogs-empty" class="empty inert-panel">Search Discogs to see releases.</p>
             </div>
