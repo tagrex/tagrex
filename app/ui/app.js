@@ -863,13 +863,13 @@ function updateApplyFromChecks() {
 const DIFF_MAIN_COLS = ["file", "artist", "title", "album", "year"];
 // Extra (non-main) fields, in the order they appear as added columns.
 const DIFF_EXTRA_ORDER = [
-  "albumartist", "track", "tracktotal", "disc", "genre",
+  "albumartist", "track", "tracktotal", "disc", "media", "genre",
   "composer", "publisher", "catalognumber", "bpm", "isrc", "key", "url", "comment",
 ];
 const DIFF_LABELS = {
   file: "File", artist: "Artist", title: "Title", album: "Album", year: "Year",
   albumartist: "Album Artist", track: "Track", tracktotal: "Track Total",
-  disc: "Disc", genre: "Genre", composer: "Composer", publisher: "Publisher",
+  disc: "Disc", media: "Media", genre: "Genre", composer: "Composer", publisher: "Publisher",
   catalognumber: "Catalogue #", bpm: "BPM", isrc: "ISRC", key: "Key", url: "URL", comment: "Comment",
 };
 
@@ -892,8 +892,15 @@ function diffColumns(plan) {
     }
     if (c.cover_change) anyCover = true;
   }
-  const extras = DIFF_EXTRA_ORDER.filter((f) => changedExtras.has(f))
-    .concat([...changedExtras].filter((f) => f.startsWith("custom:")).sort());
+  const known = DIFF_EXTRA_ORDER.filter((f) => changedExtras.has(f));
+  const custom = [...changedExtras].filter((f) => f.startsWith("custom:")).sort();
+  // Safety net: any other changed field (a first-class field not yet listed
+  // above) still gets a column, so a written tag can never be silently absent
+  // from the diff — the recurring bug that hid catalogue # (#90) then media.
+  const rest = [...changedExtras]
+    .filter((f) => !DIFF_EXTRA_ORDER.includes(f) && !f.startsWith("custom:"))
+    .sort();
+  const extras = [...known, ...custom, ...rest];
   // Leading `sel` column = per-row "include in this apply" (#81).
   const cols = ["sel", ...DIFF_MAIN_COLS, ...extras];
   if (anyCover) cols.push("cover");
