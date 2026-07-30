@@ -380,6 +380,10 @@ pub struct ImportSelectionDto {
     /// The release's public webpage → written to the URL frame (`WOAF`).
     #[serde(default)]
     pub url: Option<String>,
+    /// Physical medium of the release (Vinyl / CD / Cassette / File) → written to
+    /// the media tag (`TMED`/`MEDIA`). Album-level; drives the vinyl side view.
+    #[serde(default)]
+    pub media_type: Option<String>,
 }
 
 /// One rule in a transformation chain, as the UI describes it.
@@ -1397,6 +1401,8 @@ impl App {
                 ),
                 // Release webpage → WOAF URL frame.
                 (TagField::Url, non_empty(selection.url.clone())),
+                // Physical medium (Vinyl / CD / Cassette / File) → media frame.
+                (TagField::MediaType, non_empty(selection.media_type.clone())),
             ];
             if let Some(track) = selection.tracks.get(index) {
                 let artist = non_empty(Some(track.artist.clone()))
@@ -2160,6 +2166,7 @@ mod tests {
             country: Some("Belgium".into()),
             track_total: Some("15".into()),
             url: Some("https://www.discogs.com/release/249504".into()),
+            media_type: Some("Vinyl".into()),
         };
 
         let plan = app.preview_import(&[a, b], &selection, false).unwrap();

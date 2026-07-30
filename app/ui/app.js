@@ -243,6 +243,13 @@ function escapeHtml(s) {
 // values (edited cells shown and marked dirty). Does NOT clear `edits` — call
 // `resetEdits()` for that when loading fresh disk state.
 function sortValue(track, key) {
+  // Position sorts by (disc, track) numerically, so A1, A2, … B1 order holds
+  // (and plain CD tracks sort numerically too) instead of by the display string.
+  if (key === "position") {
+    const disc = parseInt(track.tags.disc || "0", 10) || 0;
+    const trk = parseInt(track.tags.track || "0", 10) || 0;
+    return String(disc).padStart(4, "0") + String(trk).padStart(5, "0");
+  }
   return (key === "file" ? fileName(track.path) : track.tags[key] || "").toLowerCase();
 }
 
@@ -264,13 +271,40 @@ function updateSortIndicators() {
 // ---- configurable columns (#43) ----
 // "file" plus every modeled tag field, the pool the user picks columns from.
 function allColumnKeys() {
-  return ["file", ...EXTENDED_FIELDS.map(([key]) => key)];
+  return ["file", ...EXTENDED_FIELDS.map(([key]) => key), ...VIRTUAL_COLUMNS.map(([key]) => key)];
 }
 
 function columnLabel(key) {
   if (key === "file") return "File";
-  const found = EXTENDED_FIELDS.find(([k]) => k === key);
+  const found =
+    EXTENDED_FIELDS.find(([k]) => k === key) || VIRTUAL_COLUMNS.find(([k]) => k === key);
   return found ? found[1] : key;
+}
+
+// ---- vinyl side notation view (#106) ----
+// Whether a media-type value denotes a side-based medium (vinyl / cassette).
+// Mirrors `is_side_medium` in the mask backend.
+function isSideMedium(media) {
+  const m = (media || "").toLowerCase();
+  return ["vinyl", "lp", "shellac", "cassette", "tape", '"', "acetate"].some((k) => m.includes(k));
+}
+
+// The side letter for a disc on side-based media (disc 1 → A, …, 26 → Z), else
+// null. Mirrors `side_letter_for` in the backend.
+function sideLetterOf(media, disc) {
+  if (!isSideMedium(media)) return null;
+  const d = parseInt(disc, 10);
+  return d >= 1 && d <= 26 ? String.fromCharCode(64 + d) : null;
+}
+
+// The reconstructed position shown in the Position column: vinyl/cassette get the
+// side letter + track ("B" + "3" = "B3"); everything else just the track number.
+// Reads pending edits first so it tracks staged changes to media/disc/track.
+function vinylPositionOf(track, pending) {
+  const get = (key) => (pending && pending.has(key) ? pending.get(key) : track.tags[key] || "");
+  const letter = sideLetterOf(get("media"), get("disc"));
+  const trackNo = get("track");
+  return letter ? letter + trackNo : trackNo;
 }
 
 // Rebuild the sortable column headers from `visibleColumns` (the sel + play
@@ -544,6 +578,15 @@ function appendTrackRow(track, groupKey) {
       <td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
   for (const field of visibleColumns) {
     if (field === "file") continue; // rendered above (structural, always first)
+    // Position (#106): a derived, read-only view of the vinyl side notation —
+    // not a tag, so it isn't editable and carries no dirty state.
+    if (field === "position") {
+      const td = document.createElement("td");
+      td.className = "position-cell";
+      td.textContent = vinylPositionOf(track, pending);
+      tr.appendChild(td);
+      continue;
+    }
     const original = tag(track, field);
     const edited = pending && pending.has(field);
     const value = edited ? pending.get(field) : original;
@@ -1885,7 +1928,12 @@ const EXTENDED_FIELDS = [
   ["isrc", "ISRC"],
   ["key", "Key"],
   ["url", "URL"],
+  ["media", "Media"],
 ];
+
+// Virtual (derived, read-only) columns that aren't tag fields (#106). "position"
+// reconstructs the vinyl side notation (A1/B2) from media + disc + track.
+const VIRTUAL_COLUMNS = [["position", "Position"]];
 
 // Fields the user actually touched in the dialog, staged until they confirm.
 let stagedFields = new Map();
@@ -2508,18 +2556,28 @@ function discCount(release) {
 function mediaKind(format) {
   const f = (format || "").toLowerCase();
   const has = (...ks) => ks.some((k) => f.includes(k));
+  if (has("cassette", "tape")) return "cassette";
   if (has("vinyl", "lp", "ep", '7"', '10"', '12"', "shellac")) return "vinyl";
   if (has("sacd", "hdcd", "cdr", "compact disc", "cd")) return "cd";
   if (has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming")) return "digital";
   return "generic";
 }
 
-const MEDIA_LABEL = { vinyl: "Vinyl", cd: "CD", digital: "Digital", generic: "" };
+const MEDIA_LABEL = { vinyl: "Vinyl", cd: "CD", cassette: "Cassette", digital: "Digital", generic: "" };
+
+// The value written to the MEDIA tag on import (#106): a clean normalized label,
+// or the raw provider format string when the kind is unrecognised (so nothing is
+// lost). Drives the vinyl side notation (%side% / Position column).
+function mediaTagValue(format) {
+  const label = MEDIA_LABEL[mediaKind(format)];
+  return label || (format || "").trim() || null;
+}
 
 // Inline SVG glyphs (currentColor, CSP-safe) — from the Design deliverable.
 const MEDIA_GLYPH = {
   vinyl: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="8" r="4.2" fill="none" stroke="currentColor" stroke-width=".8" opacity=".55"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/></svg>`,
   cd: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="8" r="2.5" fill="none" stroke="currentColor" stroke-width="1"/></svg>`,
+  cassette: `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="5.5" cy="8" r="1.4" fill="none" stroke="currentColor" stroke-width=".8"/><circle cx="10.5" cy="8" r="1.4" fill="none" stroke="currentColor" stroke-width=".8"/><rect x="4.5" y="10.5" width="7" height="1.2" fill="currentColor"/></svg>`,
   digital: `<svg viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="2.2" y="6" width="1.6" height="4" rx=".8"/><rect x="5.2" y="3" width="1.6" height="10" rx=".8"/><rect x="8.2" y="5" width="1.6" height="6" rx=".8"/><rect x="11.2" y="7" width="1.6" height="2" rx=".8"/></g></svg>`,
   generic: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="11.5" r="2.2" fill="currentColor"/><rect x="7.9" y="3" width="1.3" height="8.5" fill="currentColor"/><path d="M8.2 3.2q4 .6 4 3.8" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`,
 };
@@ -2988,6 +3046,8 @@ async function importRelease(card) {
     // Total tracks on the release (album-level), so a file reads as N/total.
     track_total: release.tracks && release.tracks.length ? String(release.tracks.length) : null,
     url: release.url || null,
+    // Physical medium → drives the vinyl side view (#106).
+    media_type: mediaTagValue(release.format),
   };
   try {
     const plan = await invoke("preview_import", {
@@ -4248,6 +4308,9 @@ function mockInvoke(cmd, args) {
         }
         if (args.selection.catalog_number) {
           tag_changes.push({ field: "catalognumber", old: t ? t.tags.catalognumber || null : null, new: args.selection.catalog_number });
+        }
+        if (args.selection.media_type) {
+          tag_changes.push({ field: "media", old: t ? t.tags.media || null : null, new: args.selection.media_type });
         }
         if (rt) {
           tag_changes.push({ field: "title", old: t ? t.tags.title || null : null, new: rt.title });

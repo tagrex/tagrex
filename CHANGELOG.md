@@ -128,6 +128,16 @@ first release ships.
 
 ### Added
 
+- **Media type + vinyl position view.** Release import now writes the **media
+  type** (`Vinyl` / `CD` / `Cassette` / `File`) to the standard media tag (ID3v2
+  `TMED`, Vorbis `MEDIA`), and there's a **Media** column and a `%media%` rename
+  placeholder. Building on the vinyl side→disc mapping, a new **`%side%`** rename
+  placeholder renders the disc as a side letter on vinyl/cassette (blank on other
+  media), so `%side%%track:1% - %title%` names files `A1 - …` on vinyl and
+  `1 - …` on CD from one mask. A derived, read-only **Position** column (toggle it
+  in the Columns picker) shows the reconstructed `A1`/`B1` notation; the tags
+  themselves stay plain integers.
+
 - **Number tracks** (Generator panel). Fills the track number across the selected
   files in table order without going through a provider import: a start value, an
   optional track total and disc number, and an optional **restart per group**

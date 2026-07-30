@@ -161,6 +161,10 @@ pub enum TagField {
     /// A webpage for the release/recording, written to the ID3v2 `WOAF` URL
     /// frame (a proper URL link, not plain text) so players treat it as a link.
     Url,
+    /// Physical/source medium of the release (Vinyl / CD / Cassette / File),
+    /// written to the standard media frame (ID3v2 `TMED`, Vorbis `MEDIA`). Drives
+    /// the vinyl side-notation view (#106).
+    MediaType,
     Custom(String),
 }
 
@@ -189,6 +193,7 @@ impl TagField {
             Self::InitialKey => "key".to_string(),
             Self::CatalogNumber => "catalognumber".to_string(),
             Self::Url => "url".to_string(),
+            Self::MediaType => "media".to_string(),
             Self::Custom(name) => format!("custom:{name}"),
         }
     }
@@ -216,6 +221,7 @@ impl TagField {
             "key" => Self::InitialKey,
             "catalognumber" => Self::CatalogNumber,
             "url" => Self::Url,
+            "media" => Self::MediaType,
             // Only reachable if the database holds a key this build didn't
             // write; preserve it verbatim rather than losing it.
             other => Self::Custom(other.to_string()),
@@ -571,6 +577,8 @@ fn tag_field_to_item_key(field: &TagField) -> ItemKey {
         // WOAF (Official audio file webpage). Its value is a URL locator, not
         // text — the write path uses `ItemValue::Locator` for this field.
         TagField::Url => ItemKey::AudioFileUrl,
+        // Standard media frame: ID3v2 `TMED`, Vorbis `MEDIA`, MP4 `MEDIA`.
+        TagField::MediaType => ItemKey::OriginalMediaType,
         TagField::Custom(key) => ItemKey::Unknown(key.clone()),
     }
 }
@@ -610,6 +618,7 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         ItemKey::InitialKey => TagField::InitialKey,
         ItemKey::CatalogNumber => TagField::CatalogNumber,
         ItemKey::AudioFileUrl => TagField::Url,
+        ItemKey::OriginalMediaType => TagField::MediaType,
         ItemKey::Unknown(key) => TagField::Custom(key.clone()),
         other => TagField::Custom(format!("{other:?}")),
     }
@@ -706,6 +715,7 @@ mod tests {
             TagField::Isrc,
             TagField::InitialKey,
             TagField::CatalogNumber,
+            TagField::MediaType,
         ]
     }
 

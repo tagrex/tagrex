@@ -1811,6 +1811,12 @@ td.unreadable-note {
 .autonum-flags {
   margin: var(--space-2) 0;
 }
+
+/* Position column (#106) is derived and read-only — muted so it reads as
+   computed, not an editable value. */
+#tracks tbody td.position-cell {
+  color: var(--muted);
+}
 .rule-flag:hover {
   color: var(--text);
 }

@@ -42,6 +42,10 @@ enum Segment {
     /// otherwise — which is what lets ` [%artist% - ]` contribute nothing (not
     /// even its space) on a single-artist album.
     Section(Vec<Segment>),
+    /// `%side%` — the vinyl/cassette side as a letter (disc 1 -> A, 2 -> B, …),
+    /// or empty for other media (#106). A computed presentation value, not a
+    /// field, so it renders but a mask containing it can't extract.
+    Side,
 }
 
 /// A parsed, validated mask pattern.
@@ -55,6 +59,10 @@ pub struct Mask {
     /// nothing says where one value ends and the next begins. So this is only
     /// an error for the extract direction, not for the pattern as such.
     adjacent_placeholders: bool,
+    /// The pattern contains a `%side%`, a computed presentation value. It renders
+    /// fine, but there's no single tag to extract it back into, so the mask is
+    /// render-only (the extract direction refuses it).
+    render_only: bool,
 }
 
 impl Mask {
@@ -64,12 +72,14 @@ impl Mask {
         let mut previous_was_placeholder = false;
         let adjacent_placeholders =
             has_adjacent_placeholders(&segments, &mut previous_was_placeholder);
+        let render_only = has_side(&segments);
         let regex = build_regex(&segments);
         Ok(Self {
             pattern: pattern.to_string(),
             segments,
             regex,
             adjacent_placeholders,
+            render_only,
         })
     }
 
@@ -86,6 +96,10 @@ impl Mask {
         // apart is guesswork, so refuse rather than invent a boundary.
         if self.adjacent_placeholders {
             return Err(MaskError::Ambiguous);
+        }
+        // `%side%` is a computed value with no tag to extract into.
+        if self.render_only {
+            return Err(MaskError::RenderOnly);
         }
         let captures = self.regex.captures(filename).ok_or(MaskError::NoMatch)?;
 
@@ -199,6 +213,9 @@ fn flush_literal(literal: &mut String, segments: &mut Vec<Segment>) {
 
 /// `name` or `name:width`, e.g. `%track:3%`.
 fn parse_placeholder(spec: &str) -> Result<Segment, MaskError> {
+    if spec.eq_ignore_ascii_case("side") {
+        return Ok(Segment::Side);
+    }
     let (name, width) = match spec.split_once(':') {
         Some((name, width)) => (
             name,
@@ -251,6 +268,9 @@ fn build_regex_into(segments: &[Segment], index: &mut usize, out: &mut String) {
                 build_regex_into(inner, index, out);
                 out.push_str(")?");
             }
+            // `%side%` is render-only (a mask carrying it refuses to extract), so
+            // it contributes no capture group and no index.
+            Segment::Side => {}
         }
     }
 }
@@ -271,6 +291,8 @@ fn collect_captures(
                 *index += 1;
             }
             Segment::Section(inner) => collect_captures(inner, captures, index, tags),
+            // Render-only; extraction is refused before reaching here.
+            Segment::Side => {}
         }
     }
 }
@@ -309,9 +331,50 @@ fn render_segments(
                     produced = true;
                 }
             }
+            // `%side%` renders the disc as a side letter on side-based media, and
+            // nothing otherwise -- never an error (empty is a valid outcome).
+            Segment::Side => {
+                if let Some(letter) = side_letter_for(tags) {
+                    out.push(letter);
+                    produced = true;
+                }
+            }
         }
     }
     Ok(produced)
+}
+
+/// The side letter for `%side%`: only on side-based media (vinyl, cassette), and
+/// only when the disc number is 1..=26 -> 'A'..='Z'. Empty (None) otherwise.
+fn side_letter_for(tags: &TagMap) -> Option<char> {
+    let media = tags.get(&TagField::MediaType)?;
+    if !is_side_medium(media) {
+        return None;
+    }
+    let disc: u32 = tags.get(&TagField::DiscNumber)?.trim().parse().ok()?;
+    (1..=26)
+        .contains(&disc)
+        .then(|| (b'A' + (disc as u8 - 1)) as char)
+}
+
+/// Whether a media-type value denotes a side-based medium (vinyl / cassette),
+/// whose track positions are conventionally written as a side letter + number.
+pub(crate) fn is_side_medium(media: &str) -> bool {
+    let m = media.to_ascii_lowercase();
+    [
+        "vinyl", "lp", "shellac", "cassette", "tape", "\"", "acetate",
+    ]
+    .iter()
+    .any(|needle| m.contains(needle))
+}
+
+/// Whether any segment is a `%side%` (makes the mask render-only).
+fn has_side(segments: &[Segment]) -> bool {
+    segments.iter().any(|segment| match segment {
+        Segment::Side => true,
+        Segment::Section(inner) => has_side(inner),
+        _ => false,
+    })
 }
 
 /// Two placeholders with no literal text between them, looking through section
@@ -324,7 +387,7 @@ fn has_adjacent_placeholders(segments: &[Segment], previous_was_placeholder: &mu
                     *previous_was_placeholder = false;
                 }
             }
-            Segment::Placeholder(..) => {
+            Segment::Placeholder(..) | Segment::Side => {
                 if *previous_was_placeholder {
                     return true;
                 }
@@ -391,6 +454,7 @@ fn field_from_name(name: &str) -> Result<TagField, MaskError> {
         "key" => Ok(TagField::InitialKey),
         "catalognumber" => Ok(TagField::CatalogNumber),
         "url" => Ok(TagField::Url),
+        "media" => Ok(TagField::MediaType),
         _ => Err(MaskError::UnknownPlaceholder(name.to_string())),
     }
 }
@@ -414,6 +478,7 @@ fn field_name(field: &TagField) -> &'static str {
         TagField::InitialKey => "key",
         TagField::CatalogNumber => "catalognumber",
         TagField::Url => "url",
+        TagField::MediaType => "media",
         TagField::Custom(_) => "custom",
     }
 }
@@ -436,6 +501,8 @@ pub enum MaskError {
     UnknownPlaceholder(String),
     #[error("ambiguous pattern: adjacent placeholders without a separator")]
     Ambiguous,
+    #[error("render-only pattern: %side% is computed and cannot be extracted")]
+    RenderOnly,
     #[error("missing tag for placeholder: %{0}%")]
     MissingTag(String),
     #[error("pattern does not match the filename")]
@@ -553,6 +620,33 @@ mod tests {
             mask.extract("101. The X Factor - Desert Rain"),
             Err(MaskError::Ambiguous)
         ));
+    }
+
+    #[test]
+    fn side_renders_a_letter_for_vinyl_and_nothing_for_other_media() {
+        let mask = Mask::parse("%side%%track:1% - %title%").unwrap();
+        // Vinyl: disc 2 -> side B, so "B3".
+        let vinyl = tags(&[
+            (TagField::MediaType, "Vinyl"),
+            (TagField::DiscNumber, "2"),
+            (TagField::TrackNumber, "3"),
+            (TagField::Title, "Rose"),
+        ]);
+        assert_eq!(mask.render(&vinyl).unwrap(), "B3 - Rose");
+        // CD: no side letter, just the track number.
+        let cd = tags(&[
+            (TagField::MediaType, "CD"),
+            (TagField::DiscNumber, "2"),
+            (TagField::TrackNumber, "3"),
+            (TagField::Title, "Rose"),
+        ]);
+        assert_eq!(mask.render(&cd).unwrap(), "3 - Rose");
+    }
+
+    #[test]
+    fn side_makes_a_mask_render_only() {
+        let mask = Mask::parse("%side% %title%").unwrap();
+        assert!(matches!(mask.extract("A Rose"), Err(MaskError::RenderOnly)));
     }
 
     #[test]
