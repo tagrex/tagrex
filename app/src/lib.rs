@@ -306,6 +306,9 @@ pub struct ReleaseDto {
     /// Release country, e.g. `Belgium`.
     #[serde(default)]
     pub country: Option<String>,
+    /// Physical/source format descriptor, e.g. `Vinyl, 12", 33 ⅓ RPM` (#106).
+    #[serde(default)]
+    pub format: Option<String>,
     /// Public webpage for the release, if any.
     #[serde(default)]
     pub url: Option<String>,
@@ -1805,6 +1808,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                 })
                 .collect(),
             country: release.country.clone(),
+            format: release.format.clone(),
             url: release.url.clone(),
             cover_image_url: release.cover_image_url.clone(),
         }

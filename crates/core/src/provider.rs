@@ -99,6 +99,9 @@ pub struct Release {
     pub labels: Vec<ReleaseLabel>,
     /// Release country, e.g. `Belgium` (full name as the provider states it).
     pub country: Option<String>,
+    /// Physical/source format descriptor, e.g. `Vinyl, 12", 33 ⅓ RPM` or `CD`
+    /// (#106). Drives the media-type tag and the vinyl side view.
+    pub format: Option<String>,
     /// Public webpage for the release (the provider's release page), if any.
     pub url: Option<String>,
     /// URL of the release's primary image (full resolution), if it has one.

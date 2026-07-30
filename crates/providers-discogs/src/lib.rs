@@ -394,6 +394,7 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .map(str::to_string),
+        format: parse_format(root.get("formats")),
         // The public release page (Discogs `uri`), e.g.
         // https://www.discogs.com/release/316795-…
         url: root
@@ -403,6 +404,24 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
             .map(str::to_string),
         cover_image_url: primary_image_url(root.get("images")),
     })
+}
+
+/// The release format descriptor from a Discogs release `formats` array (#106).
+/// A release lists structured formats (`[{ "name": "Vinyl", "descriptions":
+/// ["12\"", "33 ⅓ RPM"] }]`); the first one's name and descriptions are joined
+/// into a single string (`Vinyl, 12", 33 ⅓ RPM`), matching the search
+/// candidate's flattened `format`. `None` when absent.
+fn parse_format(value: Option<&Value>) -> Option<String> {
+    let first = value.and_then(Value::as_array).and_then(|a| a.first())?;
+    let name = first.get("name").and_then(Value::as_str);
+    let descriptions = string_array(first.get("descriptions"));
+    let parts: Vec<String> = name
+        .filter(|n| !n.trim().is_empty())
+        .map(str::to_string)
+        .into_iter()
+        .chain(descriptions)
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(", "))
 }
 
 /// Label / catalogue-number pairs from a Discogs release `labels` array, in
@@ -741,6 +760,9 @@ mod tests {
                 {"type": "secondary", "uri": "https://img.discogs.com/back.jpg"},
                 {"type": "primary", "uri": "https://img.discogs.com/front.jpg", "uri150": "https://img.discogs.com/front-150.jpg"}
             ],
+            "formats": [
+                {"name": "Vinyl", "qty": "1", "descriptions": ["12\"", "33 ⅓ RPM"]}
+            ],
             "tracklist": [
                 {"type_": "heading", "position": "", "title": "Side A"},
                 {"type_": "track", "position": "A", "title": "Never Gonna Give You Up", "duration": "3:32"},
@@ -755,6 +777,8 @@ mod tests {
         // Genres and styles are kept separate (#26).
         assert_eq!(release.genres, vec!["Electronic"]);
         assert_eq!(release.styles, vec!["Synth-pop"]);
+        // Format descriptor (#106): first format's name + descriptions joined.
+        assert_eq!(release.format.as_deref(), Some("Vinyl, 12\", 33 ⅓ RPM"));
         // Primary image picked (full-res `uri`), not the secondary/back one.
         assert_eq!(
             release.cover_image_url.as_deref(),
