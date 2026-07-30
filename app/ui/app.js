@@ -3754,6 +3754,22 @@ tracksBody.addEventListener("keydown", (e) => {
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
   }
+
+  // Keep the panel within the work area when the window shrinks (#109). The
+  // splitter enforces this on drag, but without a resize clamp a panel that was
+  // wide (or the default 480 on a narrow window) is pushed off the right edge,
+  // clipping its toolbar. Mirror the splitter's clamp; only ever narrow.
+  function clampPanel() {
+    if (document.body.classList.contains("panel-collapsed")) return;
+    const rect = workarea.getBoundingClientRect();
+    if (rect.width === 0) return;
+    const max = Math.max(240, rect.width - 360);
+    if (modeCol.getBoundingClientRect().width > max) {
+      modeCol.style.flexBasis = `${Math.round(max)}px`;
+    }
+  }
+  window.addEventListener("resize", clampPanel);
+  clampPanel(); // in case the initial window is narrower than the default panel
 })();
 
 // ---- resize a table column by dragging its header grip (#76) ----

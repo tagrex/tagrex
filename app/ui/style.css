@@ -484,7 +484,8 @@ body.panel-collapsed .col-splitter {
 .view-tabs {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 6px 10px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
 }
@@ -826,6 +827,7 @@ body:not(.show-checkbox) #tracks td.sel {
 
 .mask-row input {
   flex: 1;
+  min-width: 0; /* shrink below intrinsic size so the row can't overflow a narrow panel */
   font-family: var(--font-mono-bundled);
 }
 
