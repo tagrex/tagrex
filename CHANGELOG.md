@@ -129,12 +129,21 @@ first release ships.
 ### Added
 
 - **Number tracks** (Generator panel). Fills the track number across the selected
-  files in table order without going through a provider import: a start value,
-  optional leading zeros (`1` / `01` / `001` / `0001`), an optional track total
-  and disc number, and an optional **restart per group** when a grouping is
-  active. Existing non-numeric positions (vinyl sides like `A1`/`B2`) are left
-  untouched rather than flattened. Staged into the pending-edits buffer, so it
-  previews and applies through the usual apply/undo path.
+  files in table order without going through a provider import: a start value, an
+  optional track total and disc number, and an optional **restart per group**
+  when a grouping is active. Existing non-numeric positions (vinyl sides like
+  `A1`/`B2`) are left untouched rather than flattened. Staged into the
+  pending-edits buffer, so it previews and applies through the usual apply/undo
+  path. (Track numbers are stored as plain integers — zero-padding is a file-name
+  concern, handled by the RENAMER mask `%track:2%`.)
+
+- **Vinyl sides → disc.** A vinyl-side position (`A1`, `B2`, or the reverse `1A`)
+  can't keep its side letter in the integer track-number tag, so the side now
+  maps to a **disc number** instead: side A → disc 1, B → disc 2, … (`A1` →
+  track 1 / disc 1). On **release import** an optional "Vinyl side → disc" toggle
+  sets the disc from the side, only when the file has no disc yet; a **"Split
+  side → disc"** action in the Generator does the same for files already tagged
+  `A1`/`B2` by another tool.
 
 - **Leaner file table.** The per-row Play button column is gone: play a track by
   **double-clicking its file name**, or press the **Play button in the bottom

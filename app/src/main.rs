@@ -322,10 +322,11 @@ fn preview_import(
     state: State<AppState>,
     paths: Vec<String>,
     selection: ImportSelectionDto,
+    vinyl_sides_to_disc: bool,
 ) -> Result<PlanDto, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
-        app.preview_import(&paths, &selection)
+        app.preview_import(&paths, &selection, vinyl_sides_to_disc)
             .map_err(|e| e.to_string())
     })
 }

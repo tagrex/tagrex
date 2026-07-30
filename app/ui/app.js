@@ -1480,6 +1480,7 @@ function refreshGenerator() {
   const count = selectedPaths().length;
   el("transform-count").textContent = count ? `— ${count} file(s)` : "";
   el("autonum-count").textContent = count ? `— ${count} selected` : "";
+  el("vinyl-count").textContent = count ? `— ${count} selected` : "";
   renderTransformRules();
 }
 
@@ -1494,8 +1495,8 @@ function isVinylSide(value) {
 
 // Fill TrackNumber across the selection (mapping order) into the pending-edits
 // buffer, then preview — so it flows through the usual apply/undo path. Options:
-// start value, zero padding, optional TrackTotal + disc, per-group restart when
-// a grouping is active, and preserving existing vinyl-side positions.
+// start value, optional TrackTotal + disc, per-group restart when a grouping is
+// active, and preserving existing vinyl-side positions.
 async function numberTracks() {
   const paths = selectedPaths(); // mapping order; reads `selection`, survives re-render
   if (paths.length === 0) {
@@ -1503,7 +1504,6 @@ async function numberTracks() {
     return;
   }
   const start = Math.max(0, Math.floor(Number(el("autonum-start").value) || 1));
-  const width = Number(el("autonum-format").value) || 1;
   const writeTotal = el("autonum-total").checked;
   const perGroup = el("autonum-per-group").checked && !!groupBy;
   const keepSides = el("autonum-keep-sides").checked;
@@ -1545,17 +1545,76 @@ async function numberTracks() {
     for (const a of assigned) groupTotals.set(a.gkey, (groupTotals.get(a.gkey) || 0) + 1);
   }
 
-  const pad = (n) => String(n).padStart(width, "0");
+  // The track-number tag is stored as a plain integer on every format (lofty
+  // normalizes it), so zero-padding can't persist here — pad file names instead
+  // via the RENAMER (%track:2%). We write the plain number.
   for (const a of assigned) {
     if (!edits.has(a.path)) edits.set(a.path, new Map());
     const fields = edits.get(a.path);
-    fields.set("track", pad(a.number));
+    fields.set("track", String(a.number));
     if (writeTotal) fields.set("tracktotal", String(perGroup ? groupTotals.get(a.gkey) : assigned.length));
     if (disc) fields.set("disc", disc);
   }
   renderTracks();
   await previewEdits();
   toast(`Numbered ${assigned.length} track(s)${perGroup ? " (restarted per group)" : ""}`);
+}
+
+// ---- vinyl sides -> disc (#105) ----
+// Parse a vinyl-side track value: the side letter maps to a disc ordinal
+// (A=1, B=2, …) and the digits to a track number. Handles "A1" (side-first) and
+// the reverse "1A"; the numeric part must be plain digits. Returns
+// { track, disc } as strings, or null for a plain number / non-vinyl value.
+// Mirrors `side_disc_from_position` + `track_number_from_position` in the backend.
+function parseVinylPosition(value) {
+  const v = String(value || "").trim();
+  if (v.length < 2) return null;
+  const first = v[0];
+  const last = v[v.length - 1];
+  let side;
+  let num;
+  if (/[A-Za-z]/.test(first) && /[0-9]/.test(v[1])) {
+    side = first; // "A1"
+    num = v.slice(1);
+  } else if (/[0-9]/.test(first) && /[A-Za-z]/.test(last)) {
+    side = last; // reverse "1A"
+    num = v.slice(0, -1);
+  } else {
+    return null;
+  }
+  if (!/^\d+$/.test(num)) return null;
+  const disc = side.toUpperCase().charCodeAt(0) - 64; // 'A' -> 1
+  if (disc < 1 || disc > 26) return null;
+  return { track: String(parseInt(num, 10)), disc: String(disc) };
+}
+
+// Decompose vinyl-side track values in the selection into a plain track number
+// plus a disc number, staged into the pending-edits buffer. For files already
+// tagged "A1"/"B2" (e.g. by another tool) — the side can't live in the integer
+// track tag, so it moves to the disc field.
+async function splitVinylSides() {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to split first", true);
+    return;
+  }
+  let changed = 0;
+  for (const path of paths) {
+    const parsed = parseVinylPosition(currentFieldValue(path, "track"));
+    if (!parsed) continue;
+    if (!edits.has(path)) edits.set(path, new Map());
+    const fields = edits.get(path);
+    fields.set("track", parsed.track);
+    fields.set("disc", parsed.disc);
+    changed += 1;
+  }
+  if (changed === 0) {
+    toast("No vinyl-side values (A1, B2) in the selection");
+    return;
+  }
+  renderTracks();
+  await previewEdits();
+  toast(`Split ${changed} vinyl position(s) into track + disc`);
 }
 
 function addTransformRule() {
@@ -2932,7 +2991,11 @@ async function importRelease(card) {
     url: release.url || null,
   };
   try {
-    const plan = await invoke("preview_import", { paths, selection });
+    const plan = await invoke("preview_import", {
+      paths,
+      selection,
+      vinylSidesToDisc: el("import-vinyl-disc").checked,
+    });
     // Merge into the pending-edits buffer; a field the user already edited by
     // hand wins (we don't overwrite an existing entry).
     let merged = 0;
@@ -3060,6 +3123,7 @@ coverWell.addEventListener("drop", (e) => {
 el("transform-add").addEventListener("click", addTransformRule);
 el("transform-preview").addEventListener("click", previewTransform);
 el("autonum-run").addEventListener("click", numberTracks);
+el("vinyl-split").addEventListener("click", splitVinylSides);
 // Rule reorder is wired per-card in renderTransformRules via enablePointerReorder
 // (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 el("move-preview").addEventListener("click", previewMove);
@@ -3322,6 +3386,7 @@ function updatePanelCounts() {
   const count = selectedPaths().length;
   el("transform-count").textContent = count ? `— ${count} file(s)` : "";
   el("autonum-count").textContent = count ? `— ${count} selected` : "";
+  el("vinyl-count").textContent = count ? `— ${count} selected` : "";
   el("export-count").textContent = count ? `— ${count} track(s)` : "";
 }
 
@@ -4187,7 +4252,17 @@ function mockInvoke(cmd, args) {
         if (rt) {
           tag_changes.push({ field: "title", old: t ? t.tags.title || null : null, new: rt.title });
           tag_changes.push({ field: "artist", old: t ? t.tags.artist || null : null, new: rt.artist });
-          tag_changes.push({ field: "track", old: t ? t.tags.track || null : null, new: rt.position });
+          // Mirror the backend: track number from the position's trailing digits,
+          // and (when enabled, and no disc set) the vinyl side mapped to a disc.
+          const digits = String(rt.position || "").match(/\d+$/);
+          const num = digits ? String(parseInt(digits[0], 10)) : String(i + 1);
+          tag_changes.push({ field: "track", old: t ? t.tags.track || null : null, new: num });
+          if (args.vinylSidesToDisc && !(t && t.tags.disc)) {
+            const parsed = parseVinylPosition(rt.position);
+            if (parsed) {
+              tag_changes.push({ field: "disc", old: t ? t.tags.disc || null : null, new: parsed.disc });
+            }
+          }
         }
         return { path: p, rename_to: null, tag_changes };
       });

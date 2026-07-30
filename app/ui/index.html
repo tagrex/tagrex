@@ -195,6 +195,9 @@
               <div class="release-toolbar" id="release-toolbar" hidden>
                 <span class="hint muted">Found <span id="release-count">0</span> entries</span>
                 <div class="spacer"></div>
+                <label class="hint muted" title="On import, map a vinyl side (A1/B2) to the disc number: side A → disc 1, B → disc 2, …">
+                  <input id="import-vinyl-disc" type="checkbox" /> Vinyl side → disc
+                </label>
                 <label class="hint muted per-page">Show
                   <select id="search-per-page" title="Results per page">
                     <option value="5">5</option>
@@ -303,15 +306,6 @@
             <div class="export-row">
               <label for="autonum-start">Start at</label>
               <input id="autonum-start" type="number" min="0" step="1" value="1" />
-              <label for="autonum-format">Format</label>
-              <select id="autonum-format" title="Leading zeros for the track number">
-                <option value="1">1, 2, 3</option>
-                <option value="2">01, 02, 03</option>
-                <option value="3">001, 002, 003</option>
-                <option value="4">0001, 0002</option>
-              </select>
-            </div>
-            <div class="export-row">
               <label for="autonum-disc">Disc #</label>
               <input id="autonum-disc" type="text" placeholder="leave blank to skip" spellcheck="false" />
             </div>
@@ -329,6 +323,21 @@
             <div class="panel-actions">
               <div class="spacer"></div>
               <button id="autonum-run" class="primary">Number tracks</button>
+            </div>
+          </div>
+
+          <!-- Vinyl sides -> disc (#105): split a vinyl-side track value (A1/B2,
+               or the reverse 1A) into a plain track number plus a disc number
+               (side A -> disc 1, B -> disc 2, ...), since the side letter can't
+               live in the integer track-number tag. Staged like the rest. -->
+          <div class="panel-block">
+            <h2>Vinyl sides <span id="vinyl-count" class="muted"></span></h2>
+            <p class="hint muted" style="padding: 0">
+              Split a vinyl-side track value (<b>A1</b>, <b>B2</b>) into track + disc: side A → disc 1, B → disc 2, … Only rows with a side letter change.
+            </p>
+            <div class="panel-actions">
+              <div class="spacer"></div>
+              <button id="vinyl-split" class="primary">Split side → disc</button>
             </div>
           </div>
         </section>
