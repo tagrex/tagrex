@@ -770,6 +770,61 @@ td.dirty:focus {
   white-space: normal;
 }
 
+/* ---- DEDUPLICATOR mode (#118, design A7/A8) ----
+   The read-only scan takes over the main area; its Files/Preview strip is
+   irrelevant there, and the grouped results reuse the .files table shell so they
+   read as the workspace in a grouped state. */
+body.mode-deduplicator .view-tabs {
+  display: none;
+}
+#duplicates-view:not([hidden]) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+#duplicates-view .dup-bar {
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+/* Read-only lock banner (shared by the dedup bar + its panel). */
+.ro-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.ro-note .ico {
+  color: var(--accent-ink);
+  width: 14px;
+  height: 14px;
+}
+.files.dup-results-table tr.dup-group td {
+  background: var(--panel);
+  border-top: 2px solid var(--border);
+  font-family: var(--font-ui);
+  padding: 5px var(--space-4);
+  white-space: nowrap;
+}
+.dup-badge {
+  display: inline-block;
+  margin-right: var(--space-3);
+  padding: 1px var(--space-2);
+  border-radius: 999px;
+  background: var(--sel-tint);
+  color: var(--accent-ink);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+}
+.dup-key {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+.files td.dup-note {
+  color: var(--muted);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

@@ -67,6 +67,7 @@
         <button class="mode-tab active" data-mode="tagger" title="Edit tags — from Discogs, by hand, and cover art" aria-label="TAGGER"><svg class="ico"><use href="#i-tag"/></svg><span class="lbl">TAGGER</span></button>
         <button class="mode-tab" data-mode="renamer" title="Rename files and reorganize them into folders" aria-label="RENAMER"><svg class="ico"><use href="#i-rename"/></svg><span class="lbl">RENAMER</span></button>
         <button class="mode-tab" data-mode="generator" title="Generate and clean up tag/filename values" aria-label="GENERATOR"><svg class="ico"><use href="#i-wand"/></svg><span class="lbl">GENERATOR</span></button>
+        <button class="mode-tab" data-mode="deduplicator" title="Find likely duplicate files in the library" aria-label="DEDUPLICATOR"><svg class="ico"><use href="#i-dedup"/></svg><span class="lbl">DEDUPLICATOR</span></button>
         <button class="mode-tab" data-mode="exporter" title="Export playlists, CSV, and reports" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl">EXPORTER</span></button>
       </div>
       <div class="spacer"></div>
@@ -80,7 +81,6 @@
         <div class="view-tabs">
           <button id="view-files" class="view-tab active" data-view="files">Files <span id="track-count" class="muted"></span></button>
           <button id="view-preview" class="view-tab" data-view="preview" disabled>Preview</button>
-          <button id="view-duplicates" class="view-tab" data-view="duplicates" title="Find likely duplicate files in the library">Duplicates</button>
           <div class="spacer"></div>
           <label class="group-ctl muted"
             >Group
@@ -149,22 +149,14 @@
 
         <!-- Duplicates view (#40): a read-only library scan grouped by a chosen
              criterion. Nothing here modifies files. -->
+        <!-- DEDUPLICATOR results (#118): the grouped, read-only scan takes over
+             the main area when the DEDUPLICATOR mode is active. Its criterion +
+             Scan controls live in the right mode-panel like every other mode. -->
         <div id="duplicates-view" hidden>
-          <div class="preview-bar dup-bar">
-            <label class="group-ctl muted"
-              >By
-              <select id="dup-criterion" title="How to decide two files are duplicates">
-                <option value="artist_title">Artist + Title</option>
-                <option value="album_track">Album + Track</option>
-                <option value="duration">Duration</option>
-                <option value="size">File size</option>
-                <option value="hash">Identical bytes</option>
-              </select>
-            </label>
-            <button id="dup-scan" class="primary">Scan library</button>
+          <div class="dup-bar">
             <span id="dup-summary" class="hint muted" style="padding: 0"></span>
             <div class="spacer"></div>
-            <span class="hint muted" style="padding: 0">Read-only — nothing is changed.</span>
+            <span class="ro-note"><svg class="ico"><use href="#i-lock"/></svg> Read-only — nothing is changed.</span>
           </div>
           <div id="dup-results" class="dup-wrap"></div>
         </div>
@@ -414,6 +406,33 @@
         </section>
 
         <!-- EXPORTER: playlists / CSV / mask report, written into the library. -->
+        <!-- DEDUPLICATOR: a read-only library scan. Controls here; grouped
+             results take over the main area (#duplicates-view). -->
+        <section id="panel-deduplicator" class="mode-panel" hidden>
+          <div class="panel-block">
+            <h2>Find duplicates</h2>
+            <p class="hint muted" style="padding: 0">
+              Scan the whole library for likely duplicate files by a chosen key. Read-only —
+              nothing is ever changed.
+            </p>
+            <label class="export-row"
+              >By
+              <select id="dup-criterion" title="How to decide two files are duplicates">
+                <option value="artist_title">Artist + Title</option>
+                <option value="album_track">Album + Track</option>
+                <option value="duration">Duration</option>
+                <option value="size">File size</option>
+                <option value="hash">Identical bytes</option>
+              </select>
+            </label>
+            <div class="panel-actions">
+              <div class="spacer"></div>
+              <button id="dup-scan" class="primary">Scan library</button>
+            </div>
+            <p class="ro-note"><svg class="ico"><use href="#i-lock"/></svg> Read-only — nothing is changed.</p>
+          </div>
+        </section>
+
         <section id="panel-exporter" class="mode-panel" hidden>
           <div class="panel-block">
             <h2>Export <span id="export-count" class="muted"></span></h2>

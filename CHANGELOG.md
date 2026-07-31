@@ -68,6 +68,15 @@ first release ships.
 
 ### Changed
 
+- **Duplicate finding is now a top-level DEDUPLICATOR mode** (#118, fourth slice
+  of the workspace redesign). The duplicate scan moves out of the
+  `Files | Preview | Duplicates` view strip and becomes a mode tab of its own,
+  alongside TAGGER / RENAMER / GENERATOR / EXPORTER: its criterion + **Scan
+  library** controls sit in the right panel like every other mode, and the
+  grouped, **read-only** results (each set badged with its copy count and matched
+  key, behind a lock banner) take over the main area using the same table shell.
+  The `Duplicates` tab is gone from the strip; `Files | Preview` remain.
+
 - **Mode tabs now read as icon + label** (#116, second slice of the workspace
   redesign). Each top mode (TAGGER / RENAMER / GENERATOR / EXPORTER) gains a 16px
   icon beside its label so the bar is scannable at a glance and the icon carries

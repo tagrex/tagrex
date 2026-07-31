@@ -989,12 +989,12 @@ function updateEditsButton() {
 // ("preview"), and the duplicate finder ("duplicates"). The Preview tab is only
 // reachable while a plan is staged.
 function showView(which) {
+  // Files | Preview only — the duplicate scan is now the DEDUPLICATOR mode, which
+  // drives #duplicates-view from setMode, not this view switch (#118).
   el("files-view").hidden = which !== "files";
   el("preview-view").hidden = which !== "preview";
-  el("duplicates-view").hidden = which !== "duplicates";
   el("view-files").classList.toggle("active", which === "files");
   el("view-preview").classList.toggle("active", which === "preview");
-  el("view-duplicates").classList.toggle("active", which === "duplicates");
   el("view-preview").disabled = which !== "preview" && !previewPlan;
 }
 
@@ -1031,36 +1031,48 @@ function mmss(secs) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// Entering DEDUPLICATOR with no scan yet shows a prompt; a prior scan's results
+// persist across mode switches (#118).
+function refreshDeduplicator() {
+  const results = el("dup-results");
+  if (!results.querySelector("table, .empty")) {
+    results.innerHTML = `<p class="empty inert-panel">Pick a key in the panel and <b>Scan the library</b> to find duplicates.</p>`;
+  }
+}
+
 function renderDuplicates(groups) {
   const results = el("dup-results");
   const fileCount = groups.reduce((n, g) => n + g.files.length, 0);
   el("dup-summary").textContent = groups.length
-    ? `${groups.length} group(s), ${fileCount} files`
+    ? `${groups.length} set(s) · ${fileCount} files`
     : "No duplicates found";
   if (!groups.length) {
     results.innerHTML = `<p class="empty inert-panel">Nothing matched — the library looks clean by this criterion.</p>`;
     return;
   }
+  // Same .files table shell as the main view, so the read-only result set reads
+  // as the workspace in a grouped state (design A7). Group rows carry an
+  // "N copies" badge + the matched key.
   const rows = groups
     .map((g) => {
-      const head = `<tr class="dup-group"><td colspan="6">${escapeHtml(g.key)} <span class="muted">· ${g.files.length} copies</span></td></tr>`;
+      const head = `<tr class="dup-group"><td colspan="6"><span class="dup-badge">${g.files.length} copies</span><span class="dup-key">${escapeHtml(g.key)}</span></td></tr>`;
       const files = g.files
         .map(
           (f) => `<tr>
-            <td class="dup-path" title="${escapeHtml(f.path)}">${escapeHtml(fileName(f.path))}</td>
+            <td class="file" title="${escapeHtml(f.path)}">${escapeHtml(fileName(f.path))}</td>
             <td>${escapeHtml(f.artist)}</td>
             <td>${escapeHtml(f.title)}</td>
             <td>${escapeHtml(f.album)}</td>
             <td class="num">${mmss(f.duration_secs)}</td>
-            <td class="num">${humanSize(f.size_bytes)}${f.bitrate_kbps ? ` · ${f.bitrate_kbps}k` : ""}</td>
+            <td class="num dup-note">${humanSize(f.size_bytes)}${f.bitrate_kbps ? ` · ${f.bitrate_kbps}k` : ""}</td>
           </tr>`,
         )
         .join("");
       return head + files;
     })
     .join("");
-  results.innerHTML = `<table class="dup-table">
-    <thead><tr><th>File</th><th>Artist</th><th>Title</th><th>Album</th><th>Length</th><th>Size · Rate</th></tr></thead>
+  results.innerHTML = `<table class="files dup-results-table">
+    <thead><tr><th>File</th><th>Artist</th><th>Title</th><th>Album</th><th class="num">Length</th><th class="num">Size · Rate</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
 
@@ -3419,6 +3431,7 @@ const MODE_REFRESH = {
   tagger: refreshTagger,
   generator: refreshGenerator,
   exporter: refreshExporter,
+  deduplicator: refreshDeduplicator,
 };
 // TAGGER is the primary tool, so it's the default tab (see index.html). Keep
 // this in sync with the tab/panel marked active/visible there.
@@ -3432,6 +3445,20 @@ function setMode(name) {
   document.querySelectorAll(".mode-panel").forEach((panel) => {
     panel.hidden = panel.id !== `panel-${name}`;
   });
+  // DEDUPLICATOR (#118) is the one mode that takes over the main area: its
+  // read-only results replace the file table (and the Files/Preview strip), the
+  // way its controls sit in the right panel like every other mode. Leaving it
+  // restores the normal table view.
+  const dedup = name === "deduplicator";
+  document.body.classList.toggle("mode-deduplicator", dedup);
+  if (dedup) {
+    el("files-view").hidden = true;
+    el("preview-view").hidden = true;
+    el("duplicates-view").hidden = false;
+  } else {
+    el("duplicates-view").hidden = true;
+    showView("files");
+  }
   // Uncollapse when a tab is clicked, so switching modes always reveals the panel.
   document.body.classList.remove("panel-collapsed");
   (MODE_REFRESH[name] || (() => {}))();
@@ -3481,7 +3508,6 @@ el("view-files").addEventListener("click", () => showView("files"));
 el("view-preview").addEventListener("click", () => {
   if (previewPlan) showView("preview");
 });
-el("view-duplicates").addEventListener("click", () => showView("duplicates"));
 el("dup-scan").addEventListener("click", runDuplicateScan);
 el("discard").addEventListener("click", discardPreview);
 // "Show old values" (#80 Q1): reveal the struck-through old value under each
