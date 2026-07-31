@@ -2363,6 +2363,43 @@ td.unreadable-note {
   box-shadow: var(--shadow);
 }
 
+/* Import action moved from a tracklist footer into a header icon button: an
+   arrow pointing left toward the file table. Shown only once the release is
+   loaded AND the card is expanded (there's something to write, and its tracks
+   are on screen to review); hidden while the fetch is in flight. Accent-outlined
+   so it reads as the card's primary action. */
+/* The header row anchors the absolutely-positioned import button (it can't nest
+   inside the .release-head <button>), so top:50% centres it in the HEADER, not
+   the whole expanded card. */
+.release-header-row {
+  position: relative;
+}
+/* `button.` prefix so display:none beats the shared `button.icon` display. */
+button.release-import {
+  position: absolute;
+  top: 50%;
+  right: 42px; /* just left of the caret */
+  transform: translateY(-50%);
+  z-index: 2;
+  display: none;
+  width: 30px;
+  height: 30px;
+  color: var(--accent-ink);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.release-card.tracklist-loaded[aria-expanded="true"] .release-import {
+  display: inline-flex;
+}
+.release-import:hover {
+  background: var(--sel-tint);
+}
+.release-import > .ico {
+  width: 17px;
+  height: 17px;
+}
+
 /* Compact, image-forward header (#98): the cover stretches to the header's full
    height (a square driven by the text lines beside it), so the card reads as a
    cover with text rather than a thumbnail floating in padding. */

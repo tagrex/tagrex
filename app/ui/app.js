@@ -3028,16 +3028,19 @@ function cardMarkup(c) {
   const metaLine = meta ? `<span class="release-meta">${escapeHtml(meta)}</span>` : "";
   return `
     <article class="release-card" data-id="${escapeHtml(c.id)}" aria-expanded="false">
-      <button class="release-head" type="button">
-        <span class="release-cover">${mediaBadgeMarkup(c)}</span>
-        <span class="release-info">
-          <span class="release-line1">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></span>
-          ${artist}
-          <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
-          ${metaLine}
-        </span>
-        <span class="release-caret" aria-hidden="true">${ico("chevron-right")}</span>
-      </button>
+      <div class="release-header-row">
+        <button class="release-head" type="button">
+          <span class="release-cover">${mediaBadgeMarkup(c)}</span>
+          <span class="release-info">
+            <span class="release-line1">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></span>
+            ${artist}
+            <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
+            ${metaLine}
+          </span>
+          <span class="release-caret" aria-hidden="true">${ico("chevron-right")}</span>
+        </button>
+        <button class="release-import icon" type="button" data-act="import" title="Import this release into the selected files" aria-label="Import this release into the selected files"><svg class="ico"><use href="#i-import"/></svg></button>
+      </div>
       <div class="release-tracklist"></div>
     </article>`;
 }
@@ -3209,8 +3212,9 @@ function renderTracklist(card, release) {
       <span class="muted tk-selcount" style="margin-left:auto"></span>
     </div>
     ${labelPicker}
-    <div class="tracklist-scroll"><table><tbody>${rows}</tbody></table></div>
-    <div class="tracklist-apply"><button class="primary" data-act="import">Import to selected files</button></div>`;
+    <div class="tracklist-scroll"><table><tbody>${rows}</tbody></table></div>`;
+  // The import action moved to a header icon button (shown once loaded + expanded).
+  card.classList.add("tracklist-loaded");
   updateTracklistCount(card);
 }
 

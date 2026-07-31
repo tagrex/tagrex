@@ -73,6 +73,13 @@ first release ships.
 
 ### Changed
 
+- **Release import moved to a header icon button** (#120). The
+  "Import to selected files" action left the tracklist footer (which needed
+  scrolling past every track) for a compact, accent-outlined icon — a left arrow
+  toward the file table — in the release card's header, beside the expand caret.
+  It appears only once the release is loaded and the card is expanded, and stays
+  hidden while the tracklist is still being fetched.
+
 - **Duplicate finding is now a top-level DEDUPLICATOR mode** (#118, fourth slice
   of the workspace redesign). The duplicate scan moves out of the
   `Files | Preview | Duplicates` view strip and becomes a mode tab of its own,
