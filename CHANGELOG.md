@@ -134,6 +134,17 @@ first release ships.
 
 ### Added
 
+- **Regex filtering, scoped queries, and saved presets** (#44). The Files filter
+  box gains two in-box toggles: **`.*`** for regular-expression matching and
+  **`Aa`** for case sensitivity. A regex is compiled as you type, inside a guard,
+  so an invalid pattern just reddens the box (the match is suppressed) instead of
+  hanging or emptying the table. A **`field:query`** prefix scopes the search to
+  one column — e.g. `artist:aphex`, `title:remix`, `position:B1` — while a bare
+  query still searches the file name and every tag value. A new **Presets** popover
+  saves the whole view — filter text + both flags, the sort column/direction, and
+  the grouping — under a name and re-applies it in one click; presets persist
+  across sessions (localStorage).
+
 - **Clear all tags for a fresh start** (#94). A **Clear tags** button in the
   TAGGER → EDITOR panel wipes every text tag from the selected files in one
   step, through the normal preview → apply → **undo** path, so it's reviewable

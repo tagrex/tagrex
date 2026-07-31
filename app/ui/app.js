@@ -79,6 +79,34 @@ function applyCheckboxCol(on) {
   }
 }
 
+// Filter mode prefs (#44): regex on/off and case sensitivity. Pure view choices,
+// persisted like the other display prefs. Read once at startup, then flipped by
+// the toolbar toggles.
+const FILTER_REGEX_STORAGE_KEY = "tagrex.filterRegex";
+const FILTER_CASE_STORAGE_KEY = "tagrex.filterCase";
+function regexModeEnabled() {
+  try {
+    return localStorage.getItem(FILTER_REGEX_STORAGE_KEY) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+function caseSensitiveEnabled() {
+  try {
+    return localStorage.getItem(FILTER_CASE_STORAGE_KEY) === "1";
+  } catch (e) {
+    return false;
+  }
+}
+function saveFilterMode() {
+  try {
+    localStorage.setItem(FILTER_REGEX_STORAGE_KEY, filterRegex ? "1" : "0");
+    localStorage.setItem(FILTER_CASE_STORAGE_KEY, filterCase ? "1" : "0");
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
 // Table font size (#100), 10–20px, applied live to both the monospace and the
 // condensed face through a CSS var. A pure display choice → localStorage.
 const TABLE_FONT_STORAGE_KEY = "tagrex.tableFontPx";
@@ -160,7 +188,18 @@ function columnWidth(key) {
 // the visible order; filtering only hides rows.
 let sortKey = null; // "file" | any tag-field column key
 let sortDir = 1; // 1 asc, -1 desc
+// Filtering (#44). `filterText` is the raw query as typed (case is significant
+// in regex/case-sensitive mode, so it is NOT pre-lowercased). Regex and
+// case-sensitivity are persisted display prefs. A field-scoped query
+// (`artist:aphex`) narrows the match to one column. `filterQuery` is the parsed
+// form (re-derived by recompileFilter whenever the text or flags change) so the
+// per-row test stays cheap; `filterError` flags a regex that failed to compile.
 let filterText = "";
+let filterRegex = regexModeEnabled();
+let filterCase = caseSensitiveEnabled();
+let filterError = false;
+let filterQuery = { scope: null, needle: "", re: null };
+const PRESETS_STORAGE_KEY = "tagrex.filterPresets";
 // Grouping is purely a view concern (#20): "" | "folder" | "artist" | "album".
 // It regroups rows visually but never reorders the `tracks` array, so the file
 // order used by mapping (rename masks, Discogs import) is unaffected. Collapsed
@@ -271,12 +310,56 @@ function sortValue(track, key) {
   return (key === "file" ? fileName(track.path) : track.tags[key] || "").toLowerCase();
 }
 
+// The display value of one column for a track — the same source the columns and
+// sort use, so a field-scoped filter (`position:B1`) sees what the eye sees.
+function fieldValue(track, key) {
+  if (key === "file") return fileName(track.path);
+  if (key === "position") return vinylPositionOf(track, edits.get(track.path));
+  return track.tags[key] || "";
+}
+
+// Re-derive the parsed filter from the raw text + mode flags (#44). Runs on any
+// change to either, so `matchesFilter` stays a cheap per-row test. A leading
+// `field:` scopes the query to one column when the prefix names a known one;
+// otherwise the colon is treated as part of the query. In regex mode the pattern
+// is compiled once here, inside a try/catch, so an invalid pattern is flagged
+// (`filterError`) and can never throw from the render loop.
+function recompileFilter() {
+  filterError = false;
+  let raw = filterText;
+  let scope = null;
+  const m = raw.match(/^([A-Za-z0-9_]+):(.*)$/);
+  if (m) {
+    const key = m[1].toLowerCase();
+    if (allColumnKeys().includes(key)) {
+      scope = key;
+      raw = m[2];
+    }
+  }
+  let re = null;
+  if (filterRegex && raw) {
+    try {
+      re = new RegExp(raw, filterCase ? "" : "i");
+    } catch (e) {
+      filterError = true;
+    }
+  }
+  filterQuery = { scope, needle: raw, re };
+}
+
 function matchesFilter(track) {
-  if (!filterText) return true;
-  // Filter across the file name and every tag value, so a column the user added
-  // (#43) is filterable too.
-  const hay = [fileName(track.path), ...Object.values(track.tags)].join(" ").toLowerCase();
-  return hay.includes(filterText);
+  const { scope, needle, re } = filterQuery;
+  if (!needle) return true;
+  // A broken regex filters nothing (the box shows the error) so the UI never
+  // hangs or empties out mid-keystroke.
+  if (filterRegex && !re) return true;
+  // Scope to one column, or search the file name plus every tag value so a
+  // column the user added (#43) is filterable too.
+  const hay = scope
+    ? fieldValue(track, scope)
+    : [fileName(track.path), ...Object.values(track.tags)].join(" ");
+  if (re) return re.test(hay);
+  return filterCase ? hay.includes(needle) : hay.toLowerCase().includes(needle.toLowerCase());
 }
 
 function updateSortIndicators() {
@@ -523,6 +606,157 @@ function colMenuRow(key, visible) {
 
   row.append(grip, box, label);
   return row;
+}
+
+// ---- filter mode + saved presets (#44) ----
+// Reflect the current mode flags onto the two in-box toggles and the input's
+// error state, and re-derive the parsed query. Call after any change to the
+// filter text or flags, before renderTracks.
+function syncFilterControls() {
+  recompileFilter();
+  const reBtn = el("filter-regex");
+  const caseBtn = el("filter-case");
+  reBtn.classList.toggle("on", filterRegex);
+  reBtn.setAttribute("aria-pressed", String(filterRegex));
+  caseBtn.classList.toggle("on", filterCase);
+  caseBtn.setAttribute("aria-pressed", String(filterCase));
+  const box = el("filter");
+  box.classList.toggle("filter-bad", filterError);
+  box.title = filterError ? "Invalid regular expression" : "";
+}
+
+// A named preset captures the full view query: filter text + mode flags, the
+// sort column/direction, and the grouping — everything the user tuned by hand.
+function loadPresets() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY));
+    return Array.isArray(saved) ? saved.filter((p) => p && typeof p.name === "string") : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function savePresets(list) {
+  try {
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    /* localStorage unavailable — presets just won't persist */
+  }
+}
+
+// Store the current view under `name` (replacing a same-named one).
+function saveCurrentPreset(name) {
+  name = name.trim();
+  if (!name) return;
+  const list = loadPresets().filter((p) => p.name !== name);
+  list.push({
+    name,
+    filter: filterText,
+    regex: filterRegex,
+    caseSensitive: filterCase,
+    sortKey,
+    sortDir,
+    group: groupBy,
+  });
+  list.sort((a, b) => a.name.localeCompare(b.name));
+  savePresets(list);
+  renderPresetsMenu();
+}
+
+// Re-apply a saved preset: restore the filter text/flags, sort, and grouping,
+// then reflect them onto every control and repaint.
+function applyPreset(p) {
+  filterText = p.filter || "";
+  filterRegex = !!p.regex;
+  filterCase = !!p.caseSensitive;
+  saveFilterMode();
+  el("filter").value = filterText;
+  syncFilterControls();
+
+  groupBy = p.group || "";
+  saveGroupBy(groupBy);
+  el("group-by").value = groupBy;
+  collapsedGroups.clear();
+
+  if (p.sortKey) applySort(p.sortKey, p.sortDir === -1 ? -1 : 1);
+  else renderTracks();
+}
+
+function renderPresetsMenu() {
+  const menu = el("presets-menu");
+  menu.innerHTML = "";
+  const list = loadPresets();
+  if (!list.length) {
+    const empty = document.createElement("div");
+    empty.className = "col-menu-sep";
+    empty.textContent = "No saved presets";
+    menu.appendChild(empty);
+  }
+  for (const p of list) {
+    const row = document.createElement("div");
+    row.className = "col-menu-row preset-row";
+
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.className = "text-btn preset-apply";
+    apply.textContent = p.name;
+    apply.title = presetSummary(p);
+    apply.addEventListener("click", () => {
+      applyPreset(p);
+      menu.hidden = true;
+    });
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "preset-del";
+    del.textContent = "✕";
+    del.title = `Delete “${p.name}”`;
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      savePresets(loadPresets().filter((q) => q.name !== p.name));
+      renderPresetsMenu();
+    });
+
+    row.append(apply, del);
+    menu.appendChild(row);
+  }
+
+  // Save-current footer: name the current filter + sort and store it.
+  const foot = document.createElement("div");
+  foot.className = "col-menu-foot preset-save";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Save current as…";
+  input.spellcheck = false;
+  input.className = "preset-name";
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "text-btn";
+  save.textContent = "Save";
+  const commit = () => {
+    if (input.value.trim()) {
+      saveCurrentPreset(input.value);
+      input.value = "";
+    }
+  };
+  save.addEventListener("click", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    }
+  });
+  foot.append(input, save);
+  menu.appendChild(foot);
+}
+
+// A human-readable one-liner for a preset's tooltip.
+function presetSummary(p) {
+  const bits = [];
+  if (p.filter) bits.push(`filter “${p.filter}”${p.regex ? " (regex)" : ""}${p.caseSensitive ? " (Aa)" : ""}`);
+  if (p.sortKey) bits.push(`sort ${columnLabel(p.sortKey)} ${p.sortDir === -1 ? "↓" : "↑"}`);
+  if (p.group) bits.push(`group by ${p.group}`);
+  return bits.length ? bits.join(" · ") : "empty view";
 }
 
 // The grouping-key value for a track under the active `groupBy`.
@@ -1033,6 +1267,7 @@ async function openLibrary() {
     sortDir = 1;
     filterText = "";
     el("filter").value = "";
+    syncFilterControls(); // clears the parsed query + any regex-error state
     groupBy = groupByPref();
     collapsedGroups.clear();
     el("group-by").value = groupBy;
@@ -3870,11 +4105,15 @@ tracksBody.addEventListener("keydown", (e) => {
 // Sort by clicking a column header (toggles direction). Reorders `tracks`
 // itself so position-based mapping follows the visible order.
 function sortBy(key) {
-  if (sortKey === key) sortDir = -sortDir;
-  else {
-    sortKey = key;
-    sortDir = 1;
-  }
+  if (sortKey === key) applySort(key, -sortDir);
+  else applySort(key, 1);
+}
+
+// Sort by `key` in an explicit direction (1 asc, -1 desc) — the toggle-free core
+// shared by header clicks and preset restore (#44).
+function applySort(key, dir) {
+  sortKey = key;
+  sortDir = dir;
   tracks.sort(
     (a, b) =>
       sortValue(a, key).localeCompare(sortValue(b, key), undefined, { numeric: true }) * sortDir,
@@ -3962,8 +4201,37 @@ el("expand-all").addEventListener("click", () => setAllGroupsCollapsed(false));
 el("collapse-all").addEventListener("click", () => setAllGroupsCollapsed(true));
 
 el("filter").addEventListener("input", (e) => {
-  filterText = e.target.value.trim().toLowerCase();
+  // Keep the raw text — case matters in regex/case-sensitive mode; lowercasing
+  // for a plain match happens in matchesFilter.
+  filterText = e.target.value.trim();
+  syncFilterControls();
   renderTracks();
+});
+// Regex / case toggles (#44): flip the flag, persist, recompile, repaint.
+el("filter-regex").addEventListener("click", () => {
+  filterRegex = !filterRegex;
+  saveFilterMode();
+  syncFilterControls();
+  renderTracks();
+});
+el("filter-case").addEventListener("click", () => {
+  filterCase = !filterCase;
+  saveFilterMode();
+  syncFilterControls();
+  renderTracks();
+});
+// Presets popover (#44): mirrors the columns picker — toggle + outside-click close.
+el("presets-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = el("presets-menu");
+  if (menu.hidden) renderPresetsMenu();
+  menu.hidden = !menu.hidden;
+});
+document.addEventListener("click", (e) => {
+  const menu = el("presets-menu");
+  if (!menu.hidden && !menu.contains(e.target) && e.target !== el("presets-btn")) {
+    menu.hidden = true;
+  }
 });
 // Track edits on any editable cell (event delegation).
 tracksBody.addEventListener("input", (e) => {
@@ -3991,6 +4259,8 @@ applyTableFont(tableFontPx());
 // Reflect saved defaults onto the grouping + search page-size selects (#108).
 el("group-by").value = groupBy;
 el("search-per-page").value = String(searchPerPage);
+// Reflect saved filter-mode flags (#44) onto the toggles.
+syncFilterControls();
 
 // Browser-only fake of the native player: a wall-clock timer advances position,
 // auto-advances to the queued `next` on end, and reports status — enough to

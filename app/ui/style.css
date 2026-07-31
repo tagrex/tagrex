@@ -839,6 +839,100 @@ body:not(.show-checkbox) #tracks td.sel {
   border-color: var(--accent);
 }
 
+/* Filter control (#44): the search box with the regex / case toggles overlaid on
+   its right edge, so it still reads as one field. */
+.filter-ctl {
+  position: relative;
+  display: inline-flex;
+}
+.filter-ctl #filter {
+  width: 200px;
+  padding-right: 52px; /* room for the two flag toggles */
+}
+/* A bad regex reddens the box (the match is suppressed, never thrown). */
+.filter-ctl #filter.filter-bad,
+.filter-ctl #filter.filter-bad:focus {
+  border-color: var(--del);
+  background: var(--error-tint);
+}
+.filter-flag {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 20px;
+  min-width: 22px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  cursor: pointer;
+}
+.filter-flag.flag-regex {
+  right: 27px;
+}
+.filter-flag.flag-case {
+  right: 4px;
+}
+.filter-flag:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+.filter-flag.on {
+  color: var(--accent-ink);
+  background: var(--sel-tint);
+  border-color: var(--accent);
+}
+
+/* Presets popover (#44) reuses the .col-menu shell; these style its rows. */
+.preset-row {
+  justify-content: space-between;
+}
+.preset-apply {
+  flex: 1;
+  text-align: left;
+  color: var(--text);
+}
+.preset-apply:hover {
+  text-decoration: none;
+}
+.preset-del {
+  border: none;
+  box-shadow: none;
+  background: none;
+  color: var(--muted);
+  padding: 0 4px;
+  font-size: var(--text-2xs);
+  cursor: pointer;
+}
+.preset-del:hover {
+  color: var(--del);
+}
+.col-menu-foot.preset-save {
+  justify-content: stretch;
+  gap: var(--space-2);
+}
+.preset-name {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.preset-name:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .mask-row {
   display: flex;
   flex-wrap: wrap;
@@ -3001,7 +3095,8 @@ td[data-field="year"],
 .col-picker {
   position: relative;
 }
-#columns-btn {
+#columns-btn,
+#presets-btn {
   padding: 4px 9px;
   box-shadow: none;
 }
@@ -3012,6 +3107,7 @@ td[data-field="year"],
 .view-tabs .group-ctl select,
 .view-tabs #filter,
 .view-tabs #columns-btn,
+.view-tabs #presets-btn,
 .view-tabs #expand-all,
 .view-tabs #collapse-all {
   box-sizing: border-box;
