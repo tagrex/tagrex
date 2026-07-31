@@ -128,6 +128,14 @@ first release ships.
 
 ### Added
 
+- **Clear all tags for a fresh start** (#94). A **Clear tags** button in the
+  TAGGER → EDITOR panel wipes every text tag from the selected files in one
+  step, through the normal preview → apply → **undo** path, so it's reviewable
+  and reversible. Only the text metadata TagRex models is cleared — the embedded
+  cover and the non-text binary frames the write pipeline preserves (DJ cue
+  points/loops, ReplayGain, ratings) are deliberately kept, so it's safe on a DJ
+  library. To also drop the cover, use the cover well's Remove.
+
 - **Filter release search by media type** (#103). A selector by the search box
   narrows results to **CD / Vinyl / LP / File** (or All). It maps to the Discogs
   `format` search parameter; MusicBrainz folds it into its `format:` query

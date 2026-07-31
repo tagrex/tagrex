@@ -1220,6 +1220,29 @@ async function previewCoverRemove() {
   }
 }
 
+// Preview wiping every text tag from the selection for a fresh start (#94),
+// through the normal preview/apply/undo path. The cover and DJ cue points are
+// kept; the diff is the review, and undo reverses it.
+async function previewClearTags() {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks whose tags to clear first", true);
+    return;
+  }
+  try {
+    previewPlan = await invoke("preview_clear_tags", { paths });
+    previewSource = "clear";
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing tag clear on ${previewPlan.changes.length} file(s)`
+        : "None of the selected files have tags to clear"
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 // ---- cover well (#editor design pass) ----
 // A thumbnail + state + actions that replaces the two bare Embed/Export buttons.
 // Reflects the selection's cover state: none / one shared / mixed.
@@ -3248,6 +3271,7 @@ el("vinyl-split").addEventListener("click", splitVinylSides);
 el("move-preview").addEventListener("click", previewMove);
 el("fields-add").addEventListener("click", addCustomField);
 el("fields-apply").addEventListener("click", applyFieldEditor);
+el("fields-clear").addEventListener("click", previewClearTags);
 el("export-kind").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-fmt]");
   if (btn) setExportKind(btn.dataset.fmt);
@@ -4158,6 +4182,18 @@ function mockInvoke(cmd, args) {
       }
       const changes = Object.entries(byPath).map(([path, tag_changes]) => ({ path, rename_to: null, tag_changes }));
       return Promise.resolve({ description: "Edit tags", changes });
+    }
+    case "preview_clear_tags": {
+      const changes = [];
+      for (const p of args.paths) {
+        const t = findTrack(p);
+        if (!t) continue;
+        const tag_changes = Object.entries(t.tags)
+          .filter(([, v]) => v)
+          .map(([field, old]) => ({ field, old, new: null }));
+        if (tag_changes.length) changes.push({ path: p, rename_to: null, tag_changes, cover_change: null });
+      }
+      return Promise.resolve({ description: "Clear tags", changes });
     }
     case "apply_plan":
       for (const c of args.plan.changes) {

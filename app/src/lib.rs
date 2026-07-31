@@ -857,6 +857,42 @@ impl App {
         })
     }
 
+    /// Build a plan that wipes every modeled text field from each selected file
+    /// for a fresh start (#94), through the normal preview/apply/**undo** path so
+    /// it stays reversible and journaled. Only the text tags TagRex models are
+    /// cleared — the embedded cover and the non-text binary frames the write
+    /// pipeline preserves (`PRIV`/`GEOB` DJ cue points/loops, ReplayGain,
+    /// ratings) are deliberately left intact, so it is safe on a DJ library. Use
+    /// the cover well's Remove to drop the cover as well. Files that already have
+    /// no modeled tags are skipped.
+    pub fn preview_clear_tags(&self, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
+        let mut changes = Vec::new();
+        for path in paths {
+            let track = TagEngine::read(path)?;
+            // One clearing change per field the file actually carries, so the
+            // preview diff and the undo journal record the real old values.
+            let tag_changes: Vec<FieldChangeDto> = track
+                .tags
+                .iter()
+                .map(|(field, value)| {
+                    FieldChangeDto::new(field.to_storage_key(), Some(value.clone()), None)
+                })
+                .collect();
+            if !tag_changes.is_empty() {
+                changes.push(FileChangeDto {
+                    path: path.to_string_lossy().into_owned(),
+                    rename_to: None,
+                    tag_changes,
+                    cover_change: None,
+                });
+            }
+        }
+        Ok(PlanDto {
+            description: "Clear tags".to_string(),
+            changes,
+        })
+    }
+
     /// Preview embedding `cover` as the front cover of each `paths` file,
     /// without writing. Reads each file's current cover as the change's `old`
     /// (for undo and staleness) and skips files that already have exactly this
@@ -2054,6 +2090,65 @@ mod tests {
                 .map(String::as_str),
             Some("Old Artist")
         );
+    }
+
+    #[test]
+    fn clear_tags_wipes_every_text_field_keeps_cover_and_undoes() {
+        let dir = TempDir::new("clear");
+        let track = dir.tagged_flac("x.flac", "Some Artist", "Some Title");
+        // Give it a cover so we can prove clearing text tags leaves it intact.
+        let art = CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![1, 2, 3, 4],
+        };
+        TagEngine::embed_cover(&track, &art).unwrap();
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_clear_tags(std::slice::from_ref(&track))
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        // Every modeled field the file carries is cleared (new == None) and keeps
+        // its old value for undo; at minimum the artist and title we wrote.
+        assert!(plan.changes[0].tag_changes.len() >= 2);
+        assert!(plan.changes[0]
+            .tag_changes
+            .iter()
+            .all(|c| c.new.is_none() && c.old.is_some()));
+        assert!(plan.changes[0].cover_change.is_none());
+
+        let batch = app.apply(&plan).unwrap();
+        let cleared = TagEngine::read(&track).unwrap();
+        // No field carries a value any more (lofty may re-emit an empty encoder
+        // key on a FLAC write; that empty remnant is harmless).
+        assert!(
+            cleared.tags.values().all(|v| v.is_empty()),
+            "no text tag should keep a value, got {:?}",
+            cleared.tags
+        );
+        // The cover is a separate change kind and must survive the clear.
+        assert_eq!(TagEngine::read_cover(&track).unwrap(), Some(art.clone()));
+
+        app.undo(batch.id).unwrap();
+        let restored = TagEngine::read(&track).unwrap();
+        assert_eq!(
+            restored.tags.get(&TagField::Artist).map(String::as_str),
+            Some("Some Artist")
+        );
+        assert_eq!(
+            restored.tags.get(&TagField::Title).map(String::as_str),
+            Some("Some Title")
+        );
+    }
+
+    #[test]
+    fn clear_tags_skips_files_with_no_modeled_tags() {
+        let dir = TempDir::new("clear-empty");
+        let path = dir.0.join("bare.flac");
+        std::fs::write(&path, MINIMAL_FLAC).unwrap();
+        let app = open_app(&dir);
+        let plan = app.preview_clear_tags(&[path]).unwrap();
+        assert!(plan.changes.is_empty());
     }
 
     #[test]

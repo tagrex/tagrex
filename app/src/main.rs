@@ -171,6 +171,14 @@ fn preview_cover_remove(state: State<AppState>, paths: Vec<String>) -> Result<Pl
 }
 
 #[tauri::command]
+fn preview_clear_tags(state: State<AppState>, paths: Vec<String>) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_clear_tags(&paths).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn export_playlist(
     state: State<AppState>,
     paths: Vec<String>,
@@ -415,6 +423,7 @@ fn main() {
             read_cover_summary,
             read_external_cover,
             preview_cover_remove,
+            preview_clear_tags,
             export_playlist,
             export_csv,
             export_report,
