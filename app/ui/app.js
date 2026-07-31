@@ -1261,7 +1261,13 @@ async function refreshHistory() {
   try {
     const batches = await invoke("history", {});
     undoBtn.disabled = batches.length === 0;
-    undoBtn.textContent = batches.length ? `Undo (${batches.length})` : "Undo last";
+    // Undo is icon-only now (#115) — reflect the batch count in the tooltip /
+    // aria-label instead of overwriting the SVG with text.
+    const label = batches.length
+      ? `Undo the last applied batch (${batches.length} available)`
+      : "Undo the last applied batch";
+    undoBtn.title = label;
+    undoBtn.setAttribute("aria-label", label);
   } catch (e) {
     /* history is best-effort in the toolbar */
   }

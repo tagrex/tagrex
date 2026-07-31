@@ -10,6 +10,11 @@ first release ships.
 
 ### Fixed
 
+- **The Undo button no longer reverts to a text label after opening a library**
+  (#119, regression from #115). The icon-only Undo control was overwritten with
+  "Undo (N)" text as soon as the history refreshed; the batch count now lives in
+  its tooltip / `aria-label` and the icon stays put.
+
 - **Mode-panel selection counts stay in sync.** The GENERATOR and EXPORTER panel
   headings ("Number tracks — N selected", "Transform — N file(s)", "Export — N
   track(s)") only recomputed their count when you entered the mode, so changing
