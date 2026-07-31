@@ -2387,8 +2387,11 @@ async function runSearch(reset) {
 // Show/hide the Load more / Stop footer to match the current loading state.
 function updateLoadMoreUi() {
   const busy = searchBusy();
-  // Stop lives beside Search (#111): visible only while a search is working.
-  el("stop-loading").hidden = !busy;
+  // The search button is one toggling slot (#111): magnifier ⇄ Stop square.
+  const btn = el("discogs-search");
+  btn.classList.toggle("busy", busy);
+  btn.title = busy ? "Stop loading" : "Search";
+  btn.setAttribute("aria-label", btn.title);
   const wrap = el("release-more");
   if (!wrap) return;
   wrap.hidden = releaseCandidates.length === 0;
@@ -3251,7 +3254,12 @@ el("export-kind").addEventListener("click", (e) => {
 });
 el("export-run").addEventListener("click", runExport);
 coverFileInput.addEventListener("change", onCoverChosen);
-el("discogs-search").addEventListener("click", discogsSearch);
+// The one search/stop button toggles by state (#111): stop while a search is
+// working, otherwise start one. Enter always starts a search.
+el("discogs-search").addEventListener("click", () => {
+  if (searchBusy()) stopLoading();
+  else discogsSearch();
+});
 el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
 // Typing switches the preset back to manual so a stale label doesn't mislead.
 el("discogs-query").addEventListener("input", () => {
@@ -3259,7 +3267,6 @@ el("discogs-query").addEventListener("input", () => {
 });
 el("query-preset").addEventListener("change", applyQueryPreset);
 el("load-more").addEventListener("click", loadMoreResults);
-el("stop-loading").addEventListener("click", stopLoading);
 el("search-per-page").addEventListener("change", (e) => {
   const v = parseInt(e.target.value, 10);
   try {

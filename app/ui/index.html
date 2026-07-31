@@ -181,6 +181,15 @@
                   </select>
                 </label>
                 <div class="spacer"></div>
+                <!-- Media-type filter (#103) sits on the source row, level with
+                     the provider selector. -->
+                <select id="search-format" title="Filter results by media type">
+                  <option value="">All media</option>
+                  <option value="CD">CD</option>
+                  <option value="Vinyl">Vinyl</option>
+                  <option value="LP">LP</option>
+                  <option value="File">File</option>
+                </select>
               </div>
               <div class="mask-row">
                 <select id="query-preset" title="Build the query from…">
@@ -191,18 +200,11 @@
                   <option value="artist-title">Artist + Title</option>
                 </select>
                 <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
-                <select id="search-format" title="Filter results by media type (#103)">
-                  <option value="">All media</option>
-                  <option value="CD">CD</option>
-                  <option value="Vinyl">Vinyl</option>
-                  <option value="LP">LP</option>
-                  <option value="File">File</option>
-                </select>
-                <button id="discogs-search" class="icon" title="Search" aria-label="Search">
-                  <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.3" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                </button>
-                <button id="stop-loading" type="button" class="icon stop-icon" title="Stop loading" aria-label="Stop loading" hidden>
-                  <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor"/></svg>
+                <!-- One toggling button (#111): a magnifier that searches, and
+                     while a search is working becomes a Stop square. -->
+                <button id="discogs-search" class="icon search-toggle" title="Search" aria-label="Search">
+                  <svg class="glyph glyph-search" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.3" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                  <svg class="glyph glyph-stop" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor"/></svg>
                 </button>
               </div>
               <div class="release-toolbar" id="release-toolbar" hidden>

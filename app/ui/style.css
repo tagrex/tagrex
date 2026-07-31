@@ -336,16 +336,22 @@ button.icon {
   box-shadow: none;
 }
 
-/* SVG glyphs inside icon buttons (search / stop, #111) render at a fixed size
-   in the button's currentColor. */
+/* SVG glyphs inside icon buttons render at a fixed size in currentColor. */
 button.icon > svg {
   width: 15px;
   height: 15px;
   display: block;
 }
-/* The Stop icon reads as an interrupt — tint it with the accent so it stands out
-   from the neutral Search magnifier beside it. */
-button.icon.stop-icon > svg {
+/* The search button is one toggling slot (#111): a magnifier that searches, and
+   a Stop square (accent-tinted) while a search is working. */
+.search-toggle .glyph-stop {
+  display: none;
+}
+.search-toggle.busy .glyph-search {
+  display: none;
+}
+.search-toggle.busy .glyph-stop {
+  display: block;
   fill: var(--accent);
 }
 
