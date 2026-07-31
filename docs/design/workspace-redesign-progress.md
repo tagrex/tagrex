@@ -101,7 +101,10 @@ Files|Preview only; `#duplicates-view` is driven by `setMode` (body class
    subset applies only those, Discard reverts staging, Apply writes + Undo
    restores — the safety gate MUST stay exact.
 
-Transferable CSS: **A5 + A6** in `foundations/workspace.css`.
+Transferable CSS: **committed to the repo** at
+`docs/design/workspace-diff-state.css` (A5 + A6, lifted verbatim from the Design
+deliverable) — so slice 3 needs **no live DesignSync pull**; build it straight
+from memory + git + this repo.
 
 ### Slice 4 — DEDUPLICATOR mode (design A7/A8, answer Q3)
 - Add a 5th mode tab **DEDUPLICATOR** (`data-mode="deduplicator"`, `i-dedup`

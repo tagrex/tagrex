@@ -1,0 +1,60 @@
+/* ============================================================================
+   Slice 3 (#117) transferable CSS — in-table diff-state + floating action bar.
+   Lifted verbatim from the Claude Design deliverable `foundations/workspace.css`
+   sections A5 + A6, committed here so slice 3 can be built straight from the repo
+   WITHOUT a live DesignSync pull. Token-only, light + dark. Adapt into
+   app/ui/style.css (td.dirty / td.error already exist — reuse them).
+   See docs/design/workspace-redesign-progress.md for the full build plan.
+   ============================================================================ */
+
+/* ---- A5 · IN-TABLE DIFF-STATE (Preview dissolved into the table) ----------
+   When a plan is staged the same #tracks table shows the change in place. Batch
+   plans mark whole rows: affected rows carry an accent left-bar on the sel cell,
+   unaffected rows recede, and the sel column becomes the per-row APPLY selection.
+   "nothing is written until Apply" is preserved by the floating action bar (A6). */
+.files.diffing tr.untouched td { color: var(--muted); }
+.files.diffing tr.untouched td:not(.sel) { opacity: .55; }
+
+/* affected row marker — an accent left-bar on the sel cell (batch plans) */
+.files.diffing tr.staged td.sel { box-shadow: inset 3px 0 0 0 var(--accent); }
+
+/* per-cell change — reuses the shared td.dirty / td.error from states.css.
+   New value is shown; the old value is optional (A7 show-old). */
+.files td.dirty { background: var(--dirty-tint); color: var(--text); font-weight: var(--fw-medium); }
+.files td.error { background: var(--error-tint); color: var(--del); font-weight: var(--fw-medium);
+  box-shadow: inset 2px 0 0 0 var(--del); }
+.files td.cleared { color: var(--muted); font-style: italic; }
+.files td.cleared::before { content: "cleared"; }
+
+/* File cell on a rename/move (#37): new name, and — on a reorganize — the new
+   relative folder path beneath it, quiet, led by the corner icon. */
+.fcell { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.fcell .fname { overflow: hidden; text-overflow: ellipsis; }
+.fcell .fpath { display: inline-flex; align-items: center; gap: 3px; color: var(--accent-ink);
+  font-size: var(--text-2xs); overflow: hidden; text-overflow: ellipsis; }
+.fcell .fpath .ico { color: var(--accent-ink); }
+
+/* old→new inside a changed cell — hidden until "Show old values" */
+.cell-old { display: none; }
+.files.show-old td.dirty, .files.show-old td.error { white-space: normal; }
+.files.show-old .cell-old { display: block; font-size: var(--text-2xs); color: var(--muted);
+  text-decoration: line-through; font-weight: var(--fw-regular); }
+
+/* ---- A6 · floating Apply / Discard action bar -----------------------------
+   Pinned bottom-centre of the table pane: a free-floating pill that hovers over
+   the rows it acts on — coexists with grouping and never steals a table row.
+   Holds the count, the per-plan scope, the optional Show-old toggle, and the gate
+   buttons. Anchor it in a position:relative wrapper around the table pane. */
+.diff-actionbar { position: absolute; left: 50%; bottom: var(--space-5); transform: translateX(-50%);
+  display: flex; align-items: center; gap: var(--space-3); z-index: 20;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 999px;
+  box-shadow: 0 8px 30px rgba(0,0,0,.28); }
+.diff-actionbar .ab-count { font-size: var(--text-xs); white-space: nowrap; }
+.diff-actionbar .ab-count b { color: var(--accent-ink); font-weight: var(--fw-medium); }
+.diff-actionbar .ab-count .ab-plan { color: var(--muted); }
+.diff-actionbar .ab-sep { width: 1px; height: 18px; background: var(--border); }
+.diff-actionbar .toggle-old { display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-xs); color: var(--muted); cursor: pointer; white-space: nowrap; }
+.diff-actionbar .btn { height: var(--ctl-h); border-radius: 999px; display: inline-flex; align-items: center; gap: var(--space-2); }
+.diff-actionbar .btn.primary { padding-left: var(--space-5); padding-right: var(--space-5); }
