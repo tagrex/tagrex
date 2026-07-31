@@ -68,6 +68,18 @@ first release ships.
 
 ### Changed
 
+- **One inline-SVG icon set, cross-platform native controls** (#115, first slice
+  of the workspace redesign). Every unicode/emoji glyph in the chrome
+  (`⚙ ⇥ ▶ ■ ✕ ☰ ▦ ▾ ⋮⋮ ▲ ▼`) is replaced by a single 16px inline-SVG set that
+  paints in `currentColor`, so icons inherit theme + state and render identically
+  across the three Tauri webview engines (WKWebView / WebView2 / WebKitGTK) —
+  no more colour-emoji-vs-flat divergence or missing-glyph tofu on Linux. Native
+  form chrome is normalized for the same reason: `<select>` drops its
+  engine-specific arrow for our own muted caret (the open list stays native, so
+  keyboard + screen-reader behaviour is unchanged), the search box hides its
+  native clear glyph, and scrollbars render as a consistent thin overlay. Icon-only
+  buttons carry `aria-label` + `title`.
+
 - **EDITOR action buttons stay pinned** (#113). **Clear tags** and **Stage field
   changes** used to sit at the very bottom of a fully-scrolling panel, so on open
   they were below the fold. The tag fields and cover well now scroll inside the

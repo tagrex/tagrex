@@ -295,6 +295,14 @@ function escapeHtml(s) {
   })[c]);
 }
 
+// Inline-SVG icon markup from the shared sprite (#115): the JS counterpart of
+// `<svg class="ico"><use href="#i-name"/></svg>` in index.html, for glyphs built
+// dynamically (carets, grips, sort indicators, player transport). Kept in sync
+// with the sprite symbol ids.
+function ico(name) {
+  return `<svg class="ico"><use href="#i-${name}"/></svg>`;
+}
+
 // ---- rendering ----
 // Renders the table, overlaying any pending edits on top of the on-disk
 // values (edited cells shown and marked dirty). Does NOT clear `edits` — call
@@ -365,7 +373,8 @@ function matchesFilter(track) {
 function updateSortIndicators() {
   document.querySelectorAll("th.sortable").forEach((th) => {
     const ind = th.querySelector(".sort-ind");
-    ind.textContent = th.dataset.sort === sortKey ? (sortDir > 0 ? "▲" : "▼") : "";
+    ind.innerHTML =
+      th.dataset.sort === sortKey ? ico(sortDir > 0 ? "tri-up" : "tri-down") : "";
   });
 }
 
@@ -574,7 +583,7 @@ function colMenuRow(key, visible) {
 
   const grip = document.createElement("span");
   grip.className = "col-grip";
-  grip.textContent = "⋮⋮";
+  grip.innerHTML = ico("grip");
   if (visible && !isFile) {
     grip.title = "Drag to reorder";
     enablePointerReorder(grip, row, el("columns-menu"), ".col-menu-row", (dragged, target, below) => {
@@ -709,7 +718,7 @@ function renderPresetsMenu() {
     const del = document.createElement("button");
     del.type = "button";
     del.className = "preset-del";
-    del.textContent = "✕";
+    del.innerHTML = ico("close");
     del.title = `Delete “${p.name}”`;
     del.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -867,7 +876,7 @@ function appendGroupHeader(key, count) {
   tr.className = "group-head" + (collapsed ? " collapsed" : "");
   tr.dataset.group = key;
   tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
-      <span class="group-caret">${collapsed ? "▶" : "▼"}</span>
+      <span class="group-caret">${collapsed ? ico("chevron-right") : ico("caret-down")}</span>
       <span class="group-label">${escapeHtml(groupLabel(key))}</span>
       <span class="group-count muted">${count}</span>
     </td>`;
@@ -1644,7 +1653,7 @@ function playerIdle() {
   plTitle.title = "";
   plTime.textContent = "0:00 / 0:00";
   plSeek.value = "0";
-  plToggle.textContent = "▶";
+  plToggle.innerHTML = ico("play");
   playerBar.classList.add("idle");
   setPlayerControlsEnabled(false);
   markPlayingRow();
@@ -1698,7 +1707,7 @@ function markPlayingRow() {
   tracksBody.querySelectorAll("tr").forEach((tr) => {
     tr.classList.toggle("playing", tr.dataset.path === playingPath);
   });
-  plToggle.textContent = playingPath && !plPaused ? "❚❚" : "▶";
+  plToggle.innerHTML = ico(playingPath && !plPaused ? "pause" : "play");
 }
 
 // Poll the backend and mirror its state. When the current track changes (a
@@ -1740,7 +1749,7 @@ async function pollPlayerStatus() {
       : "0";
   }
   plTime.textContent = `${fmtTime(st.position_secs)} / ${fmtTime(plDuration)}`;
-  plToggle.textContent = plPaused ? "▶" : "❚❚";
+  plToggle.innerHTML = ico(plPaused ? "play" : "pause");
 }
 
 // The track the bottom Play button starts when nothing is playing: the active
@@ -1957,11 +1966,12 @@ function addTransformRule() {
   renderTransformRules();
 }
 
-function mkRuleIcon(text, title, disabled, onClick) {
+function mkRuleIcon(iconName, title, disabled, onClick) {
   const b = document.createElement("button");
   b.className = "icon";
-  b.textContent = text;
+  b.innerHTML = ico(iconName);
   b.title = title;
+  b.setAttribute("aria-label", title);
   b.disabled = disabled;
   b.addEventListener("click", onClick);
   return b;
@@ -1990,7 +2000,7 @@ function renderTransformRules() {
 
     const grip = document.createElement("span");
     grip.className = "rule-grip";
-    grip.textContent = "⋮⋮";
+    grip.innerHTML = ico("grip");
     grip.title = "Drag to reorder";
     // Order is semantic (case before/after an acronym fix differs). Pointer-based
     // reorder — WKWebView's HTML5 DnD is unreliable (#88); ↑/↓ stay as fallback.
@@ -2028,12 +2038,12 @@ function renderTransformRules() {
     acts.className = "rule-acts";
     // ↑/↓ stay as the keyboard / no-pointer fallback for reordering.
     acts.append(
-      mkRuleIcon("↑", "Move up", index === 0, () => moveRule(index, index - 1)),
-      mkRuleIcon("↓", "Move down", index === transformRules.length - 1, () =>
+      mkRuleIcon("caret-up", "Move up", index === 0, () => moveRule(index, index - 1)),
+      mkRuleIcon("caret-down", "Move down", index === transformRules.length - 1, () =>
         moveRule(index, index + 1)
       )
     );
-    const remove = mkRuleIcon("✕", "Remove rule", false, () => {
+    const remove = mkRuleIcon("close", "Remove rule", false, () => {
       transformRules.splice(index, 1);
       renderTransformRules();
     });
@@ -2319,7 +2329,7 @@ function fieldGroup(title, rows, paths, collapsible) {
     count.textContent = String(rows.length);
     const caret = document.createElement("span");
     caret.className = "fe-group-caret";
-    caret.textContent = "▾";
+    caret.innerHTML = ico("caret-down");
     head.append(" ", count, caret);
     head.addEventListener("click", () => {
       editorExtendedCollapsed = !editorExtendedCollapsed;
@@ -2731,7 +2741,7 @@ function prioItem(key) {
 
   const grip = document.createElement("span");
   grip.className = "prio-grip";
-  grip.textContent = "⋮⋮";
+  grip.innerHTML = ico("grip");
   grip.title = "Drag to reorder";
   enablePointerReorder(grip, li, el("set-prio"), ".prio-item", (dragged, target, below) => {
     const order = readPriority.filter((k) => k !== dragged);
@@ -2928,7 +2938,7 @@ function renderReleaseList() {
     const card = cardEl(c.id);
     if (releaseLayout === "list" && card && expandedIds.has(c.id) && releaseCache.has(c.id)) {
       card.setAttribute("aria-expanded", "true");
-      card.querySelector(".release-caret").textContent = "▾";
+      card.querySelector(".release-caret").innerHTML = ico("caret-down");
       renderTracklist(card, releaseCache.get(c.id));
       card.querySelector(".release-tracklist").dataset.loaded = "1";
     }
@@ -3008,7 +3018,7 @@ function cardMarkup(c) {
           <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
           ${metaLine}
         </span>
-        <span class="release-caret" aria-hidden="true">▸</span>
+        <span class="release-caret" aria-hidden="true">${ico("chevron-right")}</span>
       </button>
       <div class="release-tracklist"></div>
     </article>`;
@@ -3110,7 +3120,7 @@ async function toggleCard(card) {
   const id = card.dataset.id;
   const expanded = card.getAttribute("aria-expanded") === "true";
   card.setAttribute("aria-expanded", expanded ? "false" : "true");
-  card.querySelector(".release-caret").textContent = expanded ? "▸" : "▾";
+  card.querySelector(".release-caret").innerHTML = ico(expanded ? "chevron-right" : "caret-down");
   if (expanded) {
     expandedIds.delete(id);
     return;
@@ -4162,7 +4172,7 @@ function toggleGroup(key) {
     if (tr.classList.contains("group-head")) {
       tr.classList.toggle("collapsed", collapse);
       const caret = tr.querySelector(".group-caret");
-      if (caret) caret.textContent = collapse ? "▶" : "▼";
+      if (caret) caret.innerHTML = ico(collapse ? "chevron-right" : "caret-down");
     } else {
       tr.classList.toggle("hidden-row", collapse);
     }
@@ -4191,7 +4201,7 @@ function setAllGroupsCollapsed(collapse) {
     if (tr.classList.contains("group-head")) {
       tr.classList.toggle("collapsed", collapse);
       const caret = tr.querySelector(".group-caret");
-      if (caret) caret.textContent = collapse ? "▶" : "▼";
+      if (caret) caret.innerHTML = ico(collapse ? "chevron-right" : "caret-down");
     } else {
       tr.classList.toggle("hidden-row", collapse);
     }
