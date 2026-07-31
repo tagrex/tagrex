@@ -237,34 +237,40 @@
             </div>
           </div>
 
-          <!-- EDITOR: hand-edit tag fields + cover art. -->
+          <!-- EDITOR: hand-edit tag fields + cover art. The fields/cover scroll,
+               but the primary actions stay pinned as a footer so they're always
+               reachable without scrolling to the bottom. -->
           <div id="subtab-editor" class="subtab-panel editor" hidden>
-            <div class="panel-block">
-              <h2>Tag fields <span id="fields-count" class="muted"></span></h2>
-              <p class="hint muted" style="padding: 0">
-                Only fields you change are written; a field whose value differs across the selection
-                shows <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
-              </p>
-              <!-- Grouped core/extended field rows are built by renderFieldEditor. -->
-              <div id="fields-body" class="fe"></div>
-              <div class="fe-add">
-                <span class="fe-add-lead">Add field</span>
-                <input id="fields-new-name" class="fe-add-name" type="text" placeholder="name" spellcheck="false" />
-                <button id="fields-add" class="fe-add-btn">+ Add</button>
-                <input id="fields-new-value" class="fe-add-value" type="text" placeholder="value" spellcheck="false" />
+            <div class="editor-scroll">
+              <div class="panel-block">
+                <h2>Tag fields <span id="fields-count" class="muted"></span></h2>
+                <p class="hint muted" style="padding: 0">
+                  Only fields you change are written; a field whose value differs across the selection
+                  shows <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
+                </p>
+                <!-- Grouped core/extended field rows are built by renderFieldEditor. -->
+                <div id="fields-body" class="fe"></div>
+                <div class="fe-add">
+                  <span class="fe-add-lead">Add field</span>
+                  <input id="fields-new-name" class="fe-add-name" type="text" placeholder="name" spellcheck="false" />
+                  <button id="fields-add" class="fe-add-btn">+ Add</button>
+                  <input id="fields-new-value" class="fe-add-value" type="text" placeholder="value" spellcheck="false" />
+                </div>
               </div>
-              <div class="panel-actions">
-                <button id="fields-clear" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo.">Clear tags</button>
-                <div class="spacer"></div>
-                <button id="fields-apply" class="primary">Stage field changes</button>
+
+              <div class="panel-block">
+                <h2>Cover art</h2>
+                <!-- The cover well (thumbnail + state + actions + drop target) is
+                     built by renderCoverWell for the current selection. -->
+                <div id="cover-well"></div>
               </div>
             </div>
 
-            <div class="panel-block">
-              <h2>Cover art</h2>
-              <!-- The cover well (thumbnail + state + actions + drop target) is
-                   built by renderCoverWell for the current selection. -->
-              <div id="cover-well"></div>
+            <!-- Pinned footer: primary tag-field actions, always visible. -->
+            <div class="panel-actions editor-actions">
+              <button id="fields-clear" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo.">Clear tags</button>
+              <div class="spacer"></div>
+              <button id="fields-apply" class="primary">Stage field changes</button>
             </div>
           </div>
         </section>

@@ -2731,11 +2731,27 @@ td[data-field="year"],
   display: none;
 }
 
-/* EDITOR scrolls as a whole. */
+/* EDITOR: the fields + cover scroll, the action footer stays pinned. */
 .subtab-panel.editor {
+  min-height: 0;
+}
+
+.editor-scroll {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   padding: 12px 14px;
+}
+
+/* Pinned action footer, mirroring the ONLINE head so it reads as chrome. */
+.editor-actions {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
 }
 
 /* ONLINE: pinned head + independently scrolling results. */

@@ -68,6 +68,12 @@ first release ships.
 
 ### Changed
 
+- **EDITOR action buttons stay pinned** (#113). **Clear tags** and **Stage field
+  changes** used to sit at the very bottom of a fully-scrolling panel, so on open
+  they were below the fold. The tag fields and cover well now scroll inside the
+  panel while the two actions stay visible as a pinned footer, mirroring the
+  ONLINE panel's pinned head.
+
 - Release-card tracklist: the **title · artist** column now sizes to the longest
   row and scrolls horizontally, while the **checkbox + track number** and
   **duration** columns stay pinned either side — so a long track/artist is no
