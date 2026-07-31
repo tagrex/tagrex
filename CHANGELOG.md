@@ -68,6 +68,13 @@ first release ships.
 
 ### Changed
 
+- **Mode tabs now read as icon + label** (#116, second slice of the workspace
+  redesign). Each top mode (TAGGER / RENAMER / GENERATOR / EXPORTER) gains a 16px
+  icon beside its label so the bar is scannable at a glance and the icon carries
+  the mode's identity. When the labelled tabs would overflow the bar the app
+  drops to a **compact, icon-only** row (tooltip + `aria-label` keep the names) —
+  the responsive headroom that keeps a fifth, longer mode from truncating.
+
 - **One inline-SVG icon set, cross-platform native controls** (#115, first slice
   of the workspace redesign). Every unicode/emoji glyph in the chrome
   (`⚙ ⇥ ▶ ■ ✕ ☰ ▦ ▾ ⋮⋮ ▲ ▼`) is replaced by a single 16px inline-SVG set that

@@ -3452,6 +3452,30 @@ el("panel-toggle").addEventListener("click", () => {
   document.body.classList.toggle("panel-collapsed");
 });
 
+// Drop the mode-tab labels to icon-only when the labelled tabs would overflow the
+// mode bar (#116). Measured with labels shown (compact removed first), so the
+// natural width is the yardstick — no oscillation. Keeps a fifth/longer mode
+// (DEDUPLICATOR) from ever truncating the bar.
+function updateCompactTabs() {
+  const bar = document.querySelector(".modebar");
+  const tabs = document.querySelector(".mode-tabs");
+  if (!bar || !tabs) return;
+  document.body.classList.remove("compact-tabs");
+  // Measure against the viewport, not bar.clientWidth — the bar stretches to its
+  // content when it overflows, which would hide the overflow from the check.
+  const toggle = el("panel-toggle");
+  const avail = document.documentElement.clientWidth - (toggle ? toggle.offsetWidth : 0) - 48;
+  if (tabs.scrollWidth > avail) document.body.classList.add("compact-tabs");
+}
+// The mode bar stretches to its content when it overflows, so observing it never
+// fires on a viewport shrink — track the viewport (the root element) instead, plus
+// the window resize event, and run once at startup.
+window.addEventListener("resize", updateCompactTabs);
+if (window.ResizeObserver) {
+  new ResizeObserver(updateCompactTabs).observe(document.documentElement);
+}
+updateCompactTabs();
+
 // ---- view tabs (Files | Preview) ----
 el("view-files").addEventListener("click", () => showView("files"));
 el("view-preview").addEventListener("click", () => {
