@@ -30,7 +30,7 @@ Agreed order: **1 → 2 → 3 → 4**, each its own GitHub issue.
 |------|-------|--------|-------|-------|
 | 1 | Inline-SVG icon set (retire unicode/emoji glyphs) + native-control normalization (`<select>` caret, search-clear, scrollbars) | A0, A3 | [#115] | ✅ shipped `4f1e488` |
 | 2 | Mode tabs icon + label, with a `compact-tabs` icon-only fallback | A1 | [#116] | ✅ shipped `bbf6aeb` |
-| 3 | **In-table diff-state** — dissolve the Preview view; the table shows the staged diff in place + a floating Apply/Discard bar; per-row apply moves to the sel column | A4, A5, A6 | _not filed_ | ⏳ NEXT |
+| 3 | **In-table diff-state** — dissolve the Preview view; the table shows the staged diff in place + a floating Apply/Discard bar; per-row apply moves to the sel column | A4, A5, A6 | [#117] | ⏳ NEXT — filed + analysed, build plan below |
 | 4 | **DEDUPLICATOR** mode — promote Duplicates to a 5th top tab; controls into the right panel; grouped read-only results in the main area; view strip fully removed | A7, A8 | _not filed_ | ⏳ pending |
 
 Both shipped slices are on `main`, signed, pushed, and bundled/relaunched.
@@ -39,25 +39,57 @@ The icon sprite already in `app/ui/index.html` includes `i-dedup`, `i-lock`,
 
 ## What each remaining slice must do
 
-### Slice 3 — in-table diff-state (design A5/A6, answers Q1+Q2)
-- **Dissolve the Preview peer view.** Today `#preview-view` / `#view-preview` +
-  `renderPreview()` build a separate `.diff` mirror table in `#preview-diff`, and
-  `apply()` reads ticked rows from `.diff-sel:checked` there. Rework so a staged
-  `previewPlan` renders **into the main `#tracks` table** instead.
-- **Diff-state shapes:** (a) manual inline edits already tint `td.dirty` — just
-  surface the floating bar and Apply directly; (b) batch plans (rename/move/
-  import/transform/clear/cover) mark whole rows: `tr.staged` (accent left-bar on
-  the sel cell), `tr.untouched` recedes, changed cells reuse `td.dirty`/
-  `td.error`; a rename shows the new name in the File cell and a reorganize adds
-  the new relative path (`.fcell`/`.fname`/`.fpath` led by the `i-corner` icon);
-  old→new revealed via `.show-old` + `.cell-old`.
-- **Per-row apply lives in the sel column** (made visible in diff-state); ticking
-  scopes exactly which files Apply writes — this is how the preview→apply→undo
-  gate + per-row selection survive. Do NOT design the gate away.
-- **Floating Apply/Discard bar** `.diff-actionbar`: pinned bottom-centre of the
-  table pane, carries the count/plan-name, an optional **Show old values**
-  toggle, and Discard/Apply. Coexists with grouping; never steals a table row.
-- Transferable CSS for all of this is **A5 + A6** in `foundations/workspace.css`.
+### Slice 3 — in-table diff-state (design A5/A6, answers Q1+Q2) — **issue [#117]**, analysed, ready to build
+
+**Current system (as read 2026-07-31, `app/ui/app.js`):**
+- Data model: `previewPlan` = `PlanDto { description, changes: [{ path, rename_to,
+  tag_changes: [{field, old, new}], cover_change }] }`; `previewSource` is one of
+  `rename | edits | transform | cover | clear` (7 call sites set them: `preview`
+  ~1294/`preview_rename`, `previewEdits`/`preview_tag_edits`, transform ~2159,
+  move ~2189, cover embed/remove ~1432/1454, clear ~1477, import via edits).
+- `renderPreview(plan)` (~1088) → `showView("preview")` + `renderPreviewDiff`
+  (~1235) builds a SEPARATE `.diff` mirror table in `#preview-diff`, with its own
+  `.diff-sel` per-row checkboxes + `.diff-sel-all`, `updateApplyFromChecks`, and
+  a `show-old` class toggled by `#show-old`.
+- `apply()` (~1333) reads ticked paths from `.diff-sel:checked` in `#preview-diff`,
+  filters `previewPlan.changes` to that subset, `invoke("apply_plan")`, then for
+  `wasRename` calls `remapEditsAfterRename`, for `wasEdits` drops applied paths
+  from `edits`. `discardPreview()` (~1067) clears plan (+ resetEdits for edits).
+  `showView` (~991) toggles `#files-view`/`#preview-view`/`#duplicates-view`.
+- `renderTracks`/`appendTrackRow` (~812) build the main `#tracks` rows; the sel
+  column checkbox reflects the `selection` Set; cells are `td.editable`, dirtied
+  from the `edits` buffer.
+
+**Build plan:**
+1. Build `diffByPath` = Map(path→change) from `previewPlan` when set. Make
+   `appendTrackRow` diff-aware: if the row has a change → `tr.staged`, tint the
+   changed visible cells `td.dirty` (`td.error` for invalid), render the File
+   cell as `.fcell` with `.fname` (new name from `rename_to`) + `.fpath`
+   (`i-corner` + new relative dir) and a `.cell-old` old name; put the per-row
+   **apply tick** in the sel column (checked by default, tracked in a new
+   `applySelection` Set — NOTE the sel column's meaning switches from `selection`
+   to apply-scope while in diff-state). Rows with no change → `tr.untouched`.
+   Changed fields outside `visibleColumns` still apply but won't show a cell
+   (the design's mock only diffs visible columns) — acceptable; the count covers
+   them.
+2. Add a floating `.diff-actionbar` over the table pane when a plan is staged:
+   count from ticked applies, plan name (`previewPlan.description`), a **Show old
+   values** toggle (adds `show-old` to `#tracks`), Discard, Apply. Lift CSS A5+A6.
+3. Rewire `apply()` to read ticked paths from the sel-column apply-ticks
+   (`applySelection`) instead of `.diff-sel`. Keep the `wasRename`/`wasEdits`
+   post-apply handling and the whole preview→apply→undo gate intact.
+4. Replace the 7 `renderPreview(...)`/`showView("preview")` entry points with a
+   new `enterDiffState()` that sets diff mode + renders the table + shows the bar.
+   `discardPreview()`/`apply()`/`undo()` call an `exitDiffState()`.
+5. Remove the **Preview** tab: `#view-preview` in `index.html`, its `showView`
+   branch, and the `#preview-view` block (the `renderPreviewDiff` machinery can
+   be deleted once nothing calls it). Keep `Files` + `Duplicates` tabs (slice 4).
+6. **Verify hard** on disposable copies: every source (rename, move, edits,
+   transform, cover embed/remove, clear, import) previews in-table, ticking a
+   subset applies only those, Discard reverts staging, Apply writes + Undo
+   restores — the safety gate MUST stay exact.
+
+Transferable CSS: **A5 + A6** in `foundations/workspace.css`.
 
 ### Slice 4 — DEDUPLICATOR mode (design A7/A8, answer Q3)
 - Add a 5th mode tab **DEDUPLICATOR** (`data-mode="deduplicator"`, `i-dedup`
@@ -104,3 +136,4 @@ The icon sprite already in `app/ui/index.html` includes `i-dedup`, `i-lock`,
 
 [#115]: https://github.com/tagrex/tagrex/issues/115
 [#116]: https://github.com/tagrex/tagrex/issues/116
+[#117]: https://github.com/tagrex/tagrex/issues/117
