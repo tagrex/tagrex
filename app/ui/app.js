@@ -1084,11 +1084,10 @@ function updateEditsButton() {
 
 // Reveal the file table. The Preview view is gone (#117): a staged plan now
 // renders into this same table via the diff-state, and the duplicate scan is the
-// DEDUPLICATOR mode driven from setMode (#118). Kept as a one-liner so the many
-// callers that just want "show the files" don't each poke the DOM.
+// DEDUPLICATOR mode driven from setMode (#118). With no sibling views left, the
+// old `Files` tab is now a plain label (#121); this just toggles the file table.
 function showView(which) {
   el("files-view").hidden = which !== "files";
-  el("view-files").classList.toggle("active", which === "files");
 }
 
 // ---- duplicate finder (#40): a read-only library scan, grouped ----
@@ -3528,7 +3527,6 @@ if (window.ResizeObserver) {
 updateCompactTabs();
 
 // ---- diff-state action bar (#117) ----
-el("view-files").addEventListener("click", () => showView("files"));
 el("dup-scan").addEventListener("click", runDuplicateScan);
 el("diff-discard").addEventListener("click", discardPreview);
 // "Show old values" (#80 Q1): reveal the struck-through old value under each

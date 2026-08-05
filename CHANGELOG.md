@@ -73,6 +73,13 @@ first release ships.
 
 ### Changed
 
+- **The lone `Files` tab is now a plain label** (#121). With the Preview (#117)
+  and Duplicates (#118) tabs gone, `Files` had nothing left to switch to, yet it
+  still rendered as a clickable accent pill. It becomes a static, non-interactive
+  label that still carries the track count (`Files (N)`); the dead `.view-tab`
+  styling and its click handler are removed. The toolbar row (Group / Filter /
+  Presets / Columns) is unchanged.
+
 - **The Preview view dissolves into an in-table diff-state** (#117, third slice
   of the workspace redesign). A staged change plan no longer opens a separate
   mirror table behind a `Preview` tab — the file table itself shows the diff in

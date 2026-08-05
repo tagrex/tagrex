@@ -595,7 +595,7 @@ body.panel-collapsed .col-splitter {
   border-top: 1px solid var(--border);
 }
 
-/* ---- view tabs (Files | Preview) over the table ---- */
+/* ---- file-table toolbar row (label + Group/Filter/Presets/Columns) ---- */
 .view-tabs {
   display: flex;
   align-items: center;
@@ -605,26 +605,13 @@ body.panel-collapsed .col-splitter {
   border-bottom: 1px solid var(--border);
 }
 
-.view-tab {
-  border: none;
-  box-shadow: none;
-  background: transparent;
-  color: var(--muted);
+/* The file table's section label. Once the Preview (#117) and Duplicates (#118)
+   tabs were gone, `Files` had nothing to switch to, so it's a plain, static
+   label (#121) — accent-inked to anchor the row, not a clickable pill. */
+.files-label {
+  color: var(--accent-ink);
   font-weight: var(--fw-medium);
   padding: 3px 10px;
-  border-radius: 6px;
-}
-
-.view-tab:hover:not(.active):not(:disabled) {
-  color: var(--text);
-  background: var(--row-hover);
-}
-
-/* Selected view = an accent-tinted pill, so which of Files/Preview/Duplicates is
-   active reads at a glance (the plain green text + underline was too faint). */
-.view-tab.active {
-  color: var(--accent-ink);
-  background: var(--sel-tint);
 }
 
 /* Self-managed hover hint for editable cells (replaces the native title, whose
@@ -2722,7 +2709,6 @@ button.release-import {
    Placed last so it wins over the older `:focus` rules above. */
 button:focus-visible,
 .mode-tab:focus-visible,
-.view-tab:focus-visible,
 .seg-btn:focus-visible,
 .release-head:focus-visible,
 .release-tile:focus-visible {
@@ -2787,8 +2773,7 @@ button.primary:disabled {
   color: var(--muted);
 }
 
-.mode-tab:disabled,
-.view-tab:disabled {
+.mode-tab:disabled {
   background: transparent;
   color: var(--border);
   cursor: not-allowed;
