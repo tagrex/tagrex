@@ -2407,10 +2407,15 @@ button.release-import {
   padding: 3px;
   white-space: nowrap;
 }
-/* Catalogue segment — accent-as-text -> ink, on a faint accent fill. */
+/* Catalogue segment — accent-as-text -> ink, on a faint accent fill. Doubles as
+   a link to the release's provider page (#92): deepens on hover to read clickable. */
 .rb-catno {
   color: var(--accent-ink);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+  cursor: pointer;
+}
+.rb-catno:hover {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 /* Count segment — neutral, divided from the catalogue by the unified border. */
 .rb-count {

@@ -3039,10 +3039,22 @@ function applyQueryPreset() {
 // count segment keeps the `tk-count` class so prefetchReleaseCounts can fill it
 // in once the release is fetched.
 function releaseBadge(c) {
+  // The catalogue segment doubles as a link to the release's provider page (#92);
+  // the click is caught in the release-list handler, which reads the card's id.
   const catno = c.catalog_number
-    ? `<span class="rb-catno">${escapeHtml(c.catalog_number)}</span>`
+    ? `<span class="rb-catno" title="Open the release page">${escapeHtml(c.catalog_number)}</span>`
     : "";
   return `<span class="rel-badge">${catno}<span class="rb-count tk-count">${escapeHtml(countLabel(c.id))}</span></span>`;
+}
+
+// Open a candidate's provider release page (#92). Source is the committed search
+// source (all shown candidates share it); the backend builds + validates the URL.
+async function openReleasePage(id) {
+  try {
+    await invoke("open_release_page", { source: releaseSource, id });
+  } catch (e) {
+    toast(String(e), true);
+  }
 }
 
 function cardMarkup(c) {
@@ -3688,6 +3700,13 @@ el("release-layout").addEventListener("click", (e) => {
 
 // One delegated handler for every card interaction (they're re-rendered often).
 el("release-list").addEventListener("click", (e) => {
+  // The catalogue chip opens the release's provider page (#92) in both layouts;
+  // caught before the tile/card handlers so it never also expands/switches.
+  if (e.target.closest(".rb-catno")) {
+    const host = e.target.closest("[data-id]");
+    if (host) openReleasePage(host.dataset.id);
+    return;
+  }
   const tile = e.target.closest(".release-tile");
   if (tile) {
     // Grid tile → back to list layout, expanded on that release.
@@ -4470,6 +4489,10 @@ function mockInvoke(cmd, args) {
   const findTrack = (p) => s.tracks.find((x) => x.path === p);
   switch (cmd) {
     case "open_library":
+      return Promise.resolve();
+    case "open_release_page":
+      // No system browser in the dev mock; just echo so the click is testable.
+      console.log(`[mock] open_release_page ${args.source} ${args.id}`);
       return Promise.resolve();
     case "list_tracks":
       return Promise.resolve(s.tracks);

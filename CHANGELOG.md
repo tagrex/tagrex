@@ -8,6 +8,14 @@ first release ships.
 
 ## [Unreleased]
 
+### Added
+
+- **Click a release's catalogue number to open its provider page** (#92). The
+  accent-tinted catalogue segment of the release badge is now a link: clicking it
+  opens the Discogs / MusicBrainz **release** page in the system browser. A new
+  `open_release_page` command builds the URL from a hard-coded host plus a
+  charset-validated id, so only provider release pages can ever be opened.
+
 ### Fixed
 
 - **The Undo button no longer reverts to a text label after opening a library**

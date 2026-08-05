@@ -69,6 +69,28 @@ fn find_duplicates(
     })
 }
 
+/// Build a provider *release* page URL from a hard-coded host plus a
+/// charset-validated id (#92). Kept separate from the command so the frontend can
+/// only ever reach a Discogs/MusicBrainz release page — never an arbitrary URL —
+/// and so the construction is unit-testable without touching the system browser.
+fn release_url(source: &str, id: &str) -> Result<String, String> {
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(format!("invalid release id: {id:?}"));
+    }
+    match source {
+        "discogs" => Ok(format!("https://www.discogs.com/release/{id}")),
+        "musicbrainz" => Ok(format!("https://musicbrainz.org/release/{id}")),
+        other => Err(format!("unknown source: {other}")),
+    }
+}
+
+/// Open a provider release page in the system browser (#92).
+#[tauri::command]
+fn open_release_page(source: String, id: String) -> Result<(), String> {
+    let url = release_url(&source, &id)?;
+    open::that(url).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn preview_rename(
     state: State<AppState>,
@@ -414,6 +436,7 @@ fn main() {
             open_library,
             list_tracks,
             find_duplicates,
+            open_release_page,
             preview_rename,
             preview_move,
             preview_transform,
@@ -449,4 +472,30 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::release_url;
+
+    #[test]
+    fn builds_provider_release_urls() {
+        assert_eq!(
+            release_url("discogs", "5606").unwrap(),
+            "https://www.discogs.com/release/5606"
+        );
+        assert_eq!(
+            release_url("musicbrainz", "1a2b3c4d-0000-0000-0000-000000000000").unwrap(),
+            "https://musicbrainz.org/release/1a2b3c4d-0000-0000-0000-000000000000"
+        );
+    }
+
+    #[test]
+    fn rejects_unknown_source_and_unsafe_ids() {
+        assert!(release_url("beatport", "5606").is_err());
+        assert!(release_url("discogs", "").is_err());
+        // A path-traversal / injection attempt in the id must never build a URL.
+        assert!(release_url("discogs", "5606/../../evil").is_err());
+        assert!(release_url("discogs", "5606?q=1").is_err());
+    }
 }
