@@ -2422,15 +2422,17 @@ button.release-import {
   color: var(--text);
 }
 
-/* Count chip: same mono face + size as the catalogue chip, a matched pair. */
+/* Count chip: a matched pair with the catalogue chip (#122) — identical box
+   (mono face, size, weight, radius, padding, so identical height), differing
+   ONLY in colour: catalogue is accent-tinted, this one is neutral. */
 .pill {
   font-family: var(--font-mono-bundled);
   font-size: var(--text-2xs);
   font-weight: 600;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0 7px;
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
   color: var(--muted);
   white-space: nowrap;
   flex: none;

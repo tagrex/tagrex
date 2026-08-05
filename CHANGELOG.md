@@ -73,6 +73,12 @@ first release ships.
 
 ### Changed
 
+- **Release card: the track-count chip now matches the catalogue chip** (#122).
+  The `15 tracks` count chip read taller and chunkier than the `AS 5606`
+  catalogue chip beside it (a 999px pill with wider padding vs a 4px rounded
+  rect). They're now a true matched pair — identical height, font, padding and
+  shape — differing only in colour (catalogue accent-tinted, count neutral).
+
 - **The lone `Files` tab is now a plain label** (#121). With the Preview (#117)
   and Duplicates (#118) tabs gone, `Files` had nothing left to switch to, yet it
   still rendered as a clickable accent pill. It becomes a static, non-interactive
