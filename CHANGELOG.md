@@ -73,6 +73,10 @@ first release ships.
 
 ### Changed
 
+- **Release badge padding evened out to 3px** (#125). A small follow-up to #124 —
+  the segment padding was `2px 6px` (slightly letterboxed) and is now `3px` on
+  all sides.
+
 - **Release card: catalogue number and track count are one segmented badge**
   (#124). The two chips previously read as unrelated pills (one accent-filled,
   one hollow); they're now a single unit behind one unified border — an
