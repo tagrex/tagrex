@@ -10,6 +10,16 @@ first release ships.
 
 ### Added
 
+- **Release card: cover resolution, and save cover / save all images** (#102).
+  An expanded release now shows its primary cover's resolution and image count
+  (e.g. `600×594 · 3 images`, from the provider's image data — Discogs reports
+  dimensions, MusicBrainz doesn't). **Save cover** writes the primary image next
+  to the selected tracks as `folder.jpg` (the name the app auto-reads as external
+  art); **Save all** writes every image (`folder.jpg`, then `cover.jpg`,
+  `cover-1.jpg`…). Existing files prompt an overwrite confirmation before
+  anything is written. Backed by a new `save_release_images` command confined to
+  the open library root.
+
 - **Transliterate non-Latin scripts to Latin** (#72, GENERATOR transform). A new
   **Transliterate to Latin** transform step maps Cyrillic and Greek onto Latin
   (`Пётр → Pyotr`, `Ελλάδα → Ellada`) and composes into the same chain as

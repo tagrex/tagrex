@@ -20,7 +20,7 @@
 use serde_json::Value;
 use tagrex_core::provider::{
     FetchedImage, MetadataProvider, ProviderError, Release, ReleaseCandidate, ReleaseId,
-    ReleaseLabel, ReleaseTrack, SearchQuery,
+    ReleaseImage, ReleaseLabel, ReleaseTrack, SearchQuery,
 };
 use tagrex_core::transform::{TransformChain, TransformStep};
 
@@ -408,6 +408,7 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
             .filter(|value| !value.trim().is_empty())
             .map(str::to_string),
         cover_image_url: primary_image_url(root.get("images")),
+        images: parse_images(root.get("images")),
     })
 }
 
@@ -496,6 +497,33 @@ fn primary_image_url(images: Option<&Value>) -> Option<String> {
         .and_then(Value::as_str)
         .filter(|uri| !uri.is_empty())
         .map(str::to_string)
+}
+
+/// Every image of a release, primary first (#102). Each carries `uri` (full
+/// size) plus `width`/`height` when Discogs states them (it usually does; `0`
+/// when absent). Order matches [`primary_image_url`]: any `type: "primary"`
+/// images lead, then the rest in listing order.
+fn parse_images(images: Option<&Value>) -> Vec<ReleaseImage> {
+    let Some(images) = images.and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let is_primary = |image: &&Value| image.get("type").and_then(Value::as_str) == Some("primary");
+    images
+        .iter()
+        .filter(is_primary)
+        .chain(images.iter().filter(|image| !is_primary(image)))
+        .filter_map(|image| {
+            let url = image
+                .get("uri")
+                .and_then(Value::as_str)
+                .filter(|uri| !uri.is_empty())?;
+            Some(ReleaseImage {
+                url: url.to_string(),
+                width: image.get("width").and_then(Value::as_u64).unwrap_or(0) as u32,
+                height: image.get("height").and_then(Value::as_u64).unwrap_or(0) as u32,
+            })
+        })
+        .collect()
 }
 
 /// Tracklist entries can be headings or index tracks, not just playable

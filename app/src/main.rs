@@ -16,8 +16,8 @@ use tauri::{Manager, State};
 use player::{Player, PlayerStatus};
 use tagrex::{
     AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto,
-    DuplicateGroupDto, ImportSelectionDto, ImportTrackDto, PlanDto, ReleaseDto, SearchQueryDto,
-    SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
+    DuplicateGroupDto, ImportSelectionDto, ImportTrackDto, PlanDto, ReleaseDto, SaveImagesDto,
+    SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -335,6 +335,24 @@ async fn provider_fetch_image(
     })
 }
 
+/// Save a release's images to disk next to the selected tracks (#102). Async:
+/// it downloads each image with the provider's auth/User-Agent headers.
+#[tauri::command]
+async fn save_release_images(
+    state: State<'_, AppState>,
+    source: String,
+    token: String,
+    path: String,
+    urls: Vec<String>,
+    overwrite: bool,
+) -> Result<SaveImagesDto, String> {
+    let path = PathBuf::from(path);
+    with_app(&state, |app| {
+        app.save_release_images(&source, &token, &path, &urls, overwrite)
+            .map_err(|e| e.to_string())
+    })
+}
+
 #[tauri::command]
 fn auto_align(
     state: State<AppState>,
@@ -456,6 +474,7 @@ fn main() {
             provider_search,
             provider_fetch_release,
             provider_fetch_image,
+            save_release_images,
             preview_import,
             auto_align,
             saved_discogs_token,

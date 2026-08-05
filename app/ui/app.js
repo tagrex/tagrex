@@ -3243,12 +3243,31 @@ function renderTracklist(card, release) {
             )
             .join("")}</select></label></div>`
       : "";
+  // Cover controls (#102): resolution + image count (from the release JSON's
+  // images, dimensions when the provider states them), and save-to-disk actions.
+  const images = release.images || [];
+  const primary = images[0];
+  const res = primary && primary.width && primary.height ? `${primary.width}×${primary.height}` : "";
+  const imgInfo =
+    res || images.length > 1
+      ? `<span class="muted tk-imginfo">${res}${res && images.length > 1 ? " · " : ""}${images.length > 1 ? images.length + " images" : ""}</span>`
+      : "";
+  const saveCoverBtn = images.length
+    ? `<button class="btn-sm" data-act="save-cover" title="Save the cover next to the selected tracks as folder.jpg">Save cover</button>`
+    : "";
+  const saveAllBtn =
+    images.length > 1
+      ? `<button class="btn-sm" data-act="save-all" title="Save all ${images.length} images next to the selected tracks">Save all (${images.length})</button>`
+      : "";
   card.querySelector(".release-tracklist").innerHTML = `
     <div class="tracklist-actions">
       <button class="btn-sm" data-act="enable-all">Enable all</button>
       <button class="btn-sm" data-act="disable-all">Disable all</button>
       <button class="btn-sm" data-act="automatch" title="Reorder the selected files to line up with this tracklist">Auto-match</button>
       <button class="btn-sm" data-act="embed" title="Embed this release's cover into the selected files">Embed cover</button>
+      ${saveCoverBtn}
+      ${saveAllBtn}
+      ${imgInfo}
       <span class="muted tk-selcount" style="margin-left:auto"></span>
     </div>
     ${labelPicker}
@@ -3381,6 +3400,72 @@ async function embedCoverFrom(card) {
   } catch (e) {
     toast(String(e), true);
   }
+}
+
+// Save a release's image(s) to disk next to the selected tracks (#102). `all`
+// saves every image (primary -> folder.jpg, then cover.jpg, cover-1.jpg…);
+// otherwise just the primary. If the backend reports existing files, confirm
+// before overwriting.
+async function saveReleaseImages(card, all) {
+  const id = card.dataset.id;
+  const release = releaseCache.get(id);
+  const images = (release && release.images) || [];
+  if (!images.length) {
+    toast("This release has no images to save", true);
+    return;
+  }
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to save the images next to first", true);
+    return;
+  }
+  const urls = all ? images.map((i) => i.url) : [images[0].url];
+  const token = el("discogs-token").value.trim();
+  const args = { source: releaseSource, token, path: paths[0], urls, overwrite: false };
+  try {
+    let res = await invoke("save_release_images", args);
+    if (res.conflicts && res.conflicts.length) {
+      const ok = await confirmDialog(
+        `${res.conflicts.join(", ")} already exist${res.conflicts.length === 1 ? "s" : ""} in that folder. Overwrite?`,
+        "Overwrite",
+      );
+      if (!ok) return;
+      res = await invoke("save_release_images", { ...args, overwrite: true });
+    }
+    toast(`Saved ${res.written.length} image(s) next to the tracks`);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// A minimal in-app confirm dialog returning a Promise<boolean> (#102). Used for
+// the overwrite prompt; WKWebView's window.confirm is unreliable, so this is a
+// self-managed modal. Backdrop click or Cancel resolves false.
+function confirmDialog(message, okLabel = "OK") {
+  return new Promise((resolve) => {
+    const modal = el("confirm-modal");
+    el("confirm-message").textContent = message;
+    const okBtn = el("confirm-ok");
+    const cancelBtn = el("confirm-cancel");
+    okBtn.textContent = okLabel;
+    modal.hidden = false;
+    const done = (result) => {
+      modal.hidden = true;
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      modal.removeEventListener("click", onBackdrop);
+      resolve(result);
+    };
+    const onOk = () => done(true);
+    const onCancel = () => done(false);
+    const onBackdrop = (e) => {
+      if (e.target === modal) done(false);
+    };
+    okBtn.addEventListener("click", onOk);
+    cancelBtn.addEventListener("click", onCancel);
+    modal.addEventListener("click", onBackdrop);
+    okBtn.focus();
+  });
 }
 
 // Embed the external cover file (folder.jpg/cover.jpg) into the selection (#41),
@@ -3729,6 +3814,10 @@ el("release-list").addEventListener("click", (e) => {
     autoMatchToRelease(card);
   } else if (act === "embed") {
     embedCoverFrom(card);
+  } else if (act === "save-cover") {
+    saveReleaseImages(card, false);
+  } else if (act === "save-all") {
+    saveReleaseImages(card, true);
   } else if (act === "import") {
     importRelease(card);
   } else if (e.target.closest(".release-head")) {
@@ -4517,6 +4606,19 @@ function mockInvoke(cmd, args) {
       // No system browser in the dev mock; just echo so the click is testable.
       console.log(`[mock] open_release_page ${args.source} ${args.id}`);
       return Promise.resolve();
+    case "save_release_images": {
+      // Mirror the backend naming + conflict flow so the confirm dialog can be
+      // exercised: names are positional, and a previously-saved name conflicts
+      // until overwrite is confirmed.
+      const names = args.urls.map((_, i) =>
+        i === 0 ? "folder.jpg" : i === 1 ? "cover.jpg" : `cover-${i - 1}.jpg`,
+      );
+      s.savedImages = s.savedImages || new Set();
+      const conflicts = args.overwrite ? [] : names.filter((n) => s.savedImages.has(n));
+      if (conflicts.length) return Promise.resolve({ written: [], conflicts });
+      names.forEach((n) => s.savedImages.add(n));
+      return Promise.resolve({ written: names.map((n) => `/music/${n}`), conflicts: [] });
+    }
     case "list_tracks":
       return Promise.resolve(s.tracks);
     case "preview_rename": {
@@ -4839,6 +4941,10 @@ function mockInvoke(cmd, args) {
           ],
           labels: [{ name: "Antler-Subway", catalog_number: "AS 5606" }],
           cover_image_url: `https://coverartarchive.org/release/${args.releaseId}/front`,
+          // CAA reports no dimensions, so resolution won't show for MusicBrainz.
+          images: [
+            { url: `https://coverartarchive.org/release/${args.releaseId}/front`, width: 0, height: 0 },
+          ],
         });
       }
       return Promise.resolve({
@@ -4859,6 +4965,12 @@ function mockInvoke(cmd, args) {
           { name: "Antler-Subway", catalog_number: "7243 8 52174 2 5" },
         ],
         cover_image_url: "https://img.discogs.com/mock/front.jpg",
+        // Discogs states per-image dimensions (#102): primary + two secondaries.
+        images: [
+          { url: "https://img.discogs.com/mock/front.jpg", width: 600, height: 594 },
+          { url: "https://img.discogs.com/mock/back.jpg", width: 600, height: 590 },
+          { url: "https://img.discogs.com/mock/cd.jpg", width: 500, height: 500 },
+        ],
       });
     case "provider_fetch_image":
       // A tiny solid-color PNG so the release-view cover has something to show.

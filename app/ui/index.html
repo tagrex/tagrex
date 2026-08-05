@@ -481,6 +481,18 @@
 
     <div id="toast" class="toast" hidden></div>
 
+    <!-- Confirm dialog (#102): a small modal for yes/no prompts (e.g. overwriting
+         existing cover files). Driven by confirmDialog() in app.js. -->
+    <div id="confirm-modal" class="modal-backdrop" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-message">
+        <p id="confirm-message" class="modal-msg"></p>
+        <div class="modal-actions">
+          <button id="confirm-cancel">Cancel</button>
+          <button id="confirm-ok" class="primary">OK</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Settings slide-over (#79): app-wide preferences, opened from the top-bar
          gear — deliberately outside the RENAMER/TAGGER/… per-mode panel flow. -->
     <div id="settings" class="settings-overlay" hidden>

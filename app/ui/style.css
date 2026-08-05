@@ -1271,6 +1271,47 @@ tr.drop-below td {
   color: #fff;
 }
 
+/* Confirm dialog (#102): a centred modal over a dimming backdrop. */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.42);
+}
+.modal-backdrop[hidden] {
+  display: none;
+}
+.modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.35);
+  padding: var(--space-5);
+  max-width: 420px;
+  width: calc(100% - 48px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.modal-msg {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--lh-normal);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+.modal-actions .primary {
+  border-color: color-mix(in srgb, var(--accent) 72%, #000);
+}
+
 /* Playing — an orthogonal left-edge bar (not a full-row tint), so it reads
    alongside a selected/dirty row instead of overwriting its background. The bar
    sits on the leftmost *visible* cell: the File cell by default, or the Sel cell

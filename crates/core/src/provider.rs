@@ -113,6 +113,21 @@ pub struct Release {
     /// Agent headers — the webview can't load it directly — so this is only a
     /// handle, fetched on demand via the provider's image download.
     pub cover_image_url: Option<String>,
+    /// Every image the release carries, in listing order — the primary first
+    /// (#102). Used to show the cover resolution + image count and to save the
+    /// images to disk. `cover_image_url` is the first entry's URL; this exposes
+    /// the rest, plus each image's dimensions when the provider states them.
+    pub images: Vec<ReleaseImage>,
+}
+
+/// One image of a release: a download handle plus its pixel dimensions when the
+/// provider states them (`0` means unknown — MusicBrainz/CAA doesn't report
+/// sizes in the release JSON, Discogs does). Ordered with the primary first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseImage {
+    pub url: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// One label imprint of a release, with its catalogue number when stated (#90).

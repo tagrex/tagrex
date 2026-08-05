@@ -160,6 +160,15 @@ pub struct CoverExportDto {
     pub skipped_no_cover: Vec<String>,
 }
 
+/// Result of saving a release's images to disk (#102). `conflicts` non-empty
+/// means NOTHING was written — the named files already exist and the caller
+/// should confirm before re-saving with `overwrite`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SaveImagesDto {
+    pub written: Vec<String>,
+    pub conflicts: Vec<String>,
+}
+
 /// Front-cover state across a selection, for the EDITOR cover well: how many
 /// files carry a cover, whether they differ, and up to a few distinct covers to
 /// show (the shared one, or a small fan when the selection is mixed).
@@ -318,6 +327,18 @@ pub struct ReleaseDto {
     /// URL of the release's primary image, if any. Fetch its bytes with
     /// [`App::fetch_discogs_image`] to preview or embed it.
     pub cover_image_url: Option<String>,
+    /// Every image the release carries, primary first (#102) — for the cover
+    /// resolution + count display and the save-to-disk actions.
+    #[serde(default)]
+    pub images: Vec<ReleaseImageDto>,
+}
+
+/// One release image: a fetch handle plus its dimensions (`0` = unknown) (#102).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReleaseImageDto {
+    pub url: String,
+    pub width: u32,
+    pub height: u32,
 }
 
 /// One label / catalogue-number pair of a release (#90).
@@ -1285,6 +1306,62 @@ impl App {
         })
     }
 
+    /// Save a release's images to disk next to the selected tracks (#102).
+    ///
+    /// Names them positionally, as the user chose: the primary -> `folder.<ext>`,
+    /// the rest -> `cover.<ext>`, `cover-1.<ext>`, `cover-2.<ext>`… (extension
+    /// from each image's MIME). Confined to the opened library root. Fetches
+    /// every image first (so extensions are known), then, if any target already
+    /// exists and `overwrite` is false, writes NOTHING and returns those names so
+    /// the UI can confirm — otherwise writes them all.
+    pub fn save_release_images(
+        &self,
+        source: &str,
+        token: &str,
+        track: &Path,
+        urls: &[String],
+        overwrite: bool,
+    ) -> Result<SaveImagesDto, AppError> {
+        let root = std::fs::canonicalize(&self.library_root)?;
+        let dir = track.parent().unwrap_or(Path::new("."));
+        let canonical_dir = std::fs::canonicalize(dir)?;
+        if !canonical_dir.starts_with(&root) {
+            return Err(AppError::OutsideRoot(track.to_string_lossy().into_owned()));
+        }
+        let mut planned: Vec<(PathBuf, Vec<u8>)> = Vec::new();
+        for (index, url) in urls.iter().enumerate() {
+            self.throttle(source);
+            let image = match source {
+                "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
+                _ => self.discogs_provider(token)?.fetch_image(url)?,
+            };
+            let ext = extension_for_mime(&image.mime);
+            let name = format!("{}.{ext}", image_basename(index));
+            planned.push((canonical_dir.join(name), image.data));
+        }
+        let conflicts: Vec<String> = planned
+            .iter()
+            .filter(|(target, _)| target.exists())
+            .filter_map(|(target, _)| target.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .collect();
+        if !conflicts.is_empty() && !overwrite {
+            return Ok(SaveImagesDto {
+                written: Vec::new(),
+                conflicts,
+            });
+        }
+        let mut written = Vec::new();
+        for (target, data) in &planned {
+            std::fs::write(target, data)?;
+            written.push(target.to_string_lossy().into_owned());
+        }
+        Ok(SaveImagesDto {
+            written,
+            conflicts: Vec::new(),
+        })
+    }
+
     /// Align the selected files to a release's tracks by content rather than by
     /// position (#53).
     ///
@@ -1698,6 +1775,18 @@ fn read_tracks(paths: &[PathBuf]) -> Vec<tagrex_core::model::TrackFile> {
 /// their conventional extension; anything else falls back to the MIME subtype
 /// when it's a clean alphanumeric token, else `jpg` (the overwhelmingly common
 /// cover format).
+/// Positional base name for a saved release image (#102): the primary (index 0)
+/// becomes `folder` — the de-facto external-cover name the app auto-reads — and
+/// the rest become `cover`, `cover-1`, `cover-2`, … The caller appends the
+/// MIME-derived extension.
+fn image_basename(index: usize) -> String {
+    match index {
+        0 => "folder".to_string(),
+        1 => "cover".to_string(),
+        n => format!("cover-{}", n - 1),
+    }
+}
+
 fn extension_for_mime(mime: &str) -> String {
     match mime.trim().to_ascii_lowercase().as_str() {
         "image/jpeg" | "image/jpg" => "jpg".to_string(),
@@ -1852,6 +1941,15 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
             format: release.format.clone(),
             url: release.url.clone(),
             cover_image_url: release.cover_image_url.clone(),
+            images: release
+                .images
+                .iter()
+                .map(|image| ReleaseImageDto {
+                    url: image.url.clone(),
+                    width: image.width,
+                    height: image.height,
+                })
+                .collect(),
         }
     }
 }
@@ -2934,5 +3032,14 @@ mod tests {
         // Garbage / non-image falls back to jpg.
         assert_eq!(extension_for_mime("application/octet-stream"), "jpg");
         assert_eq!(extension_for_mime(""), "jpg");
+    }
+
+    #[test]
+    fn image_basename_names_primary_folder_then_cover_series() {
+        // The user's convention (#102): primary -> folder, then cover, cover-1…
+        assert_eq!(image_basename(0), "folder");
+        assert_eq!(image_basename(1), "cover");
+        assert_eq!(image_basename(2), "cover-1");
+        assert_eq!(image_basename(3), "cover-2");
     }
 }

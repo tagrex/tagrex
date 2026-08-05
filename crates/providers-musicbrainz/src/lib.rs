@@ -26,7 +26,7 @@
 use serde_json::Value;
 use tagrex_core::provider::{
     FetchedImage, MetadataProvider, ProviderError, Release, ReleaseCandidate, ReleaseId,
-    ReleaseLabel, ReleaseTrack, SearchQuery,
+    ReleaseImage, ReleaseLabel, ReleaseTrack, SearchQuery,
 };
 
 const API_BASE: &str = "https://musicbrainz.org/ws/2";
@@ -374,6 +374,14 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         format: media_formats(root.get("media")),
         url: Some(format!("https://musicbrainz.org/release/{id}")),
         cover_image_url: Some(cover_art_front_url(&id)),
+        // The Cover Art Archive front image; CAA doesn't report dimensions in
+        // this path, so they stay `0` (unknown) — resolution just won't show for
+        // MusicBrainz results (#102).
+        images: vec![ReleaseImage {
+            url: cover_art_front_url(&id),
+            width: 0,
+            height: 0,
+        }],
     })
 }
 
