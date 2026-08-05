@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- **Transliterate non-Latin scripts to Latin** (#72, GENERATOR transform). A new
+  **Transliterate to Latin** transform step maps Cyrillic and Greek onto Latin
+  (`Пётр → Pyotr`, `Ελλάδα → Ellada`) and composes into the same chain as
+  replace / case / diacritics. It's distinct from **Remove diacritics** (which
+  only strips accents off Latin letters): this maps a different alphabet.
+  To-Latin only; per-script tables (BGN/PCGN-style) make adding another script a
+  data-only change.
+
 - **`%skip%` discard placeholder in filename→tags masks** (#70). The mask engine
   gains `%skip%`, which on the *extract* direction matches and throws away a run
   of text (filename junk that maps to no tag) and may repeat. It's the mirror of

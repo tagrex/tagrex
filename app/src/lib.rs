@@ -31,7 +31,7 @@ use tagrex_core::provider::{MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
 use tagrex_core::transform::{
     CaseStyle, ChangeCase, KeyNotation, KeyStyle, RemoveDiacritics, Replace, ReplaceOptions,
-    TransformChain,
+    TransformChain, Transliterate,
 };
 use tagrex_providers_discogs::DiscogsProvider;
 use tagrex_providers_musicbrainz::MusicBrainzProvider;
@@ -395,7 +395,7 @@ pub struct ImportSelectionDto {
 /// One rule in a transformation chain, as the UI describes it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct TransformRuleDto {
-    /// `replace`, `case`, `diacritics` or `key`.
+    /// `replace`, `case`, `diacritics`, `transliterate` or `key`.
     pub kind: String,
     #[serde(default)]
     pub from: String,
@@ -1669,6 +1669,7 @@ fn build_chain(rules: &[TransformRuleDto]) -> Result<TransformChain, AppError> {
                 chain.push(Box::new(ChangeCase::new(style)));
             }
             "diacritics" => chain.push(Box::new(RemoveDiacritics)),
+            "transliterate" => chain.push(Box::new(Transliterate)),
             "key" => {
                 let style = match rule.style.as_str() {
                     "camelot" => KeyStyle::Camelot,

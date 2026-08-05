@@ -256,6 +256,169 @@ impl TransformStep for RemoveDiacritics {
     }
 }
 
+/// Transliterate whole non-Latin scripts to Latin (#72) — a different job from
+/// [`RemoveDiacritics`], which only strips accents off Latin letters. This maps
+/// another alphabet onto Latin (`Пётр` -> `Pyotr`, `Ελλάδα` -> `Ellada`).
+///
+/// To-Latin only; the reverse (Latin -> Cyrillic) is guesswork and out of scope.
+/// Per-script tables keep it lossy-but-documented and make adding a script a
+/// data-only change: add a `<script>_to_latin` function and chain it in `apply`.
+/// Uppercase letters map to a capitalised Latin form (`Ж` -> `Zh`), lowercase to
+/// lowercase (`ж` -> `zh`); non-covered characters (incl. Latin) pass through.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Transliterate;
+
+impl TransformStep for Transliterate {
+    fn name(&self) -> &str {
+        "transliterate to Latin"
+    }
+
+    fn apply(&self, input: &str) -> String {
+        input
+            .chars()
+            .map(|ch| {
+                cyrillic_to_latin(ch)
+                    .or_else(|| greek_to_latin(ch))
+                    .map(str::to_string)
+                    .unwrap_or_else(|| ch.to_string())
+            })
+            .collect()
+    }
+}
+
+/// Russian Cyrillic -> Latin, a BGN/PCGN-style romanization (`ж`->`zh`,
+/// `х`->`kh`, `ц`->`ts`, `щ`->`shch`; the hard/soft signs `ъ`/`ь` drop). Returns
+/// `None` for non-Cyrillic so the caller can try the next script / pass through.
+fn cyrillic_to_latin(ch: char) -> Option<&'static str> {
+    Some(match ch {
+        'а' => "a",
+        'б' => "b",
+        'в' => "v",
+        'г' => "g",
+        'д' => "d",
+        'е' => "e",
+        'ё' => "yo",
+        'ж' => "zh",
+        'з' => "z",
+        'и' => "i",
+        'й' => "y",
+        'к' => "k",
+        'л' => "l",
+        'м' => "m",
+        'н' => "n",
+        'о' => "o",
+        'п' => "p",
+        'р' => "r",
+        'с' => "s",
+        'т' => "t",
+        'у' => "u",
+        'ф' => "f",
+        'х' => "kh",
+        'ц' => "ts",
+        'ч' => "ch",
+        'ш' => "sh",
+        'щ' => "shch",
+        'ъ' => "",
+        'ы' => "y",
+        'ь' => "",
+        'э' => "e",
+        'ю' => "yu",
+        'я' => "ya",
+        'А' => "A",
+        'Б' => "B",
+        'В' => "V",
+        'Г' => "G",
+        'Д' => "D",
+        'Е' => "E",
+        'Ё' => "Yo",
+        'Ж' => "Zh",
+        'З' => "Z",
+        'И' => "I",
+        'Й' => "Y",
+        'К' => "K",
+        'Л' => "L",
+        'М' => "M",
+        'Н' => "N",
+        'О' => "O",
+        'П' => "P",
+        'Р' => "R",
+        'С' => "S",
+        'Т' => "T",
+        'У' => "U",
+        'Ф' => "F",
+        'Х' => "Kh",
+        'Ц' => "Ts",
+        'Ч' => "Ch",
+        'Ш' => "Sh",
+        'Щ' => "Shch",
+        'Ъ' => "",
+        'Ы' => "Y",
+        'Ь' => "",
+        'Э' => "E",
+        'Ю' => "Yu",
+        'Я' => "Ya",
+        _ => return None,
+    })
+}
+
+/// Modern Greek -> Latin, a simple per-letter romanization (BGN/PCGN-style:
+/// `β`->`v`, `η`->`i`, `θ`->`th`, `χ`->`ch`, `ψ`->`ps`); accented vowels fold to
+/// their base letter. No digraph context rules (`μπ`->`b` etc.) — kept per-letter
+/// on purpose. Returns `None` for non-Greek.
+fn greek_to_latin(ch: char) -> Option<&'static str> {
+    Some(match ch {
+        'α' | 'ά' => "a",
+        'β' => "v",
+        'γ' => "g",
+        'δ' => "d",
+        'ε' | 'έ' => "e",
+        'ζ' => "z",
+        'η' | 'ή' => "i",
+        'θ' => "th",
+        'ι' | 'ί' | 'ϊ' | 'ΐ' => "i",
+        'κ' => "k",
+        'λ' => "l",
+        'μ' => "m",
+        'ν' => "n",
+        'ξ' => "x",
+        'ο' | 'ό' => "o",
+        'π' => "p",
+        'ρ' => "r",
+        'σ' | 'ς' => "s",
+        'τ' => "t",
+        'υ' | 'ύ' | 'ϋ' | 'ΰ' => "y",
+        'φ' => "f",
+        'χ' => "ch",
+        'ψ' => "ps",
+        'ω' | 'ώ' => "o",
+        'Α' | 'Ά' => "A",
+        'Β' => "V",
+        'Γ' => "G",
+        'Δ' => "D",
+        'Ε' | 'Έ' => "E",
+        'Ζ' => "Z",
+        'Η' | 'Ή' => "I",
+        'Θ' => "Th",
+        'Ι' | 'Ί' | 'Ϊ' => "I",
+        'Κ' => "K",
+        'Λ' => "L",
+        'Μ' => "M",
+        'Ν' => "N",
+        'Ξ' => "X",
+        'Ο' | 'Ό' => "O",
+        'Π' => "P",
+        'Ρ' => "R",
+        'Σ' => "S",
+        'Τ' => "T",
+        'Υ' | 'Ύ' | 'Ϋ' => "Y",
+        'Φ' => "F",
+        'Χ' => "Ch",
+        'Ψ' => "Ps",
+        'Ω' | 'Ώ' => "O",
+        _ => return None,
+    })
+}
+
 /// Apply `f` to each run of word characters, leaving separators untouched.
 fn map_words(input: &str, mut f: impl FnMut(&str) -> String) -> String {
     let mut out = String::with_capacity(input.len());
@@ -634,6 +797,43 @@ mod tests {
         // Ligatures and ß expand rather than losing a letter.
         assert_eq!(step.apply("Encyclopædia"), "Encyclopaedia");
         assert_eq!(step.apply("Straße"), "Strasse");
+    }
+
+    #[test]
+    fn transliterates_cyrillic_to_latin() {
+        let step = Transliterate;
+        assert_eq!(step.apply("Пётр"), "Pyotr");
+        assert_eq!(step.apply("Москва"), "Moskva");
+        // The hard/soft signs drop rather than becoming a stray letter.
+        assert_eq!(step.apply("Область"), "Oblast");
+        // Multi-letter romanizations keep their case ("Ж" -> "Zh", "ж" -> "zh").
+        assert_eq!(step.apply("Жук жук"), "Zhuk zhuk");
+    }
+
+    #[test]
+    fn transliterates_greek_to_latin() {
+        let step = Transliterate;
+        assert_eq!(step.apply("Ελλάδα"), "Ellada");
+        assert_eq!(step.apply("Θεσσαλονίκη"), "Thessaloniki");
+    }
+
+    #[test]
+    fn transliterate_leaves_latin_untouched() {
+        // Unlike RemoveDiacritics, this maps a *different* alphabet — it does not
+        // strip accents off Latin letters, so Latin text passes through verbatim.
+        let step = Transliterate;
+        assert_eq!(step.apply("Björk"), "Björk");
+        assert_eq!(step.apply("Sigur Rós - Sæglópur"), "Sigur Rós - Sæglópur");
+    }
+
+    #[test]
+    fn transliterate_then_diacritics_composes() {
+        // Transliterate first, then any leftover Latin accents are stripped — the
+        // two steps cover different alphabets and chain cleanly.
+        let mut chain = TransformChain::default();
+        chain.push(Box::new(Transliterate));
+        chain.push(Box::new(RemoveDiacritics));
+        assert_eq!(chain.apply("Björk — Пётр"), "Bjork — Pyotr");
     }
 
     #[test]

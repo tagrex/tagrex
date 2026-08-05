@@ -2062,7 +2062,9 @@ function renderTransformRules() {
           ? "Change case"
           : rule.kind === "key"
             ? "Key notation"
-            : "Remove diacritics";
+            : rule.kind === "transliterate"
+              ? "Transliterate to Latin"
+              : "Remove diacritics";
 
     const spacer = document.createElement("span");
     spacer.className = "spacer";
@@ -4440,6 +4442,27 @@ const mockPlayer = {
 
 // Compact Camelot/Open Key/musical converter — the browser-only mirror of the
 // backend KeyNotation step, so the transform preview shows real conversions.
+// A representative Cyrillic/Greek transliteration for the dev mock only (#72);
+// the authoritative, complete table lives in Rust (transform.rs). Enough to see
+// the pipeline work in the Browser pane ("Пётр" -> "Pyotr").
+function mockTransliterate(value) {
+  const MAP = {
+    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "yo", ж: "zh", з: "z",
+    и: "i", й: "y", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r",
+    с: "s", т: "t", у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh",
+    щ: "shch", ъ: "", ы: "y", ь: "", э: "e", ю: "yu", я: "ya",
+    α: "a", β: "v", γ: "g", δ: "d", ε: "e", θ: "th", λ: "l", ς: "s", σ: "s", ω: "o",
+  };
+  return [...String(value)]
+    .map((ch) => {
+      const lower = ch.toLowerCase();
+      const mapped = MAP[lower];
+      if (mapped == null) return ch;
+      return ch === lower || mapped === "" ? mapped : mapped[0].toUpperCase() + mapped.slice(1);
+    })
+    .join("");
+}
+
 function mockKeyNotation(value, style) {
   const MAJOR = [8, 3, 10, 5, 12, 7, 2, 9, 4, 11, 6, 1];
   const MINOR = [5, 12, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10];
@@ -4530,6 +4553,8 @@ function mockInvoke(cmd, args) {
             out = out.toUpperCase();
           } else if (rule.kind === "key") {
             out = mockKeyNotation(out, rule.style);
+          } else if (rule.kind === "transliterate") {
+            out = mockTransliterate(out);
           }
         }
         return out;
