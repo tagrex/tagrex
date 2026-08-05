@@ -2392,17 +2392,42 @@ button.release-import {
   text-overflow: ellipsis;
 }
 
-/* Catalogue number — the DJ's fastest match key; accent-as-text -> ink. */
-.catno {
+/* Release match-key badge (#124): the catalogue number and the track count as
+   ONE segmented unit behind a single, unified border — the catalogue segment
+   accent-filled (the DJ's fastest match key), the count segment neutral, split
+   by a divider in the same border colour. `overflow: hidden` clips the segment
+   fills to the outer radius. Either segment can stand alone: a release may lack
+   a catalogue number, and the count fills in once the release is fetched. */
+.rel-badge {
+  display: inline-flex;
+  align-items: stretch;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
   font-family: var(--font-mono-bundled);
   font-size: var(--text-2xs);
   font-weight: 600;
+  line-height: 1;
+}
+.rel-badge > span {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+/* Catalogue segment — accent-as-text -> ink, on a faint accent fill. */
+.rb-catno {
   color: var(--accent-ink);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
-  border-radius: var(--radius-sm);
-  padding: 0 4px;
-  flex: none;
+}
+/* Count segment — neutral, divided from the catalogue by the unified border. */
+.rb-count {
+  color: var(--muted);
+  border-left: 1px solid var(--border);
+}
+.rb-count:first-child {
+  border-left: none;
 }
 
 .release-caret {
@@ -2420,22 +2445,6 @@ button.release-import {
 }
 .release-card[aria-expanded="true"] .release-caret {
   color: var(--text);
-}
-
-/* Count chip: a matched pair with the catalogue chip (#122) — identical box
-   (mono face, size, weight, radius, padding, so identical height), differing
-   ONLY in colour: catalogue is accent-tinted, this one is neutral. */
-.pill {
-  font-family: var(--font-mono-bundled);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0 4px;
-  color: var(--muted);
-  white-space: nowrap;
-  flex: none;
 }
 
 /* Subtle inline text button — "Reset to default" on reorderable lists (#91). */
@@ -2840,7 +2849,6 @@ button.primary:disabled {
 td[data-field="year"],
 #pl-time,
 .tk-count,
-.pill,
 .match-pct,
 #status-sel {
   font-variant-numeric: tabular-nums;

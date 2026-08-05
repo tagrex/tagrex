@@ -3027,12 +3027,24 @@ function applyQueryPreset() {
   discogsSearch();
 }
 
+// The catalogue-number + track-count match key as one segmented badge (#124):
+// a single unified border wraps both, the catalogue segment accent-filled and
+// the count segment neutral, split by a divider in the same border colour. The
+// catalogue segment is omitted when the release has no catalogue number; the
+// count segment keeps the `tk-count` class so prefetchReleaseCounts can fill it
+// in once the release is fetched.
+function releaseBadge(c) {
+  const catno = c.catalog_number
+    ? `<span class="rb-catno">${escapeHtml(c.catalog_number)}</span>`
+    : "";
+  return `<span class="rel-badge">${catno}<span class="rb-count tk-count">${escapeHtml(countLabel(c.id))}</span></span>`;
+}
+
 function cardMarkup(c) {
-  // Four lines, top to bottom (#98): (1) catalogue no. + track/disc count (the
-  // two mono match-key chips), (2) album artist, (3) album title, (4) the rest
-  // (country · year · format). The cover fills the header's full height, so it
-  // spans all four lines.
-  const catno = c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : "";
+  // Four lines, top to bottom (#98): (1) the catalogue-no. + track-count match
+  // key (one segmented badge, #124), (2) album artist, (3) album title, (4) the
+  // rest (country · year · format). The cover fills the header's full height, so
+  // it spans all four lines.
   const artist = c.artist ? `<span class="release-artist" title="${escapeHtml(c.artist)}">${escapeHtml(c.artist)}</span>` : "";
   const meta = candidateMeta(c);
   const metaLine = meta ? `<span class="release-meta">${escapeHtml(meta)}</span>` : "";
@@ -3042,7 +3054,7 @@ function cardMarkup(c) {
         <button class="release-head" type="button">
           <span class="release-cover">${mediaBadgeMarkup(c)}</span>
           <span class="release-info">
-            <span class="release-line1">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></span>
+            <span class="release-line1">${releaseBadge(c)}</span>
             ${artist}
             <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
             ${metaLine}
@@ -3056,15 +3068,14 @@ function cardMarkup(c) {
 }
 
 function tileMarkup(c) {
-  const catno = c.catalog_number ? `<span class="catno">${escapeHtml(c.catalog_number)}</span>` : "";
   const artist = c.artist ? `<span class="tile-artist">${escapeHtml(c.artist)}</span>` : "";
-  // Same information as a list card: catalogue no. · artist (bold) · album title ·
-  // country/year/format · track (and disc) count.
+  // Same information as a list card: the catalogue-no. + track-count match key
+  // (one segmented badge, #124) · artist (bold) · album title · country/year/format.
   return `
     <article class="release-tile" data-id="${escapeHtml(c.id)}">
       <div class="tile-cover"></div>
       <div class="tile-info">
-        <div class="tile-top">${catno}<span class="pill tk-count">${escapeHtml(countLabel(c.id))}</span></div>
+        <div class="tile-top">${releaseBadge(c)}</div>
         ${artist}
         <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
         <span class="muted">${escapeHtml(candidateMeta(c))}</span>

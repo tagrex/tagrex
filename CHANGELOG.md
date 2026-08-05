@@ -73,6 +73,14 @@ first release ships.
 
 ### Changed
 
+- **Release card: catalogue number and track count are one segmented badge**
+  (#124). The two chips previously read as unrelated pills (one accent-filled,
+  one hollow); they're now a single unit behind one unified border — an
+  accent-filled catalogue segment and a neutral count segment split by a divider
+  in the same border colour. Either stands alone (a release may have no
+  catalogue number; the count fills in once fetched). Applies to the list card
+  and the grid tile. Supersedes the #122 chip tweak.
+
 - **Group headers label and separate their row count** (#123). A grouped file
   table showed a bare number after the folder/album/artist name (`music   3`);
   it now reads `music · 3 files` / `Artist · 1 file` — the app's standard mid-dot
