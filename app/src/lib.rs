@@ -12,7 +12,7 @@
 //! than core types, so `tagrex-core` stays serialization-agnostic. Tag map
 //! keys use [`TagField`]'s lossless storage-key codec.
 
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use std::cell::{Cell, RefCell};
 use std::time::{Duration, Instant};
@@ -461,11 +461,113 @@ pub struct ActionGroupDto {
     pub rules: Vec<TransformRuleDto>,
 }
 
+/// What a drag-and-drop of paths resolves to (#127), reported to the frontend so
+/// it can open the right kind of session and group the table accordingly.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DropResultDto {
+    /// `"library"` (a single dropped folder) or `"files"` (a file-set).
+    pub mode: String,
+    /// The session root: the dropped folder, or the files' common ancestor.
+    pub root: String,
+    /// In `"files"` mode, the dropped directories — each becomes a table group;
+    /// files under none of them collect under the "Files" group. Empty in
+    /// `"library"` mode.
+    pub folders: Vec<String>,
+}
+
+/// How a set of dropped paths resolves into a session (#127).
+#[derive(Debug)]
+enum DropPlan {
+    /// Exactly one dropped directory → open it as a library rooted there.
+    Library { root: PathBuf },
+    /// Files and/or several directories → a file-set session over `files`,
+    /// rooted at their common ancestor. `folders` are the dropped directories,
+    /// surfaced so the frontend can group by drop origin.
+    FileSet {
+        root: PathBuf,
+        files: Vec<PathBuf>,
+        folders: Vec<PathBuf>,
+    },
+    /// Nothing usable was dropped (no readable audio, only empty folders, etc.).
+    Empty,
+}
+
+/// Classify dropped `paths` into a [`DropPlan`]. A lone directory opens as a
+/// library; anything else (loose files, several folders, a mix) becomes a
+/// file-set: every folder is expanded into its audio files, loose files are kept
+/// if they're supported audio, and the whole set is de-duplicated and sorted.
+/// Non-existent or non-audio entries are skipped.
+fn resolve_drop(paths: &[PathBuf]) -> DropPlan {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<PathBuf> = Vec::new();
+    for path in paths {
+        match std::fs::metadata(path) {
+            Ok(meta) if meta.is_dir() => dirs.push(path.clone()),
+            Ok(_) if scanner::is_supported_audio(path) => files.push(path.clone()),
+            _ => {} // missing, or a non-audio file — ignore
+        }
+    }
+
+    // A single folder alone is an ordinary library, rooted at that folder.
+    if dirs.len() == 1 && files.is_empty() {
+        return DropPlan::Library {
+            root: dirs.into_iter().next().unwrap(),
+        };
+    }
+
+    // Otherwise expand every folder into its audio files and fold in loose files.
+    let mut all: Vec<PathBuf> = files;
+    for dir in &dirs {
+        all.extend(scanner::scan(dir, &ScanOptions::default()).filter_map(Result::ok));
+    }
+    all.sort();
+    all.dedup();
+
+    if all.is_empty() {
+        return DropPlan::Empty;
+    }
+
+    let root = common_ancestor(&all).unwrap_or_else(|| PathBuf::from("/"));
+    DropPlan::FileSet {
+        root,
+        files: all,
+        folders: dirs,
+    }
+}
+
+/// The deepest directory that is an ancestor of every path in `paths`. For a
+/// single file it's that file's parent. `None` only if `paths` is empty.
+fn common_ancestor(paths: &[PathBuf]) -> Option<PathBuf> {
+    let mut iter = paths.iter();
+    let first = iter.next()?;
+    // Seed with the first path's parent (a file contributes its directory).
+    let mut prefix: Vec<Component> = first.parent().unwrap_or(first).components().collect();
+    for path in iter {
+        let parent = path.parent().unwrap_or(path);
+        let shared = prefix
+            .iter()
+            .zip(parent.components())
+            .take_while(|(a, b)| *a == b)
+            .count();
+        prefix.truncate(shared);
+        if prefix.is_empty() {
+            break;
+        }
+    }
+    Some(prefix.iter().map(|c| c.as_os_str()).collect())
+}
+
 /// A tagging session rooted at one library directory. The root doubles as the
 /// [`Executor`] `allowed_root`, so every write is confined to the opened
 /// library.
 pub struct App {
     library_root: PathBuf,
+    /// When set, the session operates on this explicit list of files (a
+    /// drag-and-drop of files and/or several folders, #127) instead of scanning
+    /// `library_root`. `library_root` still bounds every write as the executor's
+    /// `allowed_root`; the filter only narrows *which* files are listed and
+    /// operated on. `None` = an ordinary library rooted at `library_root`.
+    file_filter: Option<Vec<PathBuf>>,
     journal: SqliteJournal,
     /// Live Discogs proxy URL (None = direct), from settings.
     discogs_proxy: RefCell<Option<String>>,
@@ -493,6 +595,7 @@ impl App {
     pub fn open(library_root: impl Into<PathBuf>, journal_path: &Path) -> Result<Self, AppError> {
         Ok(Self {
             library_root: library_root.into(),
+            file_filter: None,
             journal: SqliteJournal::open(journal_path)?,
             discogs_proxy: RefCell::new(None),
             discogs_min_interval: Cell::new(None),
@@ -501,6 +604,68 @@ impl App {
             cover_max_px: Cell::new(0),
             cover_quality: Cell::new(85),
         })
+    }
+
+    /// Open a file-set session (#127): the session lists and operates on exactly
+    /// `files`, while `root` — their common ancestor — bounds every write as the
+    /// executor's `allowed_root`. Used when a drag-and-drop resolves to loose
+    /// files and/or several folders rather than a single library directory.
+    pub fn open_file_set(
+        root: impl Into<PathBuf>,
+        files: Vec<PathBuf>,
+        journal_path: &Path,
+    ) -> Result<Self, AppError> {
+        let mut app = Self::open(root, journal_path)?;
+        app.file_filter = Some(files);
+        Ok(app)
+    }
+
+    /// Resolve a drag-and-drop of `paths` into a session (#127) and open it: a
+    /// lone folder becomes a library, anything else a file-set. Returns the
+    /// session together with a [`DropResultDto`] telling the frontend which mode
+    /// it got and how to group the table. Errors with [`AppError::EmptyDrop`]
+    /// when nothing usable was dropped.
+    pub fn open_drop(
+        paths: Vec<PathBuf>,
+        journal_path: &Path,
+    ) -> Result<(Self, DropResultDto), AppError> {
+        match resolve_drop(&paths) {
+            DropPlan::Library { root } => {
+                let dto = DropResultDto {
+                    mode: "library".to_string(),
+                    root: root.to_string_lossy().into_owned(),
+                    folders: Vec::new(),
+                };
+                Ok((Self::open(root, journal_path)?, dto))
+            }
+            DropPlan::FileSet {
+                root,
+                files,
+                folders,
+            } => {
+                let dto = DropResultDto {
+                    mode: "files".to_string(),
+                    root: root.to_string_lossy().into_owned(),
+                    folders: folders
+                        .iter()
+                        .map(|f| f.to_string_lossy().into_owned())
+                        .collect(),
+                };
+                Ok((Self::open_file_set(root, files, journal_path)?, dto))
+            }
+            DropPlan::Empty => Err(AppError::EmptyDrop),
+        }
+    }
+
+    /// The files this session operates on: the explicit filter when set (a
+    /// file-set drop), otherwise a fresh recursive scan of `library_root`.
+    fn source_paths(&self) -> Vec<PathBuf> {
+        match &self.file_filter {
+            Some(files) => files.clone(),
+            None => scanner::scan(&self.library_root, &ScanOptions::default())
+                .filter_map(Result::ok)
+                .collect(),
+        }
     }
 
     /// Apply saved settings (#79): the Discogs proxy + rate-limit throttle, the
@@ -588,8 +753,9 @@ impl App {
     /// this order is also what mapping-by-position (rename masks, release
     /// import) lines up against.
     pub fn list_tracks(&self) -> Vec<TrackDto> {
-        let mut tracks: Vec<TrackDto> = scanner::scan(&self.library_root, &ScanOptions::default())
-            .filter_map(Result::ok)
+        let mut tracks: Vec<TrackDto> = self
+            .source_paths()
+            .into_iter()
             .map(|path| match TagEngine::read(&path) {
                 Ok(track) => TrackDto::from(track),
                 Err(_) => TrackDto::unreadable(&path),
@@ -612,9 +778,7 @@ impl App {
         // internal key -> (human-readable key, members)
         let mut groups: BTreeMap<String, (String, Vec<DuplicateFileDto>)> = BTreeMap::new();
 
-        for path in
-            scanner::scan(&self.library_root, &ScanOptions::default()).filter_map(Result::ok)
-        {
+        for path in self.source_paths() {
             let Ok(track) = TagEngine::read(&path) else {
                 continue;
             };
@@ -2019,6 +2183,8 @@ pub enum AppError {
     InvalidFileName(String),
     #[error("unknown transformation: {0}")]
     UnknownTransform(String),
+    #[error("nothing to open: the drop contained no audio files")]
+    EmptyDrop,
     #[error(transparent)]
     Transform(#[from] tagrex_core::transform::TransformError),
     #[error("I/O error: {0}")]
@@ -2053,6 +2219,24 @@ mod tests {
         /// Write a minimal FLAC with the given artist/title set.
         fn tagged_flac(&self, name: &str, artist: &str, title: &str) -> PathBuf {
             let path = self.0.join(name);
+            std::fs::write(&path, MINIMAL_FLAC).unwrap();
+            let mut tags = std::collections::BTreeMap::new();
+            tags.insert(TagField::Artist, artist.to_string());
+            tags.insert(TagField::Title, title.to_string());
+            TagEngine::write(&tagrex_core::model::TrackFile {
+                path: path.clone(),
+                format: tagrex_core::model::AudioFormat::Flac,
+                tags,
+            })
+            .unwrap();
+            path
+        }
+
+        /// Write a minimal tagged FLAC at `rel` (relative to the temp root),
+        /// creating any parent directories. Returns the absolute path.
+        fn tagged_flac_at(&self, rel: &str, artist: &str, title: &str) -> PathBuf {
+            let path = self.0.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(&path, MINIMAL_FLAC).unwrap();
             let mut tags = std::collections::BTreeMap::new();
             tags.insert(TagField::Artist, artist.to_string());
@@ -3127,5 +3311,86 @@ mod tests {
         assert_eq!(image_basename(1), "cover");
         assert_eq!(image_basename(2), "cover-1");
         assert_eq!(image_basename(3), "cover-2");
+    }
+
+    // ---- drag-and-drop resolution (#127) ----
+
+    #[test]
+    fn common_ancestor_is_the_shared_directory() {
+        let paths = [
+            PathBuf::from("/music/a/01.mp3"),
+            PathBuf::from("/music/a/02.mp3"),
+            PathBuf::from("/music/b/03.mp3"),
+        ];
+        assert_eq!(common_ancestor(&paths), Some(PathBuf::from("/music")));
+        // A single file contributes its own directory.
+        assert_eq!(
+            common_ancestor(&[PathBuf::from("/music/a/01.mp3")]),
+            Some(PathBuf::from("/music/a"))
+        );
+        assert_eq!(common_ancestor(&[]), None);
+    }
+
+    #[test]
+    fn resolve_drop_single_folder_opens_as_library() {
+        let dir = TempDir::new("drop-lib");
+        dir.tagged_flac_at("album/01.flac", "A", "One");
+        match resolve_drop(&[dir.0.join("album")]) {
+            DropPlan::Library { root } => assert_eq!(root, dir.0.join("album")),
+            other => panic!("expected Library, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_drop_folder_plus_loose_file_is_a_fileset() {
+        let dir = TempDir::new("drop-set");
+        let f1 = dir.tagged_flac_at("folderA/01.flac", "A", "One");
+        let f2 = dir.tagged_flac_at("folderA/02.flac", "A", "Two");
+        let loose = dir.tagged_flac_at("loose.flac", "L", "Loose");
+        match resolve_drop(&[dir.0.join("folderA"), loose.clone()]) {
+            DropPlan::FileSet {
+                root,
+                files,
+                folders,
+            } => {
+                // Root is the common ancestor of the folder's files and the loose one.
+                assert_eq!(root, dir.0);
+                assert_eq!(folders, vec![dir.0.join("folderA")]);
+                let mut got = files;
+                got.sort();
+                let mut want = vec![f1, f2, loose];
+                want.sort();
+                assert_eq!(got, want);
+            }
+            other => panic!("expected FileSet, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_drop_ignores_non_audio_and_missing() {
+        let dir = TempDir::new("drop-junk");
+        std::fs::write(dir.0.join("notes.txt"), b"hi").unwrap();
+        let plan = resolve_drop(&[dir.0.join("notes.txt"), dir.0.join("ghost.mp3")]);
+        assert!(matches!(plan, DropPlan::Empty));
+    }
+
+    #[test]
+    fn file_set_lists_only_its_files() {
+        let dir = TempDir::new("fileset-list");
+        let a = dir.tagged_flac_at("01.flac", "A", "One");
+        let _b = dir.tagged_flac_at("02.flac", "B", "Two");
+        let c = dir.tagged_flac_at("03.flac", "C", "Three");
+        let app = App::open_file_set(
+            dir.0.clone(),
+            vec![a.clone(), c.clone()],
+            &dir.0.join("j.sqlite"),
+        )
+        .unwrap();
+        let paths: Vec<String> = app.list_tracks().into_iter().map(|t| t.path).collect();
+        assert_eq!(paths.len(), 2);
+        assert!(paths.contains(&a.to_string_lossy().into_owned()));
+        assert!(paths.contains(&c.to_string_lossy().into_owned()));
+        // The un-listed file is on disk — filtered out of the session, not gone.
+        assert!(dir.0.join("02.flac").exists());
     }
 }

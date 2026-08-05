@@ -16,8 +16,8 @@ use tauri::{Manager, State};
 use player::{Player, PlayerStatus};
 use tagrex::{
     AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto,
-    DuplicateGroupDto, ImportSelectionDto, ImportTrackDto, PlanDto, ReleaseDto, SaveImagesDto,
-    SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
+    DropResultDto, DuplicateGroupDto, ImportSelectionDto, ImportTrackDto, PlanDto, ReleaseDto,
+    SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -52,6 +52,25 @@ fn open_library(state: State<AppState>, app: tauri::AppHandle, root: String) -> 
     opened.apply_settings(&read_settings(&app));
     *state.lock().unwrap() = Some(opened);
     Ok(())
+}
+
+/// Open a drag-and-drop of `paths` (#127): a lone folder opens as a library,
+/// anything else (files, several folders, a mix) as a file-set. Returns the
+/// resolved mode + grouping info for the frontend.
+#[tauri::command]
+fn open_drop(
+    state: State<AppState>,
+    app: tauri::AppHandle,
+    paths: Vec<String>,
+) -> Result<DropResultDto, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
+    let journal_path = config_dir.join("journal.sqlite");
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    let (opened, result) = App::open_drop(paths, &journal_path).map_err(|e| e.to_string())?;
+    opened.apply_settings(&read_settings(&app));
+    *state.lock().unwrap() = Some(opened);
+    Ok(result)
 }
 
 #[tauri::command]
@@ -478,6 +497,7 @@ fn main() {
         .manage(Player::new())
         .invoke_handler(tauri::generate_handler![
             open_library,
+            open_drop,
             list_tracks,
             find_duplicates,
             open_release_page,

@@ -53,6 +53,13 @@ pub fn scan(
     })
 }
 
+/// Whether `path` looks like a supported audio file by its extension. Exposed so
+/// callers resolving an explicit set of paths (e.g. a drag-and-drop of loose
+/// files) can apply the same filter the recursive [`scan`] uses.
+pub fn is_supported_audio(path: &Path) -> bool {
+    is_supported(path)
+}
+
 fn is_supported(path: &Path) -> bool {
     path.extension()
         .and_then(|ext| ext.to_str())

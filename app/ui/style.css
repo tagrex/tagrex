@@ -3331,3 +3331,44 @@ td[data-field="year"],
   letter-spacing: var(--ls-caps);
   color: var(--muted);
 }
+
+/* ---- drag-and-drop-to-open overlay (#127) ---------------------------------
+   Hidden until files are dragged over the window; body.drag-active reveals it
+   as a dimmed backdrop with a dashed accent frame, echoing the cover well's
+   drop state. Pointer-events stay off so it never eats the OS drop event. */
+#drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+  background: color-mix(in srgb, var(--bg) 72%, transparent);
+  pointer-events: none;
+}
+body.drag-active #drop-overlay {
+  display: flex;
+}
+.drop-cue {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+  text-align: center;
+  width: min(560px, 80%);
+  padding: var(--space-6);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--sel-tint);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.28);
+}
+.drop-cue-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+.drop-cue-sub {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}

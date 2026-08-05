@@ -10,6 +10,16 @@ first release ships.
 
 ### Added
 
+- **Drag-and-drop folders and files onto the window** (#127). Dropping content
+  onto the app now opens it directly, alongside Browse / Open. **A single folder**
+  opens as a library (recursive scan, as before). **Files, several folders, or a
+  mix** open a **file-set** session that lists and operates on *only* those files
+  — each dropped folder is expanded into its audio files, loose files are kept as
+  they are, and writes stay confined to the files' common ancestor. In a file-set
+  the table groups by drop origin: **each dropped folder is its own group**, and
+  loose files collect under a **`Files`** group. A dashed overlay cues the drop
+  while dragging.
+
 - **Named action groups: save and replay a transform chain** (#57). The GENERATOR
   transform chain can now be saved as a **named group** and re-run over any
   selection in one go — the whole group previews and applies (and undoes) as one

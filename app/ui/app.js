@@ -231,6 +231,13 @@ function saveGroupBy(value) {
 }
 let groupBy = groupByPref();
 const collapsedGroups = new Set();
+// The dropped directories of a file-set drag-and-drop (#127), or null for an
+// ordinary library. When set, the table's "drop" grouping buckets each track
+// under the dropped folder it came from, with loose files under "Files".
+let dropFolders = null;
+// Group key for a track that belongs to no dropped folder (a loose dropped
+// file). Not a valid absolute path, so it can't collide with a folder key.
+const DROP_LOOSE_KEY = "::loose::";
 
 // ---- elements ----
 const el = (id) => document.getElementById(id);
@@ -776,6 +783,10 @@ function presetSummary(p) {
 // The grouping-key value for a track under the active `groupBy`.
 function groupKeyOf(track) {
   switch (groupBy) {
+    case "drop":
+      // A file-set drop (#127): bucket under the longest dropped folder that is
+      // an ancestor of the file; loose files fall through to the Files bucket.
+      return dropGroupKey(track.path);
     case "folder": {
       const i = Math.max(track.path.lastIndexOf("/"), track.path.lastIndexOf("\\"));
       return i >= 0 ? track.path.slice(0, i) : "";
@@ -797,8 +808,24 @@ function groupKeyOf(track) {
   }
 }
 
+// The dropped folder a file belongs to (longest ancestor wins so nested dropped
+// folders bucket correctly), or DROP_LOOSE_KEY when it's a loose dropped file.
+function dropGroupKey(path) {
+  let best = null;
+  for (const folder of dropFolders || []) {
+    if ((path.startsWith(folder + "/") || path.startsWith(folder + "\\")) &&
+        (best === null || folder.length > best.length)) {
+      best = folder;
+    }
+  }
+  return best === null ? DROP_LOOSE_KEY : best;
+}
+
 // Human label for a group header ("(no artist)" etc.; folder shows its name).
 function groupLabel(key) {
+  if (groupBy === "drop") {
+    return key === DROP_LOOSE_KEY ? "Files" : fileName(key);
+  }
   if (key === "") {
     if (groupBy === "folder") return "(no folder)";
     if (groupBy === "release") return "(no release id)";
@@ -1304,33 +1331,57 @@ async function openLibrary() {
   }
   try {
     await invoke("open_library", { root });
-    tracks = await invoke("list_tracks", {});
-    // Everything readable selected by default; the set (not the DOM) holds it.
-    // Unreadable placeholders (#83) stay out of the selection — they can't be
-    // operated on.
-    selection.clear();
-    for (const t of tracks) if (!t.unreadable) selection.add(t.path);
-    // Opening a library drops any staged plan and leaves the diff-state.
-    previewPlan = null;
-    previewSource = null;
-    diffByPath = null;
-    applySelection = new Set();
-    document.body.classList.remove("diffing");
-    el("diff-actionbar").hidden = true;
-    resetEdits();
-    sortKey = null;
-    sortDir = 1;
-    filterText = "";
-    el("filter").value = "";
-    syncFilterControls(); // clears the parsed query + any regex-error state
-    groupBy = groupByPref();
-    collapsedGroups.clear();
-    el("group-by").value = groupBy;
-    renderTracks();
-    showView("files");
-    showPlayerBar();
-    await refreshHistory();
-    toast(`Opened ${root} — ${tracks.length} tracks`);
+    dropFolders = null; // a typed/browsed open is a plain library, not a drop
+    await afterOpen(root);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// Shared tail of every "open a session" path (Open, Browse, or a drag-and-drop):
+// pull the track list and reset all per-session view state. `label` is what the
+// success toast names. When `dropFolders` is set (a file-set drop, #127) the
+// table defaults to drop-origin grouping; otherwise the saved group pref.
+async function afterOpen(label) {
+  tracks = await invoke("list_tracks", {});
+  // Everything readable selected by default; the set (not the DOM) holds it.
+  // Unreadable placeholders (#83) stay out of the selection — they can't be
+  // operated on.
+  selection.clear();
+  for (const t of tracks) if (!t.unreadable) selection.add(t.path);
+  // Opening a session drops any staged plan and leaves the diff-state.
+  previewPlan = null;
+  previewSource = null;
+  diffByPath = null;
+  applySelection = new Set();
+  document.body.classList.remove("diffing");
+  el("diff-actionbar").hidden = true;
+  resetEdits();
+  sortKey = null;
+  sortDir = 1;
+  filterText = "";
+  el("filter").value = "";
+  syncFilterControls(); // clears the parsed query + any regex-error state
+  groupBy = dropFolders ? "drop" : groupByPref();
+  collapsedGroups.clear();
+  el("group-by").value = groupBy;
+  renderTracks();
+  showView("files");
+  showPlayerBar();
+  await refreshHistory();
+  toast(`Opened ${label} — ${tracks.length} tracks`);
+}
+
+// Open a drag-and-drop of `paths` (#127). The backend resolves a lone folder to
+// a library and anything else to a file-set; `dropFolders` (the dropped dirs)
+// drives the table's drop-origin grouping, and is null for library mode.
+async function openDrop(paths) {
+  if (!paths || !paths.length) return;
+  try {
+    const result = await invoke("open_drop", { paths });
+    dropFolders = result.mode === "files" ? result.folders || [] : null;
+    rootInput.value = result.root;
+    await afterOpen(result.root);
   } catch (e) {
     toast(String(e), true);
   }
@@ -3875,6 +3926,46 @@ el("diff-show-old").addEventListener("change", (e) => {
 // ---- wire up ----
 el("open").addEventListener("click", openLibrary);
 el("browse").addEventListener("click", browseForFolder);
+
+// ---- drag-and-drop onto the window to open folders/files (#127) ----
+// Tauri v2 intercepts OS file drops (dragDropEnabled) and re-emits them as
+// window events carrying absolute paths, so we listen for those rather than
+// HTML5 file DnD (which the webview suppresses). Enter/over/leave toggle the
+// drop-cue overlay; the drop hands the paths to the backend resolver.
+function showDropCue(on) {
+  document.body.classList.toggle("drag-active", on);
+}
+
+(function initWindowDrop() {
+  const event = window.__TAURI__ && window.__TAURI__.event;
+  if (event) {
+    event.listen("tauri://drag-enter", () => showDropCue(true));
+    event.listen("tauri://drag-over", () => showDropCue(true));
+    event.listen("tauri://drag-leave", () => showDropCue(false));
+    event.listen("tauri://drag-drop", (e) => {
+      showDropCue(false);
+      openDrop((e && e.payload && e.payload.paths) || []);
+    });
+    return;
+  }
+  // Browser dev (no native shell): the OS can't hand us real paths, but wiring
+  // HTML5 DnD still lets the overlay and open flow be exercised against the
+  // mock. Drops on the cover well keep their own handler.
+  window.addEventListener("dragover", (e) => {
+    if (e.target.closest("#cover-well")) return;
+    e.preventDefault();
+    showDropCue(true);
+  });
+  window.addEventListener("dragleave", (e) => {
+    if (e.relatedTarget === null) showDropCue(false);
+  });
+  window.addEventListener("drop", (e) => {
+    if (e.target.closest("#cover-well")) return;
+    e.preventDefault();
+    showDropCue(false);
+    openDrop(Array.from(e.dataTransfer.files).map((f) => f.name));
+  });
+})();
 previewBtn.addEventListener("click", preview);
 previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
@@ -4853,6 +4944,33 @@ function mockInvoke(cmd, args) {
   switch (cmd) {
     case "open_library":
       return Promise.resolve();
+    case "open_drop": {
+      // Mirror the backend resolver enough to exercise both modes + grouping:
+      // a path with no file extension is treated as a folder, everything else a
+      // loose file. One folder alone → library; anything else → file-set.
+      const paths = args.paths || [];
+      const isFolder = (p) => !/\.[a-z0-9]+$/i.test(p.replace(/[\\/]+$/, ""));
+      const dirs = paths.filter(isFolder).map((d) => "/dropped/" + d.replace(/[\\/]+$/, ""));
+      const files = paths.filter((p) => !isFolder(p));
+      const mk = (path, artist, title) => ({
+        path,
+        format: "Mp3",
+        tags: { artist, title, album: "Dropped", year: "2020" },
+      });
+      if (dirs.length === 1 && files.length === 0) {
+        const root = dirs[0];
+        s.tracks = [mk(`${root}/01 a.mp3`, "Library", "A"), mk(`${root}/02 b.mp3`, "Library", "B")];
+        return Promise.resolve({ mode: "library", root, folders: [] });
+      }
+      const all = [];
+      dirs.forEach((base, di) => {
+        all.push(mk(`${base}/01 track.mp3`, `Folder ${di + 1}`, "Track 1"));
+        all.push(mk(`${base}/02 track.mp3`, `Folder ${di + 1}`, "Track 2"));
+      });
+      files.forEach((f) => all.push(mk(`/dropped/${f}`, "Loose", f)));
+      s.tracks = all;
+      return Promise.resolve({ mode: "files", root: "/dropped", folders: dirs });
+    }
     case "open_release_page":
       // No system browser in the dev mock; just echo so the click is testable.
       console.log(`[mock] open_release_page ${args.source} ${args.id}`);

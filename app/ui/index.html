@@ -88,6 +88,8 @@
               <option value="artist">Artist</option>
               <option value="album">Album</option>
               <option value="release">Release id</option>
+              <!-- Set only by a file-set drag-and-drop (#127); not user-pickable. -->
+              <option value="drop" hidden>By drop</option>
             </select>
           </label>
           <button id="expand-all" hidden title="Expand every group">Expand all</button>
@@ -494,6 +496,15 @@
     </footer>
 
     <div id="toast" class="toast" hidden></div>
+
+    <!-- Drag-and-drop cue (#127): a full-window overlay shown while files are
+         dragged over the app. Toggled by body.drag-active from app.js. -->
+    <div id="drop-overlay" aria-hidden="true">
+      <div class="drop-cue">
+        <div class="drop-cue-title">Drop to open</div>
+        <div class="drop-cue-sub">A folder opens as a library · files open on their own</div>
+      </div>
+    </div>
 
     <!-- Confirm dialog (#102): a small modal for yes/no prompts (e.g. overwriting
          existing cover files). Driven by confirmDialog() in app.js. -->
