@@ -36,10 +36,16 @@ historical record of how slice 3 (the file-writing one) was landed.
 | 1 | Inline-SVG icon set (retire unicode/emoji glyphs) + native-control normalization (`<select>` caret, search-clear, scrollbars) | A0, A3 | [#115] | ✅ shipped `4f1e488` |
 | 2 | Mode tabs icon + label, with a `compact-tabs` icon-only fallback | A1 | [#116] | ✅ shipped `bbf6aeb` |
 | 4 | **DEDUPLICATOR** mode — promote Duplicates to a 5th top tab; controls into the right panel; grouped read-only results in the main area | A7, A8 | [#118] | ✅ shipped `0a0f227` |
-| 3 | **In-table diff-state** — dissolve the Preview view; the table shows the staged diff in place + a floating Apply/Discard bar; per-row apply moves to the sel column | A4, A5, A6 | [#117] | ✅ shipped — **redesign complete** |
+| 3 | **In-table diff-state** — dissolve the Preview view; the table shows the staged diff in place + a floating Apply/Discard bar; per-row apply moves to the sel column | A4, A5, A6 | [#117] | ✅ shipped `6991fb4` — **redesign complete** |
 
 **The workspace redesign is complete — all four slices (1, 2, 4, 3) are shipped.**
 All shipped slices are on `main`, signed, pushed, and bundled/relaunched.
+
+A follow-up commit `03ef5fb` then removed the dead Preview table-diff CSS that
+slice 3 left behind (the whole `table.diff` / `.diff-*` block, `#preview-view` /
+`.preview-bar`, and the four orphaned `--diff-*` custom properties) — −277/+6 in
+`app/ui/style.css`, no behaviour change. `.toggle-old` was kept (the action
+bar's Show-old label still uses it).
 The icon sprite in `app/ui/index.html` includes `i-dedup`, `i-lock`, `i-corner`,
 `i-arrow-right` — everything slice 3 needs is present.
 
