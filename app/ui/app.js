@@ -2283,10 +2283,41 @@ function refreshFieldEditor() {
   const paths = selectedPaths();
   stagedFields = new Map();
   el("fields-count").textContent = paths.length ? `— ${paths.length} file(s)` : "";
-  el("fields-new-name").value = "";
-  el("fields-new-value").value = "";
+  closeAddField(); // collapse the add-field row back to its idle affordance
+  populateKnownFields();
   renderFieldEditor(paths);
   refreshCoverWell();
+}
+
+// Suggest the custom field names already present on the selected files — the
+// "known but not-yet-shown" fields — so common ones don't have to be retyped
+// (#114). Feeds the ADD FIELD name input's datalist.
+function populateKnownFields() {
+  const names = new Set();
+  for (const t of tracks) {
+    if (!selection.has(t.path) || !t.tags) continue;
+    for (const key of Object.keys(t.tags)) {
+      if (key.startsWith("custom:")) names.add(key.slice(7));
+    }
+  }
+  el("fields-known").innerHTML = [...names]
+    .sort()
+    .map((n) => `<option value="${escapeHtml(n)}"></option>`)
+    .join("");
+}
+
+// The ADD FIELD affordance (#114): idle shows just "+ Add field"; opening it
+// reveals the inline name/value row.
+function openAddField() {
+  el("fields-add-toggle").hidden = true;
+  el("fields-add-row").hidden = false;
+  el("fields-new-name").focus();
+}
+function closeAddField() {
+  el("fields-add-row").hidden = true;
+  el("fields-add-toggle").hidden = false;
+  el("fields-new-name").value = "";
+  el("fields-new-value").value = "";
 }
 
 // The core group is what a DJ touches every session; the rest (+ custom fields)
@@ -2455,8 +2486,10 @@ function addCustomField() {
   const key = name.startsWith("custom:") ? name : `custom:${name}`;
   stagedFields.set(key, el("fields-new-value").value);
   toast(`Staged custom field "${name}" — press Stage changes to apply`);
+  // Keep the row open and refocus the name so several fields add in a row (#114).
   el("fields-new-name").value = "";
   el("fields-new-value").value = "";
+  el("fields-new-name").focus();
 }
 
 // Push the staged fields into the shared pending-edits buffer for every
@@ -3687,6 +3720,20 @@ el("vinyl-split").addEventListener("click", splitVinylSides);
 // (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 el("move-preview").addEventListener("click", previewMove);
 el("fields-add").addEventListener("click", addCustomField);
+el("fields-add-toggle").addEventListener("click", openAddField);
+el("fields-add-cancel").addEventListener("click", closeAddField);
+// Enter commits the field; Escape collapses the row (#114).
+for (const id of ["fields-new-name", "fields-new-value"]) {
+  el(id).addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addCustomField();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      closeAddField();
+    }
+  });
+}
 el("fields-apply").addEventListener("click", applyFieldEditor);
 el("fields-clear").addEventListener("click", previewClearTags);
 el("export-kind").addEventListener("click", (e) => {

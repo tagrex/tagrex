@@ -106,6 +106,14 @@ first release ships.
 
 ### Changed
 
+- **The EDITOR's ADD FIELD control is compact and expand-on-demand** (#114). The
+  always-present two-line block (lead label + name + Add + value) becomes a
+  single quiet **+ Add field** affordance that expands into one inline row
+  (name · value · ✓ · ✕) only when used, then collapses again — so it no longer
+  competes with the field grid for space. Enter commits (staying open for
+  several fields in a row), Escape or ✕ collapses, and the name input suggests
+  the custom fields already present on the selected files.
+
 - **The `Files (N)` label is gone; its count lives in the status bar** (#126,
   supersedes #121). The toolbar label duplicated the total already shown at the
   bottom, so it's removed and the status bar is now the single home for counts:

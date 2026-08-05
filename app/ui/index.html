@@ -289,11 +289,18 @@
                 </p>
                 <!-- Grouped core/extended field rows are built by renderFieldEditor. -->
                 <div id="fields-body" class="fe"></div>
+                <!-- ADD FIELD (#114): an unobtrusive affordance — a "+ Add field"
+                     button that expands into one compact inline row on demand,
+                     rather than always occupying two lines. -->
                 <div class="fe-add">
-                  <span class="fe-add-lead">Add field</span>
-                  <input id="fields-new-name" class="fe-add-name" type="text" placeholder="name" spellcheck="false" />
-                  <button id="fields-add" class="fe-add-btn">+ Add</button>
-                  <input id="fields-new-value" class="fe-add-value" type="text" placeholder="value" spellcheck="false" />
+                  <button id="fields-add-toggle" class="fe-add-toggle" type="button"><svg class="ico"><use href="#i-plus"/></svg>Add field</button>
+                  <div id="fields-add-row" class="fe-add-row" hidden>
+                    <input id="fields-new-name" class="fe-add-name" type="text" placeholder="field name" list="fields-known" autocomplete="off" spellcheck="false" />
+                    <input id="fields-new-value" class="fe-add-value" type="text" placeholder="value" spellcheck="false" />
+                    <button id="fields-add" class="icon fe-add-ok" type="button" title="Add field" aria-label="Add field"><svg class="ico"><use href="#i-check"/></svg></button>
+                    <button id="fields-add-cancel" class="icon" type="button" title="Cancel" aria-label="Cancel"><svg class="ico"><use href="#i-close"/></svg></button>
+                  </div>
+                  <datalist id="fields-known"></datalist>
                 </div>
               </div>
 
