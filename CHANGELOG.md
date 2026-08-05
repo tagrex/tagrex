@@ -73,6 +73,11 @@ first release ships.
 
 ### Changed
 
+- **Group headers label and separate their row count** (#123). A grouped file
+  table showed a bare number after the folder/album/artist name (`music   3`);
+  it now reads `music · 3 files` / `Artist · 1 file` — the app's standard mid-dot
+  separator plus a pluralised label, so it's clear what the number counts.
+
 - **Release card: the track-count chip now matches the catalogue chip** (#122).
   The `15 tracks` count chip read taller and chunkier than the `AS 5606`
   catalogue chip beside it (a 999px pill with wider padding vs a 4px rounded

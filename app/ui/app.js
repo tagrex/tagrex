@@ -968,7 +968,7 @@ function appendGroupHeader(key, count) {
   tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
       <span class="group-caret">${collapsed ? ico("chevron-right") : ico("caret-down")}</span>
       <span class="group-label">${escapeHtml(groupLabel(key))}</span>
-      <span class="group-count muted">${count}</span>
+      <span class="group-count muted">· ${count} ${count === 1 ? "file" : "files"}</span>
     </td>`;
   tracksBody.appendChild(tr);
 }
