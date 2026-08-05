@@ -19,6 +19,10 @@
 //!   resolved to something. This is what lets one mask serve a library where
 //!   some albums have a year and some don't, without emitting stray separators.
 //! - `'x'` — a literal, for the reserved characters `% [ ]`; `''` is one quote.
+//! - `%skip%` — a discard placeholder (#70): on *extract* it matches and throws
+//!   away a run of text (filename junk that maps to no tag), and may repeat; it
+//!   has no render value, so a mask carrying it is extract-only. It's the mirror
+//!   of `%side%`, which is render-only.
 //!
 //! Only the first-class [`TagField`] variants are valid placeholder names —
 //! `Custom` fields aren't addressable from a mask yet. Deferred rather than
@@ -46,6 +50,11 @@ enum Segment {
     /// or empty for other media (#106). A computed presentation value, not a
     /// field, so it renders but a mask containing it can't extract.
     Side,
+    /// `%skip%` — a discard placeholder (#70): on extract it matches a run of
+    /// text and throws it away (filenames are full of junk that maps to no tag);
+    /// it may repeat, each occurrence independent. It's the inverse of `%side%`
+    /// — meaningless to render, so a mask carrying it is extract-only.
+    Skip,
 }
 
 /// A parsed, validated mask pattern.
@@ -63,6 +72,10 @@ pub struct Mask {
     /// fine, but there's no single tag to extract it back into, so the mask is
     /// render-only (the extract direction refuses it).
     render_only: bool,
+    /// The pattern contains a `%skip%`, a discard placeholder (#70). It extracts
+    /// fine (matching and throwing away a run of text), but there's nothing to
+    /// render for it, so the mask is extract-only (the render direction refuses it).
+    extract_only: bool,
 }
 
 impl Mask {
@@ -73,6 +86,7 @@ impl Mask {
         let adjacent_placeholders =
             has_adjacent_placeholders(&segments, &mut previous_was_placeholder);
         let render_only = has_side(&segments);
+        let extract_only = has_skip(&segments);
         let regex = build_regex(&segments);
         Ok(Self {
             pattern: pattern.to_string(),
@@ -80,11 +94,16 @@ impl Mask {
             regex,
             adjacent_placeholders,
             render_only,
+            extract_only,
         })
     }
 
     /// Tags -> filename (the Music Renamer direction).
     pub fn render(&self, tags: &TagMap) -> Result<String, MaskError> {
+        // `%skip%` discards text on extract and has nothing to render (#70).
+        if self.extract_only {
+            return Err(MaskError::ExtractOnly);
+        }
         let mut out = String::new();
         render_segments(&self.segments, tags, false, &mut out)?;
         Ok(out)
@@ -216,6 +235,9 @@ fn parse_placeholder(spec: &str) -> Result<Segment, MaskError> {
     if spec.eq_ignore_ascii_case("side") {
         return Ok(Segment::Side);
     }
+    if spec.eq_ignore_ascii_case("skip") {
+        return Ok(Segment::Skip);
+    }
     let (name, width) = match spec.split_once(':') {
         Some((name, width)) => (
             name,
@@ -271,6 +293,9 @@ fn build_regex_into(segments: &[Segment], index: &mut usize, out: &mut String) {
             // `%side%` is render-only (a mask carrying it refuses to extract), so
             // it contributes no capture group and no index.
             Segment::Side => {}
+            // `%skip%` matches a run of text but keeps none of it: a non-capturing
+            // group, so it consumes no index in either this walk or collect_captures.
+            Segment::Skip => out.push_str("(?:.+?)"),
         }
     }
 }
@@ -293,6 +318,8 @@ fn collect_captures(
             Segment::Section(inner) => collect_captures(inner, captures, index, tags),
             // Render-only; extraction is refused before reaching here.
             Segment::Side => {}
+            // Matched a run of text but writes no tag (a non-capturing group, #70).
+            Segment::Skip => {}
         }
     }
 }
@@ -339,6 +366,9 @@ fn render_segments(
                     produced = true;
                 }
             }
+            // `%skip%` has no render value; render() refuses the mask before we
+            // get here, so this is just defensive exhaustiveness (#70).
+            Segment::Skip => return Err(MaskError::ExtractOnly),
         }
     }
     Ok(produced)
@@ -377,6 +407,15 @@ fn has_side(segments: &[Segment]) -> bool {
     })
 }
 
+/// Whether any segment is a `%skip%` (makes the mask extract-only, #70).
+fn has_skip(segments: &[Segment]) -> bool {
+    segments.iter().any(|segment| match segment {
+        Segment::Skip => true,
+        Segment::Section(inner) => has_skip(inner),
+        _ => false,
+    })
+}
+
 /// Two placeholders with no literal text between them, looking through section
 /// boundaries — `[%disc%]%track%` is just as unsplittable as `%disc%%track%`.
 fn has_adjacent_placeholders(segments: &[Segment], previous_was_placeholder: &mut bool) -> bool {
@@ -387,7 +426,9 @@ fn has_adjacent_placeholders(segments: &[Segment], previous_was_placeholder: &mu
                     *previous_was_placeholder = false;
                 }
             }
-            Segment::Placeholder(..) | Segment::Side => {
+            // `%skip%` counts as a placeholder here: `%skip%%title%` is just as
+            // unsplittable as two fields with nothing between them (#70).
+            Segment::Placeholder(..) | Segment::Side | Segment::Skip => {
                 if *previous_was_placeholder {
                     return true;
                 }
@@ -503,6 +544,8 @@ pub enum MaskError {
     Ambiguous,
     #[error("render-only pattern: %side% is computed and cannot be extracted")]
     RenderOnly,
+    #[error("extract-only pattern: %skip% discards text and cannot be rendered")]
+    ExtractOnly,
     #[error("missing tag for placeholder: %{0}%")]
     MissingTag(String),
     #[error("pattern does not match the filename")]
@@ -618,6 +661,50 @@ mod tests {
         // refuses instead of inventing a boundary.
         assert!(matches!(
             mask.extract("101. The X Factor - Desert Rain"),
+            Err(MaskError::Ambiguous)
+        ));
+    }
+
+    #[test]
+    fn skip_discards_a_trailing_junk_run() {
+        // A junk suffix (source tag, release-group noise) maps to no field (#70).
+        let mask = Mask::parse("%artist% - %title% %skip%").unwrap();
+        let extracted = mask.extract("Aphex Twin - Xtal [promo]").unwrap();
+        assert_eq!(extracted.get(&TagField::Artist).unwrap(), "Aphex Twin");
+        assert_eq!(extracted.get(&TagField::Title).unwrap(), "Xtal");
+        assert_eq!(extracted.len(), 2); // nothing captured for %skip%
+    }
+
+    #[test]
+    fn skip_discards_a_leading_run_and_may_repeat() {
+        let mask = Mask::parse("%skip% - %title% - %skip%").unwrap();
+        let extracted = mask.extract("junk - Xtal - more junk here").unwrap();
+        assert_eq!(extracted.get(&TagField::Title).unwrap(), "Xtal");
+        assert_eq!(extracted.len(), 1);
+    }
+
+    #[test]
+    fn skip_is_case_insensitive() {
+        let mask = Mask::parse("%SKIP% - %title%").unwrap();
+        let extracted = mask.extract("whatever - Xtal").unwrap();
+        assert_eq!(extracted.get(&TagField::Title).unwrap(), "Xtal");
+    }
+
+    #[test]
+    fn skip_mask_is_extract_only_so_render_refuses_it() {
+        let mask = Mask::parse("%artist% %skip%").unwrap();
+        assert!(matches!(
+            mask.render(&tags(&[(TagField::Artist, "Aphex Twin")])),
+            Err(MaskError::ExtractOnly)
+        ));
+    }
+
+    #[test]
+    fn skip_adjacent_to_a_placeholder_cannot_be_extracted() {
+        // `%skip%%title%` has no boundary between the discard and the field.
+        let mask = Mask::parse("%skip%%title%").unwrap();
+        assert!(matches!(
+            mask.extract("junkXtal"),
             Err(MaskError::Ambiguous)
         ));
     }

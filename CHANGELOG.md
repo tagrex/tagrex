@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- **`%skip%` discard placeholder in filename→tags masks** (#70). The mask engine
+  gains `%skip%`, which on the *extract* direction matches and throws away a run
+  of text (filename junk that maps to no tag) and may repeat. It's the mirror of
+  the render-only `%side%`: a mask carrying `%skip%` is extract-only, so the
+  render direction refuses it with a clear message. (Core engine + tests; the
+  filename→tags UI that will use it is a separate piece.)
+
 - **Click a release's catalogue number to open its provider page** (#92). The
   accent-tinted catalogue segment of the release badge is now a link: clicking it
   opens the Discogs / MusicBrainz **release** page in the system browser. A new
