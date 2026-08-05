@@ -1958,6 +1958,19 @@ td.unreadable-note {
 .rule-acts .icon.rm:hover:not(:disabled) {
   color: var(--del);
 }
+/* Enable/disable toggle (#57): accent tick when on, muted when off; the whole
+   card dims (but stays reorderable/removable) while a step is disabled. */
+.rule-acts .icon.rule-toggle {
+  color: var(--accent-ink);
+}
+.rule-acts .icon.rule-toggle.off {
+  color: var(--muted);
+  opacity: 0.55;
+}
+.rule-card.rule-disabled .rule-kind,
+.rule-card.rule-disabled .rule-body {
+  opacity: 0.45;
+}
 
 /* card body (per-kind); diacritics is header-only. Aligned under the kind label. */
 .rule-body {

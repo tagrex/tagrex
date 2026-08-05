@@ -358,6 +358,11 @@
               <button id="transform-add" class="btn">Add rule</button>
             </div>
             <div class="panel-actions">
+              <!-- Named action groups (#57): save the current chain and re-run it. -->
+              <div class="col-picker">
+                <button id="groups-btn" class="io" title="Save and re-run named action groups"><svg class="ico"><use href="#i-presets"/></svg>Groups</button>
+                <div id="groups-menu" class="col-menu" hidden></div>
+              </div>
               <div class="spacer"></div>
               <button id="transform-preview" class="primary">Preview changes</button>
             </div>

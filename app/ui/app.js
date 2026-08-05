@@ -1995,6 +1995,7 @@ function addTransformRule() {
     whole_word: false,
     case_sensitive: false,
     style: kind === "case" ? "title" : kind === "key" ? "camelot" : "",
+    enabled: true,
   });
   renderTransformRules();
 }
@@ -2024,6 +2025,8 @@ function renderTransformRules() {
   transformRules.forEach((rule, index) => {
     const card = document.createElement("div");
     card.className = "rule-card";
+    // A disabled step (#57) stays in the chain but is skipped and shown dimmed.
+    card.classList.toggle("rule-disabled", rule.enabled === false);
     card.dataset.index = index;
     card.dataset.key = rule.id; // identity key for pointer reorder (#88)
 
@@ -2071,6 +2074,19 @@ function renderTransformRules() {
 
     const acts = document.createElement("span");
     acts.className = "rule-acts";
+    // Enable/disable this step (#57): kept in the chain either way, skipped when off.
+    const toggle = mkRuleIcon(
+      "check",
+      rule.enabled === false ? "Step off — click to enable" : "Step on — click to disable",
+      false,
+      () => {
+        rule.enabled = rule.enabled === false;
+        renderTransformRules();
+      }
+    );
+    toggle.classList.add("rule-toggle");
+    if (rule.enabled === false) toggle.classList.add("off");
+    acts.append(toggle);
     // ↑/↓ stay as the keyboard / no-pointer fallback for reordering.
     acts.append(
       mkRuleIcon("caret-up", "Move up", index === 0, () => moveRule(index, index - 1)),
@@ -2209,6 +2225,166 @@ async function previewTransform() {
   } catch (e) {
     toast(String(e), true);
   }
+}
+
+// ---- named action groups (#57): saved transform chains ----
+let actionGroups = [];
+// The last full SettingsDto we loaded/saved, so persisting groups (or the
+// Settings slide-over) never drops the other's fields (both write settings.json).
+let savedSettings = {};
+
+async function initActionGroups() {
+  try {
+    savedSettings = (await invoke("load_settings", {})) || {};
+    actionGroups = Array.isArray(savedSettings.action_groups) ? savedSettings.action_groups : [];
+  } catch (e) {
+    actionGroups = [];
+  }
+  renderGroupsMenu();
+}
+
+async function persistActionGroups() {
+  savedSettings = { ...savedSettings, action_groups: actionGroups };
+  try {
+    await invoke("save_settings", { settings: savedSettings });
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// A plain, serializable copy of one transform rule (no DOM id, `enabled` normalized).
+function ruleForGroup(r) {
+  return {
+    kind: r.kind,
+    from: r.from || "",
+    to: r.to || "",
+    regex: !!r.regex,
+    whole_word: !!r.whole_word,
+    case_sensitive: !!r.case_sensitive,
+    style: r.style || "",
+    enabled: r.enabled !== false,
+  };
+}
+
+// Save the current chain (+ scope) under `name`, replacing a same-named group.
+function saveCurrentGroup(name) {
+  name = name.trim();
+  if (!name) return;
+  if (transformRules.length === 0) {
+    toast("Add at least one rule before saving a group", true);
+    return;
+  }
+  actionGroups = actionGroups.filter((g) => g.name !== name);
+  actionGroups.push({ name, scope: el("transform-scope").value, rules: transformRules.map(ruleForGroup) });
+  actionGroups.sort((a, b) => a.name.localeCompare(b.name));
+  persistActionGroups();
+  renderGroupsMenu();
+  toast(`Saved action group “${name}”`);
+}
+
+// Load a group's steps + scope into the live chain (fresh ids for reorder).
+function loadGroup(group) {
+  transformRules = (group.rules || []).map((r) => ({ id: ++ruleIdCounter, ...ruleForGroup(r) }));
+  if (group.scope) el("transform-scope").value = group.scope;
+  renderTransformRules();
+}
+
+// Load then preview — run the whole group over the selection as one plan.
+function runGroup(group) {
+  loadGroup(group);
+  previewTransform();
+}
+
+function deleteGroup(name) {
+  actionGroups = actionGroups.filter((g) => g.name !== name);
+  persistActionGroups();
+  renderGroupsMenu();
+}
+
+// One-line summary of a group for its tooltip.
+function groupSummary(group) {
+  const on = (group.rules || []).filter((r) => r.enabled !== false).length;
+  const total = (group.rules || []).length;
+  const scope = group.scope === "filename" ? "file name" : group.scope || "all tags";
+  return `${on}/${total} step(s) · ${scope}`;
+}
+
+// Build the Groups popover — mirrors the presets menu (#44): a Run/Load/Delete
+// row per group, plus a footer to name and save the current chain.
+function renderGroupsMenu() {
+  const menu = el("groups-menu");
+  menu.innerHTML = "";
+  if (!actionGroups.length) {
+    const empty = document.createElement("div");
+    empty.className = "col-menu-sep";
+    empty.textContent = "No saved groups";
+    menu.appendChild(empty);
+  }
+  for (const group of actionGroups) {
+    const row = document.createElement("div");
+    row.className = "col-menu-row preset-row";
+
+    const run = document.createElement("button");
+    run.type = "button";
+    run.className = "text-btn preset-apply";
+    run.textContent = group.name;
+    run.title = `Run: ${groupSummary(group)}`;
+    run.addEventListener("click", () => {
+      runGroup(group);
+      menu.hidden = true;
+    });
+
+    const load = document.createElement("button");
+    load.type = "button";
+    load.className = "text-btn group-load";
+    load.textContent = "Load";
+    load.title = "Load into the chain without running";
+    load.addEventListener("click", (e) => {
+      e.stopPropagation();
+      loadGroup(group);
+      menu.hidden = true;
+    });
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "preset-del";
+    del.innerHTML = ico("close");
+    del.title = `Delete “${group.name}”`;
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteGroup(group.name);
+    });
+
+    row.append(run, load, del);
+    menu.appendChild(row);
+  }
+
+  const foot = document.createElement("div");
+  foot.className = "col-menu-foot preset-save";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Save current chain as…";
+  input.spellcheck = false;
+  input.className = "preset-name";
+  const save = document.createElement("button");
+  save.type = "button";
+  save.className = "text-btn";
+  save.textContent = "Save";
+  const commit = () => {
+    if (input.value.trim()) {
+      saveCurrentGroup(input.value);
+      input.value = "";
+    }
+  };
+  save.addEventListener("click", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    }
+  });
+  foot.append(input, save);
+  menu.appendChild(foot);
 }
 
 // ---- reorganize into folders (#37) ----
@@ -2866,14 +3042,19 @@ function closeSettings() {
 
 async function saveSettings() {
   const token = el("discogs-token").value.trim();
+  // Spread the last-known settings so we keep fields this form doesn't edit —
+  // notably the saved action groups (#57), which also live in settings.json.
   const settings = {
+    ...savedSettings,
     proxy: el("set-proxy").value.trim(),
     rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
     id3_v23: id3Choice === "v23",
     read_priority: readPriority.slice(),
     cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
     cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
+    action_groups: actionGroups,
   };
+  savedSettings = settings;
   // Display prefs are local-only; apply + persist before the backend round-trip.
   // (Table font size already applies live on input; persisted here too.)
   applyCheckboxCol(el("set-checkbox-col").checked);
@@ -4511,6 +4692,19 @@ document.addEventListener("click", (e) => {
     menu.hidden = true;
   }
 });
+// Action-groups popover (#57): same toggle + outside-click close as presets.
+el("groups-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = el("groups-menu");
+  if (menu.hidden) renderGroupsMenu();
+  menu.hidden = !menu.hidden;
+});
+document.addEventListener("click", (e) => {
+  const menu = el("groups-menu");
+  if (!menu.hidden && !menu.contains(e.target) && !el("groups-btn").contains(e.target)) {
+    menu.hidden = true;
+  }
+});
 // Track edits on any editable cell (event delegation).
 tracksBody.addEventListener("input", (e) => {
   if (e.target.classList.contains("editable")) onCellEdit(e.target);
@@ -4537,6 +4731,8 @@ applyTableFont(tableFontPx());
 // Reflect saved defaults onto the grouping + search page-size selects (#108).
 el("group-by").value = groupBy;
 el("search-per-page").value = String(searchPerPage);
+// Load saved action groups (#57) from settings.json into the Groups popover.
+initActionGroups();
 // Reflect saved filter-mode flags (#44) onto the toggles.
 syncFilterControls();
 
@@ -4700,6 +4896,7 @@ function mockInvoke(cmd, args) {
       const applyRules = (value) => {
         let out = value;
         for (const rule of args.rules) {
+          if (rule.enabled === false) continue; // disabled step (#57)
           if (rule.kind === "replace" && rule.from) {
             out = out.split(rule.from).join(rule.to);
           } else if (rule.kind === "case" && rule.style === "title") {

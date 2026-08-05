@@ -230,6 +230,11 @@ pub struct SettingsDto {
     /// default 85; otherwise 1..=100.
     #[serde(default)]
     pub cover_quality: u8,
+    /// Saved transform-chain action groups (#57): each a named, ordered set of
+    /// steps + scope. Stored data only — `apply_settings` ignores it; the UI
+    /// reads it from `load_settings` and rewrites it via `save_settings`.
+    #[serde(default)]
+    pub action_groups: Vec<ActionGroupDto>,
 }
 
 /// The effective JPEG quality for cover resize: the setting, or 85 when unset.
@@ -432,6 +437,28 @@ pub struct TransformRuleDto {
     /// target notation `camelot`, `openkey` or `musical`.
     #[serde(default)]
     pub style: String,
+    /// Whether this step runs (#57). A disabled step stays in the chain / saved
+    /// group but is skipped. Defaults true so chains and groups without the field
+    /// stay enabled.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// A named, saved chain of transform steps — an "action group" (#57). Persisted
+/// in settings.json; run over a selection to produce one previewable ChangePlan
+/// (the whole group applies and undoes as one batch).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ActionGroupDto {
+    pub name: String,
+    /// The transform scope the group runs at (`tags`, `filename`, or a single
+    /// field key) — mirrors the GENERATOR scope selector.
+    #[serde(default)]
+    pub scope: String,
+    pub rules: Vec<TransformRuleDto>,
 }
 
 /// A tagging session rooted at one library directory. The root doubles as the
@@ -1741,6 +1768,10 @@ fn non_empty(value: Option<String>) -> Option<String> {
 fn build_chain(rules: &[TransformRuleDto]) -> Result<TransformChain, AppError> {
     let mut chain = TransformChain::default();
     for rule in rules {
+        // A disabled step (#57) stays in the chain but contributes nothing.
+        if !rule.enabled {
+            continue;
+        }
         match rule.kind.as_str() {
             "replace" => chain.push(Box::new(Replace::new(
                 &rule.from,
@@ -2068,6 +2099,7 @@ mod tests {
             read_priority: vec!["vorbis".into(), "id3v2".into()],
             cover_max_px: 500,
             cover_quality: 90,
+            action_groups: Vec::new(),
         });
         assert_eq!(app.cover_max_px.get(), 500);
         assert_eq!(app.cover_quality.get(), 90);
@@ -2083,6 +2115,43 @@ mod tests {
         app.apply_settings(&SettingsDto::default());
         assert!(app.discogs_proxy.borrow().is_none());
         assert!(app.discogs_min_interval.get().is_none());
+    }
+
+    #[test]
+    fn settings_round_trip_action_groups_and_default_step_enabled() {
+        // A saved group persists in settings.json; a step without `enabled`
+        // deserializes as enabled (so older data / omitted fields stay on) (#57).
+        let json = r#"{
+            "action_groups": [
+                { "name": "Cleanup", "scope": "tags",
+                  "rules": [ { "kind": "case", "style": "title" } ] }
+            ]
+        }"#;
+        let settings: SettingsDto = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.action_groups.len(), 1);
+        let group = &settings.action_groups[0];
+        assert_eq!(group.name, "Cleanup");
+        assert_eq!(group.scope, "tags");
+        assert!(group.rules[0].enabled, "omitted `enabled` defaults to true");
+    }
+
+    #[test]
+    fn build_chain_skips_disabled_steps() {
+        let rule = |kind: &str, style: &str, enabled: bool| TransformRuleDto {
+            kind: kind.into(),
+            from: String::new(),
+            to: String::new(),
+            regex: false,
+            whole_word: false,
+            case_sensitive: false,
+            style: style.into(),
+            enabled,
+        };
+        // An enabled upper-case step plus a *disabled* title-case step: only the
+        // enabled one runs, so the result is upper, not title.
+        let chain =
+            build_chain(&[rule("case", "upper", true), rule("case", "title", false)]).unwrap();
+        assert_eq!(chain.apply("hello world"), "HELLO WORLD");
     }
 
     #[test]
@@ -2604,6 +2673,7 @@ mod tests {
             whole_word: false,
             case_sensitive: false,
             style: String::new(),
+            enabled: true,
         }
     }
 

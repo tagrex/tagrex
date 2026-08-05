@@ -10,6 +10,14 @@ first release ships.
 
 ### Added
 
+- **Named action groups: save and replay a transform chain** (#57). The GENERATOR
+  transform chain can now be saved as a **named group** and re-run over any
+  selection in one go — the whole group previews and applies (and undoes) as one
+  batch, like a single transform. Groups persist in `settings.json` (a new
+  **Groups** popover: Run / Load / Delete + save-current-as). Each step also gets
+  an **enable/disable** toggle, so a step can be kept in the chain (and the saved
+  group) but skipped.
+
 - **HTML and XML exporters** (#42). The EXPORTER gains two formats beside
   Playlist / CSV / Report: **HTML** writes a self-contained, styled table (no
   external assets — opens in any browser) and **XML** writes a `<library>` of
