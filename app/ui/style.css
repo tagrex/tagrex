@@ -605,15 +605,6 @@ body.panel-collapsed .col-splitter {
   border-bottom: 1px solid var(--border);
 }
 
-/* The file table's section label. Once the Preview (#117) and Duplicates (#118)
-   tabs were gone, `Files` had nothing to switch to, so it's a plain, static
-   label (#121) — accent-inked to anchor the row, not a clickable pill. */
-.files-label {
-  color: var(--accent-ink);
-  font-weight: var(--fw-medium);
-  padding: 3px 10px;
-}
-
 /* Self-managed hover hint for editable cells (replaces the native title, whose
    OS bubble lingered over the wrong cell across same-text neighbours). Driven by
    cellTip in app.js; pointer-events:none so it never blocks the cell beneath. */

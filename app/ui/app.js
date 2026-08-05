@@ -237,7 +237,6 @@ const el = (id) => document.getElementById(id);
 const rootInput = el("root");
 const tracksBody = el("tracks-body");
 const tracksEmpty = el("tracks-empty");
-const trackCount = el("track-count");
 const applyBtn = el("diff-apply");
 const previewBtn = el("preview");
 const previewEditsBtn = el("preview-edits");
@@ -982,11 +981,6 @@ function renderTracks() {
   const visible = tracks.filter(
     (t) => (diffByPath && diffByPath.has(t.path)) || matchesFilter(t),
   );
-  trackCount.textContent = tracks.length
-    ? filterText
-      ? `(${visible.length}/${tracks.length})`
-      : `(${tracks.length})`
-    : "";
   tracksEmpty.hidden = tracks.length > 0;
 
   if (groupBy) {
@@ -1025,10 +1019,21 @@ function renderTracks() {
 
 // Selection count in the status bar ("N/M selected"). Uses the checked-row
 // count directly; total size/duration are deferred (#27 notes → their own issue).
+// The status bar is the single home for the table's counts (#126): the total
+// file count (or `visible/total` when a filter is active, replacing the old
+// `Files (N)` toolbar label) plus the selection count.
 function updateStatus() {
   const total = tracks.length;
+  if (!total) {
+    statusSel.textContent = "";
+    return;
+  }
   const selected = selectedPaths().length;
-  statusSel.textContent = total ? `${selected}/${total} selected` : "";
+  const noun = total === 1 ? "file" : "files";
+  const files = filterText
+    ? `${tracks.filter(matchesFilter).length}/${total} ${noun}`
+    : `${total} ${noun}`;
+  statusSel.textContent = `${files} · ${selected} selected`;
 }
 
 function resetEdits() {

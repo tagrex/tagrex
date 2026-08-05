@@ -73,6 +73,12 @@ first release ships.
 
 ### Changed
 
+- **The `Files (N)` label is gone; its count lives in the status bar** (#126,
+  supersedes #121). The toolbar label duplicated the total already shown at the
+  bottom, so it's removed and the status bar is now the single home for counts:
+  `101 files · 15 selected`, or `12/101 files · 15 selected` under a filter. The
+  toolbar controls (Group / Filter / Presets / Columns) left-align in its place.
+
 - **Release badge padding evened out to 3px** (#125). A small follow-up to #124 —
   the segment padding was `2px 6px` (slightly letterboxed) and is now `3px` on
   all sides.
