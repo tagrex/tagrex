@@ -17,6 +17,13 @@ let previewPlan = null;
 // What the current previewPlan came from, so apply() knows whether to clear
 // pending tag edits ("edits") or remap them across a rename ("rename").
 let previewSource = null;
+// While a plan is staged the file table enters a DIFF-STATE in place (#117):
+// `diffByPath` maps each changed path to its change so appendTrackRow can render
+// the diff, and `applySelection` is the subset of those paths ticked to apply
+// (the sel column's meaning switches from row-selection to apply-scope while
+// diffing). Both are null/empty when not diffing.
+let diffByPath = null;
+let applySelection = new Set();
 // path -> Map(field -> newValue): pending tag changes not yet applied. Both
 // inline cell edits and Discogs import feed this one buffer, so they compose
 // into a single preview/apply. A value of "" means "clear the field".
@@ -231,8 +238,7 @@ const rootInput = el("root");
 const tracksBody = el("tracks-body");
 const tracksEmpty = el("tracks-empty");
 const trackCount = el("track-count");
-const previewDiff = el("preview-diff");
-const applyBtn = el("apply");
+const applyBtn = el("diff-apply");
 const previewBtn = el("preview");
 const previewEditsBtn = el("preview-edits");
 const undoBtn = el("undo");
@@ -829,6 +835,14 @@ function appendTrackRow(track, groupKey) {
     tracksBody.appendChild(tr);
     return;
   }
+  // Diff-state (#117): a staged plan renders its change into this same table in
+  // place — no separate Preview view. Staged rows show the new values (dirty)
+  // and the sel column becomes the per-row apply scope; other rows recede.
+  if (diffByPath) {
+    fillDiffRow(tr, track);
+    tracksBody.appendChild(tr);
+    return;
+  }
   if (track.path === playingPath) tr.classList.add("playing");
   // Checkbox + row highlight both reflect the `selection` set (source of truth),
   // so re-rendering never changes what's selected.
@@ -869,6 +883,82 @@ function appendTrackRow(track, groupKey) {
   tracksBody.appendChild(tr);
 }
 
+// One row of the in-table diff (#117). A staged row shows the plan's new values
+// (dirty/error cells) and its sel checkbox is the per-row apply tick tracked in
+// `applySelection`; an untouched row shows current values, inert. Reuses
+// diffCell()/diffDir() from the old preview-table renderer.
+function fillDiffRow(tr, track) {
+  const change = diffByPath.get(track.path);
+  const pending = edits.get(track.path);
+  if (!change) {
+    // Untouched row: current values, no apply tick, no editing/selection.
+    tr.classList.add("untouched");
+    tr.innerHTML =
+      `<td class="sel"><input type="checkbox" disabled title="Not part of this change" /></td>` +
+      `<td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
+    for (const field of visibleColumns) {
+      if (field === "file") continue;
+      const td = document.createElement("td");
+      if (field === "position") {
+        td.className = "position-cell";
+        td.textContent = vinylPositionOf(track, pending);
+      } else {
+        td.textContent = tag(track, field);
+      }
+      tr.appendChild(td);
+    }
+    return;
+  }
+  tr.classList.add("staged");
+  const ticked = applySelection.has(track.path);
+  tr.innerHTML =
+    `<td class="sel"><input type="checkbox" class="apply-tick" ${ticked ? "checked" : ""} data-path="${escapeHtml(track.path)}" title="Include this file in Apply" /></td>` +
+    diffFileCellHtml(change, track);
+  for (const field of visibleColumns) {
+    if (field === "file") continue;
+    if (field === "position") {
+      const td = document.createElement("td");
+      td.className = "position-cell";
+      td.textContent = vinylPositionOf(track, pending);
+      tr.appendChild(td);
+      continue;
+    }
+    // A changed visible field shows the new value (dirty/error); an unchanged one
+    // shows the current value. Fields changed outside visibleColumns still apply
+    // — they just don't get a cell here (the action-bar count covers them).
+    const cell = diffCell(change, field, track);
+    const td = document.createElement("td");
+    td.className = cell.cls;
+    if (cell.title) td.title = cell.title;
+    td.textContent = cell.text;
+    if (cell.old) {
+      const old = document.createElement("span");
+      old.className = "cell-old";
+      old.textContent = cell.old;
+      td.appendChild(old);
+    }
+    tr.appendChild(td);
+  }
+}
+
+// The File cell for a staged row: on a rename/move it shows the new name, the
+// new relative folder beneath it (on a reorganize, #37), and the struck old name
+// revealed under "Show old values". A non-rename change keeps the plain name.
+function diffFileCellHtml(change, track) {
+  if (!change.rename_to) {
+    return `<td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
+  }
+  const moved = diffDir(change.rename_to) !== diffDir(change.path);
+  const pathLine = moved
+    ? `<span class="fpath">${ico("corner")}${escapeHtml(diffDir(change.rename_to))}/</span>`
+    : "";
+  return (
+    `<td class="file dirty" title="${escapeHtml(change.path)}  →  ${escapeHtml(change.rename_to)}">` +
+    `<span class="fcell"><span class="fname">${escapeHtml(fileName(change.rename_to))}</span>${pathLine}` +
+    `<span class="cell-old">${escapeHtml(fileName(change.path))}</span></span></td>`
+  );
+}
+
 // A collapsible group header row spanning the table width.
 function appendGroupHeader(key, count) {
   const collapsed = collapsedGroups.has(key);
@@ -887,7 +977,11 @@ function renderTracks() {
   tracksBody.innerHTML = "";
   updateSortIndicators();
 
-  const visible = tracks.filter(matchesFilter);
+  // A staged change always stays visible so the whole plan can be reviewed and
+  // scoped, even if the current filter would otherwise hide it (#117).
+  const visible = tracks.filter(
+    (t) => (diffByPath && diffByPath.has(t.path)) || matchesFilter(t),
+  );
   trackCount.textContent = tracks.length
     ? filterText
       ? `(${visible.length}/${tracks.length})`
@@ -922,7 +1016,10 @@ function renderTracks() {
 
   previewBtn.disabled = tracks.length === 0;
   updateEditsButton();
-  syncSelectionUI();
+  // While diffing the sel column is the apply scope, not the selection, so the
+  // selection UI must not repaint the checkboxes — refresh the action bar instead.
+  if (diffByPath) updateDiffBar();
+  else syncSelectionUI();
   refreshRoving();
 }
 
@@ -985,17 +1082,13 @@ function updateEditsButton() {
   previewEditsBtn.disabled = edits.size === 0;
 }
 
-// Switch the files column between the table ("files"), the change-plan diff
-// ("preview"), and the duplicate finder ("duplicates"). The Preview tab is only
-// reachable while a plan is staged.
+// Reveal the file table. The Preview view is gone (#117): a staged plan now
+// renders into this same table via the diff-state, and the duplicate scan is the
+// DEDUPLICATOR mode driven from setMode (#118). Kept as a one-liner so the many
+// callers that just want "show the files" don't each poke the DOM.
 function showView(which) {
-  // Files | Preview only — the duplicate scan is now the DEDUPLICATOR mode, which
-  // drives #duplicates-view from setMode, not this view switch (#118).
   el("files-view").hidden = which !== "files";
-  el("preview-view").hidden = which !== "preview";
   el("view-files").classList.toggle("active", which === "files");
-  el("view-preview").classList.toggle("active", which === "preview");
-  el("view-preview").disabled = which !== "preview" && !previewPlan;
 }
 
 // ---- duplicate finder (#40): a read-only library scan, grouped ----
@@ -1079,16 +1172,11 @@ function renderDuplicates(groups) {
 function discardPreview() {
   // A preview built from the pending-edits buffer (inline edits + Discogs
   // import) owns that buffer, so discarding it must also drop those staged
-  // values and repaint the table; other previews just drop the plan.
+  // values; other previews just drop the plan. exitDiffState() repaints the
+  // table back to its normal (non-diff) state either way.
   const wasEdits = previewSource === "edits";
-  previewPlan = null;
-  previewSource = null;
-  el("view-preview").disabled = true;
-  if (wasEdits) {
-    resetEdits();
-    renderTracks();
-  }
-  showView("files");
+  if (wasEdits) resetEdits();
+  exitDiffState();
 }
 
 // Path -> track lookup, so the diff can show the current value of a file's
@@ -1097,48 +1185,65 @@ function trackByPath() {
   return new Map(tracks.map((t) => [t.path, t]));
 }
 
+// Stage `previewPlan` into the file table's diff-state (#117). Named renderPreview
+// still because every mutating mode funnels its plan here; there is no separate
+// Preview view any more — the same #tracks table shows the change in place with a
+// floating Apply/Discard bar. An empty plan just leaves the table untouched.
 function renderPreview(plan) {
-  el("view-preview").disabled = false;
-  showView("preview");
-  renderPreviewDiff(previewDiff, plan, trackByPath());
-  // The table is rebuilt on every render, so re-assert a checked "Show old
-  // values" toggle onto the fresh table.
-  const table = previewDiff.querySelector("table.diff");
-  if (table && el("show-old").checked) table.classList.add("show-old");
-  // Every row starts included; Apply reflects the checked count (#81).
-  updateApplyFromChecks();
-}
-
-// Sync the Apply button (label + enabled) and the header select-all tri-state
-// to the row checkboxes. Rows all start checked; unticking some narrows what a
-// single Apply writes (#81).
-function updateApplyFromChecks() {
-  const boxes = [...previewDiff.querySelectorAll(".diff-sel")];
-  const checked = boxes.filter((b) => b.checked).length;
-  applyBtn.disabled = checked === 0;
-  applyBtn.textContent = checked ? `Apply (${checked})` : "Apply";
-  const all = previewDiff.querySelector(".diff-sel-all");
-  if (all) {
-    all.checked = boxes.length > 0 && checked === boxes.length;
-    all.indeterminate = checked > 0 && checked < boxes.length;
+  if (!plan || plan.changes.length === 0) {
+    exitDiffState();
+    return;
   }
+  enterDiffState();
 }
 
-/* ---- table-diff renderer (#80) --------------------------------------------
-   Renders the change plan as a table mirroring the main file table: the main
-   columns (File · Artist · Title · Album · Year) always show, one extra column
-   is added per changed non-main field, and a Cover column when a cover changes.
-   Cells show the NEW value; the old value is on the cell title (hover) and,
-   when "Show old values" is on, as a struck-through line. Styling lives in the
-   `table.diff` block of style.css. Reuses fileName()/escapeHtml(). */
+// Enter the in-table diff-state: build the path->change map, tick every changed
+// file for apply by default, repaint the table as a diff, and float the bar.
+function enterDiffState() {
+  diffByPath = new Map(previewPlan.changes.map((c) => [c.path, c]));
+  applySelection = new Set(diffByPath.keys());
+  document.body.classList.add("diffing");
+  el("diff-show-old").checked = false;
+  el("tracks").classList.remove("show-old");
+  showView("files"); // never diff over the dedup view
+  renderTracks();
+  el("ab-plan").textContent = previewPlan.description ? ` · ${previewPlan.description}` : "";
+  el("diff-actionbar").hidden = false;
+  updateDiffBar();
+}
 
-// Main columns (mirror the file table, minus play). Always shown.
+// Leave the diff-state: drop the plan + apply scope and repaint the plain table.
+function exitDiffState() {
+  previewPlan = null;
+  previewSource = null;
+  diffByPath = null;
+  applySelection = new Set();
+  document.body.classList.remove("diffing");
+  el("tracks").classList.remove("show-old");
+  el("diff-actionbar").hidden = true;
+  renderTracks();
+}
+
+// Sync the floating action bar (apply count + enabled) and the header select-all
+// tri-state to `applySelection`. Every changed file starts ticked; unticking
+// some narrows what a single Apply writes (#81).
+function updateDiffBar() {
+  if (!diffByPath) return;
+  const staged = diffByPath.size;
+  const n = applySelection.size;
+  el("ab-count").textContent = String(n);
+  applyBtn.disabled = n === 0;
+  selectAll.checked = n > 0 && n === staged;
+  selectAll.indeterminate = n > 0 && n < staged;
+}
+
+/* ---- per-cell diff helpers (#80, reused by the in-table diff-state #117) ----
+   The Preview view's mirror table is gone; the file table now shows the diff in
+   place (fillDiffRow). These helpers still compute the state + text of one
+   changed cell, so they are shared by that renderer. */
+
+// Main columns (mirror the file table, minus play).
 const DIFF_MAIN_COLS = ["file", "artist", "title", "album", "year"];
-// Extra (non-main) fields, in the order they appear as added columns.
-const DIFF_EXTRA_ORDER = [
-  "albumartist", "track", "tracktotal", "disc", "media", "genre",
-  "composer", "publisher", "catalognumber", "bpm", "isrc", "key", "url", "comment",
-];
 const DIFF_LABELS = {
   file: "File", artist: "Artist", title: "Title", album: "Album", year: "Year",
   albumartist: "Album Artist", track: "Track", tracktotal: "Track Total",
@@ -1155,31 +1260,6 @@ function diffDir(path) {
   return i >= 0 ? path.slice(0, i) : "";
 }
 
-// Which columns this plan needs: main + changed extras (in order) + cover.
-function diffColumns(plan) {
-  const changedExtras = new Set();
-  let anyCover = false;
-  for (const c of plan.changes) {
-    for (const tc of c.tag_changes || []) {
-      if (!DIFF_MAIN_COLS.includes(tc.field)) changedExtras.add(tc.field);
-    }
-    if (c.cover_change) anyCover = true;
-  }
-  const known = DIFF_EXTRA_ORDER.filter((f) => changedExtras.has(f));
-  const custom = [...changedExtras].filter((f) => f.startsWith("custom:")).sort();
-  // Safety net: any other changed field (a first-class field not yet listed
-  // above) still gets a column, so a written tag can never be silently absent
-  // from the diff — the recurring bug that hid catalogue # (#90) then media.
-  const rest = [...changedExtras]
-    .filter((f) => !DIFF_EXTRA_ORDER.includes(f) && !f.startsWith("custom:"))
-    .sort();
-  const extras = [...known, ...custom, ...rest];
-  // Leading `sel` column = per-row "include in this apply" (#81).
-  const cols = ["sel", ...DIFF_MAIN_COLS, ...extras];
-  if (anyCover) cols.push("cover");
-  return cols;
-}
-
 // The state + text of one field cell for one file: unchanged | dirty | error |
 // cleared. `track` supplies the current value for an unchanged cell.
 function diffCell(change, field, track) {
@@ -1193,68 +1273,6 @@ function diffCell(change, field, track) {
   }
   if (nv === "") return { text: "", cls: "dirty cleared", title: `Cleared (was “${ov}”)`, old: ov };
   return { text: nv, cls: "dirty", title: `was “${ov || "∅"}”`, old: ov };
-}
-
-function diffThumb(cover) {
-  return cover
-    ? `<img class="diff-thumb" alt="" src="data:${cover.mime};base64,${cover.data_base64}" />`
-    : `<span class="diff-thumb inert" title="no cover"></span>`;
-}
-
-function diffHeadHtml(cols) {
-  return "<tr>" + cols.map((col) => {
-    if (col === "sel") return `<th class="col-sel"><input type="checkbox" class="diff-sel-all" checked title="Include all in this apply" /></th>`;
-    if (col === "cover") return `<th class="col-cover col-changed">Cover</th>`;
-    const isExtra = !DIFF_MAIN_COLS.includes(col);
-    return `<th class="col-${escapeHtml(col)}${isExtra ? " col-changed" : ""}">${escapeHtml(diffLabel(col))}</th>`;
-  }).join("") + "</tr>";
-}
-
-function diffRowHtml(change, cols, track) {
-  const cells = cols.map((col) => {
-    if (col === "sel") {
-      return `<td class="col-sel"><input type="checkbox" class="diff-sel" checked data-path="${escapeHtml(change.path)}" title="Include in this apply" /></td>`;
-    }
-    if (col === "cover") {
-      if (!change.cover_change) return `<td class="col-cover unchanged empty"></td>`;
-      const cc = change.cover_change;
-      return `<td class="col-cover dirty"><span class="diff-cover">${diffThumb(cc.old)}<span class="diff-arrow">→</span>${diffThumb(cc.new)}</span></td>`;
-    }
-    if (col === "file") {
-      const moved = change.rename_to && diffDir(change.rename_to) !== diffDir(change.path);
-      const newName = change.rename_to ? fileName(change.rename_to) : fileName(change.path);
-      const cls = change.rename_to ? "col-file dirty" : "col-file unchanged";
-      const title = change.rename_to
-        ? `${escapeHtml(change.path)}  →  ${escapeHtml(change.rename_to)}`
-        : escapeHtml(change.path);
-      const pathLine = moved
-        ? `<span class="diff-file-path" title="${escapeHtml(change.rename_to)}">${escapeHtml(diffDir(change.rename_to))}/</span>`
-        : "";
-      const oldName = change.rename_to
-        ? `<span class="diff-old">${escapeHtml(fileName(change.path))}</span>` : "";
-      return `<td class="${cls}" title="${title}"><span class="diff-file">${pathLine}<span class="diff-file-name">${escapeHtml(newName)}</span>${oldName}</span></td>`;
-    }
-    const cell = diffCell(change, col, track);
-    const title = cell.title ? ` title="${escapeHtml(cell.title)}"` : "";
-    const oldSpan = cell.old ? `<span class="diff-old">${escapeHtml(cell.old)}</span>` : "";
-    return `<td class="col-${escapeHtml(col)} ${cell.cls}"${title}>${escapeHtml(cell.text)}${oldSpan}</td>`;
-  });
-  return `<tr data-path="${escapeHtml(change.path)}">${cells.join("")}</tr>`;
-}
-
-// Render the plan into `container` (a scroll wrapper); returns the change count
-// so the caller can enable/disable Apply.
-function renderPreviewDiff(container, plan, byPath) {
-  const changes = (plan && plan.changes) || [];
-  if (changes.length === 0) {
-    container.innerHTML = `<p class="empty inert-panel diff-empty">Nothing would change.</p>`;
-    return 0;
-  }
-  const cols = diffColumns(plan);
-  const rows = changes.map((c) => diffRowHtml(c, cols, byPath && byPath.get(c.path))).join("");
-  container.innerHTML =
-    `<table class="diff"><thead>${diffHeadHtml(cols)}</thead><tbody>${rows}</tbody></table>`;
-  return changes.length;
 }
 
 async function refreshHistory() {
@@ -1288,7 +1306,13 @@ async function openLibrary() {
     // operated on.
     selection.clear();
     for (const t of tracks) if (!t.unreadable) selection.add(t.path);
+    // Opening a library drops any staged plan and leaves the diff-state.
     previewPlan = null;
+    previewSource = null;
+    diffByPath = null;
+    applySelection = new Set();
+    document.body.classList.remove("diffing");
+    el("diff-actionbar").hidden = true;
     resetEdits();
     sortKey = null;
     sortDir = 1;
@@ -1299,7 +1323,6 @@ async function openLibrary() {
     collapsedGroups.clear();
     el("group-by").value = groupBy;
     renderTracks();
-    el("view-preview").disabled = true;
     showView("files");
     showPlayerBar();
     await refreshHistory();
@@ -1332,11 +1355,7 @@ async function previewEdits() {
     }
   }
   if (list.length === 0) {
-    el("view-preview").disabled = false;
-    showView("preview");
-    previewDiff.innerHTML = `<p class="empty inert-panel diff-empty">No pending edits.</p>`;
-    applyBtn.disabled = true;
-    applyBtn.textContent = "Apply";
+    toast("No pending edits to preview", true);
     return;
   }
   try {
@@ -1352,14 +1371,12 @@ async function apply() {
   if (!previewPlan || previewPlan.changes.length === 0) return;
   const wasRename = previewSource === "rename";
   const wasEdits = previewSource === "edits";
-  // Only the ticked rows are applied (#81). The plan the backend gets — and
+  // Only the ticked rows are applied (#81). The apply scope is the sel-column
+  // tick set (`applySelection`) while diffing. The plan the backend gets — and
   // undo journals — is exactly this subset.
-  const checked = new Set(
-    [...previewDiff.querySelectorAll(".diff-sel:checked")].map((b) => b.dataset.path)
-  );
   const appliedPlan = {
     ...previewPlan,
-    changes: previewPlan.changes.filter((c) => checked.has(c.path)),
+    changes: previewPlan.changes.filter((c) => applySelection.has(c.path)),
   };
   if (appliedPlan.changes.length === 0) {
     toast("Tick at least one row to apply", true);
@@ -1369,8 +1386,6 @@ async function apply() {
   try {
     await invoke("apply_plan", { plan: appliedPlan });
     toast(`Applied changes to ${appliedPlan.changes.length} file(s)`);
-    previewPlan = null;
-    previewSource = null;
     if (wasRename) {
       remapEditsAfterRename(appliedPlan); // keep pending tag edits, new paths
     } else if (wasEdits) {
@@ -1381,9 +1396,8 @@ async function apply() {
     }
     // cover apply leaves the tag-edits buffer untouched (separate change kind)
     tracks = await invoke("list_tracks", {});
-    renderTracks();
-    el("view-preview").disabled = true;
-    showView("files");
+    // exitDiffState() drops the plan + apply scope and repaints the plain table.
+    exitDiffState();
     await refreshHistory();
   } catch (e) {
     toast(String(e), true);
@@ -1396,13 +1410,10 @@ async function undo() {
     if (batches.length === 0) return;
     await invoke("undo", { batchId: batches[0].id });
     toast("Undid last batch");
-    previewPlan = null;
-    previewSource = null;
     resetEdits();
     tracks = await invoke("list_tracks", {});
-    renderTracks();
-    el("view-preview").disabled = true;
-    showView("files");
+    // exitDiffState() also clears previewPlan/previewSource and repaints.
+    exitDiffState();
     await refreshHistory();
   } catch (e) {
     toast(String(e), true);
@@ -3462,12 +3473,15 @@ function setMode(name) {
   const dedup = name === "deduplicator";
   document.body.classList.toggle("mode-deduplicator", dedup);
   if (dedup) {
+    // The read-only scan owns the main area; a staged plan's diff-state stays
+    // intact underneath — its floating bar just hides until a normal mode returns.
     el("files-view").hidden = true;
-    el("preview-view").hidden = true;
     el("duplicates-view").hidden = false;
+    el("diff-actionbar").hidden = true;
   } else {
     el("duplicates-view").hidden = true;
     showView("files");
+    if (diffByPath) el("diff-actionbar").hidden = false;
   }
   // Uncollapse when a tab is clicked, so switching modes always reveals the panel.
   document.body.classList.remove("panel-collapsed");
@@ -3513,29 +3527,14 @@ if (window.ResizeObserver) {
 }
 updateCompactTabs();
 
-// ---- view tabs (Files | Preview) ----
+// ---- diff-state action bar (#117) ----
 el("view-files").addEventListener("click", () => showView("files"));
-el("view-preview").addEventListener("click", () => {
-  if (previewPlan) showView("preview");
-});
 el("dup-scan").addEventListener("click", runDuplicateScan);
-el("discard").addEventListener("click", discardPreview);
+el("diff-discard").addEventListener("click", discardPreview);
 // "Show old values" (#80 Q1): reveal the struck-through old value under each
 // changed cell. A density toggle over the default single-line (new-only) diff.
-el("show-old").addEventListener("change", (e) => {
-  const table = previewDiff.querySelector("table.diff");
-  if (table) table.classList.toggle("show-old", e.target.checked);
-});
-// Per-row include checkboxes (#81): the header box toggles all; any change
-// updates the Apply count.
-previewDiff.addEventListener("change", (e) => {
-  if (e.target.classList.contains("diff-sel-all")) {
-    const on = e.target.checked;
-    previewDiff.querySelectorAll(".diff-sel").forEach((b) => (b.checked = on));
-  }
-  if (e.target.classList.contains("diff-sel") || e.target.classList.contains("diff-sel-all")) {
-    updateApplyFromChecks();
-  }
+el("diff-show-old").addEventListener("change", (e) => {
+  el("tracks").classList.toggle("show-old", e.target.checked);
 });
 
 // ---- wire up ----
@@ -3748,6 +3747,7 @@ function clearDropMarkers() {
 }
 
 tracksBody.addEventListener("mousedown", (e) => {
+  if (diffByPath) return; // no manual reorder while reviewing a staged diff
   const cell = e.target.closest("td.file");
   if (!cell) return;
   e.preventDefault(); // don't start a text selection
@@ -3794,16 +3794,33 @@ function onDragUp() {
 rootInput.addEventListener("keydown", (e) => e.key === "Enter" && openLibrary());
 selectAll.addEventListener("change", () => {
   const on = selectAll.checked;
+  // While diffing the header box toggles the whole apply scope, not selection.
+  if (diffByPath) {
+    applySelection = new Set(on ? diffByPath.keys() : []);
+    for (const tr of tracksBody.querySelectorAll("tr.staged")) {
+      const cb = tr.querySelector(".apply-tick");
+      if (cb) cb.checked = on;
+    }
+    updateDiffBar();
+    return;
+  }
   for (const tr of dataRows()) {
     if (on) selection.add(tr.dataset.path);
     else selection.delete(tr.dataset.path);
   }
   syncSelectionUI();
 });
-// Direct checkbox clicks feed the selection set too.
+// Direct checkbox clicks feed the selection set — or, while diffing, the
+// per-row apply scope (the sel column's meaning switches in diff-state, #117).
 tracksBody.addEventListener("change", (e) => {
   const cb = e.target.closest(".sel input[type=checkbox]");
   if (!cb) return;
+  if (diffByPath) {
+    if (cb.checked) applySelection.add(cb.dataset.path);
+    else applySelection.delete(cb.dataset.path);
+    updateDiffBar();
+    return;
+  }
   if (cb.checked) selection.add(cb.dataset.path);
   else selection.delete(cb.dataset.path);
   syncSelectionUI();
@@ -3917,6 +3934,7 @@ function beginCellEdit(cell) {
 }
 
 tracksBody.addEventListener("click", (e) => {
+  if (diffByPath) return; // rows are inert while a staged diff is under review
   if (e.target.closest("td.sel")) return; // checkbox toggle → change listener
   if (e.target.closest("tr.group-head")) return; // caret handles collapse
   const tr = e.target.closest("tr");
@@ -3927,6 +3945,7 @@ tracksBody.addEventListener("click", (e) => {
 });
 
 tracksBody.addEventListener("dblclick", (e) => {
+  if (diffByPath) return; // no editing/playing while reviewing a staged diff
   const head = e.target.closest("tr.group-head");
   if (head) {
     // Caret double-click just toggles collapse (handled by the click listener);
@@ -4057,6 +4076,16 @@ tracksBody.addEventListener("keydown", (e) => {
   } else if (e.key === " ") {
     e.preventDefault(); // Space would otherwise scroll
     const path = tr.dataset.path;
+    // While diffing, Space toggles the focused staged row's apply tick.
+    if (diffByPath) {
+      if (!diffByPath.has(path)) return; // untouched rows aren't tickable
+      if (applySelection.has(path)) applySelection.delete(path);
+      else applySelection.add(path);
+      const cb = tr.querySelector(".apply-tick");
+      if (cb) cb.checked = applySelection.has(path);
+      updateDiffBar();
+      return;
+    }
     if (selection.has(path)) selection.delete(path);
     else selection.add(path);
     selAnchor = path;

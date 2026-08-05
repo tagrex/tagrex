@@ -73,6 +73,19 @@ first release ships.
 
 ### Changed
 
+- **The Preview view dissolves into an in-table diff-state** (#117, third slice
+  of the workspace redesign). A staged change plan no longer opens a separate
+  mirror table behind a `Preview` tab — the file table itself shows the diff in
+  place: changed cells light up (new value, with the struck-through old value on
+  **Show old values**), a rename/reorganize renders the new name and folder in
+  the File cell, and untouched rows recede. The sel column becomes the per-row
+  **apply scope** (every change ticked by default; untick to narrow what a single
+  Apply writes), marked by an accent bar on affected rows. A floating
+  **Apply / Discard** pill carries the apply count and the plan name — nothing is
+  written until Apply, and Discard / Apply / Undo all restore the plain table.
+  The `Preview` tab is gone from the strip; `Files` remains. The whole
+  preview → apply → undo safety gate is unchanged.
+
 - **Release import moved to a header icon button** (#120). The
   "Import to selected files" action left the tracklist footer (which needed
   scrolling past every track) for a compact, accent-outlined icon — a left arrow

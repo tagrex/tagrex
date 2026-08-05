@@ -81,7 +81,6 @@
       <section class="files-col">
         <div class="view-tabs">
           <button id="view-files" class="view-tab active" data-view="files">Files <span id="track-count" class="muted"></span></button>
-          <button id="view-preview" class="view-tab" data-view="preview" disabled>Preview</button>
           <div class="spacer"></div>
           <label class="group-ctl muted"
             >Group
@@ -133,21 +132,6 @@
           <p id="tracks-empty" class="empty inert-panel">Open a library to list its tracks.</p>
         </div>
 
-        <!-- Preview view: the current→new diff for the staged change plan. -->
-        <div id="preview-view" hidden>
-          <div class="preview-bar">
-            <span class="hint muted" style="padding: 0">Review the change, then apply — nothing is written until you do.</span>
-            <label class="toggle-old muted" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="show-old" /> Show old values</label>
-            <div class="spacer"></div>
-            <button id="discard">Discard</button>
-            <button id="apply" class="primary" disabled>Apply</button>
-          </div>
-          <!-- The change plan renders here as a table mirroring the file table (#80).
-               The mount is its own horizontal/vertical scroll surface so the header
-               and File column can stay pinned. -->
-          <div id="preview-diff" class="diff-wrap"></div>
-        </div>
-
         <!-- Duplicates view (#40): a read-only library scan grouped by a chosen
              criterion. Nothing here modifies files. -->
         <!-- DEDUPLICATOR results (#118): the grouped, read-only scan takes over
@@ -160,6 +144,19 @@
             <span class="ro-note"><svg class="ico"><use href="#i-lock"/></svg> Read-only — nothing is changed.</span>
           </div>
           <div id="dup-results" class="dup-wrap"></div>
+        </div>
+
+        <!-- In-table diff-state action bar (#117): floats over the file table
+             while a change plan is staged. The table itself shows the diff in
+             place; this pill carries the apply scope, the Show-old toggle and the
+             gate buttons — nothing is written until Apply. -->
+        <div id="diff-actionbar" class="diff-actionbar" hidden>
+          <span class="ab-count"><b id="ab-count">0</b> to apply<span class="ab-plan" id="ab-plan"></span></span>
+          <span class="ab-sep"></span>
+          <label class="toggle-old" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="diff-show-old" /> Show old values</label>
+          <span class="ab-sep"></span>
+          <button id="diff-discard" class="btn">Discard</button>
+          <button id="diff-apply" class="btn primary" disabled>Apply</button>
         </div>
       </section>
 

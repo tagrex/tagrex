@@ -24,9 +24,10 @@ Duplicates becomes a top-level DEDUPLICATOR mode.** The old
 
 Order run: **1 → 2 → 4 → 3** — slice 4 (DEDUPLICATOR) was pulled ahead of slice 3
 because it is read-only and self-contained, and the weekly usage limit was near
-its cap: safer to land a non-file-writing slice in the tail of a session. **Slice
-3 (in-table diff-state) is the only one left** and is the file-writing one — do it
-with budget headroom. Each slice is its own GitHub issue.
+its cap: safer to land a non-file-writing slice in the tail of a session. Each
+slice is its own GitHub issue. **All four slices are now shipped — the redesign
+is complete.** The build plan and current-code analysis below are kept as a
+historical record of how slice 3 (the file-writing one) was landed.
 
 ## Status
 
@@ -35,8 +36,9 @@ with budget headroom. Each slice is its own GitHub issue.
 | 1 | Inline-SVG icon set (retire unicode/emoji glyphs) + native-control normalization (`<select>` caret, search-clear, scrollbars) | A0, A3 | [#115] | ✅ shipped `4f1e488` |
 | 2 | Mode tabs icon + label, with a `compact-tabs` icon-only fallback | A1 | [#116] | ✅ shipped `bbf6aeb` |
 | 4 | **DEDUPLICATOR** mode — promote Duplicates to a 5th top tab; controls into the right panel; grouped read-only results in the main area | A7, A8 | [#118] | ✅ shipped `0a0f227` |
-| 3 | **In-table diff-state** — dissolve the Preview view; the table shows the staged diff in place + a floating Apply/Discard bar; per-row apply moves to the sel column | A4, A5, A6 | [#117] | ⏳ **ONLY ONE LEFT** — filed + analysed, build plan below |
+| 3 | **In-table diff-state** — dissolve the Preview view; the table shows the staged diff in place + a floating Apply/Discard bar; per-row apply moves to the sel column | A4, A5, A6 | [#117] | ✅ shipped — **redesign complete** |
 
+**The workspace redesign is complete — all four slices (1, 2, 4, 3) are shipped.**
 All shipped slices are on `main`, signed, pushed, and bundled/relaunched.
 The icon sprite in `app/ui/index.html` includes `i-dedup`, `i-lock`, `i-corner`,
 `i-arrow-right` — everything slice 3 needs is present.
