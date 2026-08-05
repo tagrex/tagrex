@@ -1168,6 +1168,22 @@ impl App {
         Ok(target.to_string_lossy().into_owned())
     }
 
+    /// Export `paths` as a self-contained HTML table into the library root (#42).
+    pub fn export_html(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
+        let target = self.export_target(file_name)?;
+        let tracks = read_tracks(paths);
+        std::fs::write(&target, export::html(&tracks))?;
+        Ok(target.to_string_lossy().into_owned())
+    }
+
+    /// Export `paths` as an XML document into the library root (#42).
+    pub fn export_xml(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
+        let target = self.export_target(file_name)?;
+        let tracks = read_tracks(paths);
+        std::fs::write(&target, export::xml(&tracks))?;
+        Ok(target.to_string_lossy().into_owned())
+    }
+
     /// Export a text report of `paths`, one mask-rendered line per track (same
     /// placeholders as rename masks), into the library root.
     pub fn export_report(

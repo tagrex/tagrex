@@ -10,6 +10,13 @@ first release ships.
 
 ### Added
 
+- **HTML and XML exporters** (#42). The EXPORTER gains two formats beside
+  Playlist / CSV / Report: **HTML** writes a self-contained, styled table (no
+  external assets — opens in any browser) and **XML** writes a `<library>` of
+  `<track>` elements (one child per non-empty tag, plus file + path). Both share
+  the CSV column set and are pure, tested string builders confined to the library
+  root like the other exporters.
+
 - **Release card: cover resolution, and save cover / save all images** (#102).
   An expanded release now shows its primary cover's resolution and image count
   (e.g. `600×594 · 3 images`, from the provider's image data — Discogs reports

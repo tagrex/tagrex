@@ -2534,6 +2534,8 @@ async function applyFieldEditor() {
 const EXPORT_DEFAULTS = {
   playlist: "playlist.m3u",
   csv: "tags.csv",
+  html: "tags.html",
+  xml: "tags.xml",
   report: "report.txt",
 };
 // One-line "what it produces" hint per format, swapped under the segmented
@@ -2541,6 +2543,8 @@ const EXPORT_DEFAULTS = {
 const EXPORT_HINTS = {
   playlist: "An <b>.m3u</b> playlist of the selected tracks, in table order.",
   csv: "One <b>row per track</b> with the tag columns — opens in any spreadsheet.",
+  html: "A self-contained <b>HTML table</b> of the tag columns — opens in any browser.",
+  xml: "An <b>XML document</b> — one element per tag, for scripts and other tools.",
   report: "Each track rendered through the <b>mask</b> below, one line apiece.",
 };
 let exportKind = "playlist";
@@ -2588,6 +2592,10 @@ async function runExport() {
       written = await invoke("export_playlist", { paths, fileName: outName });
     } else if (kind === "csv") {
       written = await invoke("export_csv", { paths, fileName: outName });
+    } else if (kind === "html") {
+      written = await invoke("export_html", { paths, fileName: outName });
+    } else if (kind === "xml") {
+      written = await invoke("export_xml", { paths, fileName: outName });
     } else {
       written = await invoke("export_report", {
         paths,
@@ -4886,6 +4894,8 @@ function mockInvoke(cmd, args) {
     }
     case "export_playlist":
     case "export_csv":
+    case "export_html":
+    case "export_xml":
     case "export_report":
       // The real backend writes into the library root and returns the path.
       return Promise.resolve(`/music/${args.fileName}`);
