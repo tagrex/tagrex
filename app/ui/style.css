@@ -105,14 +105,13 @@
   --ctl-h: 28px;
   --ctl-h-sm: 24px;
 
-  /* focus ring — keyboard-visible; two layers so it reads on any background:
-     a --bg gap, then the accent. --ring for free-standing controls,
-     --ring-inset for clipped table cells/rows. */
+  /* focus ring — keyboard-visible: a single accent ring that hugs the element's
+     border box with no gap, so it follows the control's exact rounded contour
+     (#135). --ring for free-standing controls, --ring-inset for clipped table
+     cells/rows. */
   --ring-width: 2px;
-  --ring-offset: 2px;
   --ring-color: var(--accent);
-  --ring: 0 0 0 var(--ring-offset) var(--bg),
-    0 0 0 calc(var(--ring-offset) + var(--ring-width)) var(--ring-color);
+  --ring: 0 0 0 var(--ring-width) var(--ring-color);
   --ring-inset: inset 0 0 0 var(--ring-width) var(--ring-color);
 
   /* inert / unavailable diagonal-stripe motif (cover placeholder, disabled
