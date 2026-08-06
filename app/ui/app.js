@@ -1515,14 +1515,15 @@ async function onCoverChosen() {
 }
 
 // Read an image File, base64-encode it, and preview embedding it as the front
-// cover of the selection. Shared by the file picker and the well's drag-and-drop.
+// cover of the selection. Used by the file picker and the well's HTML5 drop
+// (browser-dev). In the packaged app a dropped cover arrives as a path instead
+// — see embedCoverFromPath (#133).
 async function embedCoverFile(file) {
   if (!file.type.startsWith("image/")) {
     toast("Drop an image file", true);
     return;
   }
-  const paths = selectedPaths();
-  if (paths.length === 0) {
+  if (selectedPaths().length === 0) {
     toast("Select the tracks to embed the cover into first", true);
     return;
   }
@@ -1536,8 +1537,35 @@ async function embedCoverFile(file) {
   const comma = dataUrl.indexOf(",");
   const mime = dataUrl.slice(5, dataUrl.indexOf(";"));
   const data_base64 = dataUrl.slice(comma + 1);
+  await embedCoverDto({ mime, data_base64 });
+}
+
+// Embed an image dropped onto the cover well in the packaged app (#133): the
+// drag-drop event gives a path, which the backend reads into a cover DTO.
+async function embedCoverFromPath(path) {
+  if (selectedPaths().length === 0) {
+    toast("Select the tracks to embed the cover into first", true);
+    return;
+  }
   try {
-    previewPlan = await invoke("preview_cover_embed", { paths, cover: { mime, data_base64 } });
+    const cover = await invoke("read_cover_image", { path });
+    await embedCoverDto(cover);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// Preview embedding a cover DTO ({ mime, data_base64 }) as the front cover of
+// the current selection — the shared tail of every cover-embed source (picker,
+// HTML5 drop, native drop, and the release card).
+async function embedCoverDto(cover) {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks to embed the cover into first", true);
+    return;
+  }
+  try {
+    previewPlan = await invoke("preview_cover_embed", { paths, cover });
     previewSource = "cover";
     renderPreview(previewPlan);
     toast(
@@ -4037,6 +4065,10 @@ function showDropCue(on) {
   document.body.classList.toggle("drag-active", on);
 }
 
+function isImagePath(p) {
+  return /\.(jpe?g|png|webp|gif|bmp|tiff?|avif|heic)$/i.test(p);
+}
+
 (function initWindowDrop() {
   const event = window.__TAURI__ && window.__TAURI__.event;
   if (event) {
@@ -4045,7 +4077,16 @@ function showDropCue(on) {
     event.listen("tauri://drag-leave", () => showDropCue(false));
     event.listen("tauri://drag-drop", (e) => {
       showDropCue(false);
-      openDrop((e && e.payload && e.payload.paths) || []);
+      const paths = (e && e.payload && e.payload.paths) || [];
+      // A single dropped image has only one meaning — embed it as the cover of
+      // the selection (#133). No position hit-test: an image can't be "opened"
+      // as a library, so this is unambiguous and doesn't depend on fragile
+      // physical/logical-pixel coordinate conversion. Everything else opens.
+      if (paths.length === 1 && isImagePath(paths[0])) {
+        embedCoverFromPath(paths[0]);
+        return;
+      }
+      openDrop(paths);
     });
     return;
   }
@@ -5094,6 +5135,14 @@ function mockInvoke(cmd, args) {
   switch (cmd) {
     case "open_library":
       return Promise.resolve();
+    case "read_cover_image":
+      // Browser-dev stand-in: echo a tiny 1x1 PNG as the "read" cover so the
+      // embed flow can be exercised without touching disk (#133).
+      return Promise.resolve({
+        mime: "image/png",
+        data_base64:
+          "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+      });
     case "open_drop": {
       // Mirror the backend resolver enough to exercise both modes + grouping:
       // a path with no file extension is treated as a folder, everything else a

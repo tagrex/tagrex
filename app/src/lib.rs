@@ -1922,6 +1922,42 @@ fn mime_for_cover_path(path: &Path) -> &'static str {
     }
 }
 
+/// MIME type for a would-be cover image by extension, or `None` when the
+/// extension isn't a recognized image format. Broader than
+/// [`mime_for_cover_path`] because a dropped cover (#133) can be any image the
+/// user chose, not just the `cover.jpg` / `folder.png` sidecar set.
+fn mime_for_image_path(path: &Path) -> Option<&'static str> {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("jpg" | "jpeg") => Some("image/jpeg"),
+        Some("png") => Some("image/png"),
+        Some("webp") => Some("image/webp"),
+        Some("gif") => Some("image/gif"),
+        Some("bmp") => Some("image/bmp"),
+        Some("tif" | "tiff") => Some("image/tiff"),
+        _ => None,
+    }
+}
+
+/// Read an image file into a [`CoverArtDto`] (#133), ready to feed
+/// [`App::preview_cover_embed`]. Used when the user drops an image onto the
+/// cover well: the drag-drop event gives a path, not a browser `File`. The
+/// extension must be a recognized image format, or this errors rather than
+/// embedding arbitrary bytes.
+pub fn read_cover_image(path: &Path) -> Result<CoverArtDto, AppError> {
+    let mime = mime_for_image_path(path)
+        .ok_or_else(|| AppError::NotAnImage(path.display().to_string()))?;
+    let data = std::fs::read(path)?;
+    Ok(CoverArtDto {
+        mime: mime.to_string(),
+        data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
+    })
+}
+
 fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|v| !v.is_empty())
 }
@@ -2185,6 +2221,8 @@ pub enum AppError {
     UnknownTransform(String),
     #[error("nothing to open: the drop contained no audio files")]
     EmptyDrop,
+    #[error("not an image file: {0}")]
+    NotAnImage(String),
     #[error(transparent)]
     Transform(#[from] tagrex_core::transform::TransformError),
     #[error("I/O error: {0}")]
@@ -3392,5 +3430,25 @@ mod tests {
         assert!(paths.contains(&c.to_string_lossy().into_owned()));
         // The un-listed file is on disk — filtered out of the session, not gone.
         assert!(dir.0.join("02.flac").exists());
+    }
+
+    #[test]
+    fn read_cover_image_reads_by_extension_and_rejects_non_images() {
+        let dir = TempDir::new("cover-read");
+        let img = dir.0.join("art.png");
+        std::fs::write(&img, [0x89, 0x50, 0x4e, 0x47]).unwrap(); // "\x89PNG" magic
+        let dto = read_cover_image(&img).unwrap();
+        assert_eq!(dto.mime, "image/png");
+        assert!(!dto.data_base64.is_empty());
+        // A .jpeg maps to image/jpeg; a non-image extension is refused.
+        let jpg = dir.0.join("art.jpeg");
+        std::fs::write(&jpg, [0xff, 0xd8]).unwrap();
+        assert_eq!(read_cover_image(&jpg).unwrap().mime, "image/jpeg");
+        let txt = dir.0.join("notes.txt");
+        std::fs::write(&txt, b"nope").unwrap();
+        assert!(matches!(
+            read_cover_image(&txt),
+            Err(AppError::NotAnImage(_))
+        ));
     }
 }

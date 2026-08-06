@@ -203,6 +203,14 @@ fn read_external_cover(
     })
 }
 
+/// Read an image file (dropped onto the cover well, #133) into a cover DTO for
+/// [`preview_cover_embed`]. Stateless — the source image isn't confined to the
+/// library, matching the file picker (the user chose it explicitly).
+#[tauri::command]
+fn read_cover_image(path: String) -> Result<CoverArtDto, String> {
+    tagrex::read_cover_image(&PathBuf::from(path)).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 fn preview_cover_remove(state: State<AppState>, paths: Vec<String>) -> Result<PlanDto, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
@@ -510,6 +518,7 @@ fn main() {
             export_cover,
             read_cover_summary,
             read_external_cover,
+            read_cover_image,
             preview_cover_remove,
             preview_clear_tags,
             export_playlist,

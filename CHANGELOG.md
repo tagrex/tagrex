@@ -42,6 +42,14 @@ first release ships.
 
 ### Added
 
+- **Drop an image onto the window to embed it as the cover** (#133), now working
+  in the packaged app. The cover well's embed-on-drop previously relied on HTML5
+  file DnD, which Tauri's `dragDropEnabled` suppresses — so it only worked in the
+  browser dev mock. The single native `tauri://drag-drop` listener now routes a
+  lone image (any drop location — an image can't be "opened") to embed it into
+  the selection, via a new `read_cover_image` backend command feeding the usual
+  preview → apply → undo; everything else opens as a library/file-set.
+
 - **Drag-and-drop folders and files onto the window** (#127). Dropping content
   onto the app now opens it directly, alongside Browse / Open. **A single folder**
   opens as a library (recursive scan, as before). **Files, several folders, or a
