@@ -82,15 +82,10 @@
         <div class="view-tabs">
           <label class="group-ctl muted"
             >Group
-            <select id="group-by" title="Group rows by a key (view only — file order is unchanged)">
-              <option value="">None</option>
-              <option value="folder" selected>Folder</option>
-              <option value="artist">Artist</option>
-              <option value="album">Album</option>
-              <option value="release">Release id</option>
-              <!-- Set only by a file-set drag-and-drop (#127); not user-pickable. -->
-              <option value="drop" hidden>By drop</option>
-            </select>
+            <!-- Options (None, Folder, Release id, every tag field, hidden "By drop")
+                 are built by populateGroupSelect() so any modeled field can group
+                 the table (#43). -->
+            <select id="group-by" title="Group rows by a key (view only — file order is unchanged)"></select>
           </label>
           <button id="expand-all" hidden title="Expand every group">Expand all</button>
           <button id="collapse-all" hidden title="Collapse every group">Collapse all</button>

@@ -10,6 +10,13 @@ first release ships.
 
 ### Changed
 
+- **Group the table by any tag field** (#43). The Group control offered only
+  Folder / Artist / Album / Release id; it now lists every modeled field
+  (Composer, Year, BPM, …) alongside those, so a column you add is groupable the
+  same way the built-ins are — finishing the configurable-columns work. Empty
+  values bucket under a friendly `(no <field>)` header, and an unknown persisted
+  choice falls back to Folder.
+
 - **EDITOR tag fields split into Core / Standard / Advanced** (#136). The form
   crammed every field into one flat, ellipsis-truncated list, so long names were
   silently cut (`OriginalMediaT…`, `ReplayGainAlbu…`) and raw technical keys

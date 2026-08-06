@@ -213,11 +213,12 @@ const PRESETS_STORAGE_KEY = "tagrex.filterPresets";
 // group keys persist across renders. The choice is a display preference,
 // persisted in localStorage and defaulting to Folder (#108).
 const GROUP_STORAGE_KEY = "tagrex.groupBy";
-const GROUP_VALUES = ["", "folder", "artist", "album", "release"];
 function groupByPref() {
   try {
     const v = localStorage.getItem(GROUP_STORAGE_KEY);
-    return GROUP_VALUES.includes(v) ? v : "folder";
+    // Any stored string is accepted here; populateGroupSelect() validates it
+    // against the built option list once EXTENDED_FIELDS is available (#43).
+    return v === null ? "folder" : v;
   } catch (e) {
     return "folder";
   }
@@ -406,6 +407,29 @@ function columnLabel(key) {
   const found =
     EXTENDED_FIELDS.find(([k]) => k === key) || VIRTUAL_COLUMNS.find(([k]) => k === key);
   return found ? found[1] : key;
+}
+
+// Build the "Group by" options (#43): the fixed groupings (Folder, Release id)
+// plus every modeled tag field, so any column groups the table like the built-in
+// ones. "By drop" is set only by a file-set drag-and-drop, so it's a hidden
+// option. Also validates the persisted choice against the built list — an old or
+// unknown key falls back to Folder (never the drop grouping, which is transient).
+function populateGroupSelect() {
+  const sel = el("group-by");
+  const opt = (value, label, hidden) =>
+    `<option value="${escapeHtml(value)}"${hidden ? " hidden" : ""}>${escapeHtml(label)}</option>`;
+  sel.innerHTML =
+    opt("", "None") +
+    opt("folder", "Folder") +
+    opt("release", "Release id") +
+    EXTENDED_FIELDS.map(([key, label]) => opt(key, label)).join("") +
+    opt("drop", "By drop", true);
+  const selectable = new Set([...sel.options].map((o) => o.value).filter((v) => v !== "drop"));
+  if (!selectable.has(groupBy)) {
+    groupBy = "folder";
+    saveGroupBy(groupBy);
+  }
+  sel.value = groupBy;
 }
 
 // ---- vinyl side notation view (#106) ----
@@ -808,8 +832,10 @@ function groupKeyOf(track) {
         track.tags["custom:DISCOGS_RELEASE_ID"] ||
         ""
       );
+    // Any modeled tag field (#43): group by its value (artist, album, year,
+    // composer, …), the same way the built-in groupings work.
     default:
-      return "";
+      return track.tags[groupBy] || "";
   }
 }
 
@@ -849,7 +875,7 @@ function groupLabel(key) {
   if (key === "") {
     if (groupBy === "folder") return "(no folder)";
     if (groupBy === "release") return "(no release id)";
-    return `(no ${groupBy})`;
+    return `(no ${columnLabel(groupBy).toLowerCase()})`;
   }
   if (groupBy === "folder") return folderGroupLabel(key);
   // Release ids (esp. MusicBrainz UUIDs) are long; show a short, stable prefix.
@@ -5173,7 +5199,9 @@ applyCondensedTable(condensedTableEnabled());
 applyCheckboxCol(checkboxColEnabled());
 applyTableFont(tableFontPx());
 // Reflect saved defaults onto the grouping + search page-size selects (#108).
-el("group-by").value = groupBy;
+// Grouping options are built from the modeled fields (#43), then the saved
+// choice is applied.
+populateGroupSelect();
 el("search-per-page").value = String(searchPerPage);
 // Load saved action groups (#57) from settings.json into the Groups popover.
 initActionGroups();
