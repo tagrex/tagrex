@@ -3938,6 +3938,15 @@ if (window.ResizeObserver) {
 }
 updateCompactTabs();
 
+// Suppress the webview's default right-click menu (Reload / Inspect Element),
+// which looks out of place in a shipping app — and on macOS a Ctrl-click is an
+// OS-level right-click, so this stops it popping a dev menu instead of doing
+// nothing (the additive-select modifier there is ⌘). Text inputs and a tag cell
+// being edited keep their native menu so Cut/Copy/Paste still works (#132).
+document.addEventListener("contextmenu", (e) => {
+  if (!e.target.closest('input, textarea, [contenteditable="true"]')) e.preventDefault();
+});
+
 // ---- diff-state action bar (#117) ----
 el("dup-scan").addEventListener("click", runDuplicateScan);
 el("diff-discard").addEventListener("click", discardPreview);

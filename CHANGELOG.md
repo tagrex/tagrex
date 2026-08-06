@@ -10,6 +10,12 @@ first release ships.
 
 ### Changed
 
+- **The webview's default right-click menu is suppressed** (#132). Right-clicking
+  the app no longer pops _Reload / Inspect Element_; text inputs and a tag cell
+  being edited keep their native Cut/Copy/Paste menu. On macOS this also stops a
+  Ctrl-click (an OS-level right-click) from opening that menu — the additive
+  selection modifier there is ⌘.
+
 - **Shift on the file table now range-selects, without the blue text drag**
   (#131). Shift-clicking a row or a group header extends the selection from the
   anchor through the click, selecting everything in between (⌘/Ctrl stays
