@@ -1344,11 +1344,14 @@ async function openLibrary() {
 // table defaults to drop-origin grouping; otherwise the saved group pref.
 async function afterOpen(label) {
   tracks = await invoke("list_tracks", {});
-  // Everything readable selected by default; the set (not the DOM) holds it.
-  // Unreadable placeholders (#83) stay out of the selection — they can't be
-  // operated on.
+  // Only the first readable track is selected on open (#128), so an operation
+  // never silently hits the whole library — the user picks what to work on
+  // (a row, a range, a whole folder via its group header, or the select-all
+  // box). The set (not the DOM) holds the selection. Unreadable placeholders
+  // (#83) can't be operated on, so the first readable one is chosen.
   selection.clear();
-  for (const t of tracks) if (!t.unreadable) selection.add(t.path);
+  const firstReadable = tracks.find((t) => !t.unreadable);
+  if (firstReadable) selection.add(firstReadable.path);
   // Opening a session drops any staged plan and leaves the diff-state.
   previewPlan = null;
   previewSource = null;

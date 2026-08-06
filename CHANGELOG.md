@@ -8,6 +8,14 @@ first release ships.
 
 ## [Unreleased]
 
+### Changed
+
+- **Only the first file is selected when a session opens** (#128), instead of the
+  whole library. This stops an operation from silently spanning every file, and
+  matches how comparable taggers behave. The user then picks what to act on — a
+  row, a Shift-range, a whole folder via its group header, or the header
+  select-all box. Applies to Open, Browse, and drag-and-drop alike.
+
 ### Added
 
 - **Drag-and-drop folders and files onto the window** (#127). Dropping content
