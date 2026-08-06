@@ -3068,13 +3068,13 @@ td[data-field="year"],
   color: var(--muted);
 }
 
+/* Only this select's unique bits — its padding and a reset of the uppercase
+   .source-label text styling it sits inside. Border / radius / background /
+   caret come from the base `select` rule, so the shared focus treatment (#135)
+   isn't beaten by an ID-specificity border here (that left the provider select
+   with a grey focus border while its neighbours turned accent). */
 #online-source {
   padding: 4px 22px 4px 7px; /* right room for the #115 caret */
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background-color: var(--bg); /* not `background` — keep the caret image (#115) */
-  color: var(--text);
-  font: inherit;
   font-size: var(--text-sm);
   font-weight: var(--fw-regular);
   text-transform: none;
