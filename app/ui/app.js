@@ -2635,8 +2635,12 @@ const EDITOR_CORE_KEYS = ["artist", "title", "album", "albumartist", "track", "t
 // as one row each — "Track [n] / [total]", "Disc [n] / [total]" — mirroring a
 // reference tagger's combined NN/TT presentation (#136 pass 2).
 const EDITOR_CORE_LAYOUT = [
-  { pair: ["track", "tracktotal"], label: "Track" },
-  { pair: ["disc", "disctotal"], label: "Disc" },
+  {
+    duo: [
+      { pair: ["track", "tracktotal"], label: "Track" },
+      { pair: ["disc", "disctotal"], label: "Disc" },
+    ],
+  },
   { key: "artist" },
   { key: "title" },
   { key: "album" },
@@ -2695,7 +2699,7 @@ function renderFieldEditor(paths) {
 
   const labelOf = new Map(EXTENDED_FIELDS);
   const coreRows = EDITOR_CORE_LAYOUT.map((r) =>
-    r.pair ? { pair: r.pair, label: r.label } : { key: r.key, label: labelOf.get(r.key) }
+    r.duo ? { duo: r.duo } : { key: r.key, label: labelOf.get(r.key) }
   );
 
   // Standard = the known extended fields, plus any custom keys we can name
@@ -2757,9 +2761,7 @@ function fieldGroup(title, rows, paths, kind) {
   grid.className = "fe-grid";
   for (const r of rows) {
     grid.appendChild(
-      r.pair
-        ? fieldPairRow(r.pair[0], r.pair[1], r.label, paths)
-        : fieldRow(r.key, r.label, paths, advanced)
+      r.duo ? fieldDuoRow(r.duo, paths) : fieldRow(r.key, r.label, paths, advanced)
     );
   }
   group.appendChild(grid);
@@ -2840,27 +2842,27 @@ function fieldRow(key, label, paths, advanced) {
   return row;
 }
 
-// A combined "number / total" row — one label, two narrow numeric inputs joined
-// by a "/", e.g. "Track [n] / [total]" (#136 pass 2). Each sub-input stages and
-// validates its own key; the row's dirty/error marker reflects either half.
-function fieldPairRow(numKey, totalKey, label, paths) {
+// A row of one or more "number / total" pairs on a single line, e.g.
+// "Track [n] / [total]   Disc [n] / [total]" (#136). The first pair's label sits
+// in the aligned label column; later pairs get an inline label. Each sub-input
+// stages and validates its own key; the row's dirty/error marker reflects any
+// half — recomputed across every input so fixing one can't clear another's error.
+function fieldDuoRow(pairs, paths) {
   const row = document.createElement("div");
-  row.className = "fe-row pair";
+  row.className = "fe-row duo";
 
   const marker = document.createElement("span");
   marker.className = "fe-marker";
 
   const labelCell = document.createElement("span");
   labelCell.className = "fe-label";
-  labelCell.textContent = label;
-  labelCell.title = label;
+  labelCell.textContent = pairs[0].label;
+  labelCell.title = pairs[0].label;
 
-  const pair = document.createElement("span");
-  pair.className = "fe-pair";
+  const value = document.createElement("span");
+  value.className = "fe-duo";
 
   const inputs = [];
-  // Row error reflects either half, so recompute across both inputs each time —
-  // fixing one input must not clear the row error the other still has.
   const reflectRow = () => {
     let anyError = false;
     for (const inp of inputs) {
@@ -2873,7 +2875,7 @@ function fieldPairRow(numKey, totalKey, label, paths) {
     row.classList.toggle("error", anyError);
   };
 
-  const makeSub = (key, aria) => {
+  const makeSub = (key, label, aria) => {
     const values = new Set(paths.map((path) => currentFieldValue(path, key)));
     const shared = values.size === 1 ? [...values][0] : null;
     const input = document.createElement("input");
@@ -2900,15 +2902,28 @@ function fieldPairRow(numKey, totalKey, label, paths) {
     return input;
   };
 
-  const numInput = makeSub(numKey, "number");
-  const sep = document.createElement("span");
-  sep.className = "fe-pair-sep";
-  sep.textContent = "/";
-  const totalInput = makeSub(totalKey, "total");
-  pair.append(numInput, sep, totalInput);
+  pairs.forEach((p, i) => {
+    const unit = document.createElement("span");
+    unit.className = "fe-duo-unit";
+    // The first pair's label is the row's aligned column label; the rest inline.
+    if (i > 0) {
+      const inlineLabel = document.createElement("span");
+      inlineLabel.className = "fe-duo-label";
+      inlineLabel.textContent = p.label;
+      unit.append(inlineLabel);
+    }
+    const group = document.createElement("span");
+    group.className = "fe-pair";
+    const sep = document.createElement("span");
+    sep.className = "fe-pair-sep";
+    sep.textContent = "/";
+    group.append(makeSub(p.pair[0], p.label, "number"), sep, makeSub(p.pair[1], p.label, "total"));
+    unit.append(group);
+    value.append(unit);
+  });
 
   reflectRow(); // surface a pre-filled invalid value on first render (rare)
-  row.append(marker, labelCell, pair);
+  row.append(marker, labelCell, value);
   return row;
 }
 

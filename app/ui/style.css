@@ -1703,8 +1703,8 @@ td.unreadable-note {
   align-items: flex-start;
 }
 
-/* combined number/total pair (#136 pass 2): one label, two narrow numeric inputs
-   joined by a "/", e.g. "Track [n] / [total]". */
+/* combined number/total pair (#136): two narrow numeric inputs joined by a "/",
+   e.g. "Track [n] / [total]". */
 .fe-pair {
   display: flex;
   align-items: center;
@@ -1712,6 +1712,30 @@ td.unreadable-note {
   min-width: 0;
 }
 .fe-pair-sep {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+/* Pair inputs are sized for ~3 visible digits (down a third from the standalone
+   56px numeric); a longer value scrolls within the right-aligned box (#136). */
+.fe-pair .field-input {
+  width: 40px;
+}
+
+/* Track and Disc pairs share one line: the first label sits in the aligned
+   column, each further pair carries its own inline label (#136). */
+.fe-duo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  min-width: 0;
+}
+.fe-duo-unit {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.fe-duo-label {
   color: var(--muted);
   font-size: var(--text-xs);
 }
