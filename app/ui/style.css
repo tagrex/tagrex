@@ -1538,7 +1538,7 @@ td.unreadable-note {
 }
 .fe-group-count {
   font-weight: var(--fw-regular);
-  color: var(--border);
+  color: var(--muted);
 }
 .fe-group-caret {
   margin-left: auto;
