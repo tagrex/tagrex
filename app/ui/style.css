@@ -991,9 +991,20 @@ body.condensed-table #tracks tbody td {
   padding: 4px 10px;
 }
 
-/* Editable cells only show the text caret while actually editing. */
+/* Row clicks (including Shift-range) select files, so the browser must not paint
+   a native text selection over the cells while modifier-clicking (#131). Editing
+   a cell re-enables text selection locally. */
+#tracks tbody {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Editable cells only show the text caret while actually editing, and re-enable
+   text selection so typing/selecting inside them still works. */
 #tracks td.editable[contenteditable="true"] {
   cursor: text;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 th.sel,

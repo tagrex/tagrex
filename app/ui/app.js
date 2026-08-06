@@ -4383,30 +4383,51 @@ function selectRow(tr, e) {
   setActiveRow(tr, true); // clicking a row also makes it the keyboard-nav anchor
 }
 
-// Whether a pointer event carries a selection modifier (⌘/Ctrl for toggle,
-// Shift for additive) — used to tell "select just this folder" from "add this
-// folder to what's already selected".
-function hasSelModifier(e) {
-  return e.metaKey || e.ctrlKey || e.shiftKey;
+// Which selection gesture a group-header click carries: Shift = extend a range,
+// ⌘/Ctrl = add/toggle, otherwise replace. Mirrors row-click modifiers.
+function groupSelectMode(e) {
+  if (e.shiftKey) return "range";
+  if (e.metaKey || e.ctrlKey) return "add";
+  return "replace";
 }
 
-// Select a whole folder from its group header (#130). A plain gesture REPLACES
-// the selection with just this group's files; a modified one (⌘/Ctrl/Shift)
-// toggles this group in or out, leaving other groups untouched. Either way the
-// group is expanded first so the user sees exactly what got selected.
-function selectGroup(key, additive) {
+// Select a whole folder from its group header (#130, #131), by `mode`:
+//  - "replace": the selection becomes exactly this folder's files.
+//  - "add" (⌘/Ctrl): toggle this folder in/out, leaving other groups alone.
+//  - "range" (Shift): extend from the anchor row through this whole folder,
+//    selecting everything in between — the standard Shift-range behaviour.
+// The group is expanded first so the choice is visible; replace/add drop the
+// anchor on the folder's first file so a following Shift extends from there,
+// while range keeps the existing anchor (as a range extension should).
+function selectGroup(key, mode) {
   if (collapsedGroups.has(key)) toggleGroup(key); // reveal what's being selected
-  const rows = dataRows().filter((tr) => tr.dataset.group === key);
-  if (rows.length === 0) return;
-  if (additive) {
-    const allSelected = rows.every((tr) => selection.has(tr.dataset.path));
-    for (const tr of rows) {
-      if (allSelected) selection.delete(tr.dataset.path);
-      else selection.add(tr.dataset.path);
+  const rows = dataRows();
+  const paths = rows.map((r) => r.dataset.path);
+  const idx = [];
+  rows.forEach((r, i) => {
+    if (r.dataset.group === key) idx.push(i);
+  });
+  if (idx.length === 0) return;
+  const gStart = idx[0];
+  const gEnd = idx[idx.length - 1];
+  if (mode === "range") {
+    let a = selAnchor ? paths.indexOf(selAnchor) : -1;
+    if (a < 0) a = gStart;
+    const lo = Math.min(a, gStart);
+    const hi = Math.max(a, gEnd);
+    selection.clear();
+    for (let i = lo; i <= hi; i++) selection.add(paths[i]);
+  } else if (mode === "add") {
+    const allSelected = idx.every((i) => selection.has(paths[i]));
+    for (const i of idx) {
+      if (allSelected) selection.delete(paths[i]);
+      else selection.add(paths[i]);
     }
+    selAnchor = paths[gStart];
   } else {
     selection.clear();
-    for (const tr of rows) selection.add(tr.dataset.path);
+    for (const i of idx) selection.add(paths[i]);
+    selAnchor = paths[gStart];
   }
   syncSelectionUI();
 }
@@ -4427,11 +4448,13 @@ tracksBody.addEventListener("click", (e) => {
   if (e.target.closest("td.sel")) return; // checkbox toggle → change listener
   const groupHead = e.target.closest("tr.group-head");
   if (groupHead) {
-    // The caret has its own collapse listener. A modifier + click additively
-    // selects the folder; a plain click does nothing, so plain folder-select
-    // stays the double-click gesture and a stray click never wipes selection.
-    if (!e.target.closest(".group-caret") && hasSelModifier(e)) {
-      selectGroup(groupHead.dataset.group, true);
+    // The caret has its own collapse listener. A modified click (⌘/Ctrl add,
+    // Shift range) selects the folder; a plain click does nothing, so plain
+    // folder-select stays the double-click gesture and a stray click never
+    // wipes the selection.
+    const mode = groupSelectMode(e);
+    if (!e.target.closest(".group-caret") && mode !== "replace") {
+      selectGroup(groupHead.dataset.group, mode);
     }
     return;
   }
@@ -4448,9 +4471,9 @@ tracksBody.addEventListener("dblclick", (e) => {
   if (head) {
     // Caret double-click just toggles collapse (handled by the click listener);
     // double-clicking the name selects the folder — plainly it replaces the
-    // selection, with a ⌘/Ctrl/Shift modifier it adds to it (#130).
+    // selection, ⌘/Ctrl adds it, Shift extends a range (#130, #131).
     if (!e.target.closest(".group-caret")) {
-      selectGroup(head.dataset.group, hasSelModifier(e));
+      selectGroup(head.dataset.group, groupSelectMode(e));
     }
     return;
   }

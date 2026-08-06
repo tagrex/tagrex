@@ -10,6 +10,12 @@ first release ships.
 
 ### Changed
 
+- **Shift on the file table now range-selects, without the blue text drag**
+  (#131). Shift-clicking a row or a group header extends the selection from the
+  anchor through the click, selecting everything in between (⌘/Ctrl stays
+  add/toggle). The browser's native text selection no longer paints over the
+  cells while modifier-clicking.
+
 - **Double-clicking a group header selects just that folder** (#130), replacing
   the selection instead of adding to it, and **expands the group** so the choice
   is visible. Hold **⌘/Ctrl/Shift** (with a click or double-click) to add a
