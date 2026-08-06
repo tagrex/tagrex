@@ -510,11 +510,11 @@
          input or an editing tag cell, in place of the webview's bloated native
          menu. Positioned + driven by app.js. -->
     <div id="edit-ctx" class="ctx-menu" hidden role="menu">
-      <button type="button" class="ctx-item" data-cmd="cut" role="menuitem">Cut</button>
-      <button type="button" class="ctx-item" data-cmd="copy" role="menuitem">Copy</button>
-      <button type="button" class="ctx-item" data-cmd="paste" role="menuitem">Paste</button>
+      <button type="button" class="ctx-item" data-cmd="cut" role="menuitem" draggable="false">Cut</button>
+      <button type="button" class="ctx-item" data-cmd="copy" role="menuitem" draggable="false">Copy</button>
+      <button type="button" class="ctx-item" data-cmd="paste" role="menuitem" draggable="false">Paste</button>
       <div class="ctx-sep"></div>
-      <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem">Select All</button>
+      <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem" draggable="false">Select All</button>
     </div>
 
     <!-- Confirm dialog (#102): a small modal for yes/no prompts (e.g. overwriting

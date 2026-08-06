@@ -4001,6 +4001,11 @@ editCtx.addEventListener("mousedown", (e) => {
   hideEditCtx();
 });
 
+// WKWebView still tries to start a native drag of the pressed item (the floating
+// "Paste" pill), which `user-select: none` alone doesn't stop — cancel the drag
+// at the source (#132).
+editCtx.addEventListener("dragstart", (e) => e.preventDefault());
+
 // Dismiss on any outside interaction.
 document.addEventListener("mousedown", (e) => {
   if (!editCtx.hidden && !e.target.closest("#edit-ctx")) hideEditCtx();
