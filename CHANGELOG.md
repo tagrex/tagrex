@@ -11,21 +11,20 @@ first release ships.
 ### Changed
 
 - **EDITOR tag fields split into Core / Standard / Advanced** (#136). The form
-  used a fixed 92px label column with ellipsis, so long names were silently cut
-  (`OriginalMediaT…`, `ReplayGainAlbu…`), and every raw technical key
-  (`DISCOGS_RELEASE_ID`, `REPLAYGAIN_*`, `1T_TAGGEDDATE`…) was dumped into the
-  same list as the friendly fields. Now labels wrap instead of truncating (with
-  a full-name tooltip); a curated dictionary promotes known technical frames
-  into the Standard group under friendly names (Audio file URL, ReplayGain
-  (album), Discogs Release ID…); and everything else drops into a collapsed
-  Advanced group rendered as a raw key/value list — the arbitrary key on its own
-  mono line above a full-width input, so nothing is clipped. The everyday form
-  stays clean while every raw key is still reachable. A second pass also matched
-  the reference tagger's layout: Track and Disc now render as combined
-  number/total rows (`Track [n] / [total]`, `Disc [n] / [total]`) instead of
-  separate lines — which added a first-class **disc-total** tag field to the
-  backend so the "of N" half has somewhere to write — the numeric boxes shrank
-  from 92px to a compact 56px, and the form was tightened up vertically.
+  crammed every field into one flat, ellipsis-truncated list, so long names were
+  silently cut (`OriginalMediaT…`, `ReplayGainAlbu…`) and raw technical keys
+  (`DISCOGS_RELEASE_ID`, `REPLAYGAIN_*`, `1T_TAGGEDDATE`…) sat among the friendly
+  fields. Fields now live in three groups that share one label-left / field-right
+  layout: **Core** (the everyday fields), **Standard** (curated known fields,
+  with a dictionary that promotes recognised technical frames under friendly
+  names — Audio file URL, ReplayGain (album), Discogs Release ID…), and a
+  collapsed **Advanced** holding whatever raw keys remain. Labels wrap in a
+  slightly wider column instead of truncating (full name on hover), so nothing is
+  clipped. Track and Disc render as one combined row of number/total pairs
+  (`Track [n] / [total]   Disc [n] / [total]`), which added a first-class
+  **disc-total** tag field to the backend so the "of N" half has somewhere to
+  write. The whole form is denser — compact numeric boxes and shorter input rows
+  — with the text size left unchanged.
 
 - **Cover-art buttons share one size** (#134). Set one… / Remove all / Export and
   the full-width Use folder image were 10px vs the base 13px; they now sit at a
