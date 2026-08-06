@@ -1570,18 +1570,6 @@ td.unreadable-note {
   padding: 1px 0 1px var(--space-1);
   border-radius: var(--radius-sm);
 }
-/* Advanced (#136): raw key/value. One content column; the arbitrary key rides
-   on its own line above a full-width input (see .fe-stack), so a long technical
-   key like REPLAYGAIN_ALBUM_GAIN never fights the input for width. */
-.fe-row.adv {
-  grid-template-columns: 3px 1fr;
-}
-.fe-stack {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
 .fe-row + .fe-row {
   margin-top: 2px;
 }
@@ -1607,9 +1595,10 @@ td.unreadable-note {
   background: var(--error-tint);
 }
 
-/* Labels wrap instead of truncating — with raw keys moved to Advanced, the
-   Standard/Core column only ever holds short friendly names, and the rare long
-   one wraps rather than clipping (#136). */
+/* Labels wrap instead of truncating: Core/Standard hold short friendly names,
+   while Advanced's raw keys can be long — they wrap to a second line in the
+   column rather than clipping, with the full name always on the title tooltip
+   (#136). */
 .fe-label {
   font-size: var(--text-xs);
   color: var(--muted);
@@ -1617,10 +1606,10 @@ td.unreadable-note {
   overflow-wrap: anywhere;
   line-height: 1.25;
 }
-/* Advanced keys use the same label typography as Core/Standard (UI font,
-   text-xs) — one consistent look across the form, no font "zoo" (#136). The
-   Advanced group stays distinct through its grouping and stacked key/value
-   layout, not a different face. */
+/* Every group — Core, Standard, Advanced — uses the same label-left / field-right
+   row (UI-font label in the aligned column), so the whole form reads as one
+   layout; Advanced is set apart by its grouping and raw key names, not by a
+   different arrangement or face (#136). */
 .fe-row.dirty .fe-label {
   color: var(--text);
   font-weight: var(--fw-medium);

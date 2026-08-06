@@ -2760,21 +2760,19 @@ function fieldGroup(title, rows, paths, kind) {
   const grid = document.createElement("div");
   grid.className = "fe-grid";
   for (const r of rows) {
-    grid.appendChild(
-      r.duo ? fieldDuoRow(r.duo, paths) : fieldRow(r.key, r.label, paths, advanced)
-    );
+    grid.appendChild(r.duo ? fieldDuoRow(r.duo, paths) : fieldRow(r.key, r.label, paths));
   }
   group.appendChild(grid);
   return group;
 }
 
-function fieldRow(key, label, paths, advanced) {
+function fieldRow(key, label, paths) {
   const values = new Set(paths.map((path) => currentFieldValue(path, key)));
   const shared = values.size === 1 ? [...values][0] : null;
   const numeric = EDITOR_NUMERIC_KEYS.has(key);
 
   const row = document.createElement("div");
-  row.className = "fe-row" + (advanced ? " adv" : "");
+  row.className = "fe-row";
 
   const marker = document.createElement("span");
   marker.className = "fe-marker";
@@ -2829,16 +2827,7 @@ function fieldRow(key, label, paths, advanced) {
   if (shared) reflect();
 
   cell.append(input, hint);
-  if (advanced) {
-    // Raw key/value: the long, arbitrary key sits on its own line above a
-    // full-width input, so nothing is ever clipped (#136).
-    const stack = document.createElement("span");
-    stack.className = "fe-stack";
-    stack.append(labelCell, cell);
-    row.append(marker, stack);
-  } else {
-    row.append(marker, labelCell, cell);
-  }
+  row.append(marker, labelCell, cell);
   return row;
 }
 
