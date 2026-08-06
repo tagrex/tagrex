@@ -1564,7 +1564,7 @@ td.unreadable-note {
    per-row "changed / rejected" state so it survives a long scroll. */
 .fe-row {
   display: grid;
-  grid-template-columns: 3px 112px 1fr;
+  grid-template-columns: 3px 124px 1fr;
   align-items: center;
   column-gap: var(--space-3);
   padding: 1px 0 1px var(--space-1);
