@@ -149,6 +149,12 @@ impl SqliteJournal {
                  old_data       BLOB,
                  new_mime       TEXT,
                  new_data       BLOB
+             );
+             CREATE TABLE IF NOT EXISTS sidecar_renames (
+                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                 file_change_id INTEGER NOT NULL REFERENCES file_changes(id) ON DELETE CASCADE,
+                 from_path      TEXT NOT NULL,
+                 to_path        TEXT NOT NULL
              );",
         )?;
         Ok(Self { conn })
@@ -202,6 +208,18 @@ impl UndoJournal for SqliteJournal {
                         cover.old.as_ref().map(|c| c.data.clone()),
                         cover.new.as_ref().map(|c| c.mime.clone()),
                         cover.new.as_ref().map(|c| c.data.clone()),
+                    ],
+                )?;
+            }
+
+            for (from, to) in &change.sidecar_renames {
+                tx.execute(
+                    "INSERT INTO sidecar_renames (file_change_id, from_path, to_path) \
+                     VALUES (?1, ?2, ?3)",
+                    rusqlite::params![
+                        file_change_id,
+                        from.to_string_lossy(),
+                        to.to_string_lossy(),
                     ],
                 )?;
             }
@@ -293,9 +311,27 @@ impl SqliteJournal {
                 tag_changes: self.load_field_changes(file_change_id)?,
                 cover_change: self.load_cover_change(file_change_id)?,
                 rename_to: rename_to.map(PathBuf::from),
+                sidecar_renames: self.load_sidecar_renames(file_change_id)?,
             });
         }
         Ok(changes)
+    }
+
+    fn load_sidecar_renames(
+        &self,
+        file_change_id: i64,
+    ) -> Result<Vec<(PathBuf, PathBuf)>, JournalError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT from_path, to_path FROM sidecar_renames \
+             WHERE file_change_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![file_change_id], |row| {
+            Ok((
+                PathBuf::from(row.get::<_, String>(0)?),
+                PathBuf::from(row.get::<_, String>(1)?),
+            ))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     fn load_cover_change(&self, file_change_id: i64) -> Result<Option<CoverChange>, JournalError> {

@@ -62,6 +62,7 @@ fn set_artist(path: &Path, old: Option<&str>, new: Option<&str>) -> ChangePlan {
             }],
             cover_change: None,
             rename_to: None,
+            sidecar_renames: Vec::new(),
         }],
     }
 }
@@ -129,6 +130,7 @@ fn rejects_an_invalid_year_without_poisoning_the_file() {
             }],
             cover_change: None,
             rename_to: None,
+            sidecar_renames: Vec::new(),
         }],
     };
     assert!(Executor::apply(&bad, &mut journal, dir.path()).is_err());
@@ -148,6 +150,7 @@ fn rejects_an_invalid_year_without_poisoning_the_file() {
             }],
             cover_change: None,
             rename_to: None,
+            sidecar_renames: Vec::new(),
         }],
     };
     Executor::apply(&good, &mut journal, dir.path()).unwrap();
@@ -270,12 +273,14 @@ fn rejects_two_files_renamed_onto_the_same_target() {
                 tag_changes: vec![],
                 cover_change: None,
                 rename_to: Some(target.clone()),
+                sidecar_renames: Vec::new(),
             },
             FileChange {
                 path: b,
                 tag_changes: vec![],
                 cover_change: None,
                 rename_to: Some(target),
+                sidecar_renames: Vec::new(),
             },
         ],
     };
@@ -324,6 +329,7 @@ fn embeds_cover_and_undo_removes_it() {
                 new: Some(cover.clone()),
             }),
             rename_to: None,
+            sidecar_renames: Vec::new(),
         }],
     };
 
@@ -421,6 +427,80 @@ fn rename_into_new_folders_still_cannot_escape_the_root() {
     assert!(
         !dir.path().join("../outside").exists(),
         "no folders created"
+    );
+
+    std::fs::remove_dir_all(dir.path()).ok();
+}
+
+// #58: a sidecar recorded on a change moves with the track on apply and is
+// restored with it on undo — round-tripping through the journal.
+#[test]
+fn sidecar_files_move_and_restore_with_the_track() {
+    let dir = TempDir::new("sidecar");
+    let track = dir.flac("track.flac");
+    let lrc = dir.path().join("track.lrc");
+    std::fs::write(&lrc, b"lyrics").unwrap();
+
+    let target = dir.path().join("renamed.flac");
+    let lrc_target = dir.path().join("renamed.lrc");
+
+    let plan = ChangePlan {
+        description: "rename with sidecar".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            rename_to: Some(target.clone()),
+            sidecar_renames: vec![(lrc.clone(), lrc_target.clone())],
+            ..FileChange::default()
+        }],
+    };
+
+    let mut journal = VecJournal::default();
+    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+    assert!(
+        target.exists() && lrc_target.exists(),
+        "both moved to target"
+    );
+    assert!(!track.exists() && !lrc.exists(), "originals gone");
+
+    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+    assert!(track.exists() && lrc.exists(), "both restored");
+    assert!(
+        !target.exists() && !lrc_target.exists(),
+        "targets cleaned up"
+    );
+
+    std::fs::remove_dir_all(dir.path()).ok();
+}
+
+// #58: a sidecar must never clobber a file already at its destination — the
+// whole plan is rejected before anything moves.
+#[test]
+fn sidecar_never_overwrites_an_existing_target() {
+    let dir = TempDir::new("sidecar-collide");
+    let track = dir.flac("track.flac");
+    let lrc = dir.path().join("track.lrc");
+    std::fs::write(&lrc, b"lyrics").unwrap();
+    let occupied = dir.path().join("renamed.lrc");
+    std::fs::write(&occupied, b"existing").unwrap();
+
+    let plan = ChangePlan {
+        description: "collide sidecar".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            rename_to: Some(dir.path().join("renamed.flac")),
+            sidecar_renames: vec![(lrc.clone(), occupied.clone())],
+            ..FileChange::default()
+        }],
+    };
+
+    let mut journal = VecJournal::default();
+    let result = Executor::apply(&plan, &mut journal, dir.path());
+    assert!(matches!(result, Err(PlanError::RenameCollision(_))));
+    assert!(track.exists() && lrc.exists(), "nothing moved");
+    assert_eq!(
+        std::fs::read(&occupied).unwrap(),
+        b"existing",
+        "occupied target untouched"
     );
 
     std::fs::remove_dir_all(dir.path()).ok();

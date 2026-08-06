@@ -43,6 +43,11 @@ pub struct FileChange {
     pub cover_change: Option<CoverChange>,
     /// Planned rename, if any.
     pub rename_to: Option<PathBuf>,
+    /// Sidecar files that travel with this file's rename/move (#58): each a
+    /// `(from, to)` pair. Detected at preview time and journaled with the plan so
+    /// they move together and are restored together on undo. Empty when the file
+    /// isn't renamed or the feature is off.
+    pub sidecar_renames: Vec<(PathBuf, PathBuf)>,
 }
 
 /// A complete, previewable plan of changes over a set of files.
@@ -120,6 +125,19 @@ impl Executor {
                     return Err(PlanError::RenameCollision(canonical_target));
                 }
             }
+            // Sidecars (#58) obey the same rules: source inside root, target
+            // inside root, and never overwrite an existing file or another
+            // planned destination.
+            for (from, to) in &change.sidecar_renames {
+                ensure_within_root(from, &root)?;
+                let canonical_target = resolve_target_within_root(to, &root)?;
+                if canonical_target.exists() {
+                    return Err(PlanError::RenameCollision(canonical_target));
+                }
+                if !planned_targets.insert(canonical_target.clone()) {
+                    return Err(PlanError::RenameCollision(canonical_target));
+                }
+            }
         }
 
         // Apply tags first (all files, at their original paths)...
@@ -137,6 +155,16 @@ impl Executor {
                     created_dirs.extend(create_dirs_recording(parent)?);
                 }
                 std::fs::rename(&change.path, target).map_err(PlanError::Io)?;
+            }
+        }
+        // Sidecars move after the main renames so their target directories (which
+        // a move can create) already exist (#58).
+        for change in &plan.changes {
+            for (from, to) in &change.sidecar_renames {
+                if let Some(parent) = to.parent() {
+                    created_dirs.extend(create_dirs_recording(parent)?);
+                }
+                std::fs::rename(from, to).map_err(PlanError::Io)?;
             }
         }
 
@@ -185,6 +213,12 @@ impl Executor {
                 }
                 None => ensure_within_root(&change.path, &root)?,
             }
+            // A sidecar currently lives at its `to`; it must move back to `from`,
+            // and both must sit within root (#58).
+            for (from, to) in &change.sidecar_renames {
+                ensure_within_root(to, &root)?;
+                resolve_target_within_root(from, &root)?;
+            }
         }
 
         // Reverse renames first, so tag restoration finds each file back at
@@ -192,6 +226,9 @@ impl Executor {
         for change in &batch.plan.changes {
             if let Some(target) = effective_rename(change) {
                 std::fs::rename(target, &change.path).map_err(PlanError::Io)?;
+            }
+            for (from, to) in &change.sidecar_renames {
+                std::fs::rename(to, from).map_err(PlanError::Io)?;
             }
         }
         for change in &batch.plan.changes {

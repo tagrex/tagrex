@@ -133,6 +133,10 @@ pub struct FileChangeDto {
     pub tag_changes: Vec<FieldChangeDto>,
     #[serde(default)]
     pub cover_change: Option<CoverChangeDto>,
+    /// Sidecar files travelling with this rename/move (#58): `(from, to)` pairs,
+    /// filled by `attach_sidecars` at preview time. Serialized as `[[from, to], …]`.
+    #[serde(default)]
+    pub sidecar_renames: Vec<(String, String)>,
 }
 
 /// A previewable plan, ready to render as a "current -> new" diff.
@@ -204,7 +208,7 @@ pub struct DuplicateGroupDto {
 
 /// App-wide preferences (Settings, #79), persisted as JSON in the config dir.
 /// Every field has a serde default so an older/partial file still loads.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SettingsDto {
     /// HTTP/SOCKS proxy URL for Discogs requests; empty = direct connection.
     #[serde(default)]
@@ -235,6 +239,46 @@ pub struct SettingsDto {
     /// reads it from `load_settings` and rewrites it via `save_settings`.
     #[serde(default)]
     pub action_groups: Vec<ActionGroupDto>,
+    /// Whether a rename/move carries matching sidecar files along (#58).
+    /// Defaults on.
+    #[serde(default = "default_carry_sidecars")]
+    pub carry_sidecars: bool,
+    /// Extensions (without the dot) whose same-stem files count as sidecars to
+    /// carry (#58). Case-insensitive. Defaults to a lyrics/cue/text/image set.
+    #[serde(default = "default_sidecar_extensions")]
+    pub sidecar_extensions: Vec<String>,
+}
+
+fn default_carry_sidecars() -> bool {
+    true
+}
+
+/// The default sidecar extension set (#58): lyrics, cue sheets, text notes, and
+/// per-track cover images.
+fn default_sidecar_extensions() -> Vec<String> {
+    ["lrc", "cue", "txt", "jpg", "jpeg", "png"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+// A manual `Default` (rather than derived) so `carry_sidecars`/`sidecar_extensions`
+// default to the same values serde fills in for a partial file — keeping
+// `SettingsDto::default()` and `from_str("{}")` identical.
+impl Default for SettingsDto {
+    fn default() -> Self {
+        Self {
+            proxy: String::new(),
+            rate_limit_per_min: 0,
+            id3_v23: false,
+            read_priority: Vec::new(),
+            cover_max_px: 0,
+            cover_quality: 0,
+            action_groups: Vec::new(),
+            carry_sidecars: default_carry_sidecars(),
+            sidecar_extensions: default_sidecar_extensions(),
+        }
+    }
 }
 
 /// The effective JPEG quality for cover resize: the setting, or 85 when unset.
@@ -586,6 +630,10 @@ pub struct App {
     cover_max_px: Cell<u32>,
     /// JPEG quality for a resized cover (#41), from settings.
     cover_quality: Cell<u8>,
+    /// Whether a rename/move carries matching sidecar files (#58), from settings.
+    carry_sidecars: Cell<bool>,
+    /// Sidecar extensions to carry (#58), from settings.
+    sidecar_extensions: RefCell<Vec<String>>,
 }
 
 impl App {
@@ -603,6 +651,8 @@ impl App {
             last_musicbrainz_request: Cell::new(None),
             cover_max_px: Cell::new(0),
             cover_quality: Cell::new(85),
+            carry_sidecars: Cell::new(default_carry_sidecars()),
+            sidecar_extensions: RefCell::new(default_sidecar_extensions()),
         })
     }
 
@@ -683,6 +733,8 @@ impl App {
         self.cover_max_px.set(settings.cover_max_px);
         self.cover_quality
             .set(effective_cover_quality(settings.cover_quality));
+        self.carry_sidecars.set(settings.carry_sidecars);
+        *self.sidecar_extensions.borrow_mut() = settings.sidecar_extensions.clone();
     }
 
     /// Build a Discogs provider using the current proxy setting.
@@ -857,6 +909,71 @@ impl App {
     /// The mask renders each file's new stem; the original extension is kept.
     /// Files whose tags can't satisfy the mask, or whose name wouldn't change,
     /// are left out of the plan.
+    /// Detect sidecar files that should travel with `change`'s rename/move (#58)
+    /// and record them on it. A sidecar is a file in the source directory whose
+    /// stem matches the audio file's and whose extension is in the configured
+    /// set; its target keeps the destination directory and the new stem. No-op
+    /// when the feature is off or the change carries no real rename.
+    fn attach_sidecars(&self, change: &mut FileChangeDto) {
+        if !self.carry_sidecars.get() {
+            return;
+        }
+        let Some(rename_to) = change.rename_to.as_deref() else {
+            return;
+        };
+        let src = Path::new(&change.path);
+        let dst = Path::new(rename_to);
+        if src == dst {
+            return;
+        }
+        let (Some(src_dir), Some(src_stem)) =
+            (src.parent(), src.file_stem().and_then(|s| s.to_str()))
+        else {
+            return;
+        };
+        let (Some(dst_dir), Some(dst_stem)) =
+            (dst.parent(), dst.file_stem().and_then(|s| s.to_str()))
+        else {
+            return;
+        };
+        let exts = self.sidecar_extensions.borrow();
+        if exts.is_empty() {
+            return;
+        }
+        let Ok(entries) = std::fs::read_dir(src_dir) else {
+            return;
+        };
+        let mut pairs = Vec::new();
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // Never the audio file itself, and only real files.
+            if path == *src || !path.is_file() {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if stem != src_stem {
+                continue;
+            }
+            let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                continue; // an extension-less file can't match the set
+            };
+            if !exts.iter().any(|e| e.eq_ignore_ascii_case(ext)) {
+                continue;
+            }
+            let from = path.to_string_lossy().into_owned();
+            let to = dst_dir
+                .join(format!("{dst_stem}.{ext}"))
+                .to_string_lossy()
+                .into_owned();
+            pairs.push((from, to));
+        }
+        // Deterministic order so preview and journal read consistently.
+        pairs.sort();
+        change.sidecar_renames = pairs;
+    }
+
     pub fn preview_rename(
         &self,
         mask_pattern: &str,
@@ -879,12 +996,15 @@ impl App {
             if target == *path {
                 continue;
             }
-            changes.push(FileChangeDto {
+            let mut change = FileChangeDto {
                 path: path.to_string_lossy().into_owned(),
                 rename_to: Some(target.to_string_lossy().into_owned()),
                 tag_changes: Vec::new(),
                 cover_change: None,
-            });
+                sidecar_renames: Vec::new(),
+            };
+            self.attach_sidecars(&mut change);
+            changes.push(change);
         }
         Ok(PlanDto {
             description: format!("Rename by mask: {mask_pattern}"),
@@ -926,7 +1046,7 @@ impl App {
                     Some(ext) => format!("{renamed}.{ext}"),
                     None => renamed,
                 };
-                changes.push(FileChangeDto {
+                let mut change = FileChangeDto {
                     path: path.to_string_lossy().into_owned(),
                     rename_to: Some(
                         path.with_file_name(file_name)
@@ -935,7 +1055,10 @@ impl App {
                     ),
                     tag_changes: Vec::new(),
                     cover_change: None,
-                });
+                    sidecar_renames: Vec::new(),
+                };
+                self.attach_sidecars(&mut change);
+                changes.push(change);
                 continue;
             }
 
@@ -960,6 +1083,7 @@ impl App {
                     rename_to: None,
                     tag_changes,
                     cover_change: None,
+                    sidecar_renames: Vec::new(),
                 });
             }
         }
@@ -1017,12 +1141,15 @@ impl App {
             if target == *path {
                 continue;
             }
-            changes.push(FileChangeDto {
+            let mut change = FileChangeDto {
                 path: path.to_string_lossy().into_owned(),
                 rename_to: Some(target.to_string_lossy().into_owned()),
                 tag_changes: Vec::new(),
                 cover_change: None,
-            });
+                sidecar_renames: Vec::new(),
+            };
+            self.attach_sidecars(&mut change);
+            changes.push(change);
         }
         Ok(PlanDto {
             description: format!("Reorganize by mask: {mask_pattern}"),
@@ -1060,6 +1187,7 @@ impl App {
                     rename_to: None,
                     tag_changes,
                     cover_change: None,
+                    sidecar_renames: Vec::new(),
                 });
             }
         }
@@ -1096,6 +1224,7 @@ impl App {
                     rename_to: None,
                     tag_changes,
                     cover_change: None,
+                    sidecar_renames: Vec::new(),
                 });
             }
         }
@@ -1138,6 +1267,7 @@ impl App {
                     old: old.as_ref().map(cover_art_to_dto),
                     new: new_dto.clone(),
                 }),
+                sidecar_renames: Vec::new(),
             });
         }
         Ok(PlanDto {
@@ -1231,6 +1361,7 @@ impl App {
                     old: old.as_ref().map(cover_art_to_dto),
                     new: None,
                 }),
+                sidecar_renames: Vec::new(),
             });
         }
         Ok(PlanDto {
@@ -1800,6 +1931,7 @@ impl App {
                     rename_to: None,
                     tag_changes,
                     cover_change: None,
+                    sidecar_renames: Vec::new(),
                 });
             }
         }
@@ -2108,6 +2240,11 @@ impl PlanDto {
                         old: c.old.as_ref().and_then(cover_dto_to_art),
                         new: c.new.as_ref().and_then(cover_dto_to_art),
                     }),
+                    sidecar_renames: change
+                        .sidecar_renames
+                        .iter()
+                        .map(|(from, to)| (PathBuf::from(from), PathBuf::from(to)))
+                        .collect(),
                 })
                 .collect(),
         }
@@ -2322,6 +2459,8 @@ mod tests {
             cover_max_px: 500,
             cover_quality: 90,
             action_groups: Vec::new(),
+            carry_sidecars: true,
+            sidecar_extensions: Vec::new(),
         });
         assert_eq!(app.cover_max_px.get(), 500);
         assert_eq!(app.cover_quality.get(), 90);
@@ -2442,6 +2581,47 @@ mod tests {
         assert!(track.exists());
         assert!(!expected.exists());
         assert!(app.history().unwrap().is_empty());
+    }
+
+    // #58: a rename detects same-stem sidecars in the configured set, retargets
+    // them to the new stem, and moves/restores them with the track — while
+    // leaving wrong-extension and wrong-stem neighbours alone.
+    #[test]
+    fn rename_carries_sidecar_files() {
+        let dir = TempDir::new("sidecar-app");
+        let track = dir.tagged_flac("original.flac", "Boards of Canada", "Roygbiv");
+        let lrc = dir.0.join("original.lrc");
+        let txt = dir.0.join("original.txt");
+        let other = dir.0.join("original.zzz"); // stem matches, extension not in the set
+        let elsewhere = dir.0.join("different.lrc"); // extension in set, wrong stem
+        for p in [&lrc, &txt, &other, &elsewhere] {
+            std::fs::write(p, b"x").unwrap();
+        }
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_rename("%artist% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        let stem = "Boards of Canada - Roygbiv";
+        let sidecars = &plan.changes[0].sidecar_renames;
+        assert_eq!(sidecars.len(), 2, "lrc + txt only");
+        let froms: Vec<&str> = sidecars.iter().map(|(f, _)| f.as_str()).collect();
+        assert!(froms.contains(&lrc.to_string_lossy().as_ref()));
+        assert!(froms.contains(&txt.to_string_lossy().as_ref()));
+        assert!(sidecars.iter().all(|(_, to)| to.contains(stem)));
+
+        let batch = app.apply(&plan).unwrap();
+        assert!(dir.0.join(format!("{stem}.lrc")).exists());
+        assert!(dir.0.join(format!("{stem}.txt")).exists());
+        assert!(!lrc.exists() && !txt.exists());
+        assert!(
+            other.exists() && elsewhere.exists(),
+            "non-sidecars untouched"
+        );
+
+        app.undo(batch.id).unwrap();
+        assert!(lrc.exists() && txt.exists(), "sidecars restored");
+        assert!(!dir.0.join(format!("{stem}.lrc")).exists());
     }
 
     #[test]

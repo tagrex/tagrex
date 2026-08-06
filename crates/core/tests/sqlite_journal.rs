@@ -61,6 +61,7 @@ fn set_artist(path: &Path, old: Option<&str>, new: Option<&str>) -> ChangePlan {
             }],
             cover_change: None,
             rename_to: None,
+            sidecar_renames: Vec::new(),
         }],
     }
 }
@@ -138,6 +139,7 @@ fn custom_field_round_trips_through_storage() {
             }],
             cover_change: None,
             rename_to: None,
+            sidecar_renames: Vec::new(),
         }],
     };
 

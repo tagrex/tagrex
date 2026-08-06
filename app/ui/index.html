@@ -600,6 +600,20 @@
           </div>
 
           <div class="settings-group">
+            <h3>Files</h3>
+            <div class="settings-row">
+              <label for="set-carry-sidecars">Carry sidecar files</label>
+              <input id="set-carry-sidecars" type="checkbox" />
+            </div>
+            <p class="settings-hint">When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.</p>
+            <div class="settings-row col">
+              <label for="set-sidecar-exts">Extensions</label>
+              <input id="set-sidecar-exts" type="text" class="mono" placeholder="lrc cue txt jpg jpeg png" spellcheck="false" />
+            </div>
+            <p class="settings-hint">Space- or comma-separated, without the dot. Case-insensitive.</p>
+          </div>
+
+          <div class="settings-group">
             <h3>Display</h3>
             <div class="settings-row">
               <label>Theme</label>

@@ -1024,9 +1024,17 @@ function diffFileCellHtml(change, track) {
   const pathLine = moved
     ? `<span class="fpath">${ico("corner")}${escapeHtml(diffDir(change.rename_to))}/</span>`
     : "";
+  // Sidecars travelling with this rename/move (#58): a count badge, each pair
+  // named in the tooltip so the plan is honest about what else will move.
+  const sc = change.sidecar_renames && change.sidecar_renames.length ? change.sidecar_renames : null;
+  const scBadge = sc
+    ? `<span class="fsidecars" title="${escapeHtml(
+        sc.map(([from, to]) => `${fileName(from)}  →  ${fileName(to)}`).join("\n")
+      )}">+${sc.length} sidecar${sc.length === 1 ? "" : "s"}</span>`
+    : "";
   return (
     `<td class="file dirty" title="${escapeHtml(change.path)}  →  ${escapeHtml(change.rename_to)}">` +
-    `<span class="fcell"><span class="fname">${escapeHtml(fileName(change.rename_to))}</span>${pathLine}` +
+    `<span class="fcell"><span class="fname">${escapeHtml(fileName(change.rename_to))}</span>${pathLine}${scBadge}` +
     `<span class="cell-old">${escapeHtml(fileName(change.path))}</span></span></td>`
   );
 }
@@ -3303,6 +3311,23 @@ function prioItem(key) {
   return li;
 }
 
+// Default sidecar extensions (#58), mirroring the backend's default set. Shown
+// when settings have never been saved.
+const DEFAULT_SIDECAR_EXTS = ["lrc", "cue", "txt", "jpg", "jpeg", "png"];
+
+// Parse the sidecar-extensions input: split on spaces/commas, drop a leading
+// dot, lower-case, de-duplicate, and drop empties.
+function parseSidecarExts(raw) {
+  return [
+    ...new Set(
+      (raw || "")
+        .split(/[\s,]+/)
+        .map((e) => e.trim().replace(/^\./, "").toLowerCase())
+        .filter(Boolean)
+    ),
+  ];
+}
+
 async function openSettings() {
   // Populate from saved values (the token is already in #discogs-token).
   try {
@@ -3313,9 +3338,16 @@ async function openSettings() {
     el("set-cover-max").value = s.cover_max_px || 0;
     el("set-cover-quality").value = s.cover_quality || 85;
     readPriority = normalizePriority(s.read_priority);
+    el("set-carry-sidecars").checked = s.carry_sidecars !== false;
+    el("set-sidecar-exts").value = (s.sidecar_extensions && s.sidecar_extensions.length
+      ? s.sidecar_extensions
+      : DEFAULT_SIDECAR_EXTS
+    ).join(" ");
   } catch (e) {
     /* defaults already in the DOM */
     readPriority = PRIO_KEYS.slice();
+    el("set-carry-sidecars").checked = true;
+    el("set-sidecar-exts").value = DEFAULT_SIDECAR_EXTS.join(" ");
   }
   // Display prefs live in localStorage, not the backend settings.
   setThemeChoice(themeMode());
@@ -3344,6 +3376,8 @@ async function saveSettings() {
     cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
     cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
     action_groups: actionGroups,
+    carry_sidecars: el("set-carry-sidecars").checked,
+    sidecar_extensions: parseSidecarExts(el("set-sidecar-exts").value),
   };
   savedSettings = settings;
   // Display prefs are local-only; apply + persist before the backend round-trip.

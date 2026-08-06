@@ -734,6 +734,19 @@ body.diffing #tracks tbody tr.staged td.sel {
   height: 12px;
   color: var(--accent-ink);
 }
+/* "+N sidecars" badge on a renamed/moved row (#58): a quiet count that the
+   files travelling along are named in the cell's tooltip. */
+#tracks .fcell .fsidecars {
+  align-self: flex-start;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0 4px;
+  line-height: 1.5;
+  white-space: nowrap;
+  cursor: default;
+}
 
 /* old→new inside a changed cell — hidden until "Show old values". */
 #tracks .cell-old {

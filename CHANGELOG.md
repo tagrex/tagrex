@@ -8,6 +8,18 @@ first release ships.
 
 ## [Unreleased]
 
+### Added
+
+- **Sidecar files follow a rename or move** (#58). When a rename/move relocates a
+  track, files sharing its name — `.lrc` lyrics, `.cue` sheets, `.txt` notes,
+  per-track cover images — now travel with it and are restored alongside it on
+  undo (they're journaled as part of the plan). Sidecars are shown on the staged
+  row as a "+N sidecars" badge that names each pair on hover, and an existing
+  file at the destination is never overwritten — the whole plan is rejected
+  instead. A new **Settings › Files** section toggles the behaviour (on by
+  default) and edits the extension set (default `lrc cue txt jpg jpeg png`);
+  matching is case-insensitive. Extends the folder-restructure work in #37.
+
 ### Changed
 
 - **Group the table by any tag field** (#43). The Group control offered only
