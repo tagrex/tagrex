@@ -3383,3 +3383,45 @@ body.drag-active #drop-overlay {
   font-size: var(--text-sm);
   color: var(--muted);
 }
+
+/* ---- minimal edit context menu (#132) --------------------------------------
+   Our own Cut/Copy/Paste/Select-All popup, replacing the webview's sprawling
+   native menu on text fields. Position is set in JS (fixed, clamped to the
+   viewport); the shell mirrors the .col-menu popover. */
+.ctx-menu {
+  position: fixed;
+  z-index: 95;
+  min-width: 160px;
+  padding: var(--space-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.ctx-menu[hidden] {
+  display: none;
+}
+.ctx-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: default;
+}
+.ctx-item:hover,
+.ctx-item:focus-visible {
+  background: var(--accent);
+  color: var(--accent-text);
+  outline: none;
+}
+.ctx-sep {
+  height: 1px;
+  margin: var(--space-1) var(--space-1);
+  background: var(--border);
+}

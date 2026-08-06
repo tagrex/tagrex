@@ -3938,13 +3938,76 @@ if (window.ResizeObserver) {
 }
 updateCompactTabs();
 
-// Suppress the webview's default right-click menu (Reload / Inspect Element),
-// which looks out of place in a shipping app — and on macOS a Ctrl-click is an
-// OS-level right-click, so this stops it popping a dev menu instead of doing
-// nothing (the additive-select modifier there is ⌘). Text inputs and a tag cell
-// being edited keep their native menu so Cut/Copy/Paste still works (#132).
+// Right-click handling (#132). The webview's native menu (Reload / Inspect
+// Element, plus a wall of macOS text services) looks out of place, so it's
+// always suppressed. Over a text input or an editing tag cell we show our own
+// minimal Cut/Copy/Paste/Select-All menu instead; elsewhere right-click does
+// nothing. On macOS a Ctrl-click is an OS-level right-click, so this also keeps
+// it from popping a menu (the additive-select modifier there is ⌘).
+const editCtx = el("edit-ctx");
+let ctxField = null; // the input / editing cell the menu acts on
+
+function hideEditCtx() {
+  editCtx.hidden = true;
+  ctxField = null;
+}
+
+function showEditCtx(x, y, field) {
+  ctxField = field;
+  editCtx.hidden = false;
+  // Measure once visible, then clamp so the menu never spills off-screen.
+  const r = editCtx.getBoundingClientRect();
+  const pad = 8;
+  editCtx.style.left = Math.max(pad, Math.min(x, window.innerWidth - r.width - pad)) + "px";
+  editCtx.style.top = Math.max(pad, Math.min(y, window.innerHeight - r.height - pad)) + "px";
+}
+
 document.addEventListener("contextmenu", (e) => {
-  if (!e.target.closest('input, textarea, [contenteditable="true"]')) e.preventDefault();
+  e.preventDefault(); // never show the webview's native menu
+  const field = e.target.closest('input, textarea, [contenteditable="true"]');
+  if (field) showEditCtx(e.clientX, e.clientY, field);
+  else hideEditCtx();
+});
+
+// Paste at the caret: prefer the async clipboard read (works in the WKWebView
+// app within this click gesture), fall back to execCommand where it doesn't.
+async function pasteIntoField(field) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.readText) {
+      const text = await navigator.clipboard.readText();
+      if (field && field.focus) field.focus();
+      document.execCommand("insertText", false, text);
+      return;
+    }
+  } catch (_) {
+    /* fall through */
+  }
+  document.execCommand("paste");
+}
+
+// Act on mousedown (fires before the field loses its selection) and keep the
+// field focused so execCommand targets it.
+editCtx.addEventListener("mousedown", (e) => {
+  const item = e.target.closest(".ctx-item");
+  if (!item) return;
+  e.preventDefault();
+  const field = ctxField;
+  if (field && field.focus) field.focus();
+  const cmd = item.dataset.cmd;
+  if (cmd === "cut") document.execCommand("cut");
+  else if (cmd === "copy") document.execCommand("copy");
+  else if (cmd === "selectall") document.execCommand("selectAll");
+  else if (cmd === "paste") pasteIntoField(field);
+  hideEditCtx();
+});
+
+// Dismiss on any outside interaction.
+document.addEventListener("mousedown", (e) => {
+  if (!editCtx.hidden && !e.target.closest("#edit-ctx")) hideEditCtx();
+});
+window.addEventListener("scroll", hideEditCtx, true);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideEditCtx();
 });
 
 // ---- diff-state action bar (#117) ----
