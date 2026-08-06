@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual trigger, so CI can be re-run on the current HEAD when a hosted runner
+  # fails to pick up the push-triggered job (a GitHub-side runner hiccup) without
+  # needing an empty commit.
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
