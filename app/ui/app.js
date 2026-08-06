@@ -3969,20 +3969,25 @@ document.addEventListener("contextmenu", (e) => {
   else hideEditCtx();
 });
 
-// Paste at the caret: prefer the async clipboard read (works in the WKWebView
-// app within this click gesture), fall back to execCommand where it doesn't.
+// Paste at the caret. Read the clipboard through the Tauri plugin — reading it
+// with navigator.clipboard.readText() makes WKWebView pop a system "Paste"
+// permission pill (#132). In browser-dev there's no plugin, so fall back to the
+// web API there. The insert goes through execCommand so it lands at the caret
+// and feeds the cell's normal edit handling.
 async function pasteIntoField(field) {
+  let text = "";
   try {
-    if (navigator.clipboard && navigator.clipboard.readText) {
-      const text = await navigator.clipboard.readText();
-      if (field && field.focus) field.focus();
-      document.execCommand("insertText", false, text);
-      return;
+    if (TAURI) {
+      const res = await TAURI.invoke("plugin:clipboard-manager|read_text");
+      text = typeof res === "string" ? res : (res && res.plainText && res.plainText.text) || "";
+    } else if (navigator.clipboard && navigator.clipboard.readText) {
+      text = (await navigator.clipboard.readText()) || "";
     }
   } catch (_) {
-    /* fall through */
+    text = "";
   }
-  document.execCommand("paste");
+  if (field && field.focus) field.focus();
+  if (text) document.execCommand("insertText", false, text);
 }
 
 // Act on mousedown (fires before the field loses its selection) and keep the
@@ -4000,11 +4005,6 @@ editCtx.addEventListener("mousedown", (e) => {
   else if (cmd === "paste") pasteIntoField(field);
   hideEditCtx();
 });
-
-// WKWebView still tries to start a native drag of the pressed item (the floating
-// "Paste" pill), which `user-select: none` alone doesn't stop — cancel the drag
-// at the source (#132).
-editCtx.addEventListener("dragstart", (e) => e.preventDefault());
 
 // Dismiss on any outside interaction.
 document.addEventListener("mousedown", (e) => {
