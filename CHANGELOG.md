@@ -10,6 +10,16 @@ first release ships.
 
 ### Changed
 
+- **Cover-art buttons share one size** (#134). Set one… / Remove all / Export and
+  the full-width Use folder image were 10px vs the base 13px; they now sit at a
+  consistent 12px with matching padding, so the section reads as one button
+  group.
+
+- **One focus outline across form controls** (#135). A clicked `<select>` drew
+  WKWebView's own tight ring while the inputs beside it showed the app's accent
+  border; selects (and search inputs) now use the same focus treatment, and the
+  native outline is suppressed so neighbouring controls match.
+
 - **A minimal right-click menu replaces the webview's native one** (#132).
   Right-clicking the app no longer pops _Reload / Inspect Element_ and the wall
   of macOS text services; over a text input or an editing tag cell a compact

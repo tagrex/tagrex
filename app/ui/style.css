@@ -255,10 +255,19 @@ input[type="password"] {
   font: inherit;
 }
 
+/* One focus treatment for every control (#135): accent border on plain focus,
+   no engine-native outline (WKWebView draws its own tight ring on a clicked
+   <select>, which mismatched the inputs beside it). The offset --ring is added
+   on :focus-visible (keyboard) further down, shared by all of these too. */
 input[type="text"]:focus,
-input[type="password"]:focus {
+input[type="password"]:focus,
+input[type="search"]:focus,
+select:focus {
   outline: none;
   border-color: var(--accent);
+}
+button:focus {
+  outline: none;
 }
 
 input[type="checkbox"] {
@@ -1838,10 +1847,19 @@ td.unreadable-note {
   gap: var(--space-1);
   margin-top: auto;
 }
-.cover-actions .btn {
-  padding: 3px var(--space-3);
-  font-size: var(--text-2xs);
+/* Cover-art buttons share one compact size (#134): the action row and the
+   full-width "Use folder image" were 10px vs the base 13px, a visible jumble.
+   Both now sit at --text-sm with matching padding. */
+.cover-actions .btn,
+.cover-external {
+  padding: 4px var(--space-3);
+  font-size: var(--text-sm);
   box-shadow: none;
+}
+/* "Use folder image" stays a full-width secondary action below the row. */
+.cover-external {
+  width: 100%;
+  margin-top: var(--space-1);
 }
 
 /* no-cover affordance — the well itself becomes the drop/click target */
