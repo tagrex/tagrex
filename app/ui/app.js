@@ -2635,12 +2635,12 @@ const EDITOR_CORE_KEYS = ["artist", "title", "album", "albumartist", "track", "t
 // as one row each — "Track [n] / [total]", "Disc [n] / [total]" — mirroring a
 // reference tagger's combined NN/TT presentation (#136 pass 2).
 const EDITOR_CORE_LAYOUT = [
+  { pair: ["track", "tracktotal"], label: "Track" },
+  { pair: ["disc", "disctotal"], label: "Disc" },
   { key: "artist" },
   { key: "title" },
   { key: "album" },
   { key: "albumartist" },
-  { pair: ["track", "tracktotal"], label: "Track" },
-  { pair: ["disc", "disctotal"], label: "Disc" },
   { key: "year" },
   { key: "genre" },
 ];
