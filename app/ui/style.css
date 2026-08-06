@@ -1640,7 +1640,7 @@ td.unreadable-note {
 /* ---- the input (keeps .field-input so app.js keeps working) ---- */
 .field-input {
   width: 100%;
-  padding: 3px var(--space-3);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg);
@@ -1648,6 +1648,16 @@ td.unreadable-note {
   font-family: var(--font-mono-bundled);
   font-size: var(--text-xs);
 }
+/* The shared `input[type="text"]` base (specificity 0,1,1) out-specifies a bare
+   `.field-input` (0,1,0), so its 6px padding wins — the editor's compact box
+   needs the `.fe` descendant (0,2,0) to actually take effect. Shrink the field
+   height here by trimming vertical padding + line-height, without touching the
+   font size (#136). */
+.fe .field-input {
+  padding: 2px var(--space-3);
+  line-height: var(--lh-tight);
+}
+
 .field-input:hover:not(:focus):not(.error) {
   border-color: color-mix(in srgb, var(--border) 40%, var(--muted));
 }
