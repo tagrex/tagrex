@@ -4383,16 +4383,30 @@ function selectRow(tr, e) {
   setActiveRow(tr, true); // clicking a row also makes it the keyboard-nav anchor
 }
 
-// Toggle a whole group's selection (a group-name double-click): if every row of
-// the group is already selected, deselect them; otherwise select them all,
-// leaving other groups' selection untouched.
-function toggleGroupSelection(key) {
+// Whether a pointer event carries a selection modifier (⌘/Ctrl for toggle,
+// Shift for additive) — used to tell "select just this folder" from "add this
+// folder to what's already selected".
+function hasSelModifier(e) {
+  return e.metaKey || e.ctrlKey || e.shiftKey;
+}
+
+// Select a whole folder from its group header (#130). A plain gesture REPLACES
+// the selection with just this group's files; a modified one (⌘/Ctrl/Shift)
+// toggles this group in or out, leaving other groups untouched. Either way the
+// group is expanded first so the user sees exactly what got selected.
+function selectGroup(key, additive) {
+  if (collapsedGroups.has(key)) toggleGroup(key); // reveal what's being selected
   const rows = dataRows().filter((tr) => tr.dataset.group === key);
   if (rows.length === 0) return;
-  const allSelected = rows.every((tr) => selection.has(tr.dataset.path));
-  for (const tr of rows) {
-    if (allSelected) selection.delete(tr.dataset.path);
-    else selection.add(tr.dataset.path);
+  if (additive) {
+    const allSelected = rows.every((tr) => selection.has(tr.dataset.path));
+    for (const tr of rows) {
+      if (allSelected) selection.delete(tr.dataset.path);
+      else selection.add(tr.dataset.path);
+    }
+  } else {
+    selection.clear();
+    for (const tr of rows) selection.add(tr.dataset.path);
   }
   syncSelectionUI();
 }
@@ -4411,7 +4425,16 @@ function beginCellEdit(cell) {
 tracksBody.addEventListener("click", (e) => {
   if (diffByPath) return; // rows are inert while a staged diff is under review
   if (e.target.closest("td.sel")) return; // checkbox toggle → change listener
-  if (e.target.closest("tr.group-head")) return; // caret handles collapse
+  const groupHead = e.target.closest("tr.group-head");
+  if (groupHead) {
+    // The caret has its own collapse listener. A modifier + click additively
+    // selects the folder; a plain click does nothing, so plain folder-select
+    // stays the double-click gesture and a stray click never wipes selection.
+    if (!e.target.closest(".group-caret") && hasSelModifier(e)) {
+      selectGroup(groupHead.dataset.group, true);
+    }
+    return;
+  }
   const tr = e.target.closest("tr");
   if (!tr || !tr.dataset.path) return;
   const cell = e.target.closest("td.editable");
@@ -4424,8 +4447,11 @@ tracksBody.addEventListener("dblclick", (e) => {
   const head = e.target.closest("tr.group-head");
   if (head) {
     // Caret double-click just toggles collapse (handled by the click listener);
-    // double-clicking the name toggles the group's selection.
-    if (!e.target.closest(".group-caret")) toggleGroupSelection(head.dataset.group);
+    // double-clicking the name selects the folder — plainly it replaces the
+    // selection, with a ⌘/Ctrl/Shift modifier it adds to it (#130).
+    if (!e.target.closest(".group-caret")) {
+      selectGroup(head.dataset.group, hasSelModifier(e));
+    }
     return;
   }
   // Double-clicking the file name plays the track (the per-row play button was

@@ -10,6 +10,12 @@ first release ships.
 
 ### Changed
 
+- **Double-clicking a group header selects just that folder** (#130), replacing
+  the selection instead of adding to it, and **expands the group** so the choice
+  is visible. Hold **⌘/Ctrl/Shift** (with a click or double-click) to add a
+  folder to the current selection instead. A plain single click on a header still
+  does nothing, so a stray click can't wipe the selection.
+
 - **Folder group headers show the path from the session root** (#129), e.g.
   `Album/CD1` instead of a bare `CD1`, with files directly in the root under the
   root's own name. Nested folders now read as a tree and same-named subfolders
