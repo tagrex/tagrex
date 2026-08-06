@@ -3397,6 +3397,12 @@ body.drag-active #drop-overlay {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  /* The menu label text must not be selectable/draggable, or a mousedown-drag on
+     an item spawns the OS text-drag ghost (a floating "Paste" pill) — most
+     visible on Paste, whose async handler leaves the item under the cursor a
+     beat longer than Cut/Copy (#132). */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .ctx-menu[hidden] {
   display: none;
@@ -3413,6 +3419,7 @@ body.drag-active #drop-overlay {
   font: inherit;
   font-size: var(--text-sm);
   cursor: default;
+  -webkit-user-drag: none;
 }
 .ctx-item:hover,
 .ctx-item:focus-visible {
