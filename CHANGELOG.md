@@ -3,10 +3,14 @@
 All notable changes to this project are documented in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/) once a
-first release ships.
+and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-08-06
+
+First tagged release. Everything below is the work that brought the editor to a
+usable cross-platform state; subsequent entries will accrue under _Unreleased_.
 
 ### Added
 

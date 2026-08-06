@@ -15,8 +15,12 @@
 
 ---
 
-> **Status: pre-alpha.** Nothing to download yet. The architecture is being laid out
-> in [docs/architecture.md](docs/architecture.md) — feedback and discussion are welcome.
+> **Status: early release (0.1.x).** The core editor works — table editing,
+> bidirectional masks, text transforms, online lookups, and transactional undo.
+> Install builds for macOS (Apple Silicon), Windows, and Linux are on the
+> [Releases](https://github.com/tagrex/tagrex/releases) page. Not yet 1.0, so
+> expect rough edges — bug reports and feedback are welcome. The design is written
+> up in [docs/architecture.md](docs/architecture.md).
 
 ## Motivation
 
