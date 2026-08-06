@@ -238,6 +238,11 @@ let dropFolders = null;
 // Group key for a track that belongs to no dropped folder (a loose dropped
 // file). Not a valid absolute path, so it can't collide with a folder key.
 const DROP_LOOSE_KEY = "::loose::";
+// The root of the currently open session (the opened/dropped folder, or a
+// file-set's common ancestor). Folder-group headers show the path relative to
+// it — starting with the root's own name — so nested folders read like a tree
+// (#129), matching what a reference tagger shows.
+let sessionRoot = "";
 
 // ---- elements ----
 const el = (id) => document.getElementById(id);
@@ -821,7 +826,22 @@ function dropGroupKey(path) {
   return best === null ? DROP_LOOSE_KEY : best;
 }
 
-// Human label for a group header ("(no artist)" etc.; folder shows its name).
+// A folder-group header (#129): the group directory's path relative to the
+// session root, starting with the root's own name (e.g. "Album/CD1"), so nested
+// folders read as a tree rather than a bare leaf. Falls back to the leaf name
+// for a folder outside the root (shouldn't happen in a normal session).
+function folderGroupLabel(key) {
+  const root = (sessionRoot || "").replace(/[\\/]+$/, "");
+  const rootLeaf = fileName(root);
+  if (root && key === root) return rootLeaf;
+  if (root && (key.startsWith(root + "/") || key.startsWith(root + "\\"))) {
+    const rel = key.slice(root.length).replace(/^[\\/]+/, "").replace(/\\/g, "/");
+    return `${rootLeaf}/${rel}`;
+  }
+  return fileName(key);
+}
+
+// Human label for a group header ("(no artist)" etc.; folder shows its path).
 function groupLabel(key) {
   if (groupBy === "drop") {
     return key === DROP_LOOSE_KEY ? "Files" : fileName(key);
@@ -831,7 +851,7 @@ function groupLabel(key) {
     if (groupBy === "release") return "(no release id)";
     return `(no ${groupBy})`;
   }
-  if (groupBy === "folder") return fileName(key);
+  if (groupBy === "folder") return folderGroupLabel(key);
   // Release ids (esp. MusicBrainz UUIDs) are long; show a short, stable prefix.
   if (groupBy === "release") {
     return key.length > 12 ? `Release ${key.slice(0, 8)}…` : `Release ${key}`;
@@ -1343,6 +1363,7 @@ async function openLibrary() {
 // success toast names. When `dropFolders` is set (a file-set drop, #127) the
 // table defaults to drop-origin grouping; otherwise the saved group pref.
 async function afterOpen(label) {
+  sessionRoot = label; // the opened/dropped root — folder group labels hang off it
   tracks = await invoke("list_tracks", {});
   // Only the first readable track is selected on open (#128), so an operation
   // never silently hits the whole library — the user picks what to work on
@@ -4962,7 +4983,14 @@ function mockInvoke(cmd, args) {
       });
       if (dirs.length === 1 && files.length === 0) {
         const root = dirs[0];
-        s.tracks = [mk(`${root}/01 a.mp3`, "Library", "A"), mk(`${root}/02 b.mp3`, "Library", "B")];
+        // Nested subfolders + a loose root file, to exercise the folder-path
+        // group labels (#129).
+        s.tracks = [
+          mk(`${root}/CD1/01 a.mp3`, "Library", "A"),
+          mk(`${root}/CD1/02 b.mp3`, "Library", "B"),
+          mk(`${root}/CD2/01 c.mp3`, "Library", "C"),
+          mk(`${root}/00 root note.mp3`, "Library", "Root file"),
+        ];
         return Promise.resolve({ mode: "library", root, folders: [] });
       }
       const all = [];

@@ -10,6 +10,11 @@ first release ships.
 
 ### Changed
 
+- **Folder group headers show the path from the session root** (#129), e.g.
+  `Album/CD1` instead of a bare `CD1`, with files directly in the root under the
+  root's own name. Nested folders now read as a tree and same-named subfolders
+  are told apart.
+
 - **Only the first file is selected when a session opens** (#128), instead of the
   whole library. This stops an operation from silently spanning every file, and
   matches how comparable taggers behave. The user then picks what to act on — a
