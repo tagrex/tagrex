@@ -2541,6 +2541,32 @@ const EXTENDED_FIELDS = [
   ["media", "Media"],
 ];
 
+// Friendly names for known technical/custom frames (#136). Keyed by the raw
+// custom name upper-cased (no "custom:" prefix). A custom key found here is
+// promoted into the Standard group with this label; anything else stays a raw
+// key/value row in the Advanced group. Extend as new well-known frames show up.
+const KNOWN_CUSTOM_LABELS = {
+  DISCOGS_RELEASE_ID: "Discogs Release ID",
+  MUSICBRAINZ_ALBUMID: "MusicBrainz Album ID",
+  MUSICBRAINZ_TRACKID: "MusicBrainz Track ID",
+  REPLAYGAIN_TRACK_GAIN: "ReplayGain (track)",
+  REPLAYGAIN_TRACK_PEAK: "ReplayGain peak (track)",
+  REPLAYGAIN_ALBUM_GAIN: "ReplayGain (album)",
+  REPLAYGAIN_ALBUM_PEAK: "ReplayGain peak (album)",
+  WWWAUDIOFILE: "Audio file URL",
+  ORIGARTIST: "Original Artist",
+  ORIGALBUM: "Original Album",
+  ORIGYEAR: "Original Year",
+  ENCODEDBY: "Encoded by",
+  CONDUCTOR: "Conductor",
+  LYRICIST: "Lyricist",
+  GROUPING: "Grouping",
+  SUBTITLE: "Subtitle",
+  COPYRIGHT: "Copyright",
+  MOOD: "Mood",
+  LANGUAGE: "Language",
+};
+
 // Virtual (derived, read-only) columns that aren't tag fields (#106). "position"
 // reconstructs the vinyl side notation (A1/B2) from media + disc + track.
 const VIRTUAL_COLUMNS = [["position", "Position"]];
@@ -2609,8 +2635,11 @@ const EDITOR_CORE_KEYS = ["artist", "title", "album", "albumartist", "track", "t
 // mirroring the backend's is_writable_value rule, so a bad value shows as an
 // error as you type instead of only being rejected at apply.
 const EDITOR_NUMERIC_KEYS = new Set(["track", "tracktotal", "disc", "bpm", "year"]);
-// Whether the Extended group is folded; persists across re-renders in a session.
-let editorExtendedCollapsed = false;
+// Whether each collapsible group is folded; persists across re-renders in a
+// session. Standard is open by default; Advanced (raw key/value) starts folded
+// so the everyday form isn't buried under technical noise (#136).
+let editorStandardCollapsed = false;
+let editorAdvancedCollapsed = true;
 
 // Validate a hand-typed value the same way the backend does (empty always OK —
 // it clears the field). Returns { ok, hint } — hint is the rule shown on focus.
@@ -2653,20 +2682,39 @@ function renderFieldEditor(paths) {
 
   const labelOf = new Map(EXTENDED_FIELDS);
   const coreRows = EDITOR_CORE_KEYS.map((key) => [key, labelOf.get(key)]);
-  const extendedRows = EXTENDED_FIELDS.filter(([key]) => !EDITOR_CORE_KEYS.includes(key)).concat(
-    [...customs].sort().map((key) => [key, key.slice("custom:".length)])
-  );
 
-  body.appendChild(fieldGroup("Core", coreRows, paths, false));
-  body.appendChild(fieldGroup("Extended", extendedRows, paths, true));
+  // Standard = the known extended fields, plus any custom keys we can name
+  // (promoted, appended after the curated ones and sorted by label). The raw
+  // rest — technical frames with no friendly name — drop into Advanced (#136).
+  const standardRows = EXTENDED_FIELDS.filter(([key]) => !EDITOR_CORE_KEYS.includes(key));
+  const promoted = [];
+  const advancedRows = [];
+  for (const key of [...customs].sort()) {
+    const raw = key.slice("custom:".length);
+    const friendly = KNOWN_CUSTOM_LABELS[raw.toUpperCase()];
+    if (friendly) promoted.push([key, friendly]);
+    else advancedRows.push([key, raw]);
+  }
+  promoted.sort((a, b) => a[1].localeCompare(b[1]));
+  standardRows.push(...promoted);
+
+  body.appendChild(fieldGroup("Core", coreRows, paths, "core"));
+  body.appendChild(fieldGroup("Standard", standardRows, paths, "standard"));
+  // Only surface Advanced when there are raw keys to show.
+  if (advancedRows.length) body.appendChild(fieldGroup("Advanced", advancedRows, paths, "advanced"));
 }
 
-// Build one field group (a header + its rows). `collapsible` marks the Extended
-// group, which folds; the Core group is always open.
-function fieldGroup(title, rows, paths, collapsible) {
+// Build one field group (a header + its rows). `kind` is "core" (always open),
+// "standard", or "advanced" (both fold, tracking their own collapse flag). The
+// Advanced group renders raw key/value rows (#136).
+function fieldGroup(title, rows, paths, kind) {
+  const collapsible = kind !== "core";
+  const advanced = kind === "advanced";
+  const collapsed = advanced ? editorAdvancedCollapsed : kind === "standard" ? editorStandardCollapsed : false;
+
   const group = document.createElement("div");
   group.className = "fe-group" + (collapsible ? " collapsible" : "");
-  if (collapsible && editorExtendedCollapsed) group.classList.add("collapsed");
+  if (collapsed) group.classList.add("collapsed");
 
   const head = document.createElement("div");
   head.className = "fe-group-head";
@@ -2680,26 +2728,28 @@ function fieldGroup(title, rows, paths, collapsible) {
     caret.innerHTML = ico("caret-down");
     head.append(" ", count, caret);
     head.addEventListener("click", () => {
-      editorExtendedCollapsed = !editorExtendedCollapsed;
-      group.classList.toggle("collapsed", editorExtendedCollapsed);
+      const next = !group.classList.contains("collapsed");
+      group.classList.toggle("collapsed", next);
+      if (advanced) editorAdvancedCollapsed = next;
+      else editorStandardCollapsed = next;
     });
   }
   group.appendChild(head);
 
   const grid = document.createElement("div");
   grid.className = "fe-grid";
-  for (const [key, label] of rows) grid.appendChild(fieldRow(key, label, paths));
+  for (const [key, label] of rows) grid.appendChild(fieldRow(key, label, paths, advanced));
   group.appendChild(grid);
   return group;
 }
 
-function fieldRow(key, label, paths) {
+function fieldRow(key, label, paths, advanced) {
   const values = new Set(paths.map((path) => currentFieldValue(path, key)));
   const shared = values.size === 1 ? [...values][0] : null;
   const numeric = EDITOR_NUMERIC_KEYS.has(key);
 
   const row = document.createElement("div");
-  row.className = "fe-row";
+  row.className = "fe-row" + (advanced ? " adv" : "");
 
   const marker = document.createElement("span");
   marker.className = "fe-marker";
@@ -2707,6 +2757,7 @@ function fieldRow(key, label, paths) {
   const labelCell = document.createElement("span");
   labelCell.className = "fe-label";
   labelCell.textContent = label;
+  labelCell.title = label; // full name on hover — labels wrap, never truncate (#136)
 
   const cell = document.createElement("span");
   cell.className = "fe-cell" + (numeric ? " num" : "");
@@ -2753,7 +2804,16 @@ function fieldRow(key, label, paths) {
   if (shared) reflect();
 
   cell.append(input, hint);
-  row.append(marker, labelCell, cell);
+  if (advanced) {
+    // Raw key/value: the long, arbitrary key sits on its own line above a
+    // full-width input, so nothing is ever clipped (#136).
+    const stack = document.createElement("span");
+    stack.className = "fe-stack";
+    stack.append(labelCell, cell);
+    row.append(marker, stack);
+  } else {
+    row.append(marker, labelCell, cell);
+  }
   return row;
 }
 

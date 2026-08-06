@@ -10,6 +10,18 @@ first release ships.
 
 ### Changed
 
+- **EDITOR tag fields split into Core / Standard / Advanced** (#136). The form
+  used a fixed 92px label column with ellipsis, so long names were silently cut
+  (`OriginalMediaT…`, `ReplayGainAlbu…`), and every raw technical key
+  (`DISCOGS_RELEASE_ID`, `REPLAYGAIN_*`, `1T_TAGGEDDATE`…) was dumped into the
+  same list as the friendly fields. Now labels wrap instead of truncating (with
+  a full-name tooltip); a curated dictionary promotes known technical frames
+  into the Standard group under friendly names (Audio file URL, ReplayGain
+  (album), Discogs Release ID…); and everything else drops into a collapsed
+  Advanced group rendered as a raw key/value list — the arbitrary key on its own
+  mono line above a full-width input, so nothing is clipped. The everyday form
+  stays clean while every raw key is still reachable.
+
 - **Cover-art buttons share one size** (#134). Set one… / Remove all / Export and
   the full-width Use folder image were 10px vs the base 13px; they now sit at a
   consistent 12px with matching padding, so the section reads as one button
