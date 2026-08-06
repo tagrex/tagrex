@@ -1567,7 +1567,7 @@ td.unreadable-note {
   grid-template-columns: 3px 112px 1fr;
   align-items: center;
   column-gap: var(--space-3);
-  padding: 2px 0 2px var(--space-1);
+  padding: 1px 0 1px var(--space-1);
   border-radius: var(--radius-sm);
 }
 /* Advanced (#136): raw key/value. One content column; the arbitrary key rides
@@ -1583,7 +1583,7 @@ td.unreadable-note {
   gap: 2px;
 }
 .fe-row + .fe-row {
-  margin-top: 3px;
+  margin-top: 2px;
 }
 
 /* marker gutter (col 1) — the orthogonal per-row state channel */
@@ -1641,7 +1641,7 @@ td.unreadable-note {
 /* ---- the input (keeps .field-input so app.js keeps working) ---- */
 .field-input {
   width: 100%;
-  padding: var(--space-1) var(--space-3);
+  padding: 3px var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg);
@@ -1682,15 +1682,29 @@ td.unreadable-note {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--del) 22%, transparent);
 }
 
-/* numeric fields (year / track / tracktotal / disc / bpm) read as numbers:
-   right-aligned tabular figures in a narrower box. */
+/* numeric fields (year / track / tracktotal / disc / disctotal / bpm) read as
+   numbers: right-aligned tabular figures in a compact box (#136 pass 2 — tightened
+   from 92px so a 1-2 digit track number doesn't sit in a wide empty field). */
 .field-input.num {
-  width: 92px;
+  width: 56px;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
 .fe-cell.num {
   align-items: flex-start;
+}
+
+/* combined number/total pair (#136 pass 2): one label, two narrow numeric inputs
+   joined by a "/", e.g. "Track [n] / [total]". */
+.fe-pair {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.fe-pair-sep {
+  color: var(--muted);
+  font-size: var(--text-xs);
 }
 
 /* ---- per-row hint / rule line (Q1) ----

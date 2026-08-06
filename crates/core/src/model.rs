@@ -143,6 +143,10 @@ pub enum TagField {
     TrackNumber,
     TrackTotal,
     DiscNumber,
+    /// Total number of discs in the set — the "of N" half of the disc pairing,
+    /// written to the standard disc-total frame (ID3v2 `TPOS` total, Vorbis
+    /// `DISCTOTAL`). Mirrors [`TrackTotal`](Self::TrackTotal).
+    DiscTotal,
     Year,
     Genre,
     Comment,
@@ -183,6 +187,7 @@ impl TagField {
             Self::TrackNumber => "track".to_string(),
             Self::TrackTotal => "tracktotal".to_string(),
             Self::DiscNumber => "disc".to_string(),
+            Self::DiscTotal => "disctotal".to_string(),
             Self::Year => "year".to_string(),
             Self::Genre => "genre".to_string(),
             Self::Comment => "comment".to_string(),
@@ -211,6 +216,7 @@ impl TagField {
             "track" => Self::TrackNumber,
             "tracktotal" => Self::TrackTotal,
             "disc" => Self::DiscNumber,
+            "disctotal" => Self::DiscTotal,
             "year" => Self::Year,
             "genre" => Self::Genre,
             "comment" => Self::Comment,
@@ -559,6 +565,7 @@ fn tag_field_to_item_key(field: &TagField) -> ItemKey {
         TagField::TrackNumber => ItemKey::TrackNumber,
         TagField::TrackTotal => ItemKey::TrackTotal,
         TagField::DiscNumber => ItemKey::DiscNumber,
+        TagField::DiscTotal => ItemKey::DiscTotal,
         // Write the year through `RecordingDate` (ID3v2.4 TDRC, Vorbis DATE,
         // MP4 ©day), not `ItemKey::Year`: ID3v2.4 has no plain "year" frame, so
         // lofty silently drops `ItemKey::Year` there — which lost the year on
@@ -598,6 +605,7 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         ItemKey::TrackNumber => TagField::TrackNumber,
         ItemKey::TrackTotal => TagField::TrackTotal,
         ItemKey::DiscNumber => TagField::DiscNumber,
+        ItemKey::DiscTotal => TagField::DiscTotal,
         // `Year` (ID3v2.3 TYER) is legacy; real-world taggers (verified
         // against TagScanner-tagged files) overwhelmingly write the year
         // into `RecordingDate` (ID3v2.4 TDRC) instead. Writing still targets
@@ -673,9 +681,10 @@ pub fn is_writable_value(field: &TagField, value: &str) -> bool {
     }
     match field {
         TagField::Year => is_writable_year(value),
-        TagField::TrackNumber | TagField::TrackTotal | TagField::DiscNumber => {
-            is_ascii_digits(value)
-        }
+        TagField::TrackNumber
+        | TagField::TrackTotal
+        | TagField::DiscNumber
+        | TagField::DiscTotal => is_ascii_digits(value),
         TagField::Bpm => is_decimal(value),
         _ => true,
     }
@@ -706,6 +715,7 @@ mod tests {
             TagField::TrackNumber,
             TagField::TrackTotal,
             TagField::DiscNumber,
+            TagField::DiscTotal,
             TagField::Year,
             TagField::Genre,
             TagField::Comment,

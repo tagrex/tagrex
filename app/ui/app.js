@@ -2630,7 +2630,20 @@ function closeAddField() {
 
 // The core group is what a DJ touches every session; the rest (+ custom fields)
 // lives in a collapsible Extended group (#editor design pass, Q2).
-const EDITOR_CORE_KEYS = ["artist", "title", "album", "albumartist", "track", "tracktotal", "disc", "year", "genre"];
+const EDITOR_CORE_KEYS = ["artist", "title", "album", "albumartist", "track", "tracktotal", "disc", "disctotal", "year", "genre"];
+// How the Core group lays out: singles, plus the two number/total pairs rendered
+// as one row each — "Track [n] / [total]", "Disc [n] / [total]" — mirroring a
+// reference tagger's combined NN/TT presentation (#136 pass 2).
+const EDITOR_CORE_LAYOUT = [
+  { key: "artist" },
+  { key: "title" },
+  { key: "album" },
+  { key: "albumartist" },
+  { pair: ["track", "tracktotal"], label: "Track" },
+  { pair: ["disc", "disctotal"], label: "Disc" },
+  { key: "year" },
+  { key: "genre" },
+];
 // Numeric/typed fields get a narrow right-aligned input and inline validation
 // mirroring the backend's is_writable_value rule, so a bad value shows as an
 // error as you type instead of only being rejected at apply.
@@ -2681,21 +2694,25 @@ function renderFieldEditor(paths) {
   }
 
   const labelOf = new Map(EXTENDED_FIELDS);
-  const coreRows = EDITOR_CORE_KEYS.map((key) => [key, labelOf.get(key)]);
+  const coreRows = EDITOR_CORE_LAYOUT.map((r) =>
+    r.pair ? { pair: r.pair, label: r.label } : { key: r.key, label: labelOf.get(r.key) }
+  );
 
   // Standard = the known extended fields, plus any custom keys we can name
   // (promoted, appended after the curated ones and sorted by label). The raw
   // rest — technical frames with no friendly name — drop into Advanced (#136).
-  const standardRows = EXTENDED_FIELDS.filter(([key]) => !EDITOR_CORE_KEYS.includes(key));
+  const standardRows = EXTENDED_FIELDS.filter(([key]) => !EDITOR_CORE_KEYS.includes(key)).map(
+    ([key, label]) => ({ key, label })
+  );
   const promoted = [];
   const advancedRows = [];
   for (const key of [...customs].sort()) {
     const raw = key.slice("custom:".length);
     const friendly = KNOWN_CUSTOM_LABELS[raw.toUpperCase()];
-    if (friendly) promoted.push([key, friendly]);
-    else advancedRows.push([key, raw]);
+    if (friendly) promoted.push({ key, label: friendly });
+    else advancedRows.push({ key, label: raw });
   }
-  promoted.sort((a, b) => a[1].localeCompare(b[1]));
+  promoted.sort((a, b) => a.label.localeCompare(b.label));
   standardRows.push(...promoted);
 
   body.appendChild(fieldGroup("Core", coreRows, paths, "core"));
@@ -2738,7 +2755,13 @@ function fieldGroup(title, rows, paths, kind) {
 
   const grid = document.createElement("div");
   grid.className = "fe-grid";
-  for (const [key, label] of rows) grid.appendChild(fieldRow(key, label, paths, advanced));
+  for (const r of rows) {
+    grid.appendChild(
+      r.pair
+        ? fieldPairRow(r.pair[0], r.pair[1], r.label, paths)
+        : fieldRow(r.key, r.label, paths, advanced)
+    );
+  }
   group.appendChild(grid);
   return group;
 }
@@ -2814,6 +2837,78 @@ function fieldRow(key, label, paths, advanced) {
   } else {
     row.append(marker, labelCell, cell);
   }
+  return row;
+}
+
+// A combined "number / total" row — one label, two narrow numeric inputs joined
+// by a "/", e.g. "Track [n] / [total]" (#136 pass 2). Each sub-input stages and
+// validates its own key; the row's dirty/error marker reflects either half.
+function fieldPairRow(numKey, totalKey, label, paths) {
+  const row = document.createElement("div");
+  row.className = "fe-row pair";
+
+  const marker = document.createElement("span");
+  marker.className = "fe-marker";
+
+  const labelCell = document.createElement("span");
+  labelCell.className = "fe-label";
+  labelCell.textContent = label;
+  labelCell.title = label;
+
+  const pair = document.createElement("span");
+  pair.className = "fe-pair";
+
+  const inputs = [];
+  // Row error reflects either half, so recompute across both inputs each time —
+  // fixing one input must not clear the row error the other still has.
+  const reflectRow = () => {
+    let anyError = false;
+    for (const inp of inputs) {
+      const { ok } = validateFieldValue(inp.dataset.key, inp.value);
+      inp.classList.toggle("error", !ok);
+      if (!ok) inp.setAttribute("aria-invalid", "true");
+      else inp.removeAttribute("aria-invalid");
+      anyError = anyError || !ok;
+    }
+    row.classList.toggle("error", anyError);
+  };
+
+  const makeSub = (key, aria) => {
+    const values = new Set(paths.map((path) => currentFieldValue(path, key)));
+    const shared = values.size === 1 ? [...values][0] : null;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "field-input num";
+    input.dataset.key = key;
+    input.spellcheck = false;
+    input.inputMode = "numeric";
+    input.setAttribute("aria-label", `${label} ${aria}`);
+    if (shared === null) {
+      input.classList.add("multiple");
+      input.placeholder = "—"; // narrow numeric box: a dash reads better than "<multiple values>"
+    } else {
+      input.value = shared;
+    }
+    input.addEventListener("input", () => {
+      stagedFields.set(key, input.value);
+      input.classList.remove("multiple");
+      input.classList.add("dirty");
+      row.classList.add("dirty");
+      reflectRow();
+    });
+    inputs.push(input);
+    return input;
+  };
+
+  const numInput = makeSub(numKey, "number");
+  const sep = document.createElement("span");
+  sep.className = "fe-pair-sep";
+  sep.textContent = "/";
+  const totalInput = makeSub(totalKey, "total");
+  pair.append(numInput, sep, totalInput);
+
+  reflectRow(); // surface a pre-filled invalid value on first render (rare)
+  row.append(marker, labelCell, pair);
   return row;
 }
 

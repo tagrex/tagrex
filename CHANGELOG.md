@@ -20,7 +20,12 @@ first release ships.
   (album), Discogs Release ID…); and everything else drops into a collapsed
   Advanced group rendered as a raw key/value list — the arbitrary key on its own
   mono line above a full-width input, so nothing is clipped. The everyday form
-  stays clean while every raw key is still reachable.
+  stays clean while every raw key is still reachable. A second pass also matched
+  the reference tagger's layout: Track and Disc now render as combined
+  number/total rows (`Track [n] / [total]`, `Disc [n] / [total]`) instead of
+  separate lines — which added a first-class **disc-total** tag field to the
+  backend so the "of N" half has somewhere to write — the numeric boxes shrank
+  from 92px to a compact 56px, and the form was tightened up vertically.
 
 - **Cover-art buttons share one size** (#134). Set one… / Remove all / Export and
   the full-width Use folder image were 10px vs the base 13px; they now sit at a
