@@ -15,10 +15,14 @@ first release ships.
   consistent 12px with matching padding, so the section reads as one button
   group.
 
-- **One focus outline across form controls** (#135). A clicked `<select>` drew
-  WKWebView's own tight ring while the inputs beside it showed the app's accent
-  border; selects (and search inputs) now use the same focus treatment, and the
-  native outline is suppressed so neighbouring controls match.
+- **One focus outline across form controls** (#135). Focus now shows a single
+  accent ring on every control, keyboard or mouse. Before, a focused field drew
+  both an accent border _and_ the ring (a confusing double outline), and a
+  clicked `<select>` fell back to WKWebView's own tight ring — the provider
+  `<select>` also re-declared its border at ID specificity, which beat the shared
+  focus rule and left it grey. The accent-border-on-focus is gone (the ring alone
+  is the indicator), the native outline is suppressed, and the provider select
+  inherits the base treatment — so every control matches.
 
 - **A minimal right-click menu replaces the webview's native one** (#132).
   Right-clicking the app no longer pops _Reload / Inspect Element_ and the wall

@@ -255,17 +255,15 @@ input[type="password"] {
   font: inherit;
 }
 
-/* One focus treatment for every control (#135): accent border on plain focus,
-   no engine-native outline (WKWebView draws its own tight ring on a clicked
-   <select>, which mismatched the inputs beside it). The offset --ring is added
-   on :focus-visible (keyboard) further down, shared by all of these too. */
+/* One focus treatment for every control (#135): a single accent ring (--ring)
+   on :focus-visible, added further down and shared by all of them. Here we only
+   suppress the engine-native outline (WKWebView draws its own tight ring on a
+   clicked <select>). No accent *border* on focus — the border plus the ring read
+   as a confusing double outline; the ring alone is the focus indicator. */
 input[type="text"]:focus,
 input[type="password"]:focus,
 input[type="search"]:focus,
-select:focus {
-  outline: none;
-  border-color: var(--accent);
-}
+select:focus,
 button:focus {
   outline: none;
 }
@@ -1105,7 +1103,6 @@ body:not(.show-checkbox) #tracks td.sel {
 
 #filter:focus {
   outline: none;
-  border-color: var(--accent);
 }
 
 /* Filter control (#44): the search box with the regex / case toggles overlaid on
@@ -1199,7 +1196,6 @@ body:not(.show-checkbox) #tracks td.sel {
 }
 .preset-name:focus {
   outline: none;
-  border-color: var(--accent);
 }
 
 .mask-row {
@@ -1639,7 +1635,6 @@ td.unreadable-note {
 }
 .field-input:focus-visible {
   outline: none;
-  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 
@@ -2835,7 +2830,6 @@ input[type="password"]:focus-visible,
 input[type="search"]:focus-visible,
 select:focus-visible {
   outline: none;
-  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 
@@ -3195,7 +3189,6 @@ td[data-field="year"],
 }
 .settings-row input:focus-visible {
   outline: none;
-  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 .settings-inline {
