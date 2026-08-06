@@ -1847,19 +1847,20 @@ td.unreadable-note {
   gap: var(--space-1);
   margin-top: auto;
 }
-/* Cover-art buttons share one compact size (#134): the action row and the
-   full-width "Use folder image" were 10px vs the base 13px, a visible jumble.
-   Both now sit at --text-sm with matching padding. */
+/* Cover-art buttons share one compact size (#134): the action row buttons and
+   "Use folder image" were 10px / a full-width 13px slab, a visible jumble. They
+   now all sit at --text-sm and flow in the same wrapping row. */
 .cover-actions .btn,
 .cover-external {
   padding: 4px var(--space-3);
   font-size: var(--text-sm);
   box-shadow: none;
-}
-/* "Use folder image" stays a full-width secondary action below the row. */
-.cover-external {
-  width: 100%;
-  margin-top: var(--space-1);
+  /* Size to the label, not the line: a lone flex item on a wrapped row has
+     width:auto and would otherwise stretch full-width (the "Use folder image"
+     slab, #134). fit-content keeps every cover button label-width whether it
+     shares the row or wraps below. */
+  width: -webkit-fit-content;
+  width: fit-content;
 }
 
 /* no-cover affordance — the well itself becomes the drop/click target */

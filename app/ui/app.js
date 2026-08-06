@@ -1658,14 +1658,17 @@ async function showExternalCoverAction(paths) {
   }
   if (!found) return;
   externalCover = found;
-  const body = coverWell.querySelector(".cover-body");
-  if (!body) return;
+  // Join the action row so it flows with Replace…/Remove/Export as an equal
+  // button (#134), not a full-width slab. Falls back to the body in the no-cover
+  // state, which has no action row.
+  const host = coverWell.querySelector(".cover-actions") || coverWell.querySelector(".cover-body");
+  if (!host) return;
   const note = document.createElement("button");
   note.className = "btn cover-external";
   note.dataset.cover = "external";
   note.textContent = "Use folder image";
   note.title = "Embed the cover.jpg / folder.jpg sitting next to these tracks";
-  body.appendChild(note);
+  host.appendChild(note);
 }
 
 function coverThumbImg(cover, cls) {
