@@ -1537,7 +1537,7 @@ td.unreadable-note {
   color: var(--text);
 }
 .fe-group-count {
-  font-weight: var(--fw-regular);
+  font-weight: var(--fw-medium);
   color: var(--muted);
 }
 .fe-group-caret {
@@ -1617,11 +1617,10 @@ td.unreadable-note {
   overflow-wrap: anywhere;
   line-height: 1.25;
 }
-/* Advanced key: the raw frame name, in mono so it reads as a technical key. */
-.fe-row.adv .fe-label {
-  font-family: var(--font-mono-bundled);
-  font-size: var(--text-2xs);
-}
+/* Advanced keys use the same label typography as Core/Standard (UI font,
+   text-xs) — one consistent look across the form, no font "zoo" (#136). The
+   Advanced group stays distinct through its grouping and stacked key/value
+   layout, not a different face. */
 .fe-row.dirty .fe-label {
   color: var(--text);
   font-weight: var(--fw-medium);
