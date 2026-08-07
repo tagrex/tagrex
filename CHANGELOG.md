@@ -23,7 +23,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   faces are OFL 1.1, subset to Latin + Latin-ext + Cyrillic + digits + the
   punctuation common in filenames.
 
+- **Settings › LAB — a section for typography still being trialled.** Marked
+  _experimental_ and stated as such, so it's clear these may change or be
+  dropped rather than sitting among settled preferences. It collects the value
+  font (moved out of Display) and the table font size, and adds two new knobs:
+  a **tracklist font size** (10–16px, default 12) and a **release badge font**
+  (mono or sans) for the catalogue-number and track-count badges. All apply
+  live.
+
 ### Changed
+
+- **One control tier and one type rule inside the release card.** The card's
+  toolbar ignored the design system's control heights entirely — `.btn-sm` set
+  only padding, so height fell out of the content and a single row held 18.5px,
+  21px and 24px controls at three different type sizes (10 / 11 / 12px), with
+  mono and sans alternating on no stated rule. Every control in that row is now
+  pinned to `--ctl-h-sm` (24px) at 11px — the tier the Label · cat# select in the
+  same card already used — and the card follows one rule: **sans for chrome and
+  labels, mono for data and identifiers**, at two sizes (11px dense layer, 12px
+  card title). The catalogue/track-count badges go 10px → 11px and the tracklist
+  rows 11px → 12px. **Preview edits** is brought onto the standard 28px / 12px
+  tier: it had no height of its own and inherited the status bar's 11px, so in a
+  narrow bar its label wrapped to two lines and the button stood 43px tall.
 
 - **Settings › Display now picks the value font app-wide: Mono / Sans /
   Condensed.** The old **Condensed table font** checkbox only ever restyled the

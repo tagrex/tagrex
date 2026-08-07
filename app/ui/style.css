@@ -263,6 +263,33 @@ body {
   background: var(--panel);
 }
 
+/* LAB group marker — a quiet chip on the heading so the section reads as
+   "still being tried", not as settled settings. */
+.lab-tag {
+  margin-left: var(--space-2);
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent-ink);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.settings-lab-note {
+  margin-top: 0;
+}
+
+/* Hairline between the layout toggle and the two app actions in the top-right
+   cluster — they sit together for tidiness, but changing the view isn't the same
+   kind of thing as undoing a batch or opening Settings. */
+.topbar-div {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px -4px;
+  background: var(--border);
+}
+
 .brand {
   font-weight: var(--fw-bold);
   letter-spacing: var(--ls-brand);
@@ -1404,6 +1431,17 @@ body.show-checkbox tr.playing td.sel {
   font-size: 11px;
   background: var(--panel);
   border-top: 1px solid var(--border);
+}
+
+/* The bar's 11px is for the status text; the button is a control, so it takes
+   the standard tier instead of inheriting. Without an explicit height it sized
+   from content, and with no nowrap the label wrapped to two lines in a narrow
+   bar — which is how it ended up 43px tall against a 28px standard. */
+#preview-edits {
+  height: var(--ctl-h);
+  padding: 0 12px;
+  font-size: var(--text-sm);
+  white-space: nowrap;
 }
 
 #player {
@@ -2564,7 +2602,7 @@ button.release-import {
 
 /* Line 2: album artist — emphasised, one line. */
 .release-artist {
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: var(--fw-medium);
   color: var(--text);
   line-height: var(--lh-tight);
@@ -2576,7 +2614,7 @@ button.release-import {
 /* Line 3: album title — same size as the album artist (line 2), medium weight. */
 .release-title {
   font-weight: var(--fw-medium);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   line-height: var(--lh-tight);
   white-space: nowrap;
   overflow: hidden;
@@ -2606,8 +2644,11 @@ button.release-import {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   overflow: hidden;
-  font-family: var(--font-mono-bundled);
-  font-size: var(--text-2xs);
+  /* Family + size are LAB-adjustable (Settings › LAB) so the catalogue badge can
+     be tried in other faces; the defaults are the bundled mono at 11px — it's an
+     identifier, so mono is the sane default, and 10px read too small. */
+  font-family: var(--badge-font, var(--font-mono-bundled));
+  font-size: var(--badge-font-size, var(--text-xs));
   font-weight: 600;
   line-height: 1;
 }
@@ -2725,10 +2766,19 @@ button.release-import {
   max-width: 260px;
 }
 
+/* Compact action button (release-card toolbar). Pinned to the design system's
+   second control tier — --ctl-h-sm, the same height the Label·cat# select in
+   that card already uses — instead of letting the height fall out of the
+   content, which is what left one row holding 18.5 / 21 / 24px controls. The
+   11px face replaces a 10px one that read as too small next to the 12px top
+   toolbar. */
 .btn-sm {
-  padding: 2px 7px;
+  height: var(--ctl-h-sm);
+  display: inline-flex;
+  align-items: center;
+  padding: 0 9px;
   border-radius: var(--radius-sm);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   box-shadow: none;
   border: 1px solid var(--border);
   background: var(--panel);
@@ -2754,7 +2804,9 @@ button.release-import {
   border-collapse: separate; /* sticky cells need separate borders */
   border-spacing: 0;
   font-family: var(--font-mono-bundled);
-  font-size: var(--text-xs);
+  /* LAB-adjustable (Settings › LAB); default lifted 11px → 12px so the tracklist
+     matches the density of the rest of the card. */
+  font-size: var(--tracklist-font-size, var(--text-sm));
 }
 
 .release-tracklist td {

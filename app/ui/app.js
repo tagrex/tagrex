@@ -156,6 +156,61 @@ function applyTableFont(px) {
   }
 }
 
+// ---- LAB typography knobs (Settings › LAB) ----
+// Release-card tracklist size and badge face, on the same localStorage-only
+// footing as the table-font control: pure display choices still being trialled.
+const TRACKLIST_FONT_STORAGE_KEY = "tagrex.tracklistFontPx";
+const TRACKLIST_FONT_MIN = 10;
+const TRACKLIST_FONT_MAX = 16;
+const TRACKLIST_FONT_DEFAULT = 12;
+function clampTracklistFont(px) {
+  return Math.min(TRACKLIST_FONT_MAX, Math.max(TRACKLIST_FONT_MIN, px || TRACKLIST_FONT_DEFAULT));
+}
+function tracklistFontPx() {
+  try {
+    const v = parseInt(localStorage.getItem(TRACKLIST_FONT_STORAGE_KEY), 10);
+    if (Number.isFinite(v)) return clampTracklistFont(v);
+  } catch (e) {
+    /* fall through to the default */
+  }
+  return TRACKLIST_FONT_DEFAULT;
+}
+function applyTracklistFont(px) {
+  const v = clampTracklistFont(px);
+  document.documentElement.style.setProperty("--tracklist-font-size", `${v}px`);
+  try {
+    localStorage.setItem(TRACKLIST_FONT_STORAGE_KEY, String(v));
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
+const BADGE_FONT_STORAGE_KEY = "tagrex.badgeFont";
+const BADGE_FONTS = ["mono", "sans"];
+function badgeFont() {
+  try {
+    const v = localStorage.getItem(BADGE_FONT_STORAGE_KEY);
+    if (BADGE_FONTS.includes(v)) return v;
+  } catch (e) {
+    /* fall through to the default */
+  }
+  return "mono";
+}
+function applyBadgeFont(mode) {
+  const m = BADGE_FONTS.includes(mode) ? mode : "mono";
+  // The badge carries a catalogue number — an identifier — so mono is the
+  // default; --badge-font lets LAB try the UI face instead.
+  document.documentElement.style.setProperty(
+    "--badge-font",
+    m === "sans" ? "var(--font-ui)" : "var(--font-mono-bundled)",
+  );
+  try {
+    localStorage.setItem(BADGE_FONT_STORAGE_KEY, m);
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
 // Theme: Auto (follow OS) / Light / Dark. "auto" resolves to light/dark from the
 // OS preference and re-resolves when it changes; light/dark force a palette via
 // a data-theme attribute the stylesheet keys off. Persisted in localStorage.
@@ -3267,6 +3322,13 @@ function setThemeChoice(mode) {
     .forEach((b) => b.classList.toggle("active", b.dataset.themeMode === mode));
 }
 
+function setBadgeFontChoice(mode) {
+  applyBadgeFont(mode);
+  el("set-badge-font")
+    .querySelectorAll(".seg-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.badgeFont === mode));
+}
+
 // Same live treatment for the value-font choice — the swap is visible behind the
 // settings sheet, so applying on click beats waiting for Save.
 function setValueFontChoice(mode) {
@@ -3378,6 +3440,9 @@ async function openSettings() {
   setValueFontChoice(valueFont());
   el("set-table-font").value = tableFontPx();
   el("set-table-font-val").textContent = `${tableFontPx()}px`;
+  el("set-tracklist-font").value = tracklistFontPx();
+  el("set-tracklist-font-val").textContent = `${tracklistFontPx()}px`;
+  setBadgeFontChoice(badgeFont());
   renderPrioList();
   el("settings").hidden = false;
 }
@@ -4473,6 +4538,16 @@ el("set-value-font").addEventListener("click", (e) => {
 el("set-prio-reset").addEventListener("click", resetPriority);
 // Table font size is a live control: drag to apply (and persist) immediately so
 // the effect is visible behind the settings sheet.
+// LAB sliders/segments are live controls too — the effect shows behind the sheet.
+el("set-tracklist-font").addEventListener("input", (e) => {
+  const px = clampTracklistFont(parseInt(e.target.value, 10));
+  applyTracklistFont(px);
+  el("set-tracklist-font-val").textContent = `${px}px`;
+});
+el("set-badge-font").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-badge-font]");
+  if (btn) setBadgeFontChoice(btn.dataset.badgeFont);
+});
 el("set-table-font").addEventListener("input", (e) => {
   const px = clampTableFont(parseInt(e.target.value, 10));
   applyTableFont(px);

@@ -629,6 +629,14 @@
               <input id="set-checkbox-col" type="checkbox" />
             </div>
             <p class="settings-hint">Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.</p>
+          </div>
+
+          <!-- LAB: typography knobs that are still being tried out. Grouped and
+               labelled as experiments so it's clear they may change or go away,
+               rather than sitting among the settled Display options. -->
+          <div class="settings-group">
+            <h3>LAB <span class="lab-tag">experimental</span></h3>
+            <p class="settings-hint settings-lab-note">Typography still under evaluation. These may change or be dropped in a later release.</p>
             <div class="settings-row">
               <label>Value font</label>
               <div class="seg" id="set-value-font" role="tablist" aria-label="Value font">
@@ -646,6 +654,22 @@
               </div>
             </div>
             <p class="settings-hint">Applies to the file table in any of the three faces. Drag to preview live.</p>
+            <div class="settings-row">
+              <label for="set-tracklist-font">Tracklist font size</label>
+              <div class="settings-inline">
+                <input id="set-tracklist-font" type="range" min="10" max="16" step="1" />
+                <span id="set-tracklist-font-val" class="settings-hint"></span>
+              </div>
+            </div>
+            <p class="settings-hint">The release card's tracklist rows. Drag to preview live.</p>
+            <div class="settings-row">
+              <label>Release badge font</label>
+              <div class="seg" id="set-badge-font" role="tablist" aria-label="Release badge font">
+                <button class="seg-btn" type="button" data-badge-font="mono">Mono</button>
+                <button class="seg-btn" type="button" data-badge-font="sans">Sans</button>
+              </div>
+            </div>
+            <p class="settings-hint">The catalogue number and track-count badges on a release card.</p>
           </div>
         </div>
         <div class="settings-foot">
