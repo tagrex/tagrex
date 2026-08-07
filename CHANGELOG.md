@@ -25,6 +25,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Settings › Display now picks the value font app-wide: Mono / Sans /
+  Condensed.** The old **Condensed table font** checkbox only ever restyled the
+  file table, and offered no way to drop the monospace look elsewhere. It is
+  replaced by a three-way segmented control (styled like Theme, and live — the
+  swap applies on click, not on Save) whose choice redefines the bundled-mono
+  token itself, so every value surface follows it: the file table, the release
+  tracklist, deduplicator paths, rename/export pattern fields and the editor
+  inputs. **Mono** (default) keeps columns aligned and `0`/`O` distinct;
+  **Sans** renders values in the same IBM Plex Sans as the rest of the
+  interface; **Condensed** fits more in before a value truncates. An existing
+  condensed preference migrates to the new setting automatically — note it now
+  applies everywhere, not just to the table.
+
 - **Palette nudged to clear WCAG AA in both themes.** The dark-mode accent fill
   is darkened (`#0d8f6a` → `#0b7d5c`) so white primary-button labels pass AA
   (they were at 4.07), light muted text is darkened (`#6b7280` → `#636b76`) for

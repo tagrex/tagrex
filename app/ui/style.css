@@ -1034,11 +1034,19 @@ td.error {
   padding: 2px 10px;
 }
 
-/* Condensed-table preference (#100): swap the aligned monospace for a narrower
-   sans so more of each value fits. Toggled from Settings; trades column
-   alignment for width. Size is governed by --table-font-size (shared control). */
-body.condensed-table #tracks tbody td {
-  font-family: var(--font-ui-condensed);
+/* Value-font preference (Settings › Display, was the #100 condensed toggle):
+   Mono / Sans / Condensed. Rather than restyling each site, the choice
+   redefines the --font-mono-bundled token itself, so every value surface that
+   already opts into the bundled mono — this table, the release tracklist, the
+   deduplicator paths, rename/export pattern fields, editor inputs — follows the
+   one setting. Sans and Condensed trade column alignment (and the mono's strict
+   0/O disambiguation) for density and a single-typeface look. Table size stays
+   governed by --table-font-size. */
+body.value-font-sans {
+  --font-mono-bundled: var(--font-ui);
+}
+body.value-font-condensed {
+  --font-mono-bundled: var(--font-ui-condensed);
 }
 
 /* Match the header to the tighter body rows. */

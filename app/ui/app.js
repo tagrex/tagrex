@@ -47,20 +47,34 @@ let columnWidths = {};
 const COLUMN_WIDTHS_STORAGE_KEY = "tagrex.colWidths";
 const COLUMN_MIN_WIDTH = 48;
 
-// Condensed-table font preference (#100). A pure display choice, so it persists
-// in localStorage like the column prefs rather than in the backend settings.
-const CONDENSED_STORAGE_KEY = "tagrex.condensedTable";
-function condensedTableEnabled() {
+// Value-font preference: which face every value surface uses — the file table,
+// the release tracklist, deduplicator paths, rename/export pattern fields and
+// editor inputs. "mono" is the default disambiguating monospace; "sans" and
+// "condensed" swap in the bundled UI faces app-wide (the stylesheet redefines
+// --font-mono-bundled off a body class). Grew out of the #100 condensed-table
+// toggle, which was table-only — the old boolean key migrates below. A pure
+// display choice, so it persists in localStorage, not the backend settings.
+const VALUE_FONT_STORAGE_KEY = "tagrex.valueFont";
+const CONDENSED_STORAGE_KEY = "tagrex.condensedTable"; // legacy, migrated once
+const VALUE_FONTS = ["mono", "sans", "condensed"];
+function valueFont() {
   try {
-    return localStorage.getItem(CONDENSED_STORAGE_KEY) === "1";
+    const v = localStorage.getItem(VALUE_FONT_STORAGE_KEY);
+    if (VALUE_FONTS.includes(v)) return v;
+    // Migrate the old table-only boolean: it only ever meant "condensed".
+    if (localStorage.getItem(CONDENSED_STORAGE_KEY) === "1") return "condensed";
   } catch (e) {
-    return false;
+    return "mono";
   }
+  return "mono";
 }
-function applyCondensedTable(on) {
-  document.body.classList.toggle("condensed-table", on);
+function applyValueFont(mode) {
+  const m = VALUE_FONTS.includes(mode) ? mode : "mono";
+  document.body.classList.toggle("value-font-sans", m === "sans");
+  document.body.classList.toggle("value-font-condensed", m === "condensed");
   try {
-    localStorage.setItem(CONDENSED_STORAGE_KEY, on ? "1" : "0");
+    localStorage.setItem(VALUE_FONT_STORAGE_KEY, m);
+    localStorage.removeItem(CONDENSED_STORAGE_KEY);
   } catch (e) {
     /* localStorage unavailable — preference just won't persist */
   }
@@ -3253,6 +3267,15 @@ function setThemeChoice(mode) {
     .forEach((b) => b.classList.toggle("active", b.dataset.themeMode === mode));
 }
 
+// Same live treatment for the value-font choice — the swap is visible behind the
+// settings sheet, so applying on click beats waiting for Save.
+function setValueFontChoice(mode) {
+  applyValueFont(mode);
+  el("set-value-font")
+    .querySelectorAll(".seg-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.valueFont === mode));
+}
+
 // Tag-read priority (#84): the order tag blocks are consulted when a file
 // carries more than one. Persisted as an ordered list of keys; the default
 // order matches the common case (ID3v2 first).
@@ -3352,7 +3375,7 @@ async function openSettings() {
   // Display prefs live in localStorage, not the backend settings.
   setThemeChoice(themeMode());
   el("set-checkbox-col").checked = checkboxColEnabled();
-  el("set-condensed").checked = condensedTableEnabled();
+  setValueFontChoice(valueFont());
   el("set-table-font").value = tableFontPx();
   el("set-table-font-val").textContent = `${tableFontPx()}px`;
   renderPrioList();
@@ -3383,7 +3406,7 @@ async function saveSettings() {
   // Display prefs are local-only; apply + persist before the backend round-trip.
   // (Table font size already applies live on input; persisted here too.)
   applyCheckboxCol(el("set-checkbox-col").checked);
-  applyCondensedTable(el("set-condensed").checked);
+  // (Value font, like the theme, is a live control — already applied on click.)
   applyTableFont(parseInt(el("set-table-font").value, 10));
   try {
     await invoke("save_discogs_token", { token });
@@ -4442,6 +4465,11 @@ el("set-theme").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-theme-mode]");
   if (btn) setThemeChoice(btn.dataset.themeMode);
 });
+// Value font is live too — swap on click so the effect shows behind the sheet.
+el("set-value-font").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-value-font]");
+  if (btn) setValueFontChoice(btn.dataset.valueFont);
+});
 el("set-prio-reset").addEventListener("click", resetPriority);
 // Table font size is a live control: drag to apply (and persist) immediately so
 // the effect is visible behind the settings sheet.
@@ -5229,7 +5257,7 @@ loadSavedToken();
 loadColumns();
 loadColumnWidths();
 renderTableHead();
-applyCondensedTable(condensedTableEnabled());
+applyValueFont(valueFont());
 applyCheckboxCol(checkboxColEnabled());
 applyTableFont(tableFontPx());
 // Reflect saved defaults onto the grouping + search page-size selects (#108).
