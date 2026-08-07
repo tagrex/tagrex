@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **One bundled type superfamily for portable, legible text.** UI text now
+  renders in **IBM Plex Sans** (weights 400 / 600 / 700) and the optional
+  condensed table font in **IBM Plex Sans Condensed**, both bundled as
+  Cyrillic-covering woff2 subsets (`app/ui/assets/tagrex-sans*.woff2`,
+  `tagrex-ui-condensed.woff2`). Type now looks identical on macOS, Linux and
+  Windows instead of drifting across each OS's system sans, and stays fully
+  offline. The disambiguating **JetBrains Mono** is kept for the aligned data
+  columns, so the app reads as one system with a deliberate mono exception.
+  `--font-ui` leads with the bundled face and gains a real Linux fallback
+  (Cantarell / Noto Sans) before the generic. This lands the bundled condensed
+  face the table toggle had been falling back to a system face for (#100). All
+  faces are OFL 1.1, subset to Latin + Latin-ext + Cyrillic + digits + the
+  punctuation common in filenames.
+
+### Changed
+
+- **Palette nudged to clear WCAG AA in both themes.** The dark-mode accent fill
+  is darkened (`#0d8f6a` → `#0b7d5c`) so white primary-button labels pass AA
+  (they were at 4.07), light muted text is darkened (`#6b7280` → `#636b76`) for
+  margin over the panel colour, and the dark diff/success green is softened
+  (`#4ade80` → `#3fca74`) so its weight matches the light theme. Accent-as-text
+  (`--accent-ink`) is unchanged, and the accent stays anchored to the brand
+  green — a contrast tune-up, not a rebrand.
+
 ## [0.1.0] - 2026-08-06
 
 First tagged release. Everything below is the work that brought the editor to a

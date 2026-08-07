@@ -25,6 +25,36 @@
   src: url(assets/tagrex-ui-condensed.woff2) format("woff2");
 }
 
+/* Bundled UI sans (typography audit): IBM Plex Sans, OFL 1.1, subset to
+   Latin + Latin-ext + Cyrillic + digits + filename punctuation and shipped as
+   assets/tagrex-sans*.woff2 (local bundled assets, offline). Backs the
+   --font-ui token so UI text renders identically on macOS/Linux/Windows instead
+   of drifting across each OS's system sans; the system stack stays the fallback.
+   Three weights: 400 body, 600 (IBM Plex SemiBold) for medium/labels, 700 brand.
+   Pairs with the bundled "TagRex Condensed" (IBM Plex Sans Condensed) above — one
+   type superfamily. */
+@font-face {
+  font-family: "TagRex Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(assets/tagrex-sans.woff2) format("woff2");
+}
+@font-face {
+  font-family: "TagRex Sans";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url(assets/tagrex-sans-medium.woff2) format("woff2");
+}
+@font-face {
+  font-family: "TagRex Sans";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(assets/tagrex-sans-bold.woff2) format("woff2");
+}
+
 :root {
   /* Opt every native control (scrollbars, <select> popups, checkboxes, range,
      spinners, focus rings) into the OS light/dark preference. Without this the
@@ -36,7 +66,9 @@
   --panel: #f6f7f9;
   --border: #e2e5ea;
   --text: #1a1d23;
-  --muted: #6b7280;
+  /* Nudged one step darker so muted text on --panel clears WCAG AA with margin
+     (was #6b7280 = 4.51, right on the line) — typography/colour audit. */
+  --muted: #636b76;
   /* Brand green (from the logo, #085041) drives the accent; a clear red is
      reserved for danger — errors, deletions, and the "old" side of a diff — so
      problems stand out against all the positive/interactive green. */
@@ -57,7 +89,11 @@
      integration. */
 
   /* type: families */
-  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Bundled IBM Plex Sans leads (see @font-face above) so UI text is identical
+     across OSes; the native stack — now with Linux faces (Cantarell/Noto Sans)
+     before the generic — is the fallback until the woff2 loads. */
+  --font-ui: "TagRex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Cantarell", "Noto Sans", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   /* Bundled disambiguating mono; falls back to the system stack until a
      data-URI binary is dropped into a "TagRex Mono" @font-face. */
@@ -156,10 +192,10 @@
     --border: #2c313b;
     --text: #e6e8ec;
     --muted: #9aa1ac;
-    --accent: #0d8f6a;
+    --accent: #0b7d5c;
     --accent-text: #ffffff;
     --accent-ink: #14a67d;
-    --add: #4ade80;
+    --add: #3fca74;
     --del: #f87171;
     --row-hover: #242832;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -175,10 +211,10 @@
   --border: #2c313b;
   --text: #e6e8ec;
   --muted: #9aa1ac;
-  --accent: #0d8f6a;
+  --accent: #0b7d5c;
   --accent-text: #ffffff;
   --accent-ink: #14a67d;
-  --add: #4ade80;
+  --add: #3fca74;
   --del: #f87171;
   --row-hover: #242832;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
