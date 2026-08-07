@@ -33,6 +33,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Release-card toolbar rebuilt around what each control actually is.** The row
+  held six lookalike buttons mixing three different kinds of thing. **Enable all
+  / Disable all** weren't actions at all but a scope, so they become a single
+  master checkbox — tri-state, showing whether all, some or none of the tracks
+  are on — moved into a new sticky tracklist header where it shares a column
+  with the per-track boxes and lines up with them by construction, taking the
+  `N / M selected` tally with it. **Save cover / Save all (N)** were one call
+  with a boolean, so they become one narrow artwork button carrying the image
+  count, with the variants on its caret. **Expand all / Collapse all** are a
+  state toggle, so they become one icon button offering whichever move the
+  current state allows. The mode-panel collapse button joins Undo and Settings
+  in the top bar instead of sitting alone at the end of the mode-tab row.
+
+- **Cover resolution now qualifies the action it belongs to.** The row printed
+  `600×594 · 12 images`, which read as a property of the whole set; the figure
+  is in fact the primary image's, the one `Save as folder.jpg` writes and
+  `Embed cover` embeds. It moves onto that menu item and the button's tooltip,
+  and the loose readout leaves the row.
+
+- **Search and results columns line up.** The results pane reserves a scrollbar
+  gutter, so its contents sat 11px further left than the search controls above
+  (25px vs 14px from the panel edge). The scrollbar width is measured once into
+  `--sb-w` — zero on overlay-scrollbar platforms — and the header reserves the
+  same gutter, so the two edges agree everywhere.
+
 - **One control tier and one type rule inside the release card.** The card's
   toolbar ignored the design system's control heights entirely — `.btn-sm` set
   only padding, so height fell out of the content and a single row held 18.5px,

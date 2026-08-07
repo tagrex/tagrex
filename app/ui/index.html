@@ -24,6 +24,9 @@
       <symbol id="i-close" viewBox="0 0 16 16"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></symbol>
       <symbol id="i-list" viewBox="0 0 16 16"><line x1="5.2" y1="4.5" x2="13.5" y2="4.5"/><line x1="5.2" y1="8" x2="13.5" y2="8"/><line x1="5.2" y1="11.5" x2="13.5" y2="11.5"/><circle cx="2.8" cy="4.5" r=".95" fill="currentColor" stroke="none"/><circle cx="2.8" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="2.8" cy="11.5" r=".95" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-grid" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1"/><rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1"/><rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1"/><rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1"/></symbol>
+      <symbol id="i-expand-all" viewBox="0 0 16 16"><path d="M5.4 6.2 8 3.6 10.6 6.2"/><path d="M5.4 9.8 8 12.4 10.6 9.8"/><line x1="2.6" y1="8" x2="13.4" y2="8"/></symbol>
+      <symbol id="i-collapse-all" viewBox="0 0 16 16"><path d="M5.4 3.4 8 6 10.6 3.4"/><path d="M5.4 12.6 8 10 10.6 12.6"/><line x1="2.6" y1="8" x2="13.4" y2="8"/></symbol>
+      <symbol id="i-image" viewBox="0 0 16 16"><rect x="2.3" y="3.3" width="11.4" height="9.4" rx="1.4"/><circle cx="5.9" cy="6.6" r="1.05" fill="currentColor" stroke="none"/><path d="M3.1 11.7 6.3 8.9 8.4 10.7 10.7 8.3 13.3 10.7"/></symbol>
       <symbol id="i-caret-down" viewBox="0 0 16 16"><path d="M4 6.5 8 10.5 12 6.5"/></symbol>
       <symbol id="i-caret-up" viewBox="0 0 16 16"><path d="M4 9.5 8 5.5 12 9.5"/></symbol>
       <symbol id="i-chevron-right" viewBox="0 0 16 16"><path d="M6.5 4 10.5 8 6.5 12"/></symbol>
@@ -57,6 +60,10 @@
         <button id="open">Open</button>
       </div>
       <div class="spacer"></div>
+      <!-- Layout control, kept a hair apart from the two app actions beside it:
+           it changes what you see, it doesn't act on the library. -->
+      <button id="panel-toggle" class="icon" title="Collapse the mode panel (more room for the table)" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
+      <span class="topbar-div" aria-hidden="true"></span>
       <button id="undo" class="icon" disabled title="Undo the last applied batch" aria-label="Undo the last applied batch"><svg class="ico"><use href="#i-undo"/></svg></button>
       <button id="settings-open" class="icon gear" title="Settings" aria-label="Settings"><svg class="ico"><use href="#i-settings"/></svg></button>
     </header>
@@ -71,8 +78,6 @@
         <button class="mode-tab" data-mode="deduplicator" title="Find likely duplicate files in the library" aria-label="DEDUPLICATOR"><svg class="ico"><use href="#i-dedup"/></svg><span class="lbl">DEDUPLICATOR</span></button>
         <button class="mode-tab" data-mode="exporter" title="Export playlists, CSV, and reports" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl">EXPORTER</span></button>
       </div>
-      <div class="spacer"></div>
-      <button id="panel-toggle" class="icon" title="Collapse the mode panel (more room for the table)" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
     </nav>
 
     <main class="workarea">
@@ -87,8 +92,10 @@
                  the table (#43). -->
             <select id="group-by" title="Group rows by a key (view only — file order is unchanged)"></select>
           </label>
-          <button id="expand-all" hidden title="Expand every group">Expand all</button>
-          <button id="collapse-all" hidden title="Collapse every group">Collapse all</button>
+          <!-- One control, because this is a state toggle: it offers whichever
+               move is available from the current state (collapse while anything
+               is open, expand once everything is shut). -->
+          <button id="toggle-groups" class="icon" hidden title="Collapse every group" aria-label="Collapse every group"><svg class="ico"><use href="#i-collapse-all"/></svg></button>
           <!-- Filter (#44): substring or regex, optionally case-sensitive, and
                field-scoped via a `field:query` prefix (e.g. artist:aphex). The
                two flag toggles sit inside the box; a bad regex reddens it. -->

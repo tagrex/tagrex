@@ -1154,9 +1154,9 @@ function renderTracks() {
     for (const track of visible) appendTrackRow(track, null);
   }
 
-  // Expand/Collapse all only make sense while grouped (#32).
-  el("expand-all").hidden = !groupBy;
-  el("collapse-all").hidden = !groupBy;
+  // The group toggle only makes sense while grouped (#32).
+  el("toggle-groups").hidden = !groupBy;
+  syncGroupToggle();
 
   previewBtn.disabled = tracks.length === 0;
   updateEditsButton();
@@ -3883,46 +3883,71 @@ function renderTracklist(card, release) {
   const images = release.images || [];
   const primary = images[0];
   const res = primary && primary.width && primary.height ? `${primary.width}×${primary.height}` : "";
-  const imgInfo =
-    res || images.length > 1
-      ? `<span class="muted tk-imginfo">${res}${res && images.length > 1 ? " · " : ""}${images.length > 1 ? images.length + " images" : ""}</span>`
-      : "";
-  const saveCoverBtn = images.length
-    ? `<button class="btn-sm" data-act="save-cover" title="Save the cover next to the selected tracks as folder.jpg">Save cover</button>`
-    : "";
-  const saveAllBtn =
-    images.length > 1
-      ? `<button class="btn-sm" data-act="save-all" title="Save all ${images.length} images next to the selected tracks">Save all (${images.length})</button>`
-      : "";
+  // The resolution describes the PRIMARY image specifically — provider.rs orders
+  // `images` primary-first and `cover_image_url` is that first entry, so it's the
+  // exact file "Save as folder.jpg" writes and "Embed cover" embeds. It used to
+  // sit in the row as "600×594 · 12 images", where it read as a property of the
+  // whole set; it now hangs off the action it actually qualifies (and the button
+  // tooltip), which also frees the row of a text block.
+  const resNote = res ? `<span class="tk-menu-note">${res}</span>` : "";
+  const artTitle =
+    `Save this release's artwork next to the selected tracks` +
+    (res ? ` — front cover ${res}` : "") +
+    (images.length > 1 ? ` · ${images.length} images` : "");
+  const artCount = images.length > 1 ? `<span class="tk-art-count">${images.length}</span>` : "";
+  // Saving artwork is one call with a boolean (saveReleaseImages), so it reads as
+  // ONE control rather than two competing buttons: a plain button when the
+  // release carries a single image, a split button whose caret offers "all N"
+  // when there are more. The count stays in the menu item and the adjacent
+  // "N images" readout instead of being stamped on the button face.
+  const saveBtn = !images.length
+    ? ""
+    : images.length === 1
+      ? `<button class="btn-sm io tk-art-btn" data-act="save-cover" aria-label="Save the cover next to the selected tracks as folder.jpg" title="${escapeHtml(artTitle)}">${ico("image")}</button>`
+      : `<div class="col-picker tk-save">
+           <button class="btn-sm io tk-art-btn" data-act="save-menu" aria-label="Save this release's artwork to disk" title="${escapeHtml(artTitle)}">${ico("image")}${artCount}${ico("caret-down")}</button>
+           <div class="col-menu tk-save-menu" hidden>
+             <button type="button" class="col-menu-row tk-menu-item" data-act="save-cover">Save as folder.jpg${resNote}</button>
+             <button type="button" class="col-menu-row tk-menu-item" data-act="save-all">Save all ${images.length} images</button>
+           </div>
+         </div>`;
   card.querySelector(".release-tracklist").innerHTML = `
     <div class="tracklist-actions">
-      <button class="btn-sm" data-act="enable-all">Enable all</button>
-      <button class="btn-sm" data-act="disable-all">Disable all</button>
       <button class="btn-sm" data-act="automatch" title="Reorder the selected files to line up with this tracklist">Auto-match</button>
       <button class="btn-sm" data-act="embed" title="Embed this release's cover into the selected files">Embed cover</button>
-      ${saveCoverBtn}
-      ${saveAllBtn}
-      ${imgInfo}
-      <span class="muted tk-selcount" style="margin-left:auto"></span>
+      ${saveBtn}
     </div>
     ${labelPicker}
-    <div class="tracklist-scroll"><table><tbody>${rows}</tbody></table></div>`;
+    <div class="tracklist-scroll"><table>
+      <thead><tr class="tk-head">
+        <th class="tk-lead"><label class="tk-selall" title="Select all tracks / none"><input type="checkbox" class="tk-selall-box" aria-label="Select all tracks" /></label></th>
+        <th class="tk-selcount muted" colspan="2"></th>
+      </tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
   // The import action moved to a header icon button (shown once loaded + expanded).
   card.classList.add("tracklist-loaded");
   updateTracklistCount(card);
 }
 
 function updateTracklistCount(card) {
-  const boxes = [...card.querySelectorAll(".release-tracklist .tk-lead input")];
+  const boxes = [...card.querySelectorAll(".release-tracklist tbody .tk-lead input")];
   const on = boxes.filter((b) => b.checked).length;
   const label = card.querySelector(".tk-selcount");
   if (label) label.textContent = `${on} / ${boxes.length} selected`;
+  // Mirror the tally onto the master checkbox that replaced the Enable/Disable
+  // all pair — same tri-state contract as the file table's #select-all, so the
+  // control shows the current scope instead of just offering two commands.
+  const master = card.querySelector(".tk-selall-box");
+  if (master) {
+    master.checked = boxes.length > 0 && on === boxes.length;
+    master.indeterminate = on > 0 && on < boxes.length;
+  }
 }
 
 // The enabled tracks of a card, shaped for import / auto-align.
 function enabledTracksOf(card) {
   const release = releaseCache.get(card.dataset.id);
-  return [...card.querySelectorAll(".release-tracklist .tk-lead input:checked")].map((cb) => {
+  return [...card.querySelectorAll(".release-tracklist tbody .tk-lead input:checked")].map((cb) => {
     const t = release.tracks[Number(cb.dataset.i)];
     return {
       position: t.position,
@@ -4601,17 +4626,24 @@ el("release-list").addEventListener("click", (e) => {
   const card = e.target.closest(".release-card");
   if (!card) return;
   const act = e.target.closest("[data-act]")?.dataset.act;
-  if (act === "enable-all" || act === "disable-all") {
-    card.querySelectorAll(".release-tracklist .tk-lead input").forEach((cb) => (cb.checked = act === "enable-all"));
-    updateTracklistCount(card);
+  if (act === "save-menu") {
+    // Split-button caret: toggle this card's save menu, closing any other.
+    const menu = card.querySelector(".tk-save-menu");
+    e.stopPropagation();
+    document.querySelectorAll(".tk-save-menu").forEach((m) => {
+      if (m !== menu) m.hidden = true;
+    });
+    if (menu) menu.hidden = !menu.hidden;
   } else if (act === "automatch") {
     autoMatchToRelease(card);
   } else if (act === "embed") {
     embedCoverFrom(card);
-  } else if (act === "save-cover") {
-    saveReleaseImages(card, false);
-  } else if (act === "save-all") {
-    saveReleaseImages(card, true);
+  } else if (act === "save-cover" || act === "save-all") {
+    // Reached either from the plain single-image button or a menu item; dismiss
+    // the menu so it doesn't hang open over the toast.
+    const menu = card.querySelector(".tk-save-menu");
+    if (menu) menu.hidden = true;
+    saveReleaseImages(card, act === "save-all");
   } else if (act === "import") {
     importRelease(card);
   } else if (e.target.closest(".release-head")) {
@@ -4619,11 +4651,26 @@ el("release-list").addEventListener("click", (e) => {
   }
 });
 
-// Live "N / M selected" as track checkboxes toggle.
+// Live "N / M selected" as track checkboxes toggle, plus the master checkbox
+// that replaced the Enable all / Disable all pair: it drives every row from one
+// control and re-derives its own tri-state from the tally.
 el("release-list").addEventListener("change", (e) => {
-  if (e.target.matches(".release-tracklist .tk-lead input")) {
-    updateTracklistCount(e.target.closest(".release-card"));
+  const card = e.target.closest(".release-card");
+  if (!card) return;
+  if (e.target.matches(".tk-selall-box")) {
+    const on = e.target.checked;
+    card.querySelectorAll(".release-tracklist tbody .tk-lead input").forEach((cb) => (cb.checked = on));
+    updateTracklistCount(card);
+  } else if (e.target.matches(".release-tracklist tbody .tk-lead input")) {
+    updateTracklistCount(card);
   }
+});
+
+// Outside-click closes an open save menu, matching the Columns/Presets popovers.
+document.addEventListener("click", (e) => {
+  document.querySelectorAll(".tk-save-menu:not([hidden])").forEach((menu) => {
+    if (!menu.contains(e.target) && !e.target.closest('[data-act="save-menu"]')) menu.hidden = true;
+  });
 });
 
 // Open a native folder chooser (Tauri dialog plugin). The scanner recurses into
@@ -5233,6 +5280,7 @@ function toggleGroup(key) {
       tr.classList.toggle("hidden-row", collapse);
     }
   });
+  syncGroupToggle();
 }
 // Collapse/expand only via the caret at the start of the header, so a click on
 // the group name is free to (double-)select the group instead.
@@ -5263,8 +5311,25 @@ function setAllGroupsCollapsed(collapse) {
     }
   });
 }
-el("expand-all").addEventListener("click", () => setAllGroupsCollapsed(false));
-el("collapse-all").addEventListener("click", () => setAllGroupsCollapsed(true));
+// The two Expand all / Collapse all buttons collapsed into one state toggle:
+// while any group is still open it offers "collapse", and once everything is
+// shut it flips to "expand". Icon + tooltip are re-derived from the DOM rather
+// than a remembered flag, so per-group clicks keep it honest.
+function syncGroupToggle() {
+  const btn = el("toggle-groups");
+  if (!btn || btn.hidden) return;
+  const heads = [...tracksBody.querySelectorAll("tr.group-head")];
+  const anyOpen = heads.some((h) => !h.classList.contains("collapsed"));
+  const label = anyOpen ? "Collapse every group" : "Expand every group";
+  btn.innerHTML = ico(anyOpen ? "collapse-all" : "expand-all");
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  btn.dataset.collapse = anyOpen ? "1" : "0";
+}
+el("toggle-groups").addEventListener("click", () => {
+  setAllGroupsCollapsed(el("toggle-groups").dataset.collapse !== "0");
+  syncGroupToggle();
+});
 
 el("filter").addEventListener("input", (e) => {
   // Keep the raw text — case matters in regex/case-sensitive mode; lowercasing
@@ -5334,7 +5399,22 @@ loadColumnWidths();
 renderTableHead();
 applyValueFont(valueFont());
 applyCheckboxCol(checkboxColEnabled());
+// Publish the platform's scrollbar width so non-scrolling headers can reserve
+// the same gutter their scrolling sibling does and the two stay flush. Overlay
+// scrollbars (macOS default) measure 0, which is exactly right — nothing to
+// reserve there.
+(function measureScrollbarWidth() {
+  const probe = document.createElement("div");
+  probe.style.cssText = "position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";
+  document.body.appendChild(probe);
+  const w = probe.offsetWidth - probe.clientWidth;
+  probe.remove();
+  document.documentElement.style.setProperty("--sb-w", `${w}px`);
+})();
+
 applyTableFont(tableFontPx());
+applyTracklistFont(tracklistFontPx());
+applyBadgeFont(badgeFont());
 // Reflect saved defaults onto the grouping + search page-size selects (#108).
 // Grouping options are built from the modeled fields (#43), then the saved
 // choice is applied.

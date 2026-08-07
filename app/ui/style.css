@@ -2743,6 +2743,110 @@ button.release-import {
   padding: 7px 10px;
 }
 
+/* Tracklist header row: the master checkbox lives in the SAME table column as
+   the per-track boxes, so the two line up by construction rather than by a
+   hand-tuned toolbar offset, and the "N / M selected" tally sits beside it —
+   scope and its readout together, leaving the toolbar above purely actions.
+   Sticky so both stay visible while a long tracklist scrolls. */
+.tk-head th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  /* Same horizontal padding as the body cells, so the master checkbox lands on
+     the exact x of the per-track boxes below it. */
+  padding: 3px var(--space-2);
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-weight: var(--fw-regular);
+}
+/* The lead column is pinned left as well as top — it has to stay put on both
+   axes, matching td.tk-lead, and outrank the other header cell while doing it. */
+.tk-head th.tk-lead {
+  left: 0;
+  z-index: 2;
+  box-shadow: 1px 0 0 0 var(--border);
+}
+.tk-head .tk-selcount {
+  text-align: right;
+  font-size: var(--text-xs);
+  /* The global `thead th` treatment (uppercase + tracking) is for column
+     LABELS; this cell is a live readout, so it reads as plain text. */
+  text-transform: none;
+  letter-spacing: normal;
+}
+.tk-selall {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.tk-selall-box {
+  margin: 0;
+  cursor: pointer;
+}
+
+/* Image count carried inside the artwork button, between the picture glyph and
+   the caret — it says what the caret opens onto without spending a separate
+   text block in the row. */
+.tk-art-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+/* Secondary note on a menu row (the front cover's resolution), pushed to the
+   far edge so the action itself stays the thing you read first. */
+.tk-menu-note {
+  margin-left: auto;
+  padding-left: var(--space-3);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Artwork save control: icon-only (a picture frame), so it reads as "the
+   images" rather than a bare "Save" that never says what it saves. Tighter
+   horizontal padding than a text button since it carries only glyphs, and a
+   slightly larger icon so it holds its own at the shared 24px height.
+   Selector is `button.tk-art-btn` on purpose: the shared `button.io` rule is
+   specificity (0,1,1) and would otherwise keep its 6px gap, which is what made
+   this button wider than the plain text ones instead of narrower. */
+button.tk-art-btn {
+  gap: 3px;
+  padding: 0 6px;
+}
+button.tk-art-btn > .ico:first-child {
+  width: 16px;
+  height: 16px;
+}
+/* Caret is a secondary affordance here — smaller than the subject glyph. */
+button.tk-art-btn > .ico:last-child {
+  width: 12px;
+  height: 12px;
+}
+.tk-art-count {
+  font-size: var(--text-2xs);
+}
+
+/* Items inside the Save split-button menu: .col-menu-row gives the row shell,
+   this strips the button chrome so they read as menu entries, not buttons. */
+.tk-menu-item {
+  width: 100%;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The save menu hangs off the button's left edge — the control sits mid-row, so
+   the default right-anchored .col-menu would run past the card on a narrow panel. */
+.tk-save-menu {
+  right: auto;
+  left: 0;
+  min-width: 168px;
+}
+
 /* Label / catalogue-number picker (#90): shown only when the release lists more
    than one pair. */
 .tracklist-label {
@@ -3195,6 +3299,11 @@ td[data-field="year"],
   padding: 10px 14px 8px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  /* The results area below reserves a scrollbar gutter, which eats into its
+     right inset; without matching it here the search row's controls ended 11px
+     further right than the release cards (14 vs 25 from the panel edge). --sb-w
+     is measured once at startup, so this is 0 on overlay-scrollbar platforms. */
+  padding-right: calc(14px + var(--sb-w, 0px));
 }
 
 .online-head-row {
@@ -3207,6 +3316,9 @@ td[data-field="year"],
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Always reserve the gutter so the right inset doesn't jump by a scrollbar
+     width as results come and go — and so it stays in step with .online-head. */
+  scrollbar-gutter: stable;
   padding: 10px 14px;
 }
 
