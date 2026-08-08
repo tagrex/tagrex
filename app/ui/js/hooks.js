@@ -11,6 +11,7 @@
 // module, not here.
 export const hooks = {
   renderTracks: () => {},
+  renderPreview: () => {},
   previewEdits: async () => {},
   refreshCoverWell: () => {},
 };
