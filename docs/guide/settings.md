@@ -1,6 +1,15 @@
 # Settings
 
-Opened from the sliders icon at the top right. Escape closes it.
+Opened from the sliders icon at the top right.
+
+**Save commits, Cancel discards** — and Escape is Cancel. That applies to
+everything on this page except three controls that are deliberately live, because
+their whole point is seeing the effect: **Theme**, **Value font** and the two font
+**size sliders** change the interface the moment you touch them, and are kept
+whether or not you press Save.
+
+The footer reads *Saved to this machine* as a reminder that none of this travels
+with your music or syncs anywhere.
 
 ## Discogs
 
@@ -55,6 +64,7 @@ images.
 
 **Selection checkbox column** — adds a checkbox column to the file table, and a
 select-all checkbox in its header. Off by default, since rows select on click.
+Unlike the two controls above it, this one takes effect on **Save**.
 
 ## LAB
 

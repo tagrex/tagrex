@@ -82,9 +82,13 @@ so a field-scoped query finds what your eye finds.
 
 **Columns** in the toolbar opens a list of every available tag field. Tick the
 ones to show, drag the grips to reorder them, and drag a column's right edge in
-the table to resize it. Hidden fields collect under a separator at the bottom of
-the menu. A footer resets the whole thing — set, order, visibility and widths —
-to the defaults.
+the table to resize it. Hidden fields collect under a **Hidden** separator at the
+bottom of the menu. A footer resets the whole thing — set, order, visibility and
+widths — to the defaults.
+
+**File** is marked *always shown* and its tick is disabled: it is structural
+rather than a tag column, and it stays first. Everything else is yours to
+arrange.
 
 Column layout is remembered between sessions.
 

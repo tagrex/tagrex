@@ -107,6 +107,14 @@ Individual tracks in the tracklist can be ticked and unticked, so importing a
 compilation where you only want half the tracks doesn't require deselecting
 files.
 
+### Label · cat#
+
+A release can list several label and catalogue-number pairs — reissues,
+co-releases, sometimes several from one label. Only one pair can be written, so
+when there is more than one the card shows a **Label · cat#** selector and you
+choose. With a single pair (or none) there is nothing to choose and no selector
+appears; import takes the first.
+
 ### Vinyl side → disc
 
 The checkbox on the results toolbar controls how a vinyl position is imported. On,
