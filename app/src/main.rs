@@ -324,6 +324,11 @@ fn player_seek(player: State<Player>, secs: f64) {
 }
 
 #[tauri::command]
+fn player_set_volume(player: State<Player>, level: f64) {
+    player.set_volume(level as f32);
+}
+
+#[tauri::command]
 fn player_status(player: State<Player>) -> PlayerStatus {
     player.status()
 }
@@ -545,6 +550,7 @@ fn main() {
             player_resume,
             player_stop,
             player_seek,
+            player_set_volume,
             player_status
         ])
         .run(tauri::generate_context!())

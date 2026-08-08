@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The player grew the controls it was missing: Previous, Next, Repeat and
+  volume.** Prev/Next step through the table's visible order; Repeat has three
+  states — off, repeat all (wrapping at the end of the list) and repeat this
+  track, shown by the icon tinting and a small "1". Volume gets a slider and a
+  mute toggle that remembers the level to come back to, persisted between runs.
+
+### Changed
+
+- **The player row now appears with a track and leaves with it.** It used to be
+  revealed on the first playback and then stay for the rest of the session,
+  spending a footer row on a bar reading "No track loaded" — deliberate, so a
+  Play control was always on screen. The row now comes and goes with playback
+  and the status bar carries the Play control while it's down, so nothing is
+  lost and the row isn't standing rent-free.
+
+- **The player names the track from its tags** — "Wish Mountain — Radio" rather
+  than "102_wish_mountain_-_radio.mp3" — falling back to the file name when the
+  tags are empty.
+
+### Fixed
+
+- **Changing Repeat mid-track had no effect until the track after next.** The
+  backend asked for the next track the moment playback began, so the following
+  source was already appended to the audio sink seconds in — and an appended
+  source can't be taken back. Switching to "repeat this track" was therefore
+  ignored: the current track ended, the next one started, and only *it* went on
+  to repeat. The queue is now primed a few seconds before the end of the track
+  instead of at its start, which leaves the decision open for practically the
+  whole track while still being ample lead time to stay gapless.
+
+- **Auto-advance stopped at a group boundary.** The "next visible row" walk
+  counted every table row, so with grouping on it landed on a group header —
+  which carries no path — and playback simply stopped rather than continuing
+  into the next folder. It now steps over headers and collapsed rows.
+
+- **The seek slider changed size with every track.** The track name shared its
+  row and was sized by its content, so the slider absorbed whatever was left:
+  268px wide for a short title against 112px for a long one. Beyond the layout
+  jumping on each advance, that changed how much time a given drag distance
+  covered. The name now occupies a fixed column and ellipsises, so the slider
+  keeps its geometry.
+
 ## [0.2.0] - 2026-08-07
 
 ### Added

@@ -46,6 +46,7 @@ enum Cmd {
     Resume,
     Stop,
     Seek(f64),
+    SetVolume(f32),
 }
 
 /// Handle to the audio thread. `Send + Sync`, so it lives directly in Tauri's
@@ -82,6 +83,9 @@ impl Player {
     pub fn seek(&self, secs: f64) {
         let _ = self.tx.send(Cmd::Seek(secs));
     }
+    pub fn set_volume(&self, level: f32) {
+        let _ = self.tx.send(Cmd::SetVolume(level));
+    }
     pub fn status(&self) -> PlayerStatus {
         self.status.lock().unwrap().clone()
     }
@@ -116,6 +120,11 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
     let mut queue: VecDeque<Track> = VecDeque::new();
     let mut clock = PlayClock::default();
     let mut paused = false;
+    // Play and Stop each replace the sink, and a fresh sink is always full
+    // volume — so the level has to live out here and be re-applied to every new
+    // sink, or turning the volume down would silently reset on the next track.
+    let mut volume: f32 = 1.0;
+    sink.set_volume(volume);
 
     loop {
         // Wait for a command, but wake every 200 ms to advance the queue and
@@ -128,6 +137,7 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
                     // rodio's drop-vs-stop semantics.
                     sink.stop();
                     sink = Sink::try_new(&handle).expect("sink on a valid output stream");
+                    sink.set_volume(volume);
                     queue.clear();
                     paused = false;
                     if enqueue(&sink, &mut queue, path) {
@@ -160,9 +170,14 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
                 Cmd::Stop => {
                     sink.stop();
                     sink = Sink::try_new(&handle).expect("sink on a valid output stream");
+                    sink.set_volume(volume);
                     queue.clear();
                     clock.stop();
                     paused = false;
+                }
+                Cmd::SetVolume(level) => {
+                    volume = level.clamp(0.0, 1.0);
+                    sink.set_volume(volume);
                 }
                 Cmd::Seek(secs) => {
                     if !queue.is_empty() {
@@ -214,6 +229,15 @@ fn enqueue(sink: &Sink, queue: &mut VecDeque<Track>, path: PathBuf) -> bool {
     true
 }
 
+/// How close to the end of the current track the queue gets primed with the
+/// next one. Priming at track START (the old behaviour) meant the next source
+/// was already appended to the sink the moment playback began — and rodio has
+/// no way to remove an appended source, so a Repeat change made mid-track was
+/// silently ignored and only took effect one track later. Priming late leaves
+/// that decision open for almost the whole track; a few seconds is still far
+/// more than enough to open and append the next decoder gaplessly.
+const PRIME_LEAD_SECS: f64 = 5.0;
+
 fn write_status(
     status: &Arc<Mutex<PlayerStatus>>,
     queue: &VecDeque<Track>,
@@ -231,12 +255,15 @@ fn write_status(
             } else {
                 f64::MAX
             });
+            // With an unknown duration (0) there's nothing to count down from,
+            // so fall back to priming immediately rather than never.
+            let near_end = duration <= 0.0 || duration - position <= PRIME_LEAD_SECS;
             *guard = PlayerStatus {
                 path: Some(current.path.to_string_lossy().into_owned()),
                 is_paused: paused,
                 position_secs: position,
                 duration_secs: duration,
-                wants_next: queue.len() == 1,
+                wants_next: queue.len() == 1 && near_end,
             };
         }
         None => *guard = PlayerStatus::default(),

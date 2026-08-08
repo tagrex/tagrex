@@ -1873,12 +1873,71 @@ function fmtTime(seconds) {
 function setPlayerControlsEnabled(on) {
   plStop.disabled = !on;
   plSeek.disabled = !on;
+  el("pl-prev").disabled = !on;
+  el("pl-next").disabled = !on;
 }
 
-// Reveal the player bar (once a library is open) so its controls are always on
-// screen, even with nothing loaded (#31), and start polling backend status.
+// Playback volume: a pure display-side preference like the theme/font ones, so
+// it lives in localStorage and is pushed to the backend on startup and on every
+// change (the audio thread keeps it across sink rebuilds — see player.rs). Mute
+// remembers the pre-mute level so unmuting returns where you were.
+const VOLUME_STORAGE_KEY = "tagrex.volume";
+let volumeBeforeMute = 1;
+function storedVolume() {
+  try {
+    const v = parseFloat(localStorage.getItem(VOLUME_STORAGE_KEY));
+    if (Number.isFinite(v)) return Math.min(1, Math.max(0, v));
+  } catch (e) {
+    /* fall through to the default */
+  }
+  return 1;
+}
+function applyVolume(level, { persist = true } = {}) {
+  const v = Math.min(1, Math.max(0, level));
+  invoke("player_set_volume", { level: v });
+  el("pl-volume").value = String(Math.round(v * 100));
+  el("pl-mute").innerHTML = ico(v === 0 ? "volume-off" : "volume");
+  const label = v === 0 ? "Unmute" : "Mute";
+  el("pl-mute").title = label;
+  el("pl-mute").setAttribute("aria-label", label);
+  if (v > 0) volumeBeforeMute = v;
+  if (persist) {
+    try {
+      localStorage.setItem(VOLUME_STORAGE_KEY, String(v));
+    } catch (e) {
+      /* localStorage unavailable — preference just won't persist */
+    }
+  }
+}
+
+// What the player row calls the current track. Tags beat the file name — the
+// point of playing a track here is usually to check it against its tags, and
+// "Wish Mountain — Radio" answers that where "102_wish_mountain_-_radio.mp3"
+// doesn't. Falls back to the file name when the tags are empty or the row isn't
+// in the current table (a filtered-out or already-closed library).
+function playerLabel(path) {
+  const t = tracks.find((x) => x.path === path);
+  const artist = ((t && t.tags && t.tags.artist) || "").trim();
+  const title = ((t && t.tags && t.tags.title) || "").trim();
+  if (artist && title) return `${artist} — ${title}`;
+  return title || fileName(path);
+}
+
+// Show/hide the player row as a unit. #31 kept the row on screen permanently so
+// a Play control was always reachable, but that spent a whole footer row on a
+// bar reading "No track loaded"; the row now appears only while a track is
+// loaded, and the status bar carries the Play control the rest of the time, so
+// #31's intent survives without the standing cost. The reveal animation lives in
+// CSS and re-runs each time the row is displayed.
+function setPlayerVisible(on) {
+  playerBar.hidden = !on;
+  el("sb-play").hidden = on;
+}
+
+// Arm the player (once a library is open): the status-bar Play control becomes
+// available and status polling starts. The row itself stays down until a track
+// is actually loaded.
 function showPlayerBar() {
-  playerBar.hidden = false;
   playerIdle();
   plToggle.disabled = false; // usable even when idle: starts the current track
   if (!plPollTimer) plPollTimer = setInterval(pollPlayerStatus, 300);
@@ -1897,6 +1956,7 @@ function playerIdle() {
   plSeek.value = "0";
   plToggle.innerHTML = ico("play");
   playerBar.classList.add("idle");
+  setPlayerVisible(false);
   setPlayerControlsEnabled(false);
   markPlayingRow();
 }
@@ -1904,10 +1964,69 @@ function playerIdle() {
 // The path of the next visible row after `path` in the current table order
 // (respecting sort/filter/manual reorder — the DOM is the source of truth), or
 // null if `path` is the last visible row.
-function nextVisiblePath(path) {
-  const rows = [...tracksBody.querySelectorAll("tr")];
+// Rows the player can actually move through. Scoped to `tr[data-path]` so group
+// headers don't count (they carry no path), and collapsed rows are skipped —
+// previously this walked every `tr`, so auto-advance silently stopped dead at a
+// group boundary because the next row was a header with no path.
+function playableRows() {
+  return [...tracksBody.querySelectorAll("tr[data-path]")].filter(
+    (r) => !r.classList.contains("hidden-row"),
+  );
+}
+function stepVisiblePath(path, delta) {
+  const rows = playableRows();
   const i = rows.findIndex((r) => r.dataset.path === path);
-  return i >= 0 && rows[i + 1] ? rows[i + 1].dataset.path : null;
+  if (i < 0) return null;
+  const target = rows[i + delta];
+  return target ? target.dataset.path : null;
+}
+function nextVisiblePath(path) {
+  return stepVisiblePath(path, 1);
+}
+function prevVisiblePath(path) {
+  return stepVisiblePath(path, -1);
+}
+function firstVisiblePath() {
+  const first = playableRows()[0];
+  return first ? first.dataset.path : null;
+}
+
+// Repeat: off / all (wrap at the end of the list) / one (loop this track). It
+// works by changing what gets primed as the gapless "next" rather than by
+// intercepting the end of playback, so the backend queue stays the single
+// mechanism for continuing.
+const REPEAT_STORAGE_KEY = "tagrex.repeat";
+const REPEAT_MODES = ["off", "all", "one"];
+let repeatMode = (() => {
+  try {
+    const v = localStorage.getItem(REPEAT_STORAGE_KEY);
+    return REPEAT_MODES.includes(v) ? v : "off";
+  } catch (e) {
+    return "off";
+  }
+})();
+function queuedAfter(path) {
+  if (repeatMode === "one") return path;
+  return nextVisiblePath(path) || (repeatMode === "all" ? firstVisiblePath() : null);
+}
+function applyRepeatMode(mode) {
+  repeatMode = REPEAT_MODES.includes(mode) ? mode : "off";
+  const btn = el("pl-repeat");
+  btn.classList.toggle("active", repeatMode !== "off");
+  btn.innerHTML = ico("repeat") + (repeatMode === "one" ? `<span class="pl-repeat-one">1</span>` : "");
+  const label =
+    repeatMode === "off"
+      ? "Repeat off"
+      : repeatMode === "all"
+        ? "Repeat all"
+        : "Repeat this track";
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  try {
+    localStorage.setItem(REPEAT_STORAGE_KEY, repeatMode);
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
 }
 
 // Start playing `path`. Clicking the already-current track toggles play/pause.
@@ -1918,14 +2037,16 @@ function playTrack(path) {
     return;
   }
   invoke("player_play", { path });
-  const next = nextVisiblePath(path);
-  if (next) invoke("player_set_next", { path: next });
+  // No eager priming: the backend raises wants_next near the end of the track
+  // and the poll answers it then, so a Repeat/queue change made mid-track still
+  // decides what plays next (an appended source can't be taken back).
   // Optimistic UI; the next poll confirms from the backend.
   playingPath = path;
   plPaused = false;
-  plTitle.textContent = fileName(path);
+  plTitle.textContent = playerLabel(path);
   plTitle.title = path;
   playerBar.classList.remove("idle");
+  setPlayerVisible(true);
   setPlayerControlsEnabled(true);
   markPlayingRow();
 }
@@ -1973,15 +2094,16 @@ async function pollPlayerStatus() {
   }
 
   if (changed) {
-    plTitle.textContent = fileName(st.path);
+    plTitle.textContent = playerLabel(st.path);
     plTitle.title = st.path;
     playerBar.classList.remove("idle");
+    setPlayerVisible(true);
     setPlayerControlsEnabled(true);
     markPlayingRow();
   }
   // Keep the queue primed for gapless continuation.
   if (st.wants_next) {
-    const next = nextVisiblePath(st.path);
+    const next = queuedAfter(st.path);
     if (next) invoke("player_set_next", { path: next });
   }
   plDuration = st.duration_secs || 0;
@@ -2029,6 +2151,7 @@ function playPauseFromBar() {
 }
 
 plToggle.addEventListener("click", playPauseFromBar);
+el("sb-play").addEventListener("click", playPauseFromBar);
 plStop.addEventListener("click", stopPlayback);
 // While dragging, show the target time locally and suppress poll overrides;
 // commit the seek to the backend on release.
@@ -2036,6 +2159,30 @@ plSeek.addEventListener("input", () => {
   plSeeking = true;
   const target = (Number(plSeek.value) / 1000) * plDuration;
   plTime.textContent = `${fmtTime(target)} / ${fmtTime(plDuration)}`;
+});
+// Prev/Next step through the same playable rows the gapless queue uses. At an
+// end they wrap only when Repeat all is on, matching what auto-advance does.
+el("pl-prev").addEventListener("click", () => {
+  if (!playingPath) return;
+  const target =
+    prevVisiblePath(playingPath) ||
+    (repeatMode === "all" ? playableRows().slice(-1)[0]?.dataset.path : null);
+  if (target) playTrack(target);
+});
+el("pl-next").addEventListener("click", () => {
+  if (!playingPath) return;
+  const target = nextVisiblePath(playingPath) || (repeatMode === "all" ? firstVisiblePath() : null);
+  if (target) playTrack(target);
+});
+el("pl-repeat").addEventListener("click", () => {
+  applyRepeatMode(REPEAT_MODES[(REPEAT_MODES.indexOf(repeatMode) + 1) % REPEAT_MODES.length]);
+});
+el("pl-volume").addEventListener("input", (e) => {
+  applyVolume(Number(e.target.value) / 100);
+});
+el("pl-mute").addEventListener("click", () => {
+  const cur = Number(el("pl-volume").value) / 100;
+  applyVolume(cur > 0 ? 0 : volumeBeforeMute || 1);
 });
 plSeek.addEventListener("change", () => {
   const secs = (Number(plSeek.value) / 1000) * plDuration;
@@ -5464,7 +5611,10 @@ const mockPlayer = {
       is_paused: !!this.pausedAt,
       position_secs: this.current ? Math.min(this.position(), this.duration) : 0,
       duration_secs: this.current ? this.duration : 0,
-      wants_next: !!this.current && !this.next,
+      // Mirrors the backend's PRIME_LEAD_SECS gate: the queue is primed near
+      // the END of the track, not at its start, so a Repeat change mid-track
+      // still decides what plays next.
+      wants_next: !!this.current && !this.next && this.duration - this.position() <= 5,
     };
   },
 };
@@ -5850,6 +6000,10 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case "player_seek":
       if (mockPlayer.current) mockPlayer.restart(args.secs);
+      return Promise.resolve();
+    case "player_set_volume":
+      // Browser dev has no audio thread; just accept it so the UI path is live.
+      mockPlayer.volume = args.level;
       return Promise.resolve();
     case "player_status":
       return Promise.resolve(mockPlayer.status());

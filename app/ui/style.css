@@ -1459,10 +1459,104 @@ body.show-checkbox tr.playing td.sel {
   display: none;
 }
 
+/* The row now comes and goes with playback, so give it a short rise instead of
+   popping the layout. Keyframes (not a transition) because the element goes
+   through display:none — an animation re-runs on each reveal, where a
+   transition would have nothing to interpolate from. */
+@keyframes player-rise {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+}
+#player:not([hidden]) {
+  animation: player-rise 140ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  #player:not([hidden]) {
+    animation: none;
+  }
+}
+
+/* Status-bar stand-in for the player's own toggle while the row is down. */
+#sb-play[hidden] {
+  display: none;
+}
+
 #player button:disabled,
 #pl-seek:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* Toolbar divider: separates the view controls from the one control that acts
+   on the selection, so the row's two halves don't read as one list. */
+.tb-div {
+  width: 1px;
+  align-self: stretch;
+  margin: 3px 2px;
+  background: var(--border);
+}
+/* Destructive-ish, so it reads in the danger colour on hover rather than the
+   generic grey — but only on hover, to stay quiet at rest. */
+#clear-tags:hover:not(:disabled) {
+  color: var(--del);
+}
+
+/* Group menu hangs off the left edge (its button is at the start of the
+   toolbar), unlike the right-anchored Columns/Presets popovers. */
+#group-menu {
+  right: auto;
+  left: 0;
+  min-width: 172px;
+}
+/* Marks the active key. A leading tick column keeps every label on one x, so
+   the list doesn't jump as the selection moves. */
+.group-opt::before {
+  content: "";
+  display: inline-block;
+  width: 12px;
+  flex: 0 0 12px;
+  color: var(--accent-ink);
+}
+.group-opt.checked::before {
+  content: "✓";
+}
+.group-opt.checked {
+  font-weight: var(--fw-medium);
+}
+#group-btn.active {
+  color: var(--accent-ink);
+}
+
+/* Repeat is a three-state control, so it has to show WHICH state it's in, not
+   just on/off: the icon tints when repeating and carries a small "1" for
+   repeat-this-track. */
+#pl-repeat {
+  position: relative;
+}
+#pl-repeat.active {
+  color: var(--accent-ink);
+}
+.pl-repeat-one {
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  font-size: 9px;
+  font-weight: var(--fw-bold);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Seek takes the row; volume is a fixed short slider so it can't compete with
+   it for width as the window resizes. */
+#pl-seek {
+  flex: 1;
+  min-width: 0;
+}
+#pl-volume {
+  flex: 0 0 auto;
+  width: 72px;
 }
 
 #player.idle #pl-title {
@@ -1470,10 +1564,16 @@ body.show-checkbox tr.playing td.sel {
   font-style: italic;
 }
 
+/* Fixed basis, NOT `auto`. With a content-sized title the seek slider absorbed
+   whatever was left over, so its width — and the meaning of a given pixel on it
+   — changed with every track, which made the bar useless as a stable reference
+   and jumped the layout on each advance. A constant column means the slider
+   starts at the same x and keeps the same length for a given window width;
+   the title ellipsises instead, with the full text on the tooltip. It still
+   shrinks (1) so a narrow window stays usable. */
 #pl-title {
-  flex: 0 1 auto;
+  flex: 0 1 280px;
   min-width: 0;
-  max-width: 320px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
