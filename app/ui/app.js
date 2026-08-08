@@ -2,6 +2,31 @@
 
 import { TAURI, invoke } from "./js/invoke.js";
 import { el, toast, fileName, escapeHtml, ico, confirmDialog } from "./js/dom.js";
+import { enablePointerReorder } from "./js/reorder.js";
+import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
+import {
+  valueFont,
+  applyValueFont,
+  checkboxColEnabled,
+  applyCheckboxCol,
+  regexModeEnabled,
+  caseSensitiveEnabled,
+  saveFilterMode,
+  tableFontPx,
+  applyTableFont,
+  tracklistFontPx,
+  applyTracklistFont,
+  badgeFont,
+  applyBadgeFont,
+  groupByPref,
+  saveGroupBy,
+} from "./js/prefs.js";
+import {
+  fmtTime,
+  showPlayerBar,
+  playTrack,
+  isPlayingPath,
+} from "./js/player.js";
 import {
   tracks, setTracks,
   previewPlan, setPreviewPlan,
@@ -32,205 +57,6 @@ const COLUMNS_STORAGE_KEY = "tagrex.columns";
 const COLUMN_WIDTHS_STORAGE_KEY = "tagrex.colWidths";
 const COLUMN_MIN_WIDTH = 48;
 
-// Value-font preference: which face every value surface uses — the file table,
-// the release tracklist, deduplicator paths, rename/export pattern fields and
-// editor inputs. "mono" is the default disambiguating monospace; "sans" and
-// "condensed" swap in the bundled UI faces app-wide (the stylesheet redefines
-// --font-mono-bundled off a body class). Grew out of the #100 condensed-table
-// toggle, which was table-only — the old boolean key migrates below. A pure
-// display choice, so it persists in localStorage, not the backend settings.
-const VALUE_FONT_STORAGE_KEY = "tagrex.valueFont";
-const CONDENSED_STORAGE_KEY = "tagrex.condensedTable"; // legacy, migrated once
-const VALUE_FONTS = ["mono", "sans", "condensed"];
-function valueFont() {
-  try {
-    const v = localStorage.getItem(VALUE_FONT_STORAGE_KEY);
-    if (VALUE_FONTS.includes(v)) return v;
-    // Migrate the old table-only boolean: it only ever meant "condensed".
-    if (localStorage.getItem(CONDENSED_STORAGE_KEY) === "1") return "condensed";
-  } catch (e) {
-    return "mono";
-  }
-  return "mono";
-}
-function applyValueFont(mode) {
-  const m = VALUE_FONTS.includes(mode) ? mode : "mono";
-  document.body.classList.toggle("value-font-sans", m === "sans");
-  document.body.classList.toggle("value-font-condensed", m === "condensed");
-  try {
-    localStorage.setItem(VALUE_FONT_STORAGE_KEY, m);
-    localStorage.removeItem(CONDENSED_STORAGE_KEY);
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-// Show the selection-checkbox column (#99 redesign). Off by default — rows
-// select on click (Cmd/Shift+click for range/toggle), so the checkboxes are an
-// optional convenience rather than the primary affordance.
-const CHECKBOX_COL_STORAGE_KEY = "tagrex.checkboxCol";
-function checkboxColEnabled() {
-  try {
-    return localStorage.getItem(CHECKBOX_COL_STORAGE_KEY) === "1";
-  } catch (e) {
-    return false;
-  }
-}
-function applyCheckboxCol(on) {
-  document.body.classList.toggle("show-checkbox", on);
-  try {
-    localStorage.setItem(CHECKBOX_COL_STORAGE_KEY, on ? "1" : "0");
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-// Filter mode prefs (#44): regex on/off and case sensitivity. Pure view choices,
-// persisted like the other display prefs. Read once at startup, then flipped by
-// the toolbar toggles.
-const FILTER_REGEX_STORAGE_KEY = "tagrex.filterRegex";
-const FILTER_CASE_STORAGE_KEY = "tagrex.filterCase";
-function regexModeEnabled() {
-  try {
-    return localStorage.getItem(FILTER_REGEX_STORAGE_KEY) === "1";
-  } catch (e) {
-    return false;
-  }
-}
-function caseSensitiveEnabled() {
-  try {
-    return localStorage.getItem(FILTER_CASE_STORAGE_KEY) === "1";
-  } catch (e) {
-    return false;
-  }
-}
-function saveFilterMode() {
-  try {
-    localStorage.setItem(FILTER_REGEX_STORAGE_KEY, filterRegex ? "1" : "0");
-    localStorage.setItem(FILTER_CASE_STORAGE_KEY, filterCase ? "1" : "0");
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-// Table font size (#100), 10–20px, applied live to both the monospace and the
-// condensed face through a CSS var. A pure display choice → localStorage.
-const TABLE_FONT_STORAGE_KEY = "tagrex.tableFontPx";
-const TABLE_FONT_MIN = 10;
-const TABLE_FONT_MAX = 20;
-const TABLE_FONT_DEFAULT = 10;
-function clampTableFont(px) {
-  return Math.min(TABLE_FONT_MAX, Math.max(TABLE_FONT_MIN, px || TABLE_FONT_DEFAULT));
-}
-function tableFontPx() {
-  try {
-    const v = parseInt(localStorage.getItem(TABLE_FONT_STORAGE_KEY), 10);
-    if (Number.isFinite(v)) return clampTableFont(v);
-  } catch (e) {
-    /* fall through to default */
-  }
-  return TABLE_FONT_DEFAULT;
-}
-function applyTableFont(px) {
-  const v = clampTableFont(px);
-  document.documentElement.style.setProperty("--table-font-size", `${v}px`);
-  try {
-    localStorage.setItem(TABLE_FONT_STORAGE_KEY, String(v));
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-// ---- LAB typography knobs (Settings › LAB) ----
-// Release-card tracklist size and badge face, on the same localStorage-only
-// footing as the table-font control: pure display choices still being trialled.
-const TRACKLIST_FONT_STORAGE_KEY = "tagrex.tracklistFontPx";
-const TRACKLIST_FONT_MIN = 10;
-const TRACKLIST_FONT_MAX = 16;
-const TRACKLIST_FONT_DEFAULT = 12;
-function clampTracklistFont(px) {
-  return Math.min(TRACKLIST_FONT_MAX, Math.max(TRACKLIST_FONT_MIN, px || TRACKLIST_FONT_DEFAULT));
-}
-function tracklistFontPx() {
-  try {
-    const v = parseInt(localStorage.getItem(TRACKLIST_FONT_STORAGE_KEY), 10);
-    if (Number.isFinite(v)) return clampTracklistFont(v);
-  } catch (e) {
-    /* fall through to the default */
-  }
-  return TRACKLIST_FONT_DEFAULT;
-}
-function applyTracklistFont(px) {
-  const v = clampTracklistFont(px);
-  document.documentElement.style.setProperty("--tracklist-font-size", `${v}px`);
-  try {
-    localStorage.setItem(TRACKLIST_FONT_STORAGE_KEY, String(v));
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-const BADGE_FONT_STORAGE_KEY = "tagrex.badgeFont";
-const BADGE_FONTS = ["mono", "sans"];
-function badgeFont() {
-  try {
-    const v = localStorage.getItem(BADGE_FONT_STORAGE_KEY);
-    if (BADGE_FONTS.includes(v)) return v;
-  } catch (e) {
-    /* fall through to the default */
-  }
-  return "mono";
-}
-function applyBadgeFont(mode) {
-  const m = BADGE_FONTS.includes(mode) ? mode : "mono";
-  // The badge carries a catalogue number — an identifier — so mono is the
-  // default; --badge-font lets LAB try the UI face instead.
-  document.documentElement.style.setProperty(
-    "--badge-font",
-    m === "sans" ? "var(--font-ui)" : "var(--font-mono-bundled)",
-  );
-  try {
-    localStorage.setItem(BADGE_FONT_STORAGE_KEY, m);
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-// Theme: Auto (follow OS) / Light / Dark. "auto" resolves to light/dark from the
-// OS preference and re-resolves when it changes; light/dark force a palette via
-// a data-theme attribute the stylesheet keys off. Persisted in localStorage.
-const THEME_STORAGE_KEY = "tagrex.theme";
-const THEME_MODES = ["auto", "light", "dark"];
-const prefersDarkMq = window.matchMedia("(prefers-color-scheme: dark)");
-function themeMode() {
-  try {
-    const v = localStorage.getItem(THEME_STORAGE_KEY);
-    return THEME_MODES.includes(v) ? v : "auto";
-  } catch (e) {
-    return "auto";
-  }
-}
-function resolveTheme(mode) {
-  if (mode === "light" || mode === "dark") return mode;
-  return prefersDarkMq.matches ? "dark" : "light";
-}
-function applyTheme(mode) {
-  document.documentElement.dataset.theme = resolveTheme(mode);
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, mode);
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-// Follow OS changes only while in Auto.
-prefersDarkMq.addEventListener("change", () => {
-  if (themeMode() === "auto") {
-    document.documentElement.dataset.theme = resolveTheme("auto");
-  }
-});
-// Apply as early as app.js runs, before the settings sheet is ever opened.
-applyTheme(themeMode());
-
 // Sensible starting width for a column the user hasn't resized yet. The file
 // name is the widest; short numeric/code fields start narrow.
 function defaultColumnWidth(key) {
@@ -258,29 +84,6 @@ function columnWidth(key) {
 setFilterRegex(regexModeEnabled());
 setFilterCase(caseSensitiveEnabled());
 const PRESETS_STORAGE_KEY = "tagrex.filterPresets";
-// Grouping is purely a view concern (#20): "" | "folder" | "artist" | "album".
-// It regroups rows visually but never reorders the `tracks` array, so the file
-// order used by mapping (rename masks, Discogs import) is unaffected. Collapsed
-// group keys persist across renders. The choice is a display preference,
-// persisted in localStorage and defaulting to Folder (#108).
-const GROUP_STORAGE_KEY = "tagrex.groupBy";
-function groupByPref() {
-  try {
-    const v = localStorage.getItem(GROUP_STORAGE_KEY);
-    // Any stored string is accepted here; populateGroupMenu() validates it
-    // against the built option list once EXTENDED_FIELDS is available (#43).
-    return v === null ? "folder" : v;
-  } catch (e) {
-    return "folder";
-  }
-}
-function saveGroupBy(value) {
-  try {
-    localStorage.setItem(GROUP_STORAGE_KEY, value);
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
 setGroupByValue(groupByPref());
 // The dropped directories of a file-set drag-and-drop (#127), or null for an
 // ordinary library. When set, the table's "drop" grouping buckets each track
@@ -305,23 +108,6 @@ const selectAll = el("select-all");
 const coverWell = el("cover-well");
 const coverFileInput = el("cover-file");
 const statusSel = el("status-sel");
-const playerBar = el("player");
-const plToggle = el("pl-toggle");
-const plStop = el("pl-stop");
-const plTitle = el("pl-title");
-const plSeek = el("pl-seek");
-const plTime = el("pl-time");
-// Playback runs in the native (rodio) backend; the UI mirrors its polled
-// status. `playingPath` is the track the backend reports as current, `plPaused`
-// its pause state, `plDuration` the current track's length (for the seek math).
-let playingPath = null;
-let plPaused = false;
-let plDuration = 0;
-// True while the user is dragging the seek slider, so status polls don't fight
-// the drag.
-let plSeeking = false;
-// Poll timer handle (one interval once a library is open).
-let plPollTimer = null;
 
 // ---- helpers ----
 function tag(track, key) {
@@ -593,47 +379,6 @@ function resetColumns() {
   renderColumnsMenu();
 }
 
-// Pointer-based drag reorder for a vertical list, keyed by each item's
-// `data-key`. WKWebView's HTML5 drag-and-drop is unreliable (dynamically set
-// `draggable` often never starts a drag), which is why the file-table reorder
-// and this helper both use mouse events. `onReorder(dragged, target, below)`
-// receives the dragged key, the key it was dropped onto, and whether it landed
-// in that row's lower half.
-function enablePointerReorder(grip, item, container, itemSelector, onReorder) {
-  grip.addEventListener("mousedown", (e) => {
-    e.preventDefault(); // don't start a text selection
-    const draggedKey = item.dataset.key;
-    item.classList.add("dragging");
-    let targetKey = null;
-    let below = false;
-    const clearMarks = () =>
-      container
-        .querySelectorAll(itemSelector)
-        .forEach((it) => it.classList.remove("drop-above", "drop-below"));
-    const onMove = (ev) => {
-      clearMarks();
-      targetKey = null;
-      const under = document.elementFromPoint(ev.clientX, ev.clientY);
-      const row = under && under.closest(itemSelector);
-      if (!row || row === item || !container.contains(row)) return;
-      const rect = row.getBoundingClientRect();
-      below = ev.clientY > rect.top + rect.height / 2;
-      row.classList.add(below ? "drop-below" : "drop-above");
-      targetKey = row.dataset.key;
-    };
-    const onUp = () => {
-      document.removeEventListener("mousemove", onMove);
-      document.removeEventListener("mouseup", onUp);
-      clearMarks();
-      item.classList.remove("dragging");
-      if (targetKey !== null && targetKey !== draggedKey) {
-        onReorder(draggedKey, targetKey, below);
-      }
-    };
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  });
-}
 
 // ---- column picker popover (#43) ----
 
@@ -958,7 +703,7 @@ function appendTrackRow(track, groupKey) {
     tracksBody.appendChild(tr);
     return;
   }
-  if (track.path === playingPath) tr.classList.add("playing");
+  if (isPlayingPath(track.path)) tr.classList.add("playing");
   // Checkbox + row highlight both reflect the `selection` set (source of truth),
   // so re-rendering never changes what's selected.
   const isSel = selection.has(track.path);
@@ -1959,340 +1704,6 @@ async function exportCover() {
   }
 }
 
-// ---- preview player ----
-// Playback is native (rodio backend, #30): the UI sends commands and polls the
-// backend's status. Gapless + auto-advance happen in the backend, which keeps
-// the current + next track queued in one sink; the UI just feeds the next track
-// whenever the current one changes.
-
-function fmtTime(seconds) {
-  if (!isFinite(seconds) || seconds < 0) seconds = 0;
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-// Stop/seek only make sense with a loaded track; the play/pause button stays
-// enabled even when idle so it can start the current track (#99 redesign).
-function setPlayerControlsEnabled(on) {
-  plStop.disabled = !on;
-  plSeek.disabled = !on;
-  el("pl-prev").disabled = !on;
-  el("pl-next").disabled = !on;
-}
-
-// Playback volume: a pure display-side preference like the theme/font ones, so
-// it lives in localStorage and is pushed to the backend on startup and on every
-// change (the audio thread keeps it across sink rebuilds — see player.rs). Mute
-// remembers the pre-mute level so unmuting returns where you were.
-const VOLUME_STORAGE_KEY = "tagrex.volume";
-let volumeBeforeMute = 1;
-function storedVolume() {
-  try {
-    const v = parseFloat(localStorage.getItem(VOLUME_STORAGE_KEY));
-    if (Number.isFinite(v)) return Math.min(1, Math.max(0, v));
-  } catch (e) {
-    /* fall through to the default */
-  }
-  return 1;
-}
-function applyVolume(level, { persist = true } = {}) {
-  const v = Math.min(1, Math.max(0, level));
-  invoke("player_set_volume", { level: v });
-  el("pl-volume").value = String(Math.round(v * 100));
-  el("pl-mute").innerHTML = ico(v === 0 ? "volume-off" : "volume");
-  const label = v === 0 ? "Unmute" : "Mute";
-  el("pl-mute").title = label;
-  el("pl-mute").setAttribute("aria-label", label);
-  if (v > 0) volumeBeforeMute = v;
-  if (persist) {
-    try {
-      localStorage.setItem(VOLUME_STORAGE_KEY, String(v));
-    } catch (e) {
-      /* localStorage unavailable — preference just won't persist */
-    }
-  }
-}
-
-// What the player row calls the current track. Tags beat the file name — the
-// point of playing a track here is usually to check it against its tags, and
-// "Wish Mountain — Radio" answers that where "102_wish_mountain_-_radio.mp3"
-// doesn't. Falls back to the file name when the tags are empty or the row isn't
-// in the current table (a filtered-out or already-closed library).
-function playerLabel(path) {
-  const t = tracks.find((x) => x.path === path);
-  const artist = ((t && t.tags && t.tags.artist) || "").trim();
-  const title = ((t && t.tags && t.tags.title) || "").trim();
-  if (artist && title) return `${artist} — ${title}`;
-  return title || fileName(path);
-}
-
-// Show/hide the player row as a unit. #31 kept the row on screen permanently so
-// a Play control was always reachable, but that spent a whole footer row on a
-// bar reading "No track loaded"; the row now appears only while a track is
-// loaded, and the status bar carries the Play control the rest of the time, so
-// #31's intent survives without the standing cost. The reveal animation lives in
-// CSS and re-runs each time the row is displayed.
-function setPlayerVisible(on) {
-  playerBar.hidden = !on;
-  el("sb-play").hidden = on;
-}
-
-// Arm the player (once a library is open): the status-bar Play control becomes
-// available and status polling starts. The row itself stays down until a track
-// is actually loaded.
-function showPlayerBar() {
-  playerIdle();
-  plToggle.disabled = false; // usable even when idle: starts the current track
-  if (!plPollTimer) plPollTimer = setInterval(pollPlayerStatus, 300);
-}
-
-// Reset the UI to its idle, no-track state: controls disabled, placeholder
-// title, zeroed time. The bar stays visible (#31). Used on stop, end of list,
-// and when opening a library.
-function playerIdle() {
-  playingPath = null;
-  plPaused = false;
-  plDuration = 0;
-  plTitle.textContent = "No track loaded";
-  plTitle.title = "";
-  plTime.textContent = "0:00 / 0:00";
-  plSeek.value = "0";
-  plToggle.innerHTML = ico("play");
-  playerBar.classList.add("idle");
-  setPlayerVisible(false);
-  setPlayerControlsEnabled(false);
-  markPlayingRow();
-}
-
-// The path of the next visible row after `path` in the current table order
-// (respecting sort/filter/manual reorder — the DOM is the source of truth), or
-// null if `path` is the last visible row.
-// Rows the player can actually move through. Scoped to `tr[data-path]` so group
-// headers don't count (they carry no path), and collapsed rows are skipped —
-// previously this walked every `tr`, so auto-advance silently stopped dead at a
-// group boundary because the next row was a header with no path.
-function playableRows() {
-  return [...tracksBody.querySelectorAll("tr[data-path]")].filter(
-    (r) => !r.classList.contains("hidden-row"),
-  );
-}
-function stepVisiblePath(path, delta) {
-  const rows = playableRows();
-  const i = rows.findIndex((r) => r.dataset.path === path);
-  if (i < 0) return null;
-  const target = rows[i + delta];
-  return target ? target.dataset.path : null;
-}
-function nextVisiblePath(path) {
-  return stepVisiblePath(path, 1);
-}
-function prevVisiblePath(path) {
-  return stepVisiblePath(path, -1);
-}
-function firstVisiblePath() {
-  const first = playableRows()[0];
-  return first ? first.dataset.path : null;
-}
-
-// Repeat: off / all (wrap at the end of the list) / one (loop this track). It
-// works by changing what gets primed as the gapless "next" rather than by
-// intercepting the end of playback, so the backend queue stays the single
-// mechanism for continuing.
-const REPEAT_STORAGE_KEY = "tagrex.repeat";
-const REPEAT_MODES = ["off", "all", "one"];
-let repeatMode = (() => {
-  try {
-    const v = localStorage.getItem(REPEAT_STORAGE_KEY);
-    return REPEAT_MODES.includes(v) ? v : "off";
-  } catch (e) {
-    return "off";
-  }
-})();
-function queuedAfter(path) {
-  if (repeatMode === "one") return path;
-  return nextVisiblePath(path) || (repeatMode === "all" ? firstVisiblePath() : null);
-}
-function applyRepeatMode(mode) {
-  repeatMode = REPEAT_MODES.includes(mode) ? mode : "off";
-  const btn = el("pl-repeat");
-  btn.classList.toggle("active", repeatMode !== "off");
-  btn.innerHTML = ico("repeat") + (repeatMode === "one" ? `<span class="pl-repeat-one">1</span>` : "");
-  const label =
-    repeatMode === "off"
-      ? "Repeat off"
-      : repeatMode === "all"
-        ? "Repeat all"
-        : "Repeat this track";
-  btn.title = label;
-  btn.setAttribute("aria-label", label);
-  try {
-    localStorage.setItem(REPEAT_STORAGE_KEY, repeatMode);
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-// Start playing `path`. Clicking the already-current track toggles play/pause.
-// Also primes the next visible track so the backend can play it gaplessly.
-function playTrack(path) {
-  if (path === playingPath) {
-    togglePlay();
-    return;
-  }
-  invoke("player_play", { path });
-  // No eager priming: the backend raises wants_next near the end of the track
-  // and the poll answers it then, so a Repeat/queue change made mid-track still
-  // decides what plays next (an appended source can't be taken back).
-  // Optimistic UI; the next poll confirms from the backend.
-  playingPath = path;
-  plPaused = false;
-  plTitle.textContent = playerLabel(path);
-  plTitle.title = path;
-  playerBar.classList.remove("idle");
-  setPlayerVisible(true);
-  setPlayerControlsEnabled(true);
-  markPlayingRow();
-}
-
-function togglePlay() {
-  if (!playingPath) return;
-  plPaused = !plPaused;
-  invoke(plPaused ? "player_pause" : "player_resume", {});
-  markPlayingRow();
-}
-
-// Manual stop returns the bar to its idle state (still visible, #31).
-function stopPlayback() {
-  invoke("player_stop", {});
-  playerIdle();
-}
-
-// Reflect the active track + play/pause state in the table without a full
-// re-render (which would drop pending edits mid-typing).
-function markPlayingRow() {
-  tracksBody.querySelectorAll("tr").forEach((tr) => {
-    tr.classList.toggle("playing", tr.dataset.path === playingPath);
-  });
-  plToggle.innerHTML = ico(playingPath && !plPaused ? "pause" : "play");
-}
-
-// Poll the backend and mirror its state. When the current track changes (a
-// gapless transition, i.e. auto-advance #29), update the UI and feed the next
-// track; when it wants a next track but none is queued, feed it too.
-async function pollPlayerStatus() {
-  let st;
-  try {
-    st = await invoke("player_status", {});
-  } catch (e) {
-    return;
-  }
-  const changed = st.path !== playingPath;
-  playingPath = st.path;
-  plPaused = st.is_paused;
-
-  if (!st.path) {
-    // Backend drained (end of list or stopped): go idle unless already idle.
-    if (!playerBar.classList.contains("idle")) playerIdle();
-    return;
-  }
-
-  if (changed) {
-    plTitle.textContent = playerLabel(st.path);
-    plTitle.title = st.path;
-    playerBar.classList.remove("idle");
-    setPlayerVisible(true);
-    setPlayerControlsEnabled(true);
-    markPlayingRow();
-  }
-  // Keep the queue primed for gapless continuation.
-  if (st.wants_next) {
-    const next = queuedAfter(st.path);
-    if (next) invoke("player_set_next", { path: next });
-  }
-  plDuration = st.duration_secs || 0;
-  if (!plSeeking) {
-    plSeek.value = plDuration
-      ? String(Math.round((st.position_secs / plDuration) * 1000))
-      : "0";
-  }
-  plTime.textContent = `${fmtTime(st.position_secs)} / ${fmtTime(plDuration)}`;
-  plToggle.innerHTML = ico(plPaused ? "play" : "pause");
-}
-
-// The track the bottom Play button starts when nothing is playing: the active
-// (last-clicked / keyboard) row, else the first selected, else the top of the
-// list — then the backend auto-advances down the list to the end (#99 redesign,
-// the per-row play button was removed).
-function currentPlayTarget() {
-  const rows = [...tracksBody.querySelectorAll("tr")].filter(
-    (r) =>
-      r.dataset.path &&
-      !r.classList.contains("hidden-row") &&
-      !r.classList.contains("unreadable"),
-  );
-  if (!rows.length) return null;
-  if (activeRowPath && rows.some((r) => r.dataset.path === activeRowPath)) {
-    return activeRowPath;
-  }
-  const sel = rows.find((r) => selection.has(r.dataset.path));
-  return sel ? sel.dataset.path : rows[0].dataset.path;
-}
-
-function playPauseFromBar() {
-  // While actually playing, the button is a pause button — pause the current
-  // track (don't jump to whatever row is selected).
-  if (playingPath && !plPaused) {
-    togglePlay();
-    return;
-  }
-  // Paused or idle, the button is a play button: play the current target.
-  // playTrack() resumes when the target IS the paused track, and switches to it
-  // otherwise — so pausing A, selecting B, then Play now plays B (not A).
-  const path = currentPlayTarget();
-  if (path) playTrack(path);
-  else if (playingPath) togglePlay();
-}
-
-plToggle.addEventListener("click", playPauseFromBar);
-el("sb-play").addEventListener("click", playPauseFromBar);
-plStop.addEventListener("click", stopPlayback);
-// While dragging, show the target time locally and suppress poll overrides;
-// commit the seek to the backend on release.
-plSeek.addEventListener("input", () => {
-  plSeeking = true;
-  const target = (Number(plSeek.value) / 1000) * plDuration;
-  plTime.textContent = `${fmtTime(target)} / ${fmtTime(plDuration)}`;
-});
-// Prev/Next step through the same playable rows the gapless queue uses. At an
-// end they wrap only when Repeat all is on, matching what auto-advance does.
-el("pl-prev").addEventListener("click", () => {
-  if (!playingPath) return;
-  const target =
-    prevVisiblePath(playingPath) ||
-    (repeatMode === "all" ? playableRows().slice(-1)[0]?.dataset.path : null);
-  if (target) playTrack(target);
-});
-el("pl-next").addEventListener("click", () => {
-  if (!playingPath) return;
-  const target = nextVisiblePath(playingPath) || (repeatMode === "all" ? firstVisiblePath() : null);
-  if (target) playTrack(target);
-});
-el("pl-repeat").addEventListener("click", () => {
-  applyRepeatMode(REPEAT_MODES[(REPEAT_MODES.indexOf(repeatMode) + 1) % REPEAT_MODES.length]);
-});
-el("pl-volume").addEventListener("input", (e) => {
-  applyVolume(Number(e.target.value) / 100);
-});
-el("pl-mute").addEventListener("click", () => {
-  const cur = Number(el("pl-volume").value) / 100;
-  applyVolume(cur > 0 ? 0 : volumeBeforeMute || 1);
-});
-plSeek.addEventListener("change", () => {
-  const secs = (Number(plSeek.value) / 1000) * plDuration;
-  invoke("player_seek", { secs });
-  plSeeking = false;
-});
 // ---- transformations (#34) ----
 // An ordered chain of cleanup rules applied to tags or filenames. The rules
 // live here only for the length of the dialog; naming and saving chains is
@@ -3699,205 +3110,6 @@ async function loadSavedToken() {
   updateSettingsDot();
 }
 
-// ---- settings slide-over (#79) ----
-// App-wide preferences, opened from the top-bar gear. The Discogs token lives
-// here now (moved out of TAGGER › ONLINE); the search still reads it via the
-// same #discogs-token input.
-let id3Choice = "v24"; // "v23" | "v24", mirrored by the segmented control
-
-function updateSettingsDot() {
-  el("settings-open").classList.toggle("has-token", !!el("discogs-token").value.trim());
-}
-
-function setId3Choice(choice) {
-  id3Choice = choice;
-  el("set-id3")
-    .querySelectorAll(".seg-btn")
-    .forEach((b) => b.classList.toggle("active", b.dataset.id3 === choice));
-}
-
-// Reflect + apply a theme choice from the segmented control (live, like the font
-// slider — persisted immediately so the preview sticks).
-function setThemeChoice(mode) {
-  applyTheme(mode);
-  el("set-theme")
-    .querySelectorAll(".seg-btn")
-    .forEach((b) => b.classList.toggle("active", b.dataset.themeMode === mode));
-}
-
-function setBadgeFontChoice(mode) {
-  applyBadgeFont(mode);
-  el("set-badge-font")
-    .querySelectorAll(".seg-btn")
-    .forEach((b) => b.classList.toggle("active", b.dataset.badgeFont === mode));
-}
-
-// Same live treatment for the value-font choice — the swap is visible behind the
-// settings sheet, so applying on click beats waiting for Save.
-function setValueFontChoice(mode) {
-  applyValueFont(mode);
-  el("set-value-font")
-    .querySelectorAll(".seg-btn")
-    .forEach((b) => b.classList.toggle("active", b.dataset.valueFont === mode));
-}
-
-// Tag-read priority (#84): the order tag blocks are consulted when a file
-// carries more than one. Persisted as an ordered list of keys; the default
-// order matches the common case (ID3v2 first).
-const PRIO_KEYS = ["id3v2", "vorbis", "ape"];
-const PRIO_LABELS = { id3v2: "ID3v2", vorbis: "Vorbis Comments", ape: "APE" };
-let readPriority = PRIO_KEYS.slice();
-
-// Normalize a saved/loaded list to exactly the known keys in the given order,
-// appending any known key the list omitted so all three always show.
-function normalizePriority(list) {
-  const known = new Set(PRIO_KEYS);
-  const seen = [];
-  for (const k of Array.isArray(list) ? list : []) {
-    if (known.has(k) && !seen.includes(k)) seen.push(k);
-  }
-  for (const k of PRIO_KEYS) if (!seen.includes(k)) seen.push(k);
-  return seen;
-}
-
-function renderPrioList() {
-  const list = el("set-prio");
-  list.innerHTML = "";
-  for (const key of readPriority) list.appendChild(prioItem(key));
-}
-
-// Reset read priority to the default order (#91). Takes effect on Save, like the
-// rest of the settings panel.
-function resetPriority() {
-  readPriority = PRIO_KEYS.slice();
-  renderPrioList();
-}
-
-function prioItem(key) {
-  const li = document.createElement("li");
-  li.className = "prio-item";
-  li.dataset.key = key;
-
-  const grip = document.createElement("span");
-  grip.className = "prio-grip";
-  grip.innerHTML = ico("grip");
-  grip.title = "Drag to reorder";
-  enablePointerReorder(grip, li, el("set-prio"), ".prio-item", (dragged, target, below) => {
-    const order = readPriority.filter((k) => k !== dragged);
-    let to = order.indexOf(target);
-    if (below) to += 1;
-    order.splice(to, 0, dragged);
-    readPriority = order;
-    renderPrioList();
-  });
-
-  const label = document.createElement("span");
-  label.className = "prio-label";
-  label.textContent = PRIO_LABELS[key] || key;
-
-  li.append(grip, label);
-  return li;
-}
-
-// Default sidecar extensions (#58), mirroring the backend's default set. Shown
-// when settings have never been saved.
-const DEFAULT_SIDECAR_EXTS = ["lrc", "cue", "txt", "jpg", "jpeg", "png"];
-
-// Parse the sidecar-extensions input: split on spaces/commas, drop a leading
-// dot, lower-case, de-duplicate, and drop empties.
-function parseSidecarExts(raw) {
-  return [
-    ...new Set(
-      (raw || "")
-        .split(/[\s,]+/)
-        .map((e) => e.trim().replace(/^\./, "").toLowerCase())
-        .filter(Boolean)
-    ),
-  ];
-}
-
-async function openSettings() {
-  // Populate from saved values (the token is already in #discogs-token).
-  try {
-    const s = await invoke("load_settings", {});
-    el("set-proxy").value = s.proxy || "";
-    el("set-rate").value = s.rate_limit_per_min || 0;
-    setId3Choice(s.id3_v23 ? "v23" : "v24");
-    el("set-cover-max").value = s.cover_max_px || 0;
-    el("set-cover-quality").value = s.cover_quality || 85;
-    readPriority = normalizePriority(s.read_priority);
-    el("set-carry-sidecars").checked = s.carry_sidecars !== false;
-    el("set-sidecar-exts").value = (s.sidecar_extensions && s.sidecar_extensions.length
-      ? s.sidecar_extensions
-      : DEFAULT_SIDECAR_EXTS
-    ).join(" ");
-  } catch (e) {
-    /* defaults already in the DOM */
-    readPriority = PRIO_KEYS.slice();
-    el("set-carry-sidecars").checked = true;
-    el("set-sidecar-exts").value = DEFAULT_SIDECAR_EXTS.join(" ");
-  }
-  // Display prefs live in localStorage, not the backend settings.
-  setThemeChoice(themeMode());
-  el("set-checkbox-col").checked = checkboxColEnabled();
-  setValueFontChoice(valueFont());
-  el("set-table-font").value = tableFontPx();
-  el("set-table-font-val").textContent = `${tableFontPx()}px`;
-  el("set-tracklist-font").value = tracklistFontPx();
-  el("set-tracklist-font-val").textContent = `${tracklistFontPx()}px`;
-  setBadgeFontChoice(badgeFont());
-  renderPrioList();
-  el("settings").hidden = false;
-}
-
-function closeSettings() {
-  el("settings").hidden = true;
-}
-
-async function saveSettings() {
-  const token = el("discogs-token").value.trim();
-  // Spread the last-known settings so we keep fields this form doesn't edit —
-  // notably the saved action groups (#57), which also live in settings.json.
-  const settings = {
-    ...savedSettings,
-    proxy: el("set-proxy").value.trim(),
-    rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
-    id3_v23: id3Choice === "v23",
-    read_priority: readPriority.slice(),
-    cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
-    cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
-    action_groups: actionGroups,
-    carry_sidecars: el("set-carry-sidecars").checked,
-    sidecar_extensions: parseSidecarExts(el("set-sidecar-exts").value),
-  };
-  setSavedSettings(settings);
-  // Display prefs are local-only; apply + persist before the backend round-trip.
-  // (Table font size already applies live on input; persisted here too.)
-  applyCheckboxCol(el("set-checkbox-col").checked);
-  // (Value font, like the theme, is a live control — already applied on click.)
-  applyTableFont(parseInt(el("set-table-font").value, 10));
-  try {
-    await invoke("save_discogs_token", { token });
-    await invoke("save_settings", { settings });
-    updateSettingsDot();
-    closeSettings();
-    toast("Settings saved");
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// Discard unsaved edits: the token input is shared with the ONLINE search, so
-// restore it to the saved value before closing.
-async function cancelSettings() {
-  try {
-    el("discogs-token").value = (await invoke("saved_discogs_token", {})) || "";
-  } catch (e) {
-    /* leave as-is */
-  }
-  updateSettingsDot();
-  closeSettings();
-}
 
 // Meta line "Country · Year · Format" from whatever fields the candidate carries.
 function candidateMeta(c) {
@@ -4955,44 +4167,6 @@ document.querySelectorAll(".subtab").forEach((tab) => {
   tab.addEventListener("click", () => setSubtab(tab.dataset.subtab));
 });
 
-// Settings slide-over (#79).
-el("settings-open").addEventListener("click", openSettings);
-el("settings-close").addEventListener("click", cancelSettings);
-el("settings-cancel").addEventListener("click", cancelSettings);
-el("settings-scrim").addEventListener("click", cancelSettings);
-el("settings-save").addEventListener("click", saveSettings);
-el("set-id3").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-id3]");
-  if (btn) setId3Choice(btn.dataset.id3);
-});
-// Theme is a live control — switch immediately on click.
-el("set-theme").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-theme-mode]");
-  if (btn) setThemeChoice(btn.dataset.themeMode);
-});
-// Value font is live too — swap on click so the effect shows behind the sheet.
-el("set-value-font").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-value-font]");
-  if (btn) setValueFontChoice(btn.dataset.valueFont);
-});
-el("set-prio-reset").addEventListener("click", resetPriority);
-// Table font size is a live control: drag to apply (and persist) immediately so
-// the effect is visible behind the settings sheet.
-// LAB sliders/segments are live controls too — the effect shows behind the sheet.
-el("set-tracklist-font").addEventListener("input", (e) => {
-  const px = clampTracklistFont(parseInt(e.target.value, 10));
-  applyTracklistFont(px);
-  el("set-tracklist-font-val").textContent = `${px}px`;
-});
-el("set-badge-font").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-badge-font]");
-  if (btn) setBadgeFontChoice(btn.dataset.badgeFont);
-});
-el("set-table-font").addEventListener("input", (e) => {
-  const px = clampTableFont(parseInt(e.target.value, 10));
-  applyTableFont(px);
-  el("set-table-font-val").textContent = `${px}px`;
-});
 
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
@@ -5843,8 +5017,6 @@ applyCheckboxCol(checkboxColEnabled());
   document.documentElement.style.setProperty("--sb-w", `${w}px`);
 })();
 
-applyRepeatMode(repeatMode);
-applyVolume(storedVolume(), { persist: false });
 applyTableFont(tableFontPx());
 applyTracklistFont(tracklistFontPx());
 applyBadgeFont(badgeFont());
