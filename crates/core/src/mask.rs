@@ -14,7 +14,9 @@
 //!
 //! Grammar beyond plain placeholders:
 //! - `%field%` / `%field:width%` — a value, optionally zero-padded (track
-//!   numbers pad to two digits by default).
+//!   numbers pad to two digits by default). A width *written out* is also a
+//!   fixed length on extract (#140), which is what lets `%disc:1%%track:2%`
+//!   split `101` where two open-ended placeholders can't.
 //! - `[...]` — a conditional section, kept only when a placeholder inside it
 //!   resolved to something. This is what lets one mask serve a library where
 //!   some albums have a year and some don't, without emitting stray separators.
@@ -38,9 +40,14 @@ use crate::model::{TagField, TagMap};
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Segment {
     Literal(String),
-    /// A field plus the minimum width it renders to, zero-padded. Width `1`
-    /// means "print it as-is".
-    Placeholder(TagField, usize),
+    /// A field, the minimum width it renders to (zero-padded; `1` means "print
+    /// it as-is"), and whether that width was **stated in the pattern**.
+    ///
+    /// Only a stated width is a fixed length on extract (#140). The width the
+    /// parser fills in by itself — two for track numbers — is about padding;
+    /// treating it as a match length would break every `%track%` pattern
+    /// against a name that holds a plain `5`.
+    Placeholder(TagField, usize, bool),
     /// A conditional section, `[...]`. Rendered only when at least one
     /// placeholder inside it resolves to a non-empty value, and dropped whole
     /// otherwise — which is what lets ` [%artist% - ]` contribute nothing (not
@@ -63,10 +70,12 @@ pub struct Mask {
     pattern: String,
     segments: Vec<Segment>,
     regex: Regex,
-    /// Two placeholders with nothing between them. Rendering them is perfectly
-    /// well-defined (`%disc%%track%` -> `101`); *extracting* them is not, since
-    /// nothing says where one value ends and the next begins. So this is only
-    /// an error for the extract direction, not for the pattern as such.
+    /// Two placeholders with nothing between them and no stated width to split
+    /// on. Rendering them is perfectly well-defined (`%disc%%track%` -> `101`);
+    /// *extracting* them is not, since nothing says where one value ends and
+    /// the next begins. So this is only an error for the extract direction, not
+    /// for the pattern as such — and it goes away as soon as one of the pair
+    /// states its width (`%disc:1%%track:2%`, #140).
     adjacent_placeholders: bool,
     /// The pattern contains a `%side%`, a computed presentation value. It renders
     /// fine, but there's no single tag to extract it back into, so the mask is
@@ -82,9 +91,8 @@ impl Mask {
     /// Parse and validate a pattern string.
     pub fn parse(pattern: &str) -> Result<Self, MaskError> {
         let segments = parse_segments(pattern)?;
-        let mut previous_was_placeholder = false;
-        let adjacent_placeholders =
-            has_adjacent_placeholders(&segments, &mut previous_was_placeholder);
+        let mut previous = None;
+        let adjacent_placeholders = has_ambiguous_adjacency(&segments, &mut previous);
         let render_only = has_side(&segments);
         let extract_only = has_skip(&segments);
         let regex = build_regex(&segments);
@@ -248,12 +256,11 @@ fn parse_placeholder(spec: &str) -> Result<Segment, MaskError> {
         None => (spec, 0),
     };
     let field = field_from_name(name)?;
-    let width = if width == 0 {
-        default_width(&field)
-    } else {
-        width
-    };
-    Ok(Segment::Placeholder(field, width))
+    // `%track:0%` states nothing useful, so it counts as unstated and falls back
+    // to the default like a bare `%track%`.
+    let stated = width > 0;
+    let width = if stated { width } else { default_width(&field) };
+    Ok(Segment::Placeholder(field, width, stated))
 }
 
 /// Every placeholder becomes a named, non-greedy, non-empty capture group;
@@ -279,6 +286,17 @@ fn build_regex_into(segments: &[Segment], index: &mut usize, out: &mut String) {
     for segment in segments {
         match segment {
             Segment::Literal(text) => out.push_str(&regex::escape(text)),
+            // A stated width is a fixed length (#140): it's what lets
+            // `%disc:1%%track:2%` split `101` where two open-ended captures
+            // couldn't. For the integer fields the run has to be digits, so a
+            // name that doesn't actually carry a number there fails to match —
+            // and its file is skipped — instead of capturing two letters as a
+            // track number for the writer to reject later.
+            Segment::Placeholder(field, width, true) => {
+                let run = if is_integer_field(field) { r"\d" } else { "." };
+                out.push_str(&format!("(?P<{}>{run}{{{width}}})", group_name(*index)));
+                *index += 1;
+            }
             Segment::Placeholder(..) => {
                 out.push_str(&format!("(?P<{}>.+?)", group_name(*index)));
                 *index += 1;
@@ -309,7 +327,7 @@ fn collect_captures(
     for segment in segments {
         match segment {
             Segment::Literal(_) => {}
-            Segment::Placeholder(field, _) => {
+            Segment::Placeholder(field, ..) => {
                 if let Some(matched) = captures.name(&group_name(*index)) {
                     tags.insert(field.clone(), matched.as_str().to_string());
                 }
@@ -340,7 +358,7 @@ fn render_segments(
     for segment in segments {
         match segment {
             Segment::Literal(text) => out.push_str(text),
-            Segment::Placeholder(field, width) => match tags.get(field) {
+            Segment::Placeholder(field, width, _) => match tags.get(field) {
                 Some(value) => {
                     let clean = sanitize_for_filename(value);
                     if !clean.is_empty() {
@@ -416,32 +434,57 @@ fn has_skip(segments: &[Segment]) -> bool {
     })
 }
 
-/// Two placeholders with no literal text between them, looking through section
-/// boundaries — `[%disc%]%track%` is just as unsplittable as `%disc%%track%`.
-fn has_adjacent_placeholders(segments: &[Segment], previous_was_placeholder: &mut bool) -> bool {
+/// Two placeholders with no literal text between them *and* no width to split
+/// them on, looking through section boundaries — `[%disc%]%track%` is just as
+/// unsplittable as `%disc%%track%`.
+///
+/// A stated width is a boundary (#140), so a pair is only ambiguous when
+/// neither side states one: `%disc:1%%track:2%` says exactly where `101`
+/// divides, while `%disc%%track%` still doesn't. `previous` carries the
+/// preceding segment: `None` when it wasn't a placeholder, otherwise whether
+/// that placeholder stated a width.
+fn has_ambiguous_adjacency(segments: &[Segment], previous: &mut Option<bool>) -> bool {
     for segment in segments {
+        // `%skip%` and `%side%` count as placeholders here (`%skip%%title%` is
+        // just as unsplittable as two fields with nothing between them, #70),
+        // and neither can state a width.
+        let stated = match segment {
+            Segment::Placeholder(_, _, stated) => Some(*stated),
+            Segment::Side | Segment::Skip => Some(false),
+            _ => None,
+        };
+        if let Some(stated) = stated {
+            if *previous == Some(false) && !stated {
+                return true;
+            }
+            *previous = Some(stated);
+            continue;
+        }
         match segment {
             Segment::Literal(text) => {
                 if !text.is_empty() {
-                    *previous_was_placeholder = false;
+                    *previous = None;
                 }
-            }
-            // `%skip%` counts as a placeholder here: `%skip%%title%` is just as
-            // unsplittable as two fields with nothing between them (#70).
-            Segment::Placeholder(..) | Segment::Side | Segment::Skip => {
-                if *previous_was_placeholder {
-                    return true;
-                }
-                *previous_was_placeholder = true;
             }
             Segment::Section(inner) => {
-                if has_adjacent_placeholders(inner, previous_was_placeholder) {
+                if has_ambiguous_adjacency(inner, previous) {
                     return true;
                 }
             }
+            _ => unreachable!("placeholder-like segments are handled above"),
         }
     }
     false
+}
+
+/// Whether the tag backend stores this field as a number, which is what makes a
+/// digits-only run the right fixed-width match for it (#140). Same set the
+/// writer's per-field validation constrains.
+fn is_integer_field(field: &TagField) -> bool {
+    matches!(
+        field,
+        TagField::TrackNumber | TagField::TrackTotal | TagField::DiscNumber | TagField::DiscTotal
+    )
 }
 
 /// How wide a field renders by default.
@@ -665,6 +708,64 @@ mod tests {
             mask.extract("101. The X Factor - Desert Rain"),
             Err(MaskError::Ambiguous)
         ));
+    }
+
+    // #140: the same pair, with the widths written out, says exactly where
+    // "101" divides — so it extracts, and still renders the same.
+    #[test]
+    fn a_stated_width_splits_adjacent_placeholders() {
+        let mask = Mask::parse("%disc:1%%track:2%_%artist%_-_%title%").unwrap();
+        let tags = mask.extract("101_the_x_factor_-_desert_rain").unwrap();
+        assert_eq!(tags.get(&TagField::DiscNumber).unwrap(), "1");
+        assert_eq!(tags.get(&TagField::TrackNumber).unwrap(), "01");
+        assert_eq!(tags.get(&TagField::Artist).unwrap(), "the_x_factor");
+        assert_eq!(tags.get(&TagField::Title).unwrap(), "desert_rain");
+
+        // Render is unchanged: the width is still a padding minimum there.
+        let mut out = TagMap::new();
+        out.insert(TagField::DiscNumber, "1".into());
+        out.insert(TagField::TrackNumber, "1".into());
+        out.insert(TagField::Artist, "the_x_factor".into());
+        out.insert(TagField::Title, "desert_rain".into());
+        assert_eq!(mask.render(&out).unwrap(), "101_the_x_factor_-_desert_rain");
+    }
+
+    // Only a width the pattern states is a fixed length. `%track%` defaults to
+    // two for padding, and if that counted as a match length this name — with a
+    // one-digit track — would stop extracting.
+    #[test]
+    fn a_default_width_is_not_a_match_length() {
+        let mask = Mask::parse("%track% - %title%").unwrap();
+        let tags = mask.extract("5 - Roygbiv").unwrap();
+        assert_eq!(tags.get(&TagField::TrackNumber).unwrap(), "5");
+        assert_eq!(tags.get(&TagField::Title).unwrap(), "Roygbiv");
+    }
+
+    // A stated width on an integer field matches digits, so a name that carries
+    // something else there misses cleanly instead of handing the writer two
+    // letters as a track number.
+    #[test]
+    fn a_stated_width_on_an_integer_field_matches_digits_only() {
+        let mask = Mask::parse("%track:2% %title%").unwrap();
+        assert_eq!(
+            mask.extract("07 Roygbiv")
+                .unwrap()
+                .get(&TagField::TrackNumber),
+            Some(&"07".to_string())
+        );
+        assert!(matches!(
+            mask.extract("A1 Roygbiv"),
+            Err(MaskError::NoMatch)
+        ));
+
+        // A text field takes any run of exactly that length.
+        let text = Mask::parse("%genre:4% - %title%").unwrap();
+        assert_eq!(
+            text.extract("Rock - Roygbiv")
+                .unwrap()
+                .get(&TagField::Genre),
+            Some(&"Rock".to_string())
+        );
     }
 
     #[test]

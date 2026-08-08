@@ -26,6 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   rather than failing the batch, and a value the field can't hold — a vinyl
   `A1` as a track number — is flagged in the diff instead of being written.
 
+- **A stated width now splits values that run together in a name.** Real
+  numbering packs the disc and the track into one run — `101_artist_-_title` is
+  disc 1, track 01 — and the pattern for it, `%disc:1%%track:2%`, was rejected
+  as ambiguous. That rejection is right for `%disc%%track%`, where nothing says
+  where one value ends (#65 refused to guess), but a width written out says
+  exactly that, and the extract direction was throwing the information away.
+  Widths stated in the pattern are now fixed lengths when reading a name;
+  adjacent placeholders are refused only when neither of the pair states one.
+  A width the parser supplies itself is unchanged — `%track%` pads to two
+  digits when renaming and still matches a plain `5` when reading — and on the
+  integer fields a fixed-width run has to be digits, so a pattern that doesn't
+  meet a number there misses cleanly instead of capturing two letters as a
+  track number. (#140)
+
 - **A file-extension transform scope.** Rules could reach every tag field, one
   tag field, or the file name's stem — the extension was the one part of a
   file's name nothing could touch, so retyping a shouty `.FLAC` meant a rename

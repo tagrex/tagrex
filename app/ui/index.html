@@ -359,10 +359,11 @@
                 The same placeholders RENAMER uses, read the other way. Add <code>/</code> (or
                 <code>\</code>) to reach into the folders — <code>%albumartist%/%album%/%track% -
                 %title%</code> — and one folder level is matched per separator. Wrap optional parts
-                in [brackets], and use %skip% for a run of text that maps to no tag. A name that
-                doesn't fit the pattern is left alone; %side% can't be read back, and a value the
-                field can't hold (a vinyl A1 as a track number) is flagged in the preview instead of
-                being written.
+                in [brackets], and use %skip% for a run of text that maps to no tag. Write a width
+                out to split values that run together: <code>%disc:1%%track:2%</code> reads 101 as
+                disc 1, track 01. A name that doesn't fit the pattern is left alone; %side% can't
+                be read back, and a value the field can't hold (a vinyl A1 as a track number) is
+                flagged in the preview instead of being written.
               </p>
             </div></div>
             <div class="panel-actions from-name-actions">
