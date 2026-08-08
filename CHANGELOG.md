@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Tags can now be read out of the file name.** The mask grammar has always
+  been bidirectional — the same pattern that renames a file from its tags can
+  read tags back out of a name — but only the renaming half was ever reachable,
+  so a library that arrived as `01 - Artist - Title.flac` with empty tags could
+  be renamed and not tagged, which is backwards: the names already held the
+  metadata. TAGGER gets a third sub-tab, **FROM NAME**, beside ONLINE and
+  EDITOR, since tags are the outcome. The same placeholders as RENAMER, plus
+  `%skip%` for a run of text that maps to no tag, and separators to reach into
+  the folders — `%albumartist%/%album%/%track% - %title%` matches one folder
+  level per separator, because that is where the artist and album usually are.
+  Under the pattern box a live read-out shows the string being matched and what
+  the pattern pulls out of it, so a mask can be tuned without staging anything.
+  Pressing Preview produces an ordinary plan: the same in-table diff, the same
+  Apply, the same undo. A name that doesn't fit the pattern is left alone
+  rather than failing the batch, and a value the field can't hold — a vinyl
+  `A1` as a track number — is flagged in the diff instead of being written.
+
 - **A file-extension transform scope.** Rules could reach every tag field, one
   tag field, or the file name's stem — the extension was the one part of a
   file's name nothing could touch, so retyping a shouty `.FLAC` meant a rename

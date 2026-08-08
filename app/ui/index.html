@@ -229,6 +229,7 @@
           <div class="subtabs" role="tablist" aria-label="Tagging mode">
             <button class="subtab active" data-subtab="online" type="button">ONLINE</button>
             <button class="subtab" data-subtab="editor" type="button">EDITOR</button>
+            <button class="subtab" data-subtab="filename" type="button">FROM NAME</button>
           </div>
 
           <!-- ONLINE: Discogs search. The head is pinned; only the results scroll. -->
@@ -340,6 +341,33 @@
               <button id="fields-clear" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo.">Clear tags</button>
               <div class="spacer"></div>
               <button id="fields-apply" class="primary">Stage field changes</button>
+            </div>
+          </div>
+
+          <!-- FROM NAME (#139): the extract direction of the rename mask — the
+               file's own name read back into tags. -->
+          <div id="subtab-filename" class="subtab-panel from-name" hidden>
+            <div class="from-name-scroll"><div class="panel-block">
+              <h2>Tags from the file name</h2>
+              <div class="mask-row">
+                <input id="from-name-mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
+              </div>
+              <!-- Live read-out of what the pattern pulls out of the current
+                   row, so the mask can be tuned without staging a plan. -->
+              <div id="from-name-probe" class="probe"></div>
+              <p class="hint muted">
+                The same placeholders RENAMER uses, read the other way. Add <code>/</code> (or
+                <code>\</code>) to reach into the folders — <code>%albumartist%/%album%/%track% -
+                %title%</code> — and one folder level is matched per separator. Wrap optional parts
+                in [brackets], and use %skip% for a run of text that maps to no tag. A name that
+                doesn't fit the pattern is left alone; %side% can't be read back, and a value the
+                field can't hold (a vinyl A1 as a track number) is flagged in the preview instead of
+                being written.
+              </p>
+            </div></div>
+            <div class="panel-actions from-name-actions">
+              <div class="spacer"></div>
+              <button id="from-name-preview" class="primary">Preview tags</button>
             </div>
           </div>
         </section>

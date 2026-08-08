@@ -3399,7 +3399,8 @@ td[data-field="year"],
   min-height: 0;
 }
 
-.editor-scroll {
+.editor-scroll,
+.from-name-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -3410,11 +3411,60 @@ td[data-field="year"],
 }
 
 /* Pinned action footer, mirroring the ONLINE head so it reads as chrome. */
-.editor-actions {
+.editor-actions,
+.from-name-actions {
   flex: 0 0 auto;
   padding: 10px 14px;
   border-top: 1px solid var(--border);
   background: var(--panel);
+}
+
+/* FROM NAME (#139): the live read-out under the pattern box. The subject line
+   is what the mask is actually matched against — the stem, plus a folder per
+   separator in the pattern — so it reads as a file name (mono), with the
+   extracted pairs under it. Field names are chrome (sans), values are data
+   (mono), the same split the release card uses. */
+.probe {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-size: var(--text-xs);
+}
+
+.probe-subject {
+  font-family: var(--font-mono-bundled);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.probe-row {
+  display: flex;
+  gap: 8px;
+}
+
+.probe-field {
+  flex: 0 0 96px;
+  color: var(--muted);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+}
+
+.probe-value {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono-bundled);
+  overflow-wrap: anywhere;
+}
+
+/* No match is a normal state while a pattern is half-typed, not an error — it
+   is stated plainly rather than tinted red. */
+.probe-miss {
+  color: var(--muted);
+  font-style: italic;
 }
 
 /* ONLINE: pinned head + independently scrolling results. */

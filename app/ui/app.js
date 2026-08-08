@@ -1563,6 +1563,77 @@ async function preview() {
   }
 }
 
+// FROM NAME (#139): read each selected file's own name back into tags — the
+// extract direction of the mask RENAMER renders with. The result is an ordinary
+// tag plan, so it lands in the same in-table diff and applies/undoes like any
+// other change.
+async function previewTagsFromName() {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select at least one track", true);
+    return;
+  }
+  try {
+    const plan = await invoke("preview_tags_from_name", {
+      mask: el("from-name-mask").value,
+      paths,
+    });
+    // Distinguish "nothing to do" from a silent no-op: with this feature an
+    // empty plan usually means the pattern doesn't fit the names.
+    if (plan.changes.length === 0) {
+      toast("No selected name gives this pattern anything new", true);
+      return;
+    }
+    previewPlan = plan;
+    previewSource = "fromname";
+    renderPreview(previewPlan);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// The live read-out under the pattern box: what the mask pulls out of the first
+// selected file, tags-on-disk irrelevant. Extraction stays in Rust — one
+// grammar, one implementation (mask.rs) — so this is a per-keystroke round trip,
+// debounced by its caller.
+async function refreshNameProbe() {
+  const box = el("from-name-probe");
+  if (!box) return;
+  const path = selectedPaths()[0];
+  if (!path) {
+    box.innerHTML = `<div class="probe-miss">Select a track to see what the pattern reads.</div>`;
+    return;
+  }
+  try {
+    const probe = await invoke("probe_tags_from_name", {
+      mask: el("from-name-mask").value,
+      path,
+    });
+    const subject = `<div class="probe-subject">${escapeHtml(probe.subject)}</div>`;
+    if (!probe.matched || probe.fields.length === 0) {
+      box.innerHTML = `${subject}<div class="probe-miss">This name doesn't fit the pattern.</div>`;
+      return;
+    }
+    const rows = probe.fields
+      .map(
+        ([field, value]) =>
+          `<div class="probe-row"><span class="probe-field">${escapeHtml(columnLabel(field))}</span><span class="probe-value">${escapeHtml(value)}</span></div>`,
+      )
+      .join("");
+    box.innerHTML = subject + rows;
+  } catch (e) {
+    // A pattern that can't parse at all — say so where the result would be.
+    box.innerHTML = `<div class="probe-miss">${escapeHtml(String(e))}</div>`;
+  }
+}
+
+let nameProbeTimer = null;
+function scheduleNameProbe() {
+  if (el("subtab-filename").hidden) return;
+  clearTimeout(nameProbeTimer);
+  nameProbeTimer = setTimeout(refreshNameProbe, 180);
+}
+
 async function previewEdits() {
   const list = [];
   for (const [path, fields] of edits) {
@@ -4602,6 +4673,7 @@ function setMode(name) {
 // persists across mode switches (a search isn't thrown away when you leave).
 function refreshTagger() {
   refreshFieldEditor();
+  scheduleNameProbe(); // no-op unless FROM NAME is the open sub-tab
 }
 
 document.querySelectorAll(".mode-tab").forEach((tab) => {
@@ -4812,6 +4884,10 @@ el("vinyl-split").addEventListener("click", splitVinylSides);
 // Rule reorder is wired per-card in renderTransformRules via enablePointerReorder
 // (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 el("move-preview").addEventListener("click", previewMove);
+
+// FROM NAME (#139): the probe follows the pattern as it's typed.
+el("from-name-preview").addEventListener("click", previewTagsFromName);
+el("from-name-mask").addEventListener("input", scheduleNameProbe);
 el("fields-add").addEventListener("click", addCustomField);
 el("fields-add-toggle").addEventListener("click", openAddField);
 el("fields-add-cancel").addEventListener("click", closeAddField);
@@ -4867,12 +4943,16 @@ el("search-format").addEventListener("change", () => {
   if (releaseCandidates.length || el("discogs-query").value.trim()) discogsSearch();
 });
 
-// TAGGER sub-tabs: ONLINE (Discogs) vs EDITOR (tag fields + cover).
+// TAGGER sub-tabs: ONLINE (a metadata source), EDITOR (tag fields + cover),
+// FROM NAME (the file's own name, #139) — three ways to the same outcome.
 function setSubtab(name) {
   document.querySelectorAll(".subtab").forEach((t) => t.classList.toggle("active", t.dataset.subtab === name));
   document.querySelectorAll(".subtab-panel").forEach((p) => {
     p.hidden = p.id !== `subtab-${name}`;
   });
+  // The probe is only computed while it's on screen; opening the tab is when it
+  // has to catch up with the current selection and pattern.
+  if (name === "filename") refreshNameProbe();
 }
 document.querySelectorAll(".subtab").forEach((tab) => {
   tab.addEventListener("click", () => setSubtab(tab.dataset.subtab));
@@ -5171,8 +5251,12 @@ function syncSelectionUI() {
   // only refresh on mode entry, so keep them live as the selection changes.
   updatePanelCounts();
   // The TAGGER field grid shows the current selection's values, so keep it in
-  // step as the selection changes while that mode is open.
-  if (currentMode === "tagger") refreshFieldEditor();
+  // step as the selection changes while that mode is open — and so does the
+  // FROM NAME probe, which reads the first selected file's name.
+  if (currentMode === "tagger") {
+    refreshFieldEditor();
+    scheduleNameProbe();
+  }
 }
 
 // Selection-dependent counts in the GENERATOR/EXPORTER panel headings. Cheap
@@ -5876,6 +5960,45 @@ function mockUntransliterate(value) {
   });
 }
 
+// The string a FROM NAME mask is matched against (#139), for the dev mock: the
+// stem plus one parent folder per separator in the pattern.
+function mockNameSubject(path, mask) {
+  const depth = (mask.match(/[/\\]/g) || []).length;
+  const parts = path.split("/");
+  const stem = (parts.pop() || "").replace(/\.[^.]*$/, "");
+  return [...parts.slice(Math.max(0, parts.length - depth)), stem].join("/");
+}
+
+// Mask -> tags for the dev mock only. Plain placeholders and %skip%, no
+// conditional sections: enough to drive the panel in a browser. The real
+// bidirectional grammar is mask.rs, and this is not a second implementation of
+// it — anything subtle must be checked in the native app.
+function mockExtractFromName(mask, subject) {
+  const fields = [];
+  let pattern = "^";
+  for (const part of mask.replace(/\\/g, "/").split(/(%[a-z]+%)/i)) {
+    if (!part) continue;
+    const placeholder = /^%([a-z]+)%$/i.exec(part);
+    if (!placeholder) {
+      pattern += part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    } else if (placeholder[1].toLowerCase() === "skip") {
+      pattern += "(?:.+?)";
+    } else {
+      fields.push(placeholder[1].toLowerCase());
+      pattern += "(.+?)";
+    }
+  }
+  const match = new RegExp(pattern + "$").exec(subject);
+  if (!match) return null;
+  // The integer fields are stored as numbers, so the backend writes a name's
+  // "05" as "5"; normalize here too or the mock shows a value the app wouldn't.
+  const numeric = ["track", "tracktotal", "disc", "disctotal"];
+  return fields.map((field, i) => {
+    const value = match[i + 1].trim();
+    return [field, numeric.includes(field) && /^\d+$/.test(value) ? String(+value) : value];
+  });
+}
+
 // One chain over one value, for the dev mock only — shared by the single-chain
 // preview and the checklist run so the two can't drift apart.
 function mockApplyRules(value, rules) {
@@ -6031,6 +6154,31 @@ function mockInvoke(cmd, args) {
         })
         .filter(Boolean);
       return Promise.resolve({ description: "Rename by mask", changes });
+    }
+    case "probe_tags_from_name": {
+      const subject = mockNameSubject(args.path, args.mask);
+      const fields = mockExtractFromName(args.mask, subject);
+      return Promise.resolve({ subject, fields: fields || [], matched: !!fields });
+    }
+    case "preview_tags_from_name": {
+      const changes = args.paths
+        .map((p) => {
+          const t = findTrack(p);
+          if (!t) return null;
+          const fields = mockExtractFromName(args.mask, mockNameSubject(p, args.mask));
+          if (!fields) return null;
+          const tag_changes = fields
+            .filter(([field, value]) => value && (t.tags[field] || "") !== value)
+            .map(([field, value]) => ({
+              field,
+              old: t.tags[field] || null,
+              new: value,
+              invalid: false,
+            }));
+          return tag_changes.length ? { path: p, rename_to: null, tag_changes } : null;
+        })
+        .filter(Boolean);
+      return Promise.resolve({ description: "Tags from name", changes });
     }
     case "preview_transform": {
       // Mirrors the backend closely enough to exercise the dialog: literal

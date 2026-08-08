@@ -16,8 +16,9 @@ use tauri::{Manager, State};
 use player::{Player, PlayerStatus};
 use tagrex::{
     ActionGroupDto, AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto,
-    CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportSelectionDto, ImportTrackDto, PlanDto,
-    ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
+    CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportSelectionDto, ImportTrackDto,
+    NameProbeDto, PlanDto, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto,
+    TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -119,6 +120,31 @@ fn preview_rename(
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
         app.preview_rename(&mask, &paths).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn preview_tags_from_name(
+    state: State<AppState>,
+    mask: String,
+    paths: Vec<String>,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_tags_from_name(&mask, &paths)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn probe_tags_from_name(
+    state: State<AppState>,
+    mask: String,
+    path: String,
+) -> Result<NameProbeDto, String> {
+    with_app(&state, |app| {
+        app.probe_tags_from_name(&mask, &PathBuf::from(path))
+            .map_err(|e| e.to_string())
     })
 }
 
@@ -537,6 +563,8 @@ fn main() {
             find_duplicates,
             open_release_page,
             preview_rename,
+            preview_tags_from_name,
+            probe_tags_from_name,
             preview_move,
             preview_transform,
             preview_tag_edits,

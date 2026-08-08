@@ -23,7 +23,7 @@ use thiserror::Error;
 use base64::Engine as _;
 use tagrex_core::export::{self, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
-use tagrex_core::mask::Mask;
+use tagrex_core::mask::{Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{is_writable_value, CoverArt, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
@@ -108,6 +108,18 @@ fn field_value_invalid(field: &str, new: Option<&str>) -> bool {
         Some(value) => !is_writable_value(&TagField::from_storage_key(field), value),
         None => false,
     }
+}
+
+/// What a mask sees in one file's name (#139): the string being matched — the
+/// stem, plus as many parent folders as the pattern asks for — and the
+/// storage-key/value pairs it pulls out, in the model's field order. `matched`
+/// is false when the name doesn't fit the pattern at all, which is a normal
+/// state while a pattern is half-typed, not an error.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NameProbeDto {
+    pub subject: String,
+    pub fields: Vec<(String, String)>,
+    pub matched: bool,
 }
 
 /// An embedded cover image crossing the IPC boundary: base64 data + MIME.
@@ -1015,6 +1027,123 @@ impl App {
         Ok(PlanDto {
             description: format!("Rename by mask: {mask_pattern}"),
             changes,
+        })
+    }
+
+    /// Build a tag plan by reading each file's own name through a mask (#139) —
+    /// the extract direction of the grammar [`preview_rename`](Self::preview_rename)
+    /// renders with. Files that arrived named `01 - Artist - Title.flac` and
+    /// empty already carry their metadata; this is how it gets back into tags.
+    ///
+    /// A pattern carrying folder separators (`%albumartist%/%album%/%title%`)
+    /// matches that many parent directories ahead of the stem, because that is
+    /// where artist and album usually live; without one, only the stem is
+    /// matched. Either separator is accepted so a pattern stays portable (#71).
+    ///
+    /// A name that does not fit the pattern is skipped rather than failing the
+    /// batch — a selection is rarely uniform — but a pattern the extract
+    /// direction refuses outright (`%side%`, adjacent placeholders) is an error
+    /// before anything is previewed, as it is for rename. The result is an
+    /// ordinary [`PlanDto`], so this previews, applies and undoes through the
+    /// same journaled path as every other change.
+    pub fn preview_tags_from_name(
+        &self,
+        mask_pattern: &str,
+        paths: &[PathBuf],
+    ) -> Result<PlanDto, AppError> {
+        // The mask engine sees one separator; the user may type either (#71).
+        let normalized = mask_pattern.replace('\\', "/");
+        let mask = Mask::parse(&normalized)?;
+        let depth = normalized.matches('/').count();
+
+        let mut changes = Vec::new();
+        for path in paths {
+            let Ok(track) = TagEngine::read(path) else {
+                continue;
+            };
+            let Some(subject) = name_subject(path, depth) else {
+                continue; // shallower than the pattern asks for
+            };
+            let extracted = match mask.extract(&subject) {
+                Ok(tags) => tags,
+                // This one name doesn't fit the pattern; the next one may.
+                Err(MaskError::NoMatch) => continue,
+                // Anything else is a property of the pattern itself, and would
+                // be just as wrong for every remaining file.
+                Err(err) => return Err(err.into()),
+            };
+
+            let mut tag_changes = Vec::new();
+            for (field, value) in &extracted {
+                let value = normalize_extracted(field, value);
+                if value.is_empty() {
+                    continue;
+                }
+                let old = track.tags.get(field).cloned();
+                if old.as_deref() == Some(value.as_str()) {
+                    continue;
+                }
+                tag_changes.push(FieldChangeDto::new(
+                    field.to_storage_key(),
+                    old,
+                    Some(value),
+                ));
+            }
+            if tag_changes.is_empty() {
+                continue;
+            }
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes,
+                cover_change: None,
+                sidecar_renames: Vec::new(),
+            });
+        }
+        Ok(PlanDto {
+            description: format!("Tags from name: {mask_pattern}"),
+            changes,
+        })
+    }
+
+    /// What a mask pulls out of one file's name (#139), for the live probe
+    /// beside the pattern box.
+    ///
+    /// The same extraction [`preview_tags_from_name`](Self::preview_tags_from_name)
+    /// does, for a single file and *without* comparing against the file's
+    /// current tags: while a pattern is being typed the question is what it
+    /// sees, not what would change. A name that doesn't fit comes back
+    /// `matched: false` rather than as an error, because the subject string is
+    /// exactly what the user needs to see in that case — it shows how much of
+    /// the path the pattern is being matched against.
+    pub fn probe_tags_from_name(
+        &self,
+        mask_pattern: &str,
+        path: &Path,
+    ) -> Result<NameProbeDto, AppError> {
+        let normalized = mask_pattern.replace('\\', "/");
+        let mask = Mask::parse(&normalized)?;
+        let depth = normalized.matches('/').count();
+        let subject = name_subject(path, depth).unwrap_or_default();
+        let fields = match mask.extract(&subject) {
+            Ok(tags) => tags
+                .iter()
+                .map(|(field, value)| (field.to_storage_key(), normalize_extracted(field, value)))
+                .filter(|(_, value)| !value.is_empty())
+                .collect(),
+            Err(MaskError::NoMatch) => {
+                return Ok(NameProbeDto {
+                    subject,
+                    fields: Vec::new(),
+                    matched: false,
+                })
+            }
+            Err(err) => return Err(err.into()),
+        };
+        Ok(NameProbeDto {
+            subject,
+            fields,
+            matched: true,
         })
     }
 
@@ -2111,6 +2240,48 @@ fn release_id_field(source: Option<&str>) -> TagField {
     }
 }
 
+/// The string a mask is matched against when reading tags out of a name
+/// (#139): the file's stem, preceded by `depth` parent directory names joined
+/// with `/`. `depth` is how many separators the pattern carries, so
+/// `%album%/%title%` sees `Album/01 - Title` while `%title%` sees only the
+/// stem. `None` when the path is shallower than the pattern asks for, or when
+/// any component isn't valid UTF-8.
+fn name_subject(path: &Path, depth: usize) -> Option<String> {
+    let stem = path.file_stem()?.to_str()?;
+    let mut parts = Vec::with_capacity(depth + 1);
+    let mut dir = path.parent();
+    for _ in 0..depth {
+        let current = dir?;
+        parts.push(current.file_name()?.to_str()?);
+        dir = current.parent();
+    }
+    parts.reverse();
+    parts.push(stem);
+    Some(parts.join("/"))
+}
+
+/// Clean up one value pulled out of a file name (#139) before it becomes a tag
+/// change. Whitespace around a capture is an artifact of the separators in the
+/// pattern, never part of the value. Beyond that only the integer fields are
+/// touched: the tag backend stores them as numbers, so a name's `05` is written
+/// as `5` either way — normalizing here keeps the preview honest about what
+/// will end up on disk instead of showing a diff that then writes something
+/// else. A non-numeric value (a vinyl `A1`) is left as it is, to be flagged by
+/// the same validation the editor uses rather than silently reinterpreted.
+fn normalize_extracted(field: &TagField, value: &str) -> String {
+    let value = value.trim();
+    match field {
+        TagField::TrackNumber
+        | TagField::TrackTotal
+        | TagField::DiscNumber
+        | TagField::DiscTotal => value
+            .parse::<u32>()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|_| value.to_string()),
+        _ => value.to_string(),
+    }
+}
+
 /// Extract a track number from a Discogs position: take the *trailing* run of
 /// digits, so "5" -> 5, "A1" -> 1, "1-05" -> 5, "12" -> 12. Returns `None` for
 /// positions with no trailing digits (e.g. a heading), letting the caller fall
@@ -2840,6 +3011,202 @@ mod tests {
         assert!(track.exists());
         assert!(!expected.exists());
         assert!(app.history().unwrap().is_empty());
+    }
+
+    // #139: the extract direction — the name carries the metadata, and it comes
+    // back as an ordinary tag plan that applies and undoes like any other.
+    #[test]
+    fn tags_from_name_preview_apply_undo_round_trip() {
+        let dir = TempDir::new("fromname");
+        let track = dir.tagged_flac("05 - Boards of Canada - Roygbiv.flac", "Unknown", "Track 5");
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_tags_from_name("%track% - %artist% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        let by_field = |field: &str| {
+            plan.changes[0]
+                .tag_changes
+                .iter()
+                .find(|c| c.field == field)
+                .unwrap_or_else(|| panic!("no change for {field}"))
+        };
+        // "05" is normalized to "5": the tag stores an integer either way, so
+        // the preview shows what will actually be on disk.
+        assert_eq!(by_field("track").new.as_deref(), Some("5"));
+        assert_eq!(by_field("artist").old.as_deref(), Some("Unknown"));
+        assert_eq!(by_field("artist").new.as_deref(), Some("Boards of Canada"));
+        assert_eq!(by_field("title").new.as_deref(), Some("Roygbiv"));
+        assert!(plan.changes[0].rename_to.is_none());
+
+        let batch = app.apply(&plan).unwrap();
+        let tags = TagEngine::read(&track).unwrap().tags;
+        assert_eq!(
+            tags.get(&TagField::Artist).map(String::as_str),
+            Some("Boards of Canada")
+        );
+        assert_eq!(
+            tags.get(&TagField::Title).map(String::as_str),
+            Some("Roygbiv")
+        );
+        assert_eq!(
+            tags.get(&TagField::TrackNumber).map(String::as_str),
+            Some("5")
+        );
+
+        app.undo(batch.id).unwrap();
+        let tags = TagEngine::read(&track).unwrap().tags;
+        assert_eq!(
+            tags.get(&TagField::Artist).map(String::as_str),
+            Some("Unknown")
+        );
+        assert_eq!(
+            tags.get(&TagField::Title).map(String::as_str),
+            Some("Track 5")
+        );
+    }
+
+    // A pattern with separators reaches up into the folders, which is where the
+    // artist and album usually are. Either separator is accepted (#71).
+    #[test]
+    fn tags_from_name_reads_the_parent_folders() {
+        let dir = TempDir::new("fromname-folders");
+        let track = dir.tagged_flac_at(
+            "Aphex Twin/Selected Ambient Works/02 - Ageispolis.flac",
+            "Unknown",
+            "Untitled",
+        );
+        let app = open_app(&dir);
+
+        for pattern in [
+            "%albumartist%/%album%/%track% - %title%",
+            "%albumartist%\\%album%\\%track% - %title%",
+        ] {
+            let plan = app
+                .preview_tags_from_name(pattern, std::slice::from_ref(&track))
+                .unwrap();
+            assert_eq!(plan.changes.len(), 1, "pattern {pattern}");
+            let value = |field: &str| {
+                plan.changes[0]
+                    .tag_changes
+                    .iter()
+                    .find(|c| c.field == field)
+                    .and_then(|c| c.new.clone())
+            };
+            assert_eq!(value("albumartist").as_deref(), Some("Aphex Twin"));
+            assert_eq!(value("album").as_deref(), Some("Selected Ambient Works"));
+            assert_eq!(value("title").as_deref(), Some("Ageispolis"));
+            assert_eq!(value("track").as_deref(), Some("2"));
+        }
+    }
+
+    // A selection is rarely uniform: a name that doesn't fit is skipped, and so
+    // is one whose tags already say what the name says.
+    #[test]
+    fn tags_from_name_skips_non_matching_and_unchanged_files() {
+        let dir = TempDir::new("fromname-skip");
+        let matching = dir.tagged_flac("Autechre - Gantz Graf.flac", "Unknown", "Unknown");
+        let other = dir.tagged_flac("track01.flac", "Unknown", "Unknown");
+        let already = dir.tagged_flac("Autechre - Vletrmx.flac", "Autechre", "Vletrmx");
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_tags_from_name("%artist% - %title%", &[matching.clone(), other, already])
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(plan.changes[0].path, matching.to_string_lossy());
+    }
+
+    // A pattern the extract direction refuses is an error up front, not an
+    // empty plan: %side% is computed at render time and has no tag to go back
+    // into, and adjacent placeholders have no boundary to split on.
+    #[test]
+    fn tags_from_name_refuses_a_pattern_that_cannot_extract() {
+        let dir = TempDir::new("fromname-refuse");
+        let track = dir.tagged_flac("A1 - Title.flac", "Unknown", "Unknown");
+        let app = open_app(&dir);
+
+        for pattern in ["%side%%track% - %title%", "%disc%%track% - %title%"] {
+            assert!(app
+                .preview_tags_from_name(pattern, std::slice::from_ref(&track))
+                .is_err());
+        }
+    }
+
+    // A capture landing in a typed field it can't hold is flagged in the
+    // preview rather than written — same rule the editor uses.
+    #[test]
+    fn tags_from_name_flags_a_value_the_field_cannot_hold() {
+        let dir = TempDir::new("fromname-invalid");
+        let track = dir.tagged_flac("Live - Encore.flac", "Unknown", "Unknown");
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_tags_from_name("%year% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        let year = plan.changes[0]
+            .tag_changes
+            .iter()
+            .find(|c| c.field == "year")
+            .unwrap();
+        assert_eq!(year.new.as_deref(), Some("Live"));
+        assert!(year.invalid);
+    }
+
+    // The live probe reports what the pattern sees, current tags irrelevant —
+    // including the subject string, which is the whole point when it misses.
+    #[test]
+    fn probe_reports_what_the_pattern_sees_including_a_miss() {
+        let dir = TempDir::new("fromname-probe");
+        let track = dir.tagged_flac("Autechre - Gantz Graf.flac", "Autechre", "Gantz Graf");
+        let app = open_app(&dir);
+
+        let hit = app
+            .probe_tags_from_name("%artist% - %title%", &track)
+            .unwrap();
+        assert!(hit.matched);
+        assert_eq!(hit.subject, "Autechre - Gantz Graf");
+        // Reported even though the file's tags already say exactly this.
+        assert_eq!(
+            hit.fields,
+            vec![
+                ("artist".to_string(), "Autechre".to_string()),
+                ("title".to_string(), "Gantz Graf".to_string()),
+            ]
+        );
+
+        let miss = app
+            .probe_tags_from_name("%track%. %title%", &track)
+            .unwrap();
+        assert!(!miss.matched);
+        assert!(miss.fields.is_empty());
+        // The subject still comes back: seeing it is how you fix the pattern.
+        assert_eq!(miss.subject, "Autechre - Gantz Graf");
+
+        // A folder pattern shows how much of the path is in play.
+        let deep = app
+            .probe_tags_from_name("%album%/%artist% - %title%", &track)
+            .unwrap();
+        assert!(deep.subject.ends_with("/Autechre - Gantz Graf"));
+
+        // A broken pattern is still an error.
+        assert!(app
+            .probe_tags_from_name("%artist% - [%title%", &track)
+            .is_err());
+    }
+
+    #[test]
+    fn name_subject_takes_as_many_folders_as_the_pattern_asks_for() {
+        let path = Path::new("/lib/Artist/Album/01 - Title.flac");
+        assert_eq!(name_subject(path, 0).as_deref(), Some("01 - Title"));
+        assert_eq!(name_subject(path, 1).as_deref(), Some("Album/01 - Title"));
+        assert_eq!(
+            name_subject(path, 2).as_deref(),
+            Some("Artist/Album/01 - Title")
+        );
+        // Deeper than the path goes: no subject rather than a partial match.
+        assert_eq!(name_subject(Path::new("/a/b.flac"), 3), None);
     }
 
     // #58: a rename detects same-stem sidecars in the configured set, retargets
