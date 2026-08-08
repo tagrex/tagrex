@@ -285,7 +285,7 @@ const GROUP_STORAGE_KEY = "tagrex.groupBy";
 function groupByPref() {
   try {
     const v = localStorage.getItem(GROUP_STORAGE_KEY);
-    // Any stored string is accepted here; populateGroupSelect() validates it
+    // Any stored string is accepted here; populateGroupMenu() validates it
     // against the built option list once EXTENDED_FIELDS is available (#43).
     return v === null ? "folder" : v;
   } catch (e) {
@@ -483,22 +483,61 @@ function columnLabel(key) {
 // ones. "By drop" is set only by a file-set drag-and-drop, so it's a hidden
 // option. Also validates the persisted choice against the built list — an old or
 // unknown key falls back to Folder (never the drop grouping, which is transient).
-function populateGroupSelect() {
-  const sel = el("group-by");
-  const opt = (value, label, hidden) =>
-    `<option value="${escapeHtml(value)}"${hidden ? " hidden" : ""}>${escapeHtml(label)}</option>`;
-  sel.innerHTML =
-    opt("", "None") +
-    opt("folder", "Folder") +
-    opt("release", "Release id") +
-    EXTENDED_FIELDS.map(([key, label]) => opt(key, label)).join("") +
-    opt("drop", "By drop", true);
-  const selectable = new Set([...sel.options].map((o) => o.value).filter((v) => v !== "drop"));
-  if (!selectable.has(groupBy)) {
+// Keys promoted above the fold in the group menu — the ones actually reached
+// for. Everything else stays available below a separator, in field order.
+const GROUP_COMMON = ["", "folder", "release", "artist", "album", "albumartist"];
+
+// NB: distinct from groupLabel() below, which names a group HEADER (a folder or
+// tag value). This one names a grouping KEY for the menu/tooltip.
+function groupKeyLabel(value) {
+  if (value === "") return "None";
+  if (value === "folder") return "Folder";
+  if (value === "release") return "Release id";
+  if (value === "drop") return "By drop";
+  const field = EXTENDED_FIELDS.find(([key]) => key === value);
+  return field ? field[1] : value;
+}
+
+function populateGroupMenu() {
+  const menu = el("group-menu");
+  const rest = EXTENDED_FIELDS.filter(([key]) => !GROUP_COMMON.includes(key));
+  const row = (value) =>
+    `<button type="button" class="col-menu-row tk-menu-item group-opt" data-group="${escapeHtml(value)}">${escapeHtml(groupKeyLabel(value))}</button>`;
+  menu.innerHTML =
+    GROUP_COMMON.map(row).join("") +
+    `<div class="col-menu-sep"></div>` +
+    rest.map(([key]) => row(key)).join("");
+  // "drop" is set by the drag-drop flow, never picked here, so it isn't listed;
+  // any other unknown persisted value falls back to Folder.
+  const selectable = new Set([...GROUP_COMMON, ...EXTENDED_FIELDS.map(([k]) => k)]);
+  if (groupBy !== "drop" && !selectable.has(groupBy)) {
     groupBy = "folder";
     saveGroupBy(groupBy);
   }
-  sel.value = groupBy;
+  syncGroupButton();
+}
+
+// Reflect the current key onto the button + the menu's checkmarks. The button
+// tints whenever grouping is on, so "am I grouped?" is answerable at a glance.
+function syncGroupButton() {
+  const btn = el("group-btn");
+  const label = `Group by: ${groupKeyLabel(groupBy)}`;
+  btn.title = label;
+  btn.setAttribute("aria-label", label);
+  btn.classList.toggle("active", groupBy !== "");
+  el("group-menu")
+    .querySelectorAll(".group-opt")
+    .forEach((b) => b.classList.toggle("checked", b.dataset.group === groupBy));
+}
+
+// One way in for every grouping change (menu pick, preset apply, library open),
+// so the button, the menu and the persisted pref can't drift apart.
+function setGroupBy(value, { persist = true, rerender = true } = {}) {
+  groupBy = value;
+  if (persist) saveGroupBy(groupBy);
+  collapsedGroups.clear();
+  syncGroupButton();
+  if (rerender) renderTracks();
 }
 
 // ---- vinyl side notation view (#106) ----
@@ -792,10 +831,7 @@ function applyPreset(p) {
   el("filter").value = filterText;
   syncFilterControls();
 
-  groupBy = p.group || "";
-  saveGroupBy(groupBy);
-  el("group-by").value = groupBy;
-  collapsedGroups.clear();
+  setGroupBy(p.group || "", { rerender: false });
 
   if (p.sortKey) applySort(p.sortKey, p.sortDir === -1 ? -1 : 1);
   else renderTracks();
@@ -1489,9 +1525,7 @@ async function afterOpen(label) {
   filterText = "";
   el("filter").value = "";
   syncFilterControls(); // clears the parsed query + any regex-error state
-  groupBy = dropFolders ? "drop" : groupByPref();
-  collapsedGroups.clear();
-  el("group-by").value = groupBy;
+  setGroupBy(dropFolders ? "drop" : groupByPref(), { persist: false, rerender: false });
   renderTracks();
   showView("files");
   showPlayerBar();
@@ -4640,6 +4674,8 @@ for (const id of ["fields-new-name", "fields-new-value"]) {
 }
 el("fields-apply").addEventListener("click", applyFieldEditor);
 el("fields-clear").addEventListener("click", previewClearTags);
+// Same flow from the table toolbar, so clearing doesn't require opening EDITOR.
+el("clear-tags").addEventListener("click", previewClearTags);
 el("export-kind").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-fmt]");
   if (btn) setExportKind(btn.dataset.fmt);
@@ -5403,12 +5439,24 @@ document.addEventListener("click", (e) => {
   }
 });
 // Grouping is a view overlay — changing it only re-renders, never reorders
-// `tracks`. Collapsed state is per grouping, so reset it on change.
-el("group-by").addEventListener("change", (e) => {
-  groupBy = e.target.value;
-  saveGroupBy(groupBy);
-  collapsedGroups.clear();
-  renderTracks();
+// `tracks`. Collapsed state is per grouping, so setGroupBy resets it.
+el("group-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const menu = el("group-menu");
+  menu.hidden = !menu.hidden;
+});
+el("group-menu").addEventListener("click", (e) => {
+  const opt = e.target.closest(".group-opt");
+  if (!opt) return;
+  el("group-menu").hidden = true;
+  setGroupBy(opt.dataset.group);
+});
+document.addEventListener("click", (e) => {
+  const menu = el("group-menu");
+  if (!menu.hidden && !menu.contains(e.target) && !e.target.closest("#group-btn")) menu.hidden = true;
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") el("group-menu").hidden = true;
 });
 
 // Collapse/expand a group by clicking its header (no re-render, so selection
@@ -5559,13 +5607,15 @@ applyCheckboxCol(checkboxColEnabled());
   document.documentElement.style.setProperty("--sb-w", `${w}px`);
 })();
 
+applyRepeatMode(repeatMode);
+applyVolume(storedVolume(), { persist: false });
 applyTableFont(tableFontPx());
 applyTracklistFont(tracklistFontPx());
 applyBadgeFont(badgeFont());
 // Reflect saved defaults onto the grouping + search page-size selects (#108).
 // Grouping options are built from the modeled fields (#43), then the saved
 // choice is applied.
-populateGroupSelect();
+populateGroupMenu();
 el("search-per-page").value = String(searchPerPage);
 // Load saved action groups (#57) from settings.json into the Groups popover.
 initActionGroups();

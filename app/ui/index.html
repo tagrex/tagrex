@@ -92,13 +92,17 @@
            every mutating mode funnels its change plan into. -->
       <section class="files-col">
         <div class="view-tabs">
-          <label class="group-ctl muted"
-            >Group
-            <!-- Options (None, Folder, Release id, every tag field, hidden "By drop")
-                 are built by populateGroupSelect() so any modeled field can group
-                 the table (#43). -->
-            <select id="group-by" title="Group rows by a key (view only — file order is unchanged)"></select>
-          </label>
+          <!-- Grouping is an icon button over a popover rather than a labelled
+               select: the list runs to every modeled field (#43), so it needs
+               structure (common keys first) more than it needs a 130px control
+               sitting in the toolbar. The chosen key stays legible without
+               opening the menu because the table itself renders group headers;
+               the button also tints while grouping is on. Built by
+               populateGroupMenu(). -->
+          <div class="col-picker group-ctl">
+            <button id="group-btn" class="icon" title="Group rows by a key (view only — file order is unchanged)" aria-label="Group rows by a key"><svg class="ico"><use href="#i-group"/></svg></button>
+            <div id="group-menu" class="col-menu" hidden></div>
+          </div>
           <!-- One control, because this is a state toggle: it offers whichever
                move is available from the current state (collapse while anything
                is open, expand once everything is shut). -->
@@ -122,6 +126,14 @@
             <button id="columns-btn" class="io" title="Choose which columns to show"><svg class="ico"><use href="#i-columns"/></svg>Columns</button>
             <div id="columns-menu" class="col-menu" hidden></div>
           </div>
+          <!-- Clear tags, surfaced here so it doesn't require a trip into EDITOR.
+               Pushed to the far end behind a divider because everything left of
+               it configures the VIEW, while this one acts on the selection.
+               Scope is unchanged from the EDITOR button: modeled text fields
+               only — cover art and DJ cue points survive — and it stages a
+               preview rather than writing, so Apply/Discard still gates it. -->
+          <span class="tb-div" aria-hidden="true"></span>
+          <button id="clear-tags" class="icon" title="Clear text tags on the selected files (cover and DJ cue points are kept) — previewed before anything is written" aria-label="Clear text tags on the selected files"><svg class="ico"><use href="#i-eraser"/></svg></button>
         </div>
 
         <div id="files-view" class="table-wrap">

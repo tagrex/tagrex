@@ -17,6 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Grouping moved to an icon button with a structured menu.** The labelled
+  select spent about 130px of the toolbar on a list that runs to every modeled
+  field, with no ordering to it. The menu now promotes the keys actually reached
+  for — None, Folder, Release id, Artist, Album, Album Artist — above a
+  separator, with the remaining fields below, and ticks the active one. The
+  current key stays answerable without opening anything: the table renders group
+  headers, and the button tints while grouping is on.
+
+- **Clear tags is reachable from the table toolbar**, instead of only from
+  EDITOR. Same operation, unchanged in scope: modeled text fields only, cover
+  art and DJ cue points kept, and staged as a preview so Apply/Discard still
+  gates it. It sits at the end of the row behind a divider, because everything
+  to its left configures the view while this one acts on the selection.
+
 - **The player row now appears with a track and leaves with it.** It used to be
   revealed on the first playback and then stay for the rest of the session,
   spending a footer row on a bar reading "No track loaded" — deliberate, so a
