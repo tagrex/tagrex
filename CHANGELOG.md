@@ -96,6 +96,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A transform that changes nothing now says so**, instead of reporting
+  `TypeError: Cannot read properties of null (reading 'changes')`. The message
+  was already written; it just couldn't be reached. An empty plan makes the
+  preview leave the diff state, which clears the staged plan, and the line that
+  builds the toast was still reading it. Both the rule chain and the group
+  checklist reported it. (#145)
+
 - **The Groups popover was clipped by the panel it opens in.** It is
   right-aligned like every other menu of its kind, which suits a button near
   the right edge but not this one, at the left of a narrow column — the menu

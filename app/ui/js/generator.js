@@ -12,7 +12,6 @@ import { currentFieldValue } from "./editor.js";
 import {
   actionGroups,
   groupBy,
-  previewPlan,
   setActionGroups,
   builtinGroups,
   setBuiltinGroups,
@@ -413,22 +412,26 @@ async function previewTransform() {
     return;
   }
   try {
-    setPreviewPlan(await invoke("preview_transform", {
+    // Reported from the plan just built, not from the staged one (#145): an
+    // empty plan makes renderPreview leave the diff state, which clears the
+    // staged plan out from under the message below.
+    const plan = await invoke("preview_transform", {
       paths,
       rules: transformRules,
       scope: el("transform-scope").value,
-    }));
+    });
+    setPreviewPlan(plan);
     // A filename or extension transform is a rename; a tag transform is an edit.
     // Either way it applies through the normal preview/apply/undo path.
     setPreviewSource(["filename", "fileext"].includes(el("transform-scope").value)
       ? "rename"
       : "transform");
-    hooks.renderPreview(previewPlan);
+    hooks.renderPreview(plan);
     toast(
-      previewPlan.changes.length
-        ? `Previewing ${previewPlan.changes.length} file(s) — click Apply`
+      plan.changes.length
+        ? `Previewing ${plan.changes.length} file(s) — click Apply`
         : "These rules change nothing on the selection",
-      previewPlan.changes.length === 0
+      plan.changes.length === 0
     );
   } catch (e) {
     toast(String(e), true);
@@ -568,22 +571,25 @@ async function runTickedGroups() {
     return;
   }
   try {
-    setPreviewPlan(await invoke("preview_transform_groups", {
+    // Same as the single-chain preview (#145): report from this plan, not the
+    // staged one, which an empty result clears.
+    const plan = await invoke("preview_transform_groups", {
       paths,
       groups: groups.map((g) => ({ name: g.name, scope: g.scope, rules: (g.rules || []).map(ruleForGroup) })),
-    }));
+    });
+    setPreviewPlan(plan);
     // A run that renames has to apply through the rename path; one that only
     // edits tags through the transform path. Mixed, rename wins — it is the
     // stricter of the two.
     setPreviewSource(groups.some((g) => ["filename", "fileext"].includes(g.scope))
       ? "rename"
       : "transform");
-    hooks.renderPreview(previewPlan);
+    hooks.renderPreview(plan);
     toast(
-      previewPlan.changes.length
-        ? `Previewing ${previewPlan.changes.length} file(s) — click Apply`
+      plan.changes.length
+        ? `Previewing ${plan.changes.length} file(s) — click Apply`
         : "These groups change nothing on the selection",
-      previewPlan.changes.length === 0
+      plan.changes.length === 0
     );
   } catch (e) {
     toast(String(e), true);
