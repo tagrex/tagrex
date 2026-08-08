@@ -15,12 +15,81 @@
 
 ---
 
-> **Status: early release (0.1.x).** The core editor works — table editing,
-> bidirectional masks, text transforms, online lookups, and transactional undo.
-> Install builds for macOS (Apple Silicon), Windows, and Linux are on the
-> [Releases](https://github.com/tagrex/tagrex/releases) page. Not yet 1.0, so
-> expect rough edges — bug reports and feedback are welcome. The design is written
-> up in [docs/architecture.md](docs/architecture.md).
+> **Status: 0.3.x.** Usable day to day: table editing, rename masks, text
+> transforms, online lookups, cover art, duplicate detection, exports, and a
+> transactional undo journal. Not 1.0, so expect rough edges — bug reports and
+> feedback are welcome. The design is written up in
+> [docs/architecture.md](docs/architecture.md); user-visible changes are in
+> [CHANGELOG.md](CHANGELOG.md).
+
+## Install
+
+Builds are on the [Releases](https://github.com/tagrex/tagrex/releases) page.
+
+| Platform | Architectures | Package |
+| --- | --- | --- |
+| macOS | Apple Silicon | `.dmg` |
+| Windows | x86-64, ARM64 | `.exe` installer |
+| Linux | x86-64, ARM64 | `.deb`, `.rpm` |
+
+Intel Macs are not built — Apple Silicon only.
+
+## What it does
+
+**The table is the subject.** Files load into a spreadsheet-style table with
+configurable tag columns, grouping by any modeled field, filtering (substring or
+regex, optionally field-scoped as `artist:aphex`) and saved filter/sort presets.
+Selection is first-class: click, ⌘/Ctrl, Shift ranges, keyboard. Tag cells edit
+in place.
+
+**Nothing is written until you look at it.** Every mutating operation — rename,
+move, tag edit, transform, import, cover embed — produces a change plan that is
+rendered as a diff *into the table itself*, with a per-row apply scope and an
+Apply/Discard bar. Applying goes through a transactional executor with a
+persistent SQLite undo journal, so a batch survives an application restart and
+can still be rolled back.
+
+**Modes**, each a verb applied to that table:
+
+- **TAGGER** — edit tags by hand, or pull them from Discogs (personal token) or
+  MusicBrainz. Paged search, release cards with cover browser and tracklist,
+  content-based candidate matching plus exact ISRC matching, auto-align and
+  auto-numbering on import.
+- **RENAMER** — rename files and reorganize them into folders from a mask
+  (`%artist% - %title%`), with conditional `[...]` sections, zero-padding and
+  `%field:width%`. Folder moves create and clean up directories, and same-named
+  sidecar files (`.lrc`, `.cue`, per-track covers…) travel with the track.
+- **GENERATOR** — text transforms: case conversion, find/replace, remove
+  diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key
+  notation. Chains can be saved as named action groups and re-run as one plan.
+- **DEDUPLICATOR** — read-only scan for likely duplicates by a chosen criterion.
+- **EXPORTER** — M3U playlists, CSV, HTML, XML, and mask-based reports.
+
+**Cover art** — fetch from a provider, embed, export, resize on embed, save
+`folder.jpg` next to the tracks, or drag an image onto the window.
+
+**A preview player** — gapless playback with prev/next, a three-state repeat and
+volume, for checking that a file is what its tags claim.
+
+**Vinyl-aware** — side letters map to disc numbers (`A1` → disc 1, track 1)
+rather than being stored verbatim, with a `MediaType` tag, a render-only
+`%side%` mask placeholder and a derived Position column.
+
+**Formats** — MP3, FLAC, Ogg Vorbis, Opus, Speex, M4A/MP4, AAC, AIFF, WAV,
+Musepack, Monkey's Audio, WavPack. ID3v2 writes go through the concrete tag type
+so DJ cue points, ratings and ReplayGain frames survive a round-trip.
+
+**Comfort** — light/dark/auto themes, a bundled IBM Plex type set so text renders
+identically on every OS, adjustable table density, and a Settings › LAB section
+for typography still being trialled.
+
+## Not yet
+
+- **Parsing tags out of filenames.** The mask grammar is bidirectional in the
+  core and `%skip%` exists for it, but only the render direction (tags →
+  filename) is exposed in the UI.
+- **A waveform seek bar**, lyrics, multi-value fields, AcoustID fingerprinting,
+  CUE import/export, and a multilingual UI.
 
 ## Motivation
 
@@ -36,34 +105,40 @@ machines, ARM Windows builds, x86 emulation. TagRex aims to remove that chain �
 one free, open-source editor with the same core workflow on Windows, macOS,
 and Linux.
 
-## Planned features
-
-- Spreadsheet-style table editing with multi-select and inline edits
-- Live preview of every batch operation before anything is written
-- Bidirectional masks: rename files from tags and parse tags from filenames
-  with a single pattern grammar (`%artist% - %title%`)
-- Text transforms: case conversion, find and replace, regular expressions
-- Transactional apply with a persistent undo journal — batch renames and tag
-  writes survive an application restart and can be rolled back
-- Online metadata sources as plugins: Discogs (personal token) and MusicBrainz
-  first, more sources contributed over time
-- Cover art: fetch, embed, export
-- Formats at launch: MP3 (ID3v2.3/2.4), FLAC and OGG (Vorbis Comments),
-  M4A/MP4
-
 ## Non-goals
 
 - **Not an auto-tagger.** TagRex is a precision tool for people who want to see
   and control every change. For fully automatic DJ-library tagging, see the
   excellent [One Tagger](https://onetagger.github.io/).
-- **Not a music player or library manager.** It edits metadata and filenames;
-  it does not maintain a database of your collection.
+- **Not a library manager.** The built-in player is there to check a file, not
+  to listen to a collection; TagRex keeps no database of your music and no
+  playback history.
 - **Not an audio processor.** No format conversion, no ReplayGain analysis
   (at least initially — see the architecture doc for what is deferred).
 
+## Build from source
+
+Needs a Rust toolchain and the Tauri CLI. **Node is not required** — the
+frontend is static HTML/CSS/JS with no build step.
+
+```bash
+cargo install tauri-cli --version "^2"
+cargo tauri build
+```
+
+For a faster iteration build that skips the installer packaging:
+
+```bash
+cargo tauri build --debug --bundles app
+```
+
+Linux additionally needs the usual WebKitGTK development packages; see the
+[Tauri prerequisites](https://tauri.app/start/prerequisites/).
+
 ## Tech stack
 
-Rust core ([lofty](https://github.com/Serial-ATA/lofty-rs) for tag I/O) with a
+Rust core ([lofty](https://github.com/Serial-ATA/lofty-rs) for tag I/O,
+[rodio](https://github.com/RustAudio/rodio)/Symphonia for playback) with a
 [Tauri](https://tauri.app/) shell. See
 [docs/architecture.md](docs/architecture.md) for the module layout and the
 reasoning behind it.
