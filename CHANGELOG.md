@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-08
+
 ### Added
 
 - **The player grew the controls it was missing: Previous, Next, Repeat and
