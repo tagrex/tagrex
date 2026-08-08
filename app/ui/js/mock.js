@@ -6,6 +6,11 @@
 // command the frontend sends, closely enough to drive the interface. It is NOT
 // a second implementation of the backend: anything subtle has to be checked in
 // the real app.
+//
+// It reaches for two things the real UI owns — a file-name helper and the
+// vinyl-position parser — because it fakes what the backend derives from them.
+import { fileName } from "./dom.js";
+import { parseVinylPosition } from "./vinyl.js";
 
 // Browser-only fake of the native player: a wall-clock timer advances position,
 // auto-advances to the queued `next` on end, and reports status — enough to

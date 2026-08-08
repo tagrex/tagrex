@@ -5,18 +5,41 @@ import { el, toast, fileName, escapeHtml, ico, confirmDialog } from "./js/dom.js
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
 import { hooks } from "./js/hooks.js";
-import { allColumnKeys, columnLabel, populateGroupMenu, setGroupBy } from "./js/columns.js";
+import { vinylPositionOf } from "./js/vinyl.js";
+import "./js/dragdrop.js";
+import "./js/tablegestures.js";
+import "./js/renamer.js";
+import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
+import { refreshDeduplicator, runDuplicateScan } from "./js/dedup.js";
+import {
+  chooseCover,
+  embedCoverFile,
+  embedCoverFromPath,
+  embedExternalCover,
+  exportCover,
+  onCoverChosen,
+  previewClearTags,
+  previewCoverRemove,
+  refreshCoverWell,
+} from "./js/cover.js";
+import {
+  allColumnKeys,
+  columnLabel,
+  columnWidth,
+  loadColumnWidths,
+  loadColumns,
+  populateGroupMenu,
+  renderColumnsMenu,
+  renderTableHead,
+  setGroupBy,
+} from "./js/columns.js";
 import { dropGroupKey, folderGroupLabel, groupKeyOf, groupLabel } from "./js/grouping.js";
 import { loadSavedToken, searchBusy, searchPerPage, stopLoading } from "./js/online.js";
 import {
-  addTransformRule,
   initActionGroups,
   initBuiltinGroups,
-  numberTracks,
-  previewTransform,
   refreshGenerator,
   renderGroupsMenu,
-  splitVinylSides,
 } from "./js/generator.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
 import {
@@ -31,7 +54,14 @@ import {
 
 // Hand the table-side refreshers to the panels that were split out (#143); see
 // js/hooks.js for why this seam exists and when it goes away.
-Object.assign(hooks, { renderTracks, renderPreview, previewEdits, refreshCoverWell });
+Object.assign(hooks, {
+  renderTracks,
+  renderPreview,
+  previewEdits,
+  refreshCoverWell,
+  openDrop,
+  updateSortIndicators,
+});
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
 import {
   valueFont,
@@ -86,42 +116,6 @@ const COLUMNS_STORAGE_KEY = "tagrex.columns";
 const COLUMN_WIDTHS_STORAGE_KEY = "tagrex.colWidths";
 const COLUMN_MIN_WIDTH = 48;
 
-// Sensible starting width for a column the user hasn't resized yet. The file
-// name is the widest; short numeric/code fields start narrow.
-function defaultColumnWidth(key) {
-  if (key === "file") return 240;
-  if (["year", "track", "tracktotal", "disc", "bpm", "key"].includes(key)) return 70;
-  if (["artist", "title", "album", "albumartist", "composer"].includes(key)) return 160;
-  return 130;
-}
-
-function columnWidth(key) {
-  return columnWidths[key] || defaultColumnWidth(key);
-}
-
-// View state (does not change what's on disk). Sorting reorders the `tracks`
-// array itself so position-based mapping (rename masks, Discogs import) follows
-// the visible order; filtering only hides rows.
-// Filtering (#44). `filterText` is the raw query as typed (case is significant
-// in regex/case-sensitive mode, so it is NOT pre-lowercased). Regex and
-// case-sensitivity are persisted display prefs. A field-scoped query
-// (`artist:aphex`) narrows the match to one column. `filterQuery` is the parsed
-// form (re-derived by recompileFilter whenever the text or flags change) so the
-// per-row test stays cheap; `filterError` flags a regex that failed to compile.
-// The persisted filter-mode flags are read here, at the same point in startup
-// as before, and pushed into the state module.
-setFilterRegex(regexModeEnabled());
-setFilterCase(caseSensitiveEnabled());
-const PRESETS_STORAGE_KEY = "tagrex.filterPresets";
-setGroupByValue(groupByPref());
-// The dropped directories of a file-set drag-and-drop (#127), or null for an
-// ordinary library. When set, the table's "drop" grouping buckets each track
-// under the dropped folder it came from, with loose files under "Files".
-// The root of the currently open session (the opened/dropped folder, or a
-// file-set's common ancestor). Folder-group headers show the path relative to
-// it — starting with the root's own name — so nested folders read like a tree
-// (#129), matching what a reference tagger shows.
-
 // ---- elements ----
 const rootInput = el("root");
 const tracksBody = el("tracks-body");
@@ -131,8 +125,6 @@ const previewBtn = el("preview");
 const previewEditsBtn = el("preview-edits");
 const undoBtn = el("undo");
 const selectAll = el("select-all");
-const coverWell = el("cover-well");
-const coverFileInput = el("cover-file");
 const statusSel = el("status-sel");
 
 // ---- helpers ----
@@ -210,191 +202,6 @@ function updateSortIndicators() {
     ind.innerHTML =
       th.dataset.sort === sortKey ? ico(sortDir > 0 ? "tri-up" : "tri-down") : "";
   });
-}
-
-// ---- vinyl side notation view (#106) ----
-// Whether a media-type value denotes a side-based medium (vinyl / cassette).
-// Mirrors `is_side_medium` in the mask backend.
-function isSideMedium(media) {
-  const m = (media || "").toLowerCase();
-  return ["vinyl", "lp", "shellac", "cassette", "tape", '"', "acetate"].some((k) => m.includes(k));
-}
-
-// The side letter for a disc on side-based media (disc 1 → A, …, 26 → Z), else
-// null. Mirrors `side_letter_for` in the backend.
-function sideLetterOf(media, disc) {
-  if (!isSideMedium(media)) return null;
-  const d = parseInt(disc, 10);
-  return d >= 1 && d <= 26 ? String.fromCharCode(64 + d) : null;
-}
-
-// The reconstructed position shown in the Position column: vinyl/cassette get the
-// side letter + track ("B" + "3" = "B3"); everything else just the track number.
-// Reads pending edits first so it tracks staged changes to media/disc/track.
-function vinylPositionOf(track, pending) {
-  const get = (key) => (pending && pending.has(key) ? pending.get(key) : track.tags[key] || "");
-  const letter = sideLetterOf(get("media"), get("disc"));
-  const trackNo = get("track");
-  return letter ? letter + trackNo : trackNo;
-}
-
-// Rebuild the sortable column headers from `visibleColumns` (the sel + play
-// headers are static so #select-all and its listener survive).
-function renderTableHead() {
-  const row = el("tracks").querySelector("thead tr");
-  row.querySelectorAll("th.sortable").forEach((th) => th.remove());
-  for (const key of visibleColumns) {
-    const th = document.createElement("th");
-    th.dataset.sort = key;
-    th.className = "sortable";
-    th.style.width = `${columnWidth(key)}px`;
-    // A drag grip on the right edge resizes the column; a label span keeps the
-    // header text clipping (ellipsis) independent of the grip.
-    th.innerHTML =
-      `<span class="th-label">${escapeHtml(columnLabel(key))}<span class="sort-ind"></span></span>` +
-      `<span class="col-resize" data-key="${escapeHtml(key)}"></span>`;
-    row.appendChild(th);
-  }
-  updateSortIndicators();
-}
-
-function saveColumns() {
-  try {
-    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
-  } catch (e) {
-    /* localStorage unavailable — columns just won't persist */
-  }
-}
-
-function saveColumnWidths() {
-  try {
-    localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(columnWidths));
-  } catch (e) {
-    /* localStorage unavailable — widths just won't persist */
-  }
-}
-
-// Load saved widths; keep only known keys with a sane positive number.
-function loadColumnWidths() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY));
-    if (saved && typeof saved === "object") {
-      const known = new Set(allColumnKeys());
-      for (const [key, w] of Object.entries(saved)) {
-        if (known.has(key) && Number.isFinite(w) && w >= COLUMN_MIN_WIDTH) {
-          columnWidths[key] = Math.round(w);
-        }
-      }
-    }
-  } catch (e) {
-    /* keep defaults */
-  }
-}
-
-// Load the saved column choice; drop unknown keys and force "file" first.
-function loadColumns() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(COLUMNS_STORAGE_KEY));
-    if (Array.isArray(saved) && saved.length) {
-      const known = new Set(allColumnKeys());
-      const cols = saved.filter((k) => known.has(k) && k !== "file");
-      cols.unshift("file");
-      if (cols.length > 1) setVisibleColumns(cols);
-    }
-  } catch (e) {
-    /* keep defaults */
-  }
-}
-
-// Apply a new column set: persist, rebuild the header, repaint rows.
-function applyColumns(cols) {
-  const deduped = [...new Set(cols)].filter((k) => k !== "file");
-  setVisibleColumns(["file", ...deduped]);
-  saveColumns();
-  renderTableHead();
-  renderTracks();
-}
-
-// Reset columns to the default set, visibility, and widths (#91).
-function resetColumns() {
-  setColumnWidths({});
-  try {
-    localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
-  } catch (e) {
-    /* nothing persisted to clear */
-  }
-  applyColumns(DEFAULT_COLUMNS.slice()); // persists + rebuilds head/rows
-  renderColumnsMenu();
-}
-
-
-// ---- column picker popover (#43) ----
-
-function renderColumnsMenu() {
-  const menu = el("columns-menu");
-  menu.innerHTML = "";
-  for (const key of visibleColumns) menu.appendChild(colMenuRow(key, true));
-  const hidden = allColumnKeys().filter((k) => !visibleColumns.includes(k));
-  if (hidden.length) {
-    const sep = document.createElement("div");
-    sep.className = "col-menu-sep";
-    sep.textContent = "Hidden";
-    menu.appendChild(sep);
-    for (const key of hidden) menu.appendChild(colMenuRow(key, false));
-  }
-  // Reset-to-default footer (#91): default set, order, visibility, and widths.
-  const foot = document.createElement("div");
-  foot.className = "col-menu-foot";
-  const reset = document.createElement("button");
-  reset.type = "button";
-  reset.className = "text-btn";
-  reset.textContent = "Reset to default";
-  reset.title = "File · Artist · Title · Album · Year, default widths";
-  reset.addEventListener("click", resetColumns);
-  foot.appendChild(reset);
-  menu.appendChild(foot);
-}
-
-function colMenuRow(key, visible) {
-  const isFile = key === "file";
-  const row = document.createElement("div");
-  row.className = "col-menu-row";
-  row.dataset.key = key;
-
-  const grip = document.createElement("span");
-  grip.className = "col-grip";
-  grip.innerHTML = ico("grip");
-  if (visible && !isFile) {
-    grip.title = "Drag to reorder";
-    enablePointerReorder(grip, row, el("columns-menu"), ".col-menu-row", (dragged, target, below) => {
-      if (target === "file" || !visibleColumns.includes(target)) return;
-      const order = visibleColumns.filter((k) => k !== "file");
-      order.splice(order.indexOf(dragged), 1);
-      let to = order.indexOf(target);
-      if (below) to += 1;
-      order.splice(to, 0, dragged);
-      applyColumns(order);
-      renderColumnsMenu();
-    });
-  } else {
-    grip.style.visibility = "hidden";
-  }
-
-  const box = document.createElement("input");
-  box.type = "checkbox";
-  box.checked = visible;
-  box.disabled = isFile; // file is structural — always shown, first
-  box.addEventListener("change", () => {
-    applyColumns(box.checked ? [...visibleColumns, key] : visibleColumns.filter((k) => k !== key));
-    renderColumnsMenu();
-  });
-
-  const label = document.createElement("span");
-  label.className = "col-menu-label";
-  label.textContent = columnLabel(key) + (isFile ? " (always shown)" : "");
-
-  row.append(grip, box, label);
-  return row;
 }
 
 // ---- filter mode + saved presets (#44) ----
@@ -837,83 +644,6 @@ function showView(which) {
 }
 
 // ---- duplicate finder (#40): a read-only library scan, grouped ----
-async function runDuplicateScan() {
-  const criterion = el("dup-criterion").value;
-  el("dup-summary").textContent = "Scanning…";
-  el("dup-results").innerHTML = "";
-  try {
-    const groups = await invoke("find_duplicates", { criterion });
-    renderDuplicates(groups);
-  } catch (e) {
-    el("dup-summary").textContent = "";
-    toast(String(e), true);
-  }
-}
-
-function humanSize(bytes) {
-  if (!bytes) return "";
-  const units = ["B", "KB", "MB", "GB"];
-  let n = bytes;
-  let i = 0;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
-    i += 1;
-  }
-  return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
-}
-
-function mmss(secs) {
-  if (!secs) return "";
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
-
-// Entering DEDUPLICATOR with no scan yet shows a prompt; a prior scan's results
-// persist across mode switches (#118).
-function refreshDeduplicator() {
-  const results = el("dup-results");
-  if (!results.querySelector("table, .empty")) {
-    results.innerHTML = `<p class="empty inert-panel">Pick a key in the panel and <b>Scan the library</b> to find duplicates.</p>`;
-  }
-}
-
-function renderDuplicates(groups) {
-  const results = el("dup-results");
-  const fileCount = groups.reduce((n, g) => n + g.files.length, 0);
-  el("dup-summary").textContent = groups.length
-    ? `${groups.length} set(s) · ${fileCount} files`
-    : "No duplicates found";
-  if (!groups.length) {
-    results.innerHTML = `<p class="empty inert-panel">Nothing matched — the library looks clean by this criterion.</p>`;
-    return;
-  }
-  // Same .files table shell as the main view, so the read-only result set reads
-  // as the workspace in a grouped state (design A7). Group rows carry an
-  // "N copies" badge + the matched key.
-  const rows = groups
-    .map((g) => {
-      const head = `<tr class="dup-group"><td colspan="6"><span class="dup-badge">${g.files.length} copies</span><span class="dup-key">${escapeHtml(g.key)}</span></td></tr>`;
-      const files = g.files
-        .map(
-          (f) => `<tr>
-            <td class="file" title="${escapeHtml(f.path)}">${escapeHtml(fileName(f.path))}</td>
-            <td>${escapeHtml(f.artist)}</td>
-            <td>${escapeHtml(f.title)}</td>
-            <td>${escapeHtml(f.album)}</td>
-            <td class="num">${mmss(f.duration_secs)}</td>
-            <td class="num dup-note">${humanSize(f.size_bytes)}${f.bitrate_kbps ? ` · ${f.bitrate_kbps}k` : ""}</td>
-          </tr>`,
-        )
-        .join("");
-      return head + files;
-    })
-    .join("");
-  results.innerHTML = `<table class="files dup-results-table">
-    <thead><tr><th>File</th><th>Artist</th><th>Title</th><th>Album</th><th class="num">Length</th><th class="num">Size · Rate</th></tr></thead>
-    <tbody>${rows}</tbody></table>`;
-}
-
 function discardPreview() {
   // A preview built from the pending-edits buffer (inline edits + Discogs
   // import) owns that buffer, so discarding it must also drop those staged
@@ -1100,152 +830,6 @@ async function openDrop(paths) {
   }
 }
 
-async function preview() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select at least one track", true);
-    return;
-  }
-  try {
-    setPreviewPlan(await invoke("preview_rename", { mask: el("mask").value, paths }));
-    setPreviewSource("rename");
-    renderPreview(previewPlan);
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// FROM NAME's pattern and its replacement table (#141). Both are the user's
-// working state for the panel, not backend settings, so they live in
-// localStorage beside the other persisted panel prefs — a replacement table
-// retyped every session would defeat the point of having one.
-const FROM_NAME_MASK_STORAGE_KEY = "tagrex.fromNameMask";
-const FROM_NAME_REPL_STORAGE_KEY = "tagrex.fromNameReplacements";
-// Separators are what names carry instead of spaces, so the table starts with
-// the one everybody needs; it's an ordinary row and can be deleted.
-const DEFAULT_REPLACEMENTS = [{ from: "_", to: " " }];
-let nameReplacements = DEFAULT_REPLACEMENTS.slice();
-
-function loadFromNamePrefs() {
-  try {
-    const mask = localStorage.getItem(FROM_NAME_MASK_STORAGE_KEY);
-    if (mask) el("from-name-mask").value = mask;
-    const stored = localStorage.getItem(FROM_NAME_REPL_STORAGE_KEY);
-    if (stored) {
-      const rows = JSON.parse(stored);
-      // An empty table is a real choice (the user deleted every row), so only
-      // a malformed value falls back to the default.
-      if (Array.isArray(rows)) {
-        nameReplacements = rows.map((r) => ({ from: String(r.from || ""), to: String(r.to || "") }));
-      }
-    }
-  } catch (e) {
-    /* unreadable or unavailable — fall back to the defaults */
-  }
-  renderReplacements();
-}
-
-function saveFromNamePrefs() {
-  try {
-    localStorage.setItem(FROM_NAME_MASK_STORAGE_KEY, el("from-name-mask").value);
-    localStorage.setItem(FROM_NAME_REPL_STORAGE_KEY, JSON.stringify(nameReplacements));
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-// One row per replacement, rebuilt whenever the list changes. Typing in a row
-// updates the list in place (no re-render, or the caret would jump).
-function renderReplacements() {
-  const box = el("repl-rows");
-  box.innerHTML = nameReplacements
-    .map(
-      (row, i) => `
-      <div class="repl-row" data-index="${i}">
-        <input class="repl-from" type="text" placeholder="find" spellcheck="false" value="${escapeHtml(row.from)}" />
-        <span class="repl-arrow" aria-hidden="true">→</span>
-        <input class="repl-to" type="text" placeholder="replace with" spellcheck="false" value="${escapeHtml(row.to)}" />
-        <button class="icon repl-del" type="button" title="Remove" aria-label="Remove"><svg class="ico"><use href="#i-close"/></svg></button>
-      </div>`,
-    )
-    .join("");
-  if (!nameReplacements.length) {
-    box.innerHTML = `<div class="repl-empty muted">Values go into the tags exactly as the name spells them.</div>`;
-  }
-}
-
-// FROM NAME (#139): read each selected file's own name back into tags — the
-// extract direction of the mask RENAMER renders with. The result is an ordinary
-// tag plan, so it lands in the same in-table diff and applies/undoes like any
-// other change.
-async function previewTagsFromName() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select at least one track", true);
-    return;
-  }
-  try {
-    const plan = await invoke("preview_tags_from_name", {
-      mask: el("from-name-mask").value,
-      paths,
-      replacements: nameReplacements,
-    });
-    // Distinguish "nothing to do" from a silent no-op: with this feature an
-    // empty plan usually means the pattern doesn't fit the names.
-    if (plan.changes.length === 0) {
-      toast("No selected name gives this pattern anything new", true);
-      return;
-    }
-    setPreviewPlan(plan);
-    setPreviewSource("fromname");
-    renderPreview(previewPlan);
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// The live read-out under the pattern box: what the mask pulls out of the first
-// selected file, tags-on-disk irrelevant. Extraction stays in Rust — one
-// grammar, one implementation (mask.rs) — so this is a per-keystroke round trip,
-// debounced by its caller.
-async function refreshNameProbe() {
-  const box = el("from-name-probe");
-  if (!box) return;
-  const path = selectedPaths()[0];
-  if (!path) {
-    box.innerHTML = `<div class="probe-miss">Select a track to see what the pattern reads.</div>`;
-    return;
-  }
-  try {
-    const probe = await invoke("probe_tags_from_name", {
-      mask: el("from-name-mask").value,
-      path,
-      replacements: nameReplacements,
-    });
-    const subject = `<div class="probe-subject">${escapeHtml(probe.subject)}</div>`;
-    if (!probe.matched || probe.fields.length === 0) {
-      box.innerHTML = `${subject}<div class="probe-miss">This name doesn't fit the pattern.</div>`;
-      return;
-    }
-    const rows = probe.fields
-      .map(
-        ([field, value]) =>
-          `<div class="probe-row"><span class="probe-field">${escapeHtml(columnLabel(field))}</span><span class="probe-value">${escapeHtml(value)}</span></div>`,
-      )
-      .join("");
-    box.innerHTML = subject + rows;
-  } catch (e) {
-    // A pattern that can't parse at all — say so where the result would be.
-    box.innerHTML = `<div class="probe-miss">${escapeHtml(String(e))}</div>`;
-  }
-}
-
-let nameProbeTimer = null;
-function scheduleNameProbe() {
-  if (el("subtab-filename").hidden) return;
-  clearTimeout(nameProbeTimer);
-  nameProbeTimer = setTimeout(refreshNameProbe, 180);
-}
 
 async function previewEdits() {
   const list = [];
@@ -1320,305 +904,6 @@ async function undo() {
   }
 }
 
-// ---- cover art ----
-function chooseCover() {
-  if (selectedPaths().length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
-    return;
-  }
-  coverFileInput.value = ""; // allow re-picking the same file
-  coverFileInput.click();
-}
-
-async function onCoverChosen() {
-  const file = coverFileInput.files[0];
-  if (file) await embedCoverFile(file);
-}
-
-// Read an image File, base64-encode it, and preview embedding it as the front
-// cover of the selection. Used by the file picker and the well's HTML5 drop
-// (browser-dev). In the packaged app a dropped cover arrives as a path instead
-// — see embedCoverFromPath (#133).
-async function embedCoverFile(file) {
-  if (!file.type.startsWith("image/")) {
-    toast("Drop an image file", true);
-    return;
-  }
-  if (selectedPaths().length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
-    return;
-  }
-  const dataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-  // dataUrl is "data:<mime>;base64,<data>"
-  const comma = dataUrl.indexOf(",");
-  const mime = dataUrl.slice(5, dataUrl.indexOf(";"));
-  const data_base64 = dataUrl.slice(comma + 1);
-  await embedCoverDto({ mime, data_base64 });
-}
-
-// Embed an image dropped onto the cover well in the packaged app (#133): the
-// drag-drop event gives a path, which the backend reads into a cover DTO.
-async function embedCoverFromPath(path) {
-  if (selectedPaths().length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
-    return;
-  }
-  try {
-    const cover = await invoke("read_cover_image", { path });
-    await embedCoverDto(cover);
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// Preview embedding a cover DTO ({ mime, data_base64 }) as the front cover of
-// the current selection — the shared tail of every cover-embed source (picker,
-// HTML5 drop, native drop, and the release card).
-async function embedCoverDto(cover) {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
-    return;
-  }
-  try {
-    setPreviewPlan(await invoke("preview_cover_embed", { paths, cover }));
-    setPreviewSource("cover");
-    renderPreview(previewPlan);
-    toast(
-      previewPlan.changes.length
-        ? `Previewing cover on ${previewPlan.changes.length} file(s)`
-        : "Selected files already have this cover"
-    );
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// Preview removing the embedded cover from the selection, through the normal
-// preview/apply/undo path.
-async function previewCoverRemove() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks whose cover to remove first", true);
-    return;
-  }
-  try {
-    setPreviewPlan(await invoke("preview_cover_remove", { paths }));
-    setPreviewSource("cover");
-    renderPreview(previewPlan);
-    toast(
-      previewPlan.changes.length
-        ? `Previewing cover removal on ${previewPlan.changes.length} file(s)`
-        : "None of the selected files have a cover"
-    );
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// Preview wiping every text tag from the selection for a fresh start (#94),
-// through the normal preview/apply/undo path. The cover and DJ cue points are
-// kept; the diff is the review, and undo reverses it.
-async function previewClearTags() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks whose tags to clear first", true);
-    return;
-  }
-  try {
-    setPreviewPlan(await invoke("preview_clear_tags", { paths }));
-    setPreviewSource("clear");
-    renderPreview(previewPlan);
-    toast(
-      previewPlan.changes.length
-        ? `Previewing tag clear on ${previewPlan.changes.length} file(s)`
-        : "None of the selected files have tags to clear"
-    );
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// ---- cover well (#editor design pass) ----
-// A thumbnail + state + actions that replaces the two bare Embed/Export buttons.
-// Reflects the selection's cover state: none / one shared / mixed.
-async function refreshCoverWell() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    coverWell.className = "cover-well empty";
-    coverWell.innerHTML = `<div class="cover-thumb inert"></div>
-      <div class="cover-body"><div class="cover-title">No selection</div>
-      <div class="cover-hint">Select tracks to edit their cover.</div></div>`;
-    return;
-  }
-  try {
-    const summary = await invoke("read_cover_summary", { paths });
-    renderCoverWell(summary);
-    await showExternalCoverAction(paths);
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// The external cover (folder.jpg/cover.jpg next to the tracks), when present —
-// offered as a one-click embed under the well (#41).
-let externalCover = null;
-
-async function showExternalCoverAction(paths) {
-  externalCover = null;
-  let found;
-  try {
-    found = await invoke("read_external_cover", { paths });
-  } catch (e) {
-    return; // best-effort; the well already rendered
-  }
-  if (!found) return;
-  externalCover = found;
-  // Join the action row so it flows with Replace…/Remove/Export as an equal
-  // button (#134), not a full-width slab. Falls back to the body in the no-cover
-  // state, which has no action row.
-  const host = coverWell.querySelector(".cover-actions") || coverWell.querySelector(".cover-body");
-  if (!host) return;
-  const note = document.createElement("button");
-  note.className = "btn cover-external";
-  note.dataset.cover = "external";
-  note.textContent = "Use folder image";
-  note.title = "Embed the cover.jpg / folder.jpg sitting next to these tracks";
-  host.appendChild(note);
-}
-
-// Embed the external cover file (folder.jpg/cover.jpg) into the selection (#41),
-// through the same preview/apply/undo path as any other cover.
-async function embedExternalCover() {
-  if (!externalCover) return;
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
-    return;
-  }
-  try {
-    setPreviewPlan(await invoke("preview_cover_embed", { paths, cover: externalCover }));
-    setPreviewSource("cover");
-    renderPreview(previewPlan);
-    toast(
-      previewPlan.changes.length
-        ? `Previewing folder image on ${previewPlan.changes.length} file(s) — click Apply`
-        : "Selected files already have this cover",
-    );
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-function coverThumbImg(cover, cls) {
-  return `<img class="cover-thumb${cls ? " " + cls : ""}" alt="front cover" src="data:${cover.mime};base64,${cover.data_base64}" />`;
-}
-
-function renderCoverWell(summary) {
-  const { total, with_cover, distinct, samples } = summary;
-  const n = total;
-  const drop = `<div class="cover-drop-cue">Drop image to embed in ${n} file(s)</div>`;
-
-  if (with_cover === 0) {
-    // No cover anywhere — the well itself is the click/drop target.
-    coverWell.className = "cover-well empty";
-    coverWell.innerHTML = `<div class="cover-thumb inert"></div>
-      <div class="cover-body">
-        <div class="cover-title">No cover</div>
-        ${drop}
-        <div class="cover-hint"><b>Embed cover…</b><br>or drag an image here</div>
-      </div>`;
-    return;
-  }
-
-  if (!distinct && samples.length === 1) {
-    // One cover shared across the whole selection.
-    coverWell.className = "cover-well";
-    coverWell.innerHTML = `${coverThumbImg(samples[0])}
-      <div class="cover-body">
-        <div class="cover-title">Front cover</div>
-        <div class="cover-meta">shared across ${n} file(s)</div>
-        ${drop}
-        <div class="cover-actions">
-          <button class="btn" data-cover="replace">Replace…</button>
-          <button class="btn" data-cover="remove">Remove</button>
-          <button class="btn" data-cover="export">Export</button>
-        </div>
-      </div>`;
-    return;
-  }
-
-  // Mixed — files carry different covers (or some have none). A small fan, never
-  // implying one shared image.
-  const fan = samples.map((c) => coverThumbImg(c)).join("");
-  coverWell.className = "cover-well";
-  coverWell.innerHTML = `<div class="cover-stack">${fan || '<div class="cover-thumb inert"></div>'}</div>
-    <div class="cover-body">
-      <div class="cover-title">Multiple covers</div>
-      <div class="cover-meta">${with_cover}/${n} with a cover</div>
-      ${drop}
-      <div class="cover-actions">
-        <button class="btn" data-cover="replace">Set one…</button>
-        <button class="btn" data-cover="remove">Remove all</button>
-        <button class="btn" data-cover="export">Export</button>
-      </div>
-    </div>`;
-}
-
-// Export the embedded cover of the selected files to disk (cover.<ext> next to
-// each file). Read-only for the audio: no preview/apply, it just writes.
-async function exportCover() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks whose cover to export first", true);
-    return;
-  }
-  try {
-    const result = await invoke("export_cover", { paths, basename: "cover" });
-    const wrote = result.written.length;
-    const skipped = result.skipped_no_cover.length;
-    if (wrote === 0) {
-      toast(
-        skipped ? "None of the selected files have an embedded cover" : "Nothing to export",
-        true
-      );
-      return;
-    }
-    const skipNote = skipped ? ` (${skipped} without a cover skipped)` : "";
-    toast(`Exported ${wrote} cover file(s)${skipNote}`);
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// ---- reorganize into folders (#37) ----
-// Builds the plan and shows it in the usual preview view, so the move is
-// applied (and undone) through exactly the same path as a rename.
-async function previewMove() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast("Select the tracks to move first", true);
-    return;
-  }
-  try {
-    setPreviewPlan(await invoke("preview_move", { mask: el("move-mask").value, paths }));
-    setPreviewSource("rename");
-    renderPreview(previewPlan);
-    toast(
-      previewPlan.changes.length
-        ? `Previewing move of ${previewPlan.changes.length} file(s) — click Apply`
-        : "Nothing to move (check the pattern's tags are set)",
-      previewPlan.changes.length === 0
-    );
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
 
 
 // ---- mode tabs ----
@@ -1794,128 +1079,10 @@ el("diff-show-old").addEventListener("change", (e) => {
 // ---- wire up ----
 el("open").addEventListener("click", openLibrary);
 el("browse").addEventListener("click", browseForFolder);
-// FROM NAME's pattern + replacement table come back from the last session (#141).
-loadFromNamePrefs();
 
-// ---- drag-and-drop onto the window to open folders/files (#127) ----
-// Tauri v2 intercepts OS file drops (dragDropEnabled) and re-emits them as
-// window events carrying absolute paths, so we listen for those rather than
-// HTML5 file DnD (which the webview suppresses). Enter/over/leave toggle the
-// drop-cue overlay; the drop hands the paths to the backend resolver.
-function showDropCue(on) {
-  document.body.classList.toggle("drag-active", on);
-}
-
-function isImagePath(p) {
-  return /\.(jpe?g|png|webp|gif|bmp|tiff?|avif|heic)$/i.test(p);
-}
-
-(function initWindowDrop() {
-  const event = window.__TAURI__ && window.__TAURI__.event;
-  if (event) {
-    event.listen("tauri://drag-enter", () => showDropCue(true));
-    event.listen("tauri://drag-over", () => showDropCue(true));
-    event.listen("tauri://drag-leave", () => showDropCue(false));
-    event.listen("tauri://drag-drop", (e) => {
-      showDropCue(false);
-      const paths = (e && e.payload && e.payload.paths) || [];
-      // A single dropped image has only one meaning — embed it as the cover of
-      // the selection (#133). No position hit-test: an image can't be "opened"
-      // as a library, so this is unambiguous and doesn't depend on fragile
-      // physical/logical-pixel coordinate conversion. Everything else opens.
-      if (paths.length === 1 && isImagePath(paths[0])) {
-        embedCoverFromPath(paths[0]);
-        return;
-      }
-      openDrop(paths);
-    });
-    return;
-  }
-  // Browser dev (no native shell): the OS can't hand us real paths, but wiring
-  // HTML5 DnD still lets the overlay and open flow be exercised against the
-  // mock. Drops on the cover well keep their own handler.
-  window.addEventListener("dragover", (e) => {
-    if (e.target.closest("#cover-well")) return;
-    e.preventDefault();
-    showDropCue(true);
-  });
-  window.addEventListener("dragleave", (e) => {
-    if (e.relatedTarget === null) showDropCue(false);
-  });
-  window.addEventListener("drop", (e) => {
-    if (e.target.closest("#cover-well")) return;
-    e.preventDefault();
-    showDropCue(false);
-    openDrop(Array.from(e.dataTransfer.files).map((f) => f.name));
-  });
-})();
-previewBtn.addEventListener("click", preview);
 previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
-// Cover well: action buttons (delegated) + drag-and-drop embed.
-coverWell.addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-cover]");
-  const act = btn ? btn.dataset.cover : coverWell.classList.contains("empty") ? "replace" : null;
-  if (act === "replace") chooseCover();
-  else if (act === "remove") previewCoverRemove();
-  else if (act === "export") exportCover();
-  else if (act === "external") embedExternalCover();
-});
-coverWell.addEventListener("dragover", (e) => {
-  e.preventDefault();
-  coverWell.classList.add("dragover");
-});
-coverWell.addEventListener("dragleave", (e) => {
-  if (!coverWell.contains(e.relatedTarget)) coverWell.classList.remove("dragover");
-});
-coverWell.addEventListener("drop", (e) => {
-  e.preventDefault();
-  coverWell.classList.remove("dragover");
-  const file = e.dataTransfer.files[0];
-  if (file) embedCoverFile(file);
-});
-el("transform-add").addEventListener("click", addTransformRule);
-el("transform-preview").addEventListener("click", previewTransform);
-el("autonum-run").addEventListener("click", numberTracks);
-el("vinyl-split").addEventListener("click", splitVinylSides);
-// Rule reorder is wired per-card in renderTransformRules via enablePointerReorder
-// (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
-el("move-preview").addEventListener("click", previewMove);
-
-// FROM NAME (#139): the probe follows the pattern as it's typed.
-el("from-name-preview").addEventListener("click", previewTagsFromName);
-el("from-name-mask").addEventListener("input", () => {
-  saveFromNamePrefs();
-  scheduleNameProbe();
-});
-
-// The replacement table (#141). Typing edits the row in place — re-rendering on
-// every keystroke would move the caret — and the list is what both the probe
-// and the preview send.
-el("repl-rows").addEventListener("input", (e) => {
-  const row = e.target.closest(".repl-row");
-  if (!row) return;
-  const entry = nameReplacements[Number(row.dataset.index)];
-  if (!entry) return;
-  if (e.target.classList.contains("repl-from")) entry.from = e.target.value;
-  if (e.target.classList.contains("repl-to")) entry.to = e.target.value;
-  saveFromNamePrefs();
-  scheduleNameProbe();
-});
-el("repl-rows").addEventListener("click", (e) => {
-  const del = e.target.closest(".repl-del");
-  if (!del) return;
-  nameReplacements.splice(Number(del.closest(".repl-row").dataset.index), 1);
-  renderReplacements();
-  saveFromNamePrefs();
-  scheduleNameProbe();
-});
-el("repl-add").addEventListener("click", () => {
-  nameReplacements.push({ from: "", to: "" });
-  renderReplacements();
-  el("repl-rows").querySelector(".repl-row:last-child .repl-from")?.focus();
-});
 el("fields-add").addEventListener("click", addCustomField);
 el("fields-add-toggle").addEventListener("click", openAddField);
 el("fields-add-cancel").addEventListener("click", closeAddField);
@@ -1939,7 +1106,6 @@ el("export-kind").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-fmt]");
   if (btn) setExportKind(btn.dataset.fmt);
 });
-coverFileInput.addEventListener("change", onCoverChosen);
 // TAGGER sub-tabs: ONLINE (a metadata source), EDITOR (tag fields + cover),
 // FROM NAME (the file's own name, #139) — three ways to the same outcome.
 function setSubtab(name) {
@@ -2410,113 +1576,6 @@ tracksBody.addEventListener("keydown", (e) => {
   }
 });
 
-// ---- resize the table / mode-panel split by dragging the divider ----
-// Mouse events (not a native splitter) for the same WKWebView reason as the row
-// reorder. The panel has a fixed flex-basis; dragging sets it in pixels.
-(function initSplitter() {
-  const splitter = el("col-splitter");
-  const modeCol = document.querySelector(".mode-col");
-  const workarea = document.querySelector(".workarea");
-  let dragging = false;
-
-  splitter.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    dragging = true;
-    document.body.classList.add("resizing");
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  });
-
-  function onMove(e) {
-    if (!dragging) return;
-    // Panel width = distance from the cursor to the right edge of the work area,
-    // clamped so neither column collapses.
-    const rect = workarea.getBoundingClientRect();
-    const width = Math.min(Math.max(rect.right - e.clientX, 240), rect.width - 360);
-    modeCol.style.flexBasis = `${Math.round(width)}px`;
-  }
-
-  function onUp() {
-    dragging = false;
-    document.body.classList.remove("resizing");
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
-  }
-
-  // Keep the panel within the work area when the window shrinks (#109). The
-  // splitter enforces this on drag, but without a resize clamp a panel that was
-  // wide (or the default 480 on a narrow window) is pushed off the right edge,
-  // clipping its toolbar. Mirror the splitter's clamp; only ever narrow.
-  function clampPanel() {
-    if (document.body.classList.contains("panel-collapsed")) return;
-    const rect = workarea.getBoundingClientRect();
-    if (rect.width === 0) return;
-    const max = Math.max(240, rect.width - 360);
-    if (modeCol.getBoundingClientRect().width > max) {
-      modeCol.style.flexBasis = `${Math.round(max)}px`;
-    }
-  }
-  window.addEventListener("resize", clampPanel);
-  clampPanel(); // in case the initial window is narrower than the default panel
-})();
-
-// ---- resize a table column by dragging its header grip (#76) ----
-// Delegated on the header (mousedown), because the sortable ths are rebuilt on
-// every column change (#43). Dragging past a threshold suppresses the header's
-// sort click. Same manual-mouse approach as the panel splitter (WKWebView).
-(function initColumnResize() {
-  const thead = el("tracks").querySelector("thead");
-  let key = null;
-  let startX = 0;
-  let startWidth = 0;
-  let moved = false;
-  let th = null;
-
-  thead.addEventListener("mousedown", (e) => {
-    const grip = e.target.closest(".col-resize");
-    if (!grip) return;
-    e.preventDefault();
-    e.stopPropagation(); // don't let the header treat this as a sort click
-    key = grip.dataset.key;
-    th = grip.closest("th");
-    startX = e.clientX;
-    startWidth = th.getBoundingClientRect().width;
-    moved = false;
-    document.body.classList.add("resizing-col");
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
-  });
-
-  function onMove(e) {
-    if (key === null) return;
-    const width = Math.max(startWidth + (e.clientX - startX), COLUMN_MIN_WIDTH);
-    if (Math.abs(e.clientX - startX) > 2) moved = true;
-    columnWidths[key] = Math.round(width);
-    if (th) th.style.width = `${columnWidths[key]}px`;
-  }
-
-  function onUp() {
-    if (key === null) return;
-    // A grip drag that never moved is a stray click — don't persist or block sort.
-    if (moved) saveColumnWidths();
-    key = null;
-    th = null;
-    document.body.classList.remove("resizing-col");
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
-  }
-
-  // Double-click a grip to reset that column to its default width.
-  thead.addEventListener("dblclick", (e) => {
-    const grip = e.target.closest(".col-resize");
-    if (!grip) return;
-    e.preventDefault();
-    e.stopPropagation();
-    delete columnWidths[grip.dataset.key];
-    saveColumnWidths();
-    renderTableHead();
-  });
-})();
 
 // Sort by clicking a column header (toggles direction). Reorders `tracks`
 // itself so position-based mapping follows the visible order.
@@ -2709,6 +1768,9 @@ loadSavedToken();
 
 // Apply the saved column choice (#43) and build the header before any library
 // is opened.
+// The persisted filter-mode flags (#44), read at start-up into shared state.
+setFilterRegex(regexModeEnabled());
+setFilterCase(caseSensitiveEnabled());
 loadColumns();
 loadColumnWidths();
 renderTableHead();

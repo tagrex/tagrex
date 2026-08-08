@@ -10,6 +10,7 @@ import { enablePointerReorder } from "./reorder.js";
 import { hooks } from "./hooks.js";
 import { currentFieldValue } from "./editor.js";
 import { groupKeyOf } from "./grouping.js";
+import { parseVinylPosition } from "./vinyl.js";
 import {
   actionGroups,
   groupBy,
@@ -120,31 +121,6 @@ async function numberTracks() {
   toast(`Numbered ${assigned.length} track(s)${perGroup ? " (restarted per group)" : ""}`);
 }
 
-// ---- vinyl sides -> disc (#105) ----
-// Parse a vinyl-side track value into its side (as a disc ordinal, A=1, B=2, …)
-// and its per-side track digits. Handles a bare side ("B"), side-first "A1", and
-// the reverse "1A"; any numeric part must be plain digits. Returns
-// { disc, track } where `track` is the digit string or null (a bare side has no
-// digit — the caller supplies a track number). Returns null for a plain number
-// or non-vinyl value. Mirrors `side_disc_from_position` in the backend.
-function parseVinylPosition(value) {
-  const v = String(value || "").trim();
-  if (v.length < 1) return null;
-  let side;
-  let num;
-  if (/[A-Za-z]/.test(v[0]) && /^\d*$/.test(v.slice(1))) {
-    side = v[0]; // "B", "A1"
-    num = v.slice(1);
-  } else if (v.length >= 2 && /[A-Za-z]/.test(v[v.length - 1]) && /^\d+$/.test(v.slice(0, -1))) {
-    side = v[v.length - 1]; // reverse "1A", "12B"
-    num = v.slice(0, -1);
-  } else {
-    return null;
-  }
-  const disc = side.toUpperCase().charCodeAt(0) - 64; // 'A' -> 1
-  if (disc < 1 || disc > 26) return null;
-  return { disc: String(disc), track: num ? String(parseInt(num, 10)) : null };
-}
 
 // Decompose vinyl-side track values in the selection into a plain track number
 // plus a disc number, staged into the pending-edits buffer. For files already
@@ -737,6 +713,14 @@ function renderGroupsMenu() {
   menu.appendChild(foot);
   updateRunTicked();
 }
+
+// ---- wire up ----
+el("transform-add").addEventListener("click", addTransformRule);
+el("transform-preview").addEventListener("click", previewTransform);
+el("autonum-run").addEventListener("click", numberTracks);
+el("vinyl-split").addEventListener("click", splitVinylSides);
+// Rule reorder is wired per-card in renderTransformRules via enablePointerReorder
+// (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 
 export {
   addTransformRule,

@@ -96,4 +96,205 @@ function setGroupBy(value, { persist = true, rerender = true } = {}) {
   if (rerender) hooks.renderTracks();
 }
 
-export { allColumnKeys, columnLabel, populateGroupMenu, setGroupBy };
+// Sensible starting width for a column the user hasn't resized yet. The file
+// name is the widest; short numeric/code fields start narrow.
+function defaultColumnWidth(key) {
+  if (key === "file") return 240;
+  if (["year", "track", "tracktotal", "disc", "bpm", "key"].includes(key)) return 70;
+  if (["artist", "title", "album", "albumartist", "composer"].includes(key)) return 160;
+  return 130;
+}
+
+function columnWidth(key) {
+  return columnWidths[key] || defaultColumnWidth(key);
+}
+
+// View state (does not change what's on disk). Sorting reorders the `tracks`
+// array itself so position-based mapping (rename masks, Discogs import) follows
+// the visible order; filtering only hides rows.
+// Filtering (#44). `filterText` is the raw query as typed (case is significant
+// in regex/case-sensitive mode, so it is NOT pre-lowercased). Regex and
+// case-sensitivity are persisted display prefs. A field-scoped query
+// (`artist:aphex`) narrows the match to one column. `filterQuery` is the parsed
+// form (re-derived by recompileFilter whenever the text or flags change) so the
+// per-row test stays cheap; `filterError` flags a regex that failed to compile.
+const PRESETS_STORAGE_KEY = "tagrex.filterPresets";
+setGroupByValue(groupByPref());
+// The dropped directories of a file-set drag-and-drop (#127), or null for an
+// ordinary library. When set, the table's "drop" grouping buckets each track
+// under the dropped folder it came from, with loose files under "Files".
+// The root of the currently open session (the opened/dropped folder, or a
+// file-set's common ancestor). Folder-group headers show the path relative to
+// it — starting with the root's own name — so nested folders read like a tree
+// (#129), matching what a reference tagger shows.
+
+function renderTableHead() {
+  const row = el("tracks").querySelector("thead tr");
+  row.querySelectorAll("th.sortable").forEach((th) => th.remove());
+  for (const key of visibleColumns) {
+    const th = document.createElement("th");
+    th.dataset.sort = key;
+    th.className = "sortable";
+    th.style.width = `${columnWidth(key)}px`;
+    // A drag grip on the right edge resizes the column; a label span keeps the
+    // header text clipping (ellipsis) independent of the grip.
+    th.innerHTML =
+      `<span class="th-label">${escapeHtml(columnLabel(key))}<span class="sort-ind"></span></span>` +
+      `<span class="col-resize" data-key="${escapeHtml(key)}"></span>`;
+    row.appendChild(th);
+  }
+  hooks.updateSortIndicators();
+}
+
+function saveColumns() {
+  try {
+    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
+  } catch (e) {
+    /* localStorage unavailable — columns just won't persist */
+  }
+}
+
+function saveColumnWidths() {
+  try {
+    localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(columnWidths));
+  } catch (e) {
+    /* localStorage unavailable — widths just won't persist */
+  }
+}
+
+// Load saved widths; keep only known keys with a sane positive number.
+function loadColumnWidths() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY));
+    if (saved && typeof saved === "object") {
+      const known = new Set(allColumnKeys());
+      for (const [key, w] of Object.entries(saved)) {
+        if (known.has(key) && Number.isFinite(w) && w >= COLUMN_MIN_WIDTH) {
+          columnWidths[key] = Math.round(w);
+        }
+      }
+    }
+  } catch (e) {
+    /* keep defaults */
+  }
+}
+
+// Load the saved column choice; drop unknown keys and force "file" first.
+function loadColumns() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMNS_STORAGE_KEY));
+    if (Array.isArray(saved) && saved.length) {
+      const known = new Set(allColumnKeys());
+      const cols = saved.filter((k) => known.has(k) && k !== "file");
+      cols.unshift("file");
+      if (cols.length > 1) setVisibleColumns(cols);
+    }
+  } catch (e) {
+    /* keep defaults */
+  }
+}
+
+// Apply a new column set: persist, rebuild the header, repaint rows.
+function applyColumns(cols) {
+  const deduped = [...new Set(cols)].filter((k) => k !== "file");
+  setVisibleColumns(["file", ...deduped]);
+  saveColumns();
+  renderTableHead();
+  hooks.renderTracks();
+}
+
+// Reset columns to the default set, visibility, and widths (#91).
+function resetColumns() {
+  setColumnWidths({});
+  try {
+    localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
+  } catch (e) {
+    /* nothing persisted to clear */
+  }
+  applyColumns(DEFAULT_COLUMNS.slice()); // persists + rebuilds head/rows
+  renderColumnsMenu();
+}
+
+// ---- column picker popover (#43) ----
+
+function renderColumnsMenu() {
+  const menu = el("columns-menu");
+  menu.innerHTML = "";
+  for (const key of visibleColumns) menu.appendChild(colMenuRow(key, true));
+  const hidden = allColumnKeys().filter((k) => !visibleColumns.includes(k));
+  if (hidden.length) {
+    const sep = document.createElement("div");
+    sep.className = "col-menu-sep";
+    sep.textContent = "Hidden";
+    menu.appendChild(sep);
+    for (const key of hidden) menu.appendChild(colMenuRow(key, false));
+  }
+  // Reset-to-default footer (#91): default set, order, visibility, and widths.
+  const foot = document.createElement("div");
+  foot.className = "col-menu-foot";
+  const reset = document.createElement("button");
+  reset.type = "button";
+  reset.className = "text-btn";
+  reset.textContent = "Reset to default";
+  reset.title = "File · Artist · Title · Album · Year, default widths";
+  reset.addEventListener("click", resetColumns);
+  foot.appendChild(reset);
+  menu.appendChild(foot);
+}
+
+function colMenuRow(key, visible) {
+  const isFile = key === "file";
+  const row = document.createElement("div");
+  row.className = "col-menu-row";
+  row.dataset.key = key;
+
+  const grip = document.createElement("span");
+  grip.className = "col-grip";
+  grip.innerHTML = ico("grip");
+  if (visible && !isFile) {
+    grip.title = "Drag to reorder";
+    enablePointerReorder(grip, row, el("columns-menu"), ".col-menu-row", (dragged, target, below) => {
+      if (target === "file" || !visibleColumns.includes(target)) return;
+      const order = visibleColumns.filter((k) => k !== "file");
+      order.splice(order.indexOf(dragged), 1);
+      let to = order.indexOf(target);
+      if (below) to += 1;
+      order.splice(to, 0, dragged);
+      applyColumns(order);
+      renderColumnsMenu();
+    });
+  } else {
+    grip.style.visibility = "hidden";
+  }
+
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.checked = visible;
+  box.disabled = isFile; // file is structural — always shown, first
+  box.addEventListener("change", () => {
+    applyColumns(box.checked ? [...visibleColumns, key] : visibleColumns.filter((k) => k !== key));
+    renderColumnsMenu();
+  });
+
+  const label = document.createElement("span");
+  label.className = "col-menu-label";
+  label.textContent = columnLabel(key) + (isFile ? " (always shown)" : "");
+
+  row.append(grip, box, label);
+  return row;
+}
+
+export {
+  allColumnKeys,
+  applyColumns,
+  columnLabel,
+  columnWidth,
+  defaultColumnWidth,
+  loadColumnWidths,
+  loadColumns,
+  populateGroupMenu,
+  renderColumnsMenu,
+  renderTableHead,
+  saveColumnWidths,
+  setGroupBy,
+};

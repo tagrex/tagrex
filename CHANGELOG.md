@@ -84,6 +84,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The frontend is a set of modules rather than one 6,700-line file.** Every
+  feature area — the player, the settings sheet, ONLINE, the field editor,
+  GENERATOR, RENAMER, the exporters, the deduplicator, cover art, FROM NAME,
+  the columns, grouping, the drag gestures and the browser-only mock — is its
+  own ES module now, and the state only one of them uses is private to it. No
+  behaviour changed; this is a move, not a rewrite. What it buys is that the
+  next change to one panel can no longer quietly reach into another. (#143)
+
 - **Action groups run as a checklist rather than one per click.** A cleanup is
   usually two or three groups in a row, and running them one at a time meant
   previewing and applying each in turn. Each row is now a tick, the group's
