@@ -1136,6 +1136,121 @@ impl App {
         })
     }
 
+    /// Preview several action groups run in order as **one** plan (#137).
+    ///
+    /// Not the same as previewing each group separately and stacking the
+    /// results: every group after the first sees what the ones before it did.
+    /// A group that lower-cases the file name followed by one that rewrites the
+    /// extension has to compose into a single rename, and two groups touching
+    /// the Artist field have to compose into a single edit — otherwise the
+    /// second group is computed against the file on disk and silently undoes the
+    /// first. So each file is carried through the groups as in-memory state and
+    /// only the net difference becomes a change.
+    ///
+    /// The result is an ordinary [`PlanDto`], so the whole checklist previews,
+    /// applies and undoes as one batch, exactly like a single group.
+    pub fn preview_transform_groups(
+        &self,
+        paths: &[PathBuf],
+        groups: &[ActionGroupDto],
+    ) -> Result<PlanDto, AppError> {
+        // Build every chain up front: a malformed rule should be an error before
+        // anything is previewed, not halfway through the file list.
+        let chains = groups
+            .iter()
+            .map(|group| Ok((group.scope.as_str(), build_chain(&group.rules)?)))
+            .collect::<Result<Vec<_>, AppError>>()?;
+
+        let mut changes = Vec::new();
+        for path in paths {
+            let Ok(track) = TagEngine::read(path) else {
+                continue;
+            };
+
+            let stem = |p: &Path| {
+                p.file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            };
+            let mut name = stem(path);
+            let mut ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_string);
+            let mut tags = track.tags.clone();
+
+            for (scope, chain) in &chains {
+                match *scope {
+                    "filename" => {
+                        let next = chain.apply(&name);
+                        if !next.trim().is_empty() {
+                            name = next;
+                        }
+                    }
+                    "fileext" => {
+                        if let Some(current) = &ext {
+                            let next = chain.apply(current);
+                            if !next.trim().is_empty() && !next.contains(['/', '\\', '.']) {
+                                ext = Some(next);
+                            }
+                        }
+                    }
+                    scope => {
+                        for (field, value) in tags.iter_mut() {
+                            if scope == "tags" || scope == field.to_storage_key() {
+                                *value = chain.apply(value);
+                            }
+                        }
+                    }
+                }
+            }
+
+            let tag_changes: Vec<FieldChangeDto> = tags
+                .iter()
+                .filter(|(field, value)| track.tags.get(field) != Some(value))
+                .map(|(field, value)| {
+                    FieldChangeDto::new(
+                        field.to_storage_key(),
+                        track.tags.get(field).cloned(),
+                        Some(value.clone()),
+                    )
+                })
+                .collect();
+
+            let file_name = match &ext {
+                Some(ext) => format!("{name}.{ext}"),
+                None => name.clone(),
+            };
+            let renamed = path.file_name().map(|n| n.to_string_lossy().into_owned())
+                != Some(file_name.clone());
+
+            if tag_changes.is_empty() && !renamed {
+                continue;
+            }
+            let mut change = FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: renamed.then(|| {
+                    path.with_file_name(&file_name)
+                        .to_string_lossy()
+                        .into_owned()
+                }),
+                tag_changes,
+                cover_change: None,
+                sidecar_renames: Vec::new(),
+            };
+            if renamed {
+                self.attach_sidecars(&mut change);
+            }
+            changes.push(change);
+        }
+
+        let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+        Ok(PlanDto {
+            description: format!("Transform ({})", names.join(", ")),
+            changes,
+        })
+    }
+
     /// Build a plan that moves files into a folder structure rendered from a
     /// mask, without writing (#37).
     ///
@@ -3312,6 +3427,93 @@ mod tests {
             .preview_transform(std::slice::from_ref(&shouty), &escaping, "fileext")
             .unwrap();
         assert!(refused.changes.is_empty());
+    }
+
+    #[test]
+    fn transform_groups_compose_instead_of_overwriting_each_other() {
+        let dir = TempDir::new("transform-groups");
+        let track = dir.tagged_flac("Desert_Rain.FLAC", "The_X_Factor", "Desert_Rain");
+        let app = open_app(&dir);
+
+        let group = |name: &str, scope: &str, rules: Vec<TransformRuleDto>| ActionGroupDto {
+            name: name.into(),
+            scope: scope.into(),
+            rules,
+            note: String::new(),
+        };
+
+        // Two renaming groups over one file: the second must see the first's
+        // result, not the name on disk, or one of them is silently lost.
+        let plan = app
+            .preview_transform_groups(
+                std::slice::from_ref(&track),
+                &[
+                    group("underscores", "filename", vec![replace_rule("_", " ")]),
+                    group("lower ext", "fileext", vec![case_rule("lower")]),
+                ],
+            )
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(
+            plan.changes[0].rename_to.as_deref(),
+            Some(dir.0.join("Desert Rain.flac").to_string_lossy().as_ref())
+        );
+
+        // Same for two groups over the same field: one change carrying the net
+        // result, not two changes racing each other.
+        let plan = app
+            .preview_transform_groups(
+                std::slice::from_ref(&track),
+                &[
+                    group("underscores", "tags", vec![replace_rule("_", " ")]),
+                    group("upper", "artist", vec![case_rule("upper")]),
+                ],
+            )
+            .unwrap();
+        let changed: std::collections::HashMap<_, _> = plan.changes[0]
+            .tag_changes
+            .iter()
+            .map(|c| (c.field.clone(), c.new.clone().unwrap_or_default()))
+            .collect();
+        assert_eq!(
+            changed.get("artist").map(String::as_str),
+            Some("THE X FACTOR")
+        );
+        assert_eq!(
+            changed.get("title").map(String::as_str),
+            Some("Desert Rain")
+        );
+    }
+
+    #[test]
+    fn transform_groups_report_a_bad_rule_before_previewing_anything() {
+        let dir = TempDir::new("transform-groups-bad");
+        let track = dir.tagged_flac("x.flac", "Artist", "Title");
+        let app = open_app(&dir);
+
+        // The failing group is second, so a per-file loop would already have
+        // produced changes for the first before noticing.
+        let groups = vec![
+            ActionGroupDto {
+                name: "fine".into(),
+                scope: "tags".into(),
+                rules: vec![replace_rule("a", "b")],
+                note: String::new(),
+            },
+            ActionGroupDto {
+                name: "broken".into(),
+                scope: "tags".into(),
+                rules: vec![TransformRuleDto {
+                    kind: "nonsense".into(),
+                    ..replace_rule("a", "b")
+                }],
+                note: String::new(),
+            },
+        ];
+        assert!(matches!(
+            app.preview_transform_groups(std::slice::from_ref(&track), &groups),
+            Err(AppError::UnknownTransform(_))
+        ));
     }
 
     #[test]

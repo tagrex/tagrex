@@ -2716,14 +2716,9 @@ function loadGroup(group) {
   renderTransformRules();
 }
 
-// Load then preview — run the whole group over the selection as one plan.
-function runGroup(group) {
-  loadGroup(group);
-  previewTransform();
-}
-
 function deleteGroup(name) {
   actionGroups = actionGroups.filter((g) => g.name !== name);
+  tickedGroups.delete(name); // a tick on a group that no longer exists would run nothing
   persistActionGroups();
   renderGroupsMenu();
 }
@@ -2735,6 +2730,67 @@ const SCOPE_LABELS = {
   fileext: "file extension",
 };
 
+// Which groups are ticked for the next run (#137), by name. Session-only: a
+// tick says "these, now", not a preference worth persisting.
+const tickedGroups = new Set();
+
+function toggleTicked(name, on) {
+  if (on) tickedGroups.add(name);
+  else tickedGroups.delete(name);
+  updateRunTicked();
+}
+
+// Every group the checklist can offer, saved ones first — the order they run in.
+function allGroups() {
+  return [...actionGroups, ...builtinGroups];
+}
+
+function tickedInOrder() {
+  return allGroups().filter((g) => tickedGroups.has(g.name));
+}
+
+function updateRunTicked() {
+  const btn = el("run-ticked");
+  if (!btn) return;
+  const n = tickedInOrder().length;
+  btn.disabled = n === 0;
+  btn.textContent = n ? `Run ${n} ticked` : "Run ticked";
+}
+
+// Run the ticked groups as one plan. Order matters and is the list's order, so
+// a group that rewrites the file name and one that rewrites its extension
+// compose into a single rename instead of the second undoing the first.
+async function runTickedGroups() {
+  const groups = tickedInOrder();
+  if (!groups.length) return;
+  const paths = selectedPaths();
+  if (!paths.length) {
+    toast("Select at least one file", true);
+    return;
+  }
+  try {
+    previewPlan = await invoke("preview_transform_groups", {
+      paths,
+      groups: groups.map((g) => ({ name: g.name, scope: g.scope, rules: (g.rules || []).map(ruleForGroup) })),
+    });
+    // A run that renames has to apply through the rename path; one that only
+    // edits tags through the transform path. Mixed, rename wins — it is the
+    // stricter of the two.
+    previewSource = groups.some((g) => ["filename", "fileext"].includes(g.scope))
+      ? "rename"
+      : "transform";
+    renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing ${previewPlan.changes.length} file(s) — click Apply`
+        : "These groups change nothing on the selection",
+      previewPlan.changes.length === 0
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 // One-line summary of a group for its tooltip.
 function groupSummary(group) {
   const on = (group.rules || []).filter((r) => r.enabled !== false).length;
@@ -2743,20 +2799,39 @@ function groupSummary(group) {
   return `${on}/${total} step(s) · ${scope}`;
 }
 
-// One Run/Load(/Delete) row. Built-ins get no Delete — they aren't the user's
-// to remove — and carry their note in the tooltip instead of the bare summary.
+// One checklist row (#137): a tick, the name with the scope it acts on, and
+// Load. Built-ins get no Delete — they aren't the user's to remove — and carry
+// their note in the tooltip instead of the bare summary.
+//
+// Ticking rather than running on click is what lets several groups go out as
+// one plan: a cleanup is usually two or three of these in a row, and running
+// them one at a time means previewing and applying each in turn.
 function groupMenuRow(group, menu) {
   const row = document.createElement("div");
   row.className = "col-menu-row preset-row";
 
+  const tick = document.createElement("input");
+  tick.type = "checkbox";
+  tick.className = "group-tick";
+  tick.checked = tickedGroups.has(group.name);
+  tick.title = "Include in the next run";
+  tick.addEventListener("change", (e) => {
+    e.stopPropagation();
+    toggleTicked(group.name, tick.checked);
+  });
+
   const run = document.createElement("button");
   run.type = "button";
   run.className = "text-btn preset-apply";
-  run.textContent = group.name;
-  run.title = group.note ? `${group.note}\nRun: ${groupSummary(group)}` : `Run: ${groupSummary(group)}`;
+  const scope = document.createElement("span");
+  scope.className = "group-scope";
+  scope.textContent = SCOPE_LABELS[group.scope] || group.scope || "all tags";
+  run.append(document.createTextNode(group.name), scope);
+  run.title = group.note ? `${group.note}\n${groupSummary(group)}` : groupSummary(group);
+  // The name is the checkbox's label, just a bigger target for it.
   run.addEventListener("click", () => {
-    runGroup(group);
-    menu.hidden = true;
+    tick.checked = !tick.checked;
+    toggleTicked(group.name, tick.checked);
   });
 
   const load = document.createElement("button");
@@ -2772,7 +2847,7 @@ function groupMenuRow(group, menu) {
     menu.hidden = true;
   });
 
-  row.append(run, load);
+  row.append(tick, run, load);
 
   if (!group.builtin) {
     const del = document.createElement("button");
@@ -2813,6 +2888,21 @@ function renderGroupsMenu() {
     for (const group of builtinGroups) menu.appendChild(groupMenuRow(group, menu));
   }
 
+  // The checklist's one action, above the save row: what the ticks are for.
+  const runFoot = document.createElement("div");
+  runFoot.className = "col-menu-foot preset-run";
+  const runBtn = document.createElement("button");
+  runBtn.type = "button";
+  runBtn.id = "run-ticked";
+  runBtn.className = "text-btn";
+  runBtn.title = "Preview the ticked groups, run in list order, as one plan";
+  runBtn.addEventListener("click", () => {
+    menu.hidden = true;
+    runTickedGroups();
+  });
+  runFoot.appendChild(runBtn);
+  menu.appendChild(runFoot);
+
   const foot = document.createElement("div");
   foot.className = "col-menu-foot preset-save";
   const input = document.createElement("input");
@@ -2839,6 +2929,7 @@ function renderGroupsMenu() {
   });
   foot.append(input, save);
   menu.appendChild(foot);
+  updateRunTicked();
 }
 
 // ---- reorganize into folders (#37) ----
@@ -5785,6 +5876,33 @@ function mockUntransliterate(value) {
   });
 }
 
+// One chain over one value, for the dev mock only — shared by the single-chain
+// preview and the checklist run so the two can't drift apart.
+function mockApplyRules(value, rules) {
+  let out = value;
+  for (const rule of rules || []) {
+    if (rule.enabled === false) continue; // disabled step (#57)
+    if (rule.kind === "replace" && rule.from) {
+      out = rule.regex
+        ? out.replace(new RegExp(rule.from, rule.case_sensitive ? "g" : "gi"), rule.to)
+        : out.split(rule.from).join(rule.to);
+    } else if (rule.kind === "case" && rule.style === "title") {
+      out = out.replace(/[\p{L}\p{N}']+/gu, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+    } else if (rule.kind === "case" && rule.style === "lower") {
+      out = out.toLowerCase();
+    } else if (rule.kind === "case" && rule.style === "upper") {
+      out = out.toUpperCase();
+    } else if (rule.kind === "key") {
+      out = mockKeyNotation(out, rule.style);
+    } else if (rule.kind === "transliterate") {
+      out = mockTransliterate(out);
+    } else if (rule.kind === "untransliterate") {
+      out = mockUntransliterate(out);
+    }
+  }
+  return out;
+}
+
 function mockKeyNotation(value, style) {
   const MAJOR = [8, 3, 10, 5, 12, 7, 2, 9, 4, 11, 6, 1];
   const MINOR = [5, 12, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10];
@@ -5917,28 +6035,7 @@ function mockInvoke(cmd, args) {
     case "preview_transform": {
       // Mirrors the backend closely enough to exercise the dialog: literal
       // replace plus title-casing, over tags or the file name.
-      const applyRules = (value) => {
-        let out = value;
-        for (const rule of args.rules) {
-          if (rule.enabled === false) continue; // disabled step (#57)
-          if (rule.kind === "replace" && rule.from) {
-            out = out.split(rule.from).join(rule.to);
-          } else if (rule.kind === "case" && rule.style === "title") {
-            out = out.replace(/[\p{L}\p{N}']+/gu, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
-          } else if (rule.kind === "case" && rule.style === "lower") {
-            out = out.toLowerCase();
-          } else if (rule.kind === "case" && rule.style === "upper") {
-            out = out.toUpperCase();
-          } else if (rule.kind === "key") {
-            out = mockKeyNotation(out, rule.style);
-          } else if (rule.kind === "transliterate") {
-            out = mockTransliterate(out);
-          } else if (rule.kind === "untransliterate") {
-            out = mockUntransliterate(out);
-          }
-        }
-        return out;
-      };
+      const applyRules = (value) => mockApplyRules(value, args.rules);
       const changes = args.paths
         .map((p) => {
           const t = findTrack(p);
@@ -5964,6 +6061,42 @@ function mockInvoke(cmd, args) {
             if (next !== value) tag_changes.push({ field, old: value, new: next });
           }
           return tag_changes.length ? { path: p, rename_to: null, tag_changes } : null;
+        })
+        .filter(Boolean);
+      return Promise.resolve({ description: "Transform", changes });
+    }
+    // The checklist run (#137): groups in order, each seeing the last one's
+    // result, ending in one change per file — same shape as the backend.
+    case "preview_transform_groups": {
+      const changes = args.paths
+        .map((p) => {
+          const t = findTrack(p);
+          if (!t) return null;
+          const dir = p.slice(0, p.lastIndexOf("/") + 1);
+          let name = p.slice(p.lastIndexOf("/") + 1, p.lastIndexOf("."));
+          let ext = p.slice(p.lastIndexOf(".") + 1);
+          const tags = { ...t.tags };
+          for (const group of args.groups) {
+            if (group.scope === "filename") {
+              const next = mockApplyRules(name, group.rules);
+              if (next.trim()) name = next;
+            } else if (group.scope === "fileext") {
+              const next = mockApplyRules(ext, group.rules);
+              if (next.trim() && !/[/\\.]/.test(next)) ext = next;
+            } else {
+              for (const [field, value] of Object.entries(tags)) {
+                if (group.scope !== "tags" && group.scope !== field) continue;
+                tags[field] = mockApplyRules(value, group.rules);
+              }
+            }
+          }
+          const tag_changes = Object.entries(tags)
+            .filter(([field, value]) => value !== t.tags[field])
+            .map(([field, value]) => ({ field, old: t.tags[field], new: value }));
+          const file_name = `${name}.${ext}`;
+          const renamed = file_name !== p.slice(p.lastIndexOf("/") + 1);
+          if (!tag_changes.length && !renamed) return null;
+          return { path: p, rename_to: renamed ? `${dir}${file_name}` : null, tag_changes };
         })
         .filter(Boolean);
       return Promise.resolve({ description: "Transform", changes });

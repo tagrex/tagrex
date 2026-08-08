@@ -490,6 +490,20 @@ fn builtin_action_groups() -> Vec<ActionGroupDto> {
     tagrex::builtin_action_groups()
 }
 
+/// Preview the ticked action groups run in order as one plan (#137).
+#[tauri::command]
+fn preview_transform_groups(
+    state: State<AppState>,
+    paths: Vec<String>,
+    groups: Vec<ActionGroupDto>,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_transform_groups(&paths, &groups)
+            .map_err(|e| e.to_string())
+    })
+}
+
 #[tauri::command]
 fn save_settings(
     app: tauri::AppHandle,
@@ -559,6 +573,7 @@ fn main() {
             player_seek,
             player_set_volume,
             builtin_action_groups,
+            preview_transform_groups,
             player_status
         ])
         .run(tauri::generate_context!())
