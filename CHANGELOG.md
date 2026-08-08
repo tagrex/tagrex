@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A file-extension transform scope.** Rules could reach every tag field, one
+  tag field, or the file name's stem — the extension was the one part of a
+  file's name nothing could touch, so retyping a shouty `.FLAC` meant a rename
+  mask, which rewrites the stem along with it. `File extension` is the mirror
+  image of `File name`: the chain sees the extension without its dot and the
+  stem is carried through untouched. The result is an ordinary rename plan, so
+  preview, apply, undo and sidecar carry-along work as they already do. An
+  extension that would come out holding a separator or a dot is refused — that
+  moves the file or changes how many extensions the name has — and a file
+  without an extension is skipped rather than given one.
+
+- **Eight transformation presets now ship with the app**, instead of the shelf
+  starting empty and every chain having to be built by hand: Standard values,
+  Discogs cleanup, Normalize english, General Latin, No dash, Lower case, File
+  extension and FTP format. They are ordinary action groups — same steps, same
+  scopes, run through the same preview and undo — except that they live in the
+  app rather than in your settings, so they can't be deleted and can't drift.
+  Load one to copy its steps into the chain, edit them and save under your own
+  name; the preset stays as shipped. Every one is a chain you could have built
+  yourself: none of them needed a rule kind that didn't already exist.
+
+- **Reverse transliteration — Latin back to Russian Cyrillic**, for tags that
+  arrived already romanized by a ripper or an earlier tagger. Reversing a
+  romanization is guesswork, so the step is built to be wrong as rarely as
+  possible: longest run first, so `shch` is щ before `sh` reaches ш; and a word
+  is all-or-nothing, left in Latin if any letter has no Cyrillic reading. That
+  is what keeps "Jazz" and "The" from turning into "Jазз" and "Тхе". What the
+  forward direction discarded stays discarded, and the rule card says so
+  outright: `ъ` and `ь` romanize to nothing, `й` and `ы` both come back as `й`.
+
+### Changed
+
+- **Action groups run as a checklist rather than one per click.** A cleanup is
+  usually two or three groups in a row, and running them one at a time meant
+  previewing and applying each in turn. Each row is now a tick, the group's
+  name over **the scope it acts on**, and Load; the footer runs everything
+  ticked, in list order, as a single plan. This also fixes a way the old
+  behaviour was simply wrong: run separately, each group was computed against
+  the file on disk, so lower-casing the file name and then rewriting its
+  extension had the second change silently discard the first. Composed, they
+  end in one rename.
+
+### Fixed
+
+- **The Groups popover was clipped by the panel it opens in.** It is
+  right-aligned like every other menu of its kind, which suits a button near
+  the right edge but not this one, at the left of a narrow column — the menu
+  ran past that column's edge and was cut off there. Previously that cost the
+  footer's text box; with a list of named presets it would have cost the names.
+
 ## [0.3.0] - 2026-08-08
 
 ### Added
