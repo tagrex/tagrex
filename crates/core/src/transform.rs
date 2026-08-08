@@ -361,6 +361,114 @@ fn cyrillic_to_latin(ch: char) -> Option<&'static str> {
     })
 }
 
+/// Latin -> Russian Cyrillic (#137), the reverse of [`Transliterate`] for tags
+/// that arrived already romanized.
+///
+/// Reversing a romanization is guesswork, and this step is built to be wrong as
+/// rarely as possible rather than to be clever:
+///
+/// * **Longest match first.** `shch` is щ before `sh` gets a chance at ш, `ts` is
+///   ц before `t` is т. Digraphs are exactly where a naive per-letter reverse
+///   falls apart.
+/// * **A word is all-or-nothing.** If any letter in a word has no mapping, the
+///   whole word is left in Latin. `q`, `w`, `x` and a bare `c`, `h` or `j` never
+///   come out of the forward table, so a word containing one was never Cyrillic
+///   -- `Jazz` and `The` stay themselves instead of becoming `Jазз` and `Тхе`.
+///   Mixed-script mangling is the failure people actually notice.
+/// * **What the forward direction threw away stays thrown away.** `ъ` and `ь`
+///   romanize to nothing, so `Ильич` -> `Ilich` -> `Илич`; `й` and `ы` both
+///   romanize to `y`, which comes back as `й`. A round trip is not the identity
+///   and cannot be made one.
+///
+/// Digits, punctuation and text already in Cyrillic pass through without
+/// blocking the word around them.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Untransliterate;
+
+impl TransformStep for Untransliterate {
+    fn name(&self) -> &str {
+        "transliterate to Cyrillic"
+    }
+
+    fn apply(&self, input: &str) -> String {
+        map_words(input, |word| {
+            latin_to_cyrillic_word(word).unwrap_or_else(|| word.to_string())
+        })
+    }
+}
+
+/// Latin runs, longest first — order is the whole algorithm, so this stays one
+/// list rather than being split by length.
+const LATIN_TO_CYRILLIC: &[(&str, char)] = &[
+    ("shch", 'щ'),
+    ("yo", 'ё'),
+    ("yu", 'ю'),
+    ("ya", 'я'),
+    ("zh", 'ж'),
+    ("kh", 'х'),
+    ("ts", 'ц'),
+    ("ch", 'ч'),
+    ("sh", 'ш'),
+    ("a", 'а'),
+    ("b", 'б'),
+    ("v", 'в'),
+    ("g", 'г'),
+    ("d", 'д'),
+    ("e", 'е'),
+    ("z", 'з'),
+    ("i", 'и'),
+    ("y", 'й'),
+    ("k", 'к'),
+    ("l", 'л'),
+    ("m", 'м'),
+    ("n", 'н'),
+    ("o", 'о'),
+    ("p", 'п'),
+    ("r", 'р'),
+    ("s", 'с'),
+    ("t", 'т'),
+    ("u", 'у'),
+    ("f", 'ф'),
+];
+
+/// One word Latin -> Cyrillic, or `None` if any Latin letter in it has no
+/// mapping — the caller then keeps the word as it was.
+fn latin_to_cyrillic_word(word: &str) -> Option<String> {
+    let chars: Vec<char> = word.chars().collect();
+    let lower: String = word.to_lowercase();
+    // Mapping walks the lowercased form, so the two must agree position for
+    // position; a letter that lowercases to several chars (`İ`) would break that
+    // and is not something this step claims to handle.
+    if lower.chars().count() != chars.len() {
+        return None;
+    }
+    let lower: Vec<char> = lower.chars().collect();
+
+    let mut out = String::with_capacity(word.len());
+    let mut at = 0;
+    while at < chars.len() {
+        if !chars[at].is_ascii_alphabetic() {
+            out.push(chars[at]); // digits, apostrophes, Cyrillic already there
+            at += 1;
+            continue;
+        }
+        let matched = LATIN_TO_CYRILLIC.iter().find(|(latin, _)| {
+            let run = &lower[at..chars.len().min(at + latin.chars().count())];
+            run.iter().copied().eq(latin.chars())
+        })?;
+        let (latin, cyrillic) = *matched;
+        // The run's own case decides the result's, the way `Ж` -> `Zh` does in
+        // the forward direction.
+        if chars[at].is_uppercase() {
+            out.extend(cyrillic.to_uppercase());
+        } else {
+            out.push(cyrillic);
+        }
+        at += latin.chars().count();
+    }
+    Some(out)
+}
+
 /// Modern Greek -> Latin, a simple per-letter romanization (BGN/PCGN-style:
 /// `β`->`v`, `η`->`i`, `θ`->`th`, `χ`->`ch`, `ψ`->`ps`); accented vowels fold to
 /// their base letter. No digraph context rules (`μπ`->`b` etc.) — kept per-letter
@@ -824,6 +932,57 @@ mod tests {
         let step = Transliterate;
         assert_eq!(step.apply("Björk"), "Björk");
         assert_eq!(step.apply("Sigur Rós - Sæglópur"), "Sigur Rós - Sæglópur");
+    }
+
+    #[test]
+    fn untransliterates_latin_to_cyrillic() {
+        let step = Untransliterate;
+        assert_eq!(step.apply("Pyotr"), "Пётр");
+        assert_eq!(step.apply("borshch"), "борщ");
+        assert_eq!(step.apply("Tsoy"), "Цой");
+        // Digraph before letter: `ts` is ц, not т + с.
+        assert_eq!(step.apply("Kino"), "Кино");
+    }
+
+    #[test]
+    fn untransliterate_leaves_a_word_it_cannot_map_alone() {
+        // A word containing a letter the forward direction never produces was
+        // never Cyrillic. Half-converting it is the visible failure, so the word
+        // is kept whole rather than mangled into mixed script.
+        let step = Untransliterate;
+        assert_eq!(step.apply("Jazz"), "Jazz");
+        assert_eq!(step.apply("The Quick Fox"), "The Quick Fox");
+        // Its neighbours are still converted -- the guard is per word.
+        assert_eq!(step.apply("Jazz na ulitse"), "Jazz на улице");
+    }
+
+    #[test]
+    fn untransliterate_keeps_the_case_of_the_run_it_matched() {
+        // Each matched run carries its own case, so an all-caps word stays all
+        // caps and a capitalised one keeps just its initial -- a four-letter run
+        // like `Shch` collapsing to one Cyrillic letter doesn't change that.
+        let step = Untransliterate;
+        assert_eq!(step.apply("SHCHI"), "ЩИ");
+        assert_eq!(step.apply("Shchi"), "Щи");
+        assert_eq!(step.apply("Zhuk"), "Жук");
+    }
+
+    #[test]
+    fn untransliterate_does_not_claim_to_round_trip() {
+        // What the forward direction discards is gone: the soft sign romanizes to
+        // nothing, and й/ы share `y`. Documented rather than papered over.
+        let there = Transliterate;
+        let back = Untransliterate;
+        assert_eq!(there.apply("Ильич"), "Ilich");
+        assert_eq!(back.apply("Ilich"), "Илич");
+        assert_eq!(back.apply(&there.apply("Пётр")), "Пётр");
+    }
+
+    #[test]
+    fn untransliterate_passes_digits_and_punctuation_through() {
+        let step = Untransliterate;
+        assert_eq!(step.apply("dom-2"), "дом-2");
+        assert_eq!(step.apply("Пётр"), "Пётр");
     }
 
     #[test]

@@ -2457,7 +2457,9 @@ function renderTransformRules() {
             ? "Key notation"
             : rule.kind === "transliterate"
               ? "Transliterate to Latin"
-              : "Remove diacritics";
+              : rule.kind === "untransliterate"
+                ? "Transliterate to Cyrillic"
+                : "Remove diacritics";
 
     const spacer = document.createElement("span");
     spacer.className = "spacer";
@@ -2583,6 +2585,18 @@ function renderTransformRules() {
       note.className = "rule-note";
       note.textContent = "Converts the musical key (best scoped to the Key field). Unrecognized values are left as-is.";
       b.append(seg, note);
+      card.append(b);
+    } else if (rule.kind === "untransliterate") {
+      // The one step whose losses are worth stating on the card: reversing a
+      // romanization can't recover what the forward direction dropped, and the
+      // per-word guard is the reason English text survives it.
+      const b = document.createElement("div");
+      b.className = "rule-body";
+      const note = document.createElement("span");
+      note.className = "rule-note";
+      note.textContent =
+        "Latin → Russian Cyrillic, for tags that arrived romanized. A word with no Cyrillic reading (Jazz, The) is left alone; ъ/ь can't be recovered and й/ы both come back as й.";
+      b.append(note);
       card.append(b);
     }
 
@@ -5743,6 +5757,34 @@ function mockTransliterate(value) {
     .join("");
 }
 
+// The reverse direction for the dev mock only (#137) — the authoritative table
+// and the per-word guard live in Rust (transform.rs). Same shape: longest run
+// first, and a word holding a letter with no Cyrillic reading is left alone.
+function mockUntransliterate(value) {
+  const RUNS = [
+    ["shch", "щ"], ["yo", "ё"], ["yu", "ю"], ["ya", "я"], ["zh", "ж"], ["kh", "х"],
+    ["ts", "ц"], ["ch", "ч"], ["sh", "ш"], ["a", "а"], ["b", "б"], ["v", "в"],
+    ["g", "г"], ["d", "д"], ["e", "е"], ["z", "з"], ["i", "и"], ["y", "й"],
+    ["k", "к"], ["l", "л"], ["m", "м"], ["n", "н"], ["o", "о"], ["p", "п"],
+    ["r", "р"], ["s", "с"], ["t", "т"], ["u", "у"], ["f", "ф"],
+  ];
+  return String(value).replace(/[\p{L}\p{N}']+/gu, (word) => {
+    const lower = word.toLowerCase();
+    let out = "";
+    for (let at = 0; at < word.length; ) {
+      if (!/[a-z]/.test(lower[at])) {
+        out += word[at++];
+        continue;
+      }
+      const run = RUNS.find(([latin]) => lower.startsWith(latin, at));
+      if (!run) return word; // no Cyrillic reading — keep the word whole
+      out += word[at] === lower[at] ? run[1] : run[1].toUpperCase();
+      at += run[0].length;
+    }
+    return out;
+  });
+}
+
 function mockKeyNotation(value, style) {
   const MAJOR = [8, 3, 10, 5, 12, 7, 2, 9, 4, 11, 6, 1];
   const MINOR = [5, 12, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10];
@@ -5891,6 +5933,8 @@ function mockInvoke(cmd, args) {
             out = mockKeyNotation(out, rule.style);
           } else if (rule.kind === "transliterate") {
             out = mockTransliterate(out);
+          } else if (rule.kind === "untransliterate") {
+            out = mockUntransliterate(out);
           }
         }
         return out;
