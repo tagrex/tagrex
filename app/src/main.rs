@@ -17,8 +17,8 @@ use player::{Player, PlayerStatus};
 use tagrex::{
     ActionGroupDto, AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto,
     CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportSelectionDto, ImportTrackDto,
-    NameProbeDto, PlanDto, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto,
-    TrackDto, TransformRuleDto,
+    NameProbeDto, PlanDto, ReleaseDto, ReplacementDto, SaveImagesDto, SearchQueryDto, SettingsDto,
+    TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -128,10 +128,11 @@ fn preview_tags_from_name(
     state: State<AppState>,
     mask: String,
     paths: Vec<String>,
+    replacements: Vec<ReplacementDto>,
 ) -> Result<PlanDto, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
-        app.preview_tags_from_name(&mask, &paths)
+        app.preview_tags_from_name(&mask, &paths, &replacements)
             .map_err(|e| e.to_string())
     })
 }
@@ -141,9 +142,10 @@ fn probe_tags_from_name(
     state: State<AppState>,
     mask: String,
     path: String,
+    replacements: Vec<ReplacementDto>,
 ) -> Result<NameProbeDto, String> {
     with_app(&state, |app| {
-        app.probe_tags_from_name(&mask, &PathBuf::from(path))
+        app.probe_tags_from_name(&mask, &PathBuf::from(path), &replacements)
             .map_err(|e| e.to_string())
     })
 }

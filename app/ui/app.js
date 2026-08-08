@@ -1563,6 +1563,65 @@ async function preview() {
   }
 }
 
+// FROM NAME's pattern and its replacement table (#141). Both are the user's
+// working state for the panel, not backend settings, so they live in
+// localStorage beside the other persisted panel prefs — a replacement table
+// retyped every session would defeat the point of having one.
+const FROM_NAME_MASK_STORAGE_KEY = "tagrex.fromNameMask";
+const FROM_NAME_REPL_STORAGE_KEY = "tagrex.fromNameReplacements";
+// Separators are what names carry instead of spaces, so the table starts with
+// the one everybody needs; it's an ordinary row and can be deleted.
+const DEFAULT_REPLACEMENTS = [{ from: "_", to: " " }];
+let nameReplacements = DEFAULT_REPLACEMENTS.slice();
+
+function loadFromNamePrefs() {
+  try {
+    const mask = localStorage.getItem(FROM_NAME_MASK_STORAGE_KEY);
+    if (mask) el("from-name-mask").value = mask;
+    const stored = localStorage.getItem(FROM_NAME_REPL_STORAGE_KEY);
+    if (stored) {
+      const rows = JSON.parse(stored);
+      // An empty table is a real choice (the user deleted every row), so only
+      // a malformed value falls back to the default.
+      if (Array.isArray(rows)) {
+        nameReplacements = rows.map((r) => ({ from: String(r.from || ""), to: String(r.to || "") }));
+      }
+    }
+  } catch (e) {
+    /* unreadable or unavailable — fall back to the defaults */
+  }
+  renderReplacements();
+}
+
+function saveFromNamePrefs() {
+  try {
+    localStorage.setItem(FROM_NAME_MASK_STORAGE_KEY, el("from-name-mask").value);
+    localStorage.setItem(FROM_NAME_REPL_STORAGE_KEY, JSON.stringify(nameReplacements));
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
+// One row per replacement, rebuilt whenever the list changes. Typing in a row
+// updates the list in place (no re-render, or the caret would jump).
+function renderReplacements() {
+  const box = el("repl-rows");
+  box.innerHTML = nameReplacements
+    .map(
+      (row, i) => `
+      <div class="repl-row" data-index="${i}">
+        <input class="repl-from" type="text" placeholder="find" spellcheck="false" value="${escapeHtml(row.from)}" />
+        <span class="repl-arrow" aria-hidden="true">→</span>
+        <input class="repl-to" type="text" placeholder="replace with" spellcheck="false" value="${escapeHtml(row.to)}" />
+        <button class="icon repl-del" type="button" title="Remove" aria-label="Remove"><svg class="ico"><use href="#i-close"/></svg></button>
+      </div>`,
+    )
+    .join("");
+  if (!nameReplacements.length) {
+    box.innerHTML = `<div class="repl-empty muted">Values go into the tags exactly as the name spells them.</div>`;
+  }
+}
+
 // FROM NAME (#139): read each selected file's own name back into tags — the
 // extract direction of the mask RENAMER renders with. The result is an ordinary
 // tag plan, so it lands in the same in-table diff and applies/undoes like any
@@ -1577,6 +1636,7 @@ async function previewTagsFromName() {
     const plan = await invoke("preview_tags_from_name", {
       mask: el("from-name-mask").value,
       paths,
+      replacements: nameReplacements,
     });
     // Distinguish "nothing to do" from a silent no-op: with this feature an
     // empty plan usually means the pattern doesn't fit the names.
@@ -1608,6 +1668,7 @@ async function refreshNameProbe() {
     const probe = await invoke("probe_tags_from_name", {
       mask: el("from-name-mask").value,
       path,
+      replacements: nameReplacements,
     });
     const subject = `<div class="probe-subject">${escapeHtml(probe.subject)}</div>`;
     if (!probe.matched || probe.fields.length === 0) {
@@ -4798,6 +4859,8 @@ el("diff-show-old").addEventListener("change", (e) => {
 // ---- wire up ----
 el("open").addEventListener("click", openLibrary);
 el("browse").addEventListener("click", browseForFolder);
+// FROM NAME's pattern + replacement table come back from the last session (#141).
+loadFromNamePrefs();
 
 // ---- drag-and-drop onto the window to open folders/files (#127) ----
 // Tauri v2 intercepts OS file drops (dragDropEnabled) and re-emits them as
@@ -4887,7 +4950,37 @@ el("move-preview").addEventListener("click", previewMove);
 
 // FROM NAME (#139): the probe follows the pattern as it's typed.
 el("from-name-preview").addEventListener("click", previewTagsFromName);
-el("from-name-mask").addEventListener("input", scheduleNameProbe);
+el("from-name-mask").addEventListener("input", () => {
+  saveFromNamePrefs();
+  scheduleNameProbe();
+});
+
+// The replacement table (#141). Typing edits the row in place — re-rendering on
+// every keystroke would move the caret — and the list is what both the probe
+// and the preview send.
+el("repl-rows").addEventListener("input", (e) => {
+  const row = e.target.closest(".repl-row");
+  if (!row) return;
+  const entry = nameReplacements[Number(row.dataset.index)];
+  if (!entry) return;
+  if (e.target.classList.contains("repl-from")) entry.from = e.target.value;
+  if (e.target.classList.contains("repl-to")) entry.to = e.target.value;
+  saveFromNamePrefs();
+  scheduleNameProbe();
+});
+el("repl-rows").addEventListener("click", (e) => {
+  const del = e.target.closest(".repl-del");
+  if (!del) return;
+  nameReplacements.splice(Number(del.closest(".repl-row").dataset.index), 1);
+  renderReplacements();
+  saveFromNamePrefs();
+  scheduleNameProbe();
+});
+el("repl-add").addEventListener("click", () => {
+  nameReplacements.push({ from: "", to: "" });
+  renderReplacements();
+  el("repl-rows").querySelector(".repl-row:last-child .repl-from")?.focus();
+});
 el("fields-add").addEventListener("click", addCustomField);
 el("fields-add-toggle").addEventListener("click", openAddField);
 el("fields-add-cancel").addEventListener("click", closeAddField);
@@ -5969,24 +6062,32 @@ function mockNameSubject(path, mask) {
   return [...parts.slice(Math.max(0, parts.length - depth)), stem].join("/");
 }
 
-// Mask -> tags for the dev mock only. Plain placeholders and %skip%, no
-// conditional sections: enough to drive the panel in a browser. The real
-// bidirectional grammar is mask.rs, and this is not a second implementation of
-// it — anything subtle must be checked in the native app.
-function mockExtractFromName(mask, subject) {
+// Mask -> tags for the dev mock only. Plain placeholders, stated widths (#140)
+// and %skip%, no conditional sections: enough to drive the panel in a browser.
+// The real bidirectional grammar is mask.rs, and this is not a second
+// implementation of it — anything subtle must be checked in the native app.
+const MOCK_INTEGER_FIELDS = ["track", "tracktotal", "disc", "disctotal"];
+function mockExtractFromName(mask, subject, replacements) {
   const fields = [];
   let pattern = "^";
-  for (const part of mask.replace(/\\/g, "/").split(/(%[a-z]+%)/i)) {
+  for (const part of mask.replace(/\\/g, "/").split(/(%[a-z]+(?::\d+)?%)/i)) {
     if (!part) continue;
-    const placeholder = /^%([a-z]+)%$/i.exec(part);
+    const placeholder = /^%([a-z]+)(?::(\d+))?%$/i.exec(part);
     if (!placeholder) {
       pattern += part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    } else if (placeholder[1].toLowerCase() === "skip") {
-      pattern += "(?:.+?)";
-    } else {
-      fields.push(placeholder[1].toLowerCase());
-      pattern += "(.+?)";
+      continue;
     }
+    const field = placeholder[1].toLowerCase();
+    const width = placeholder[2] ? +placeholder[2] : 0;
+    if (field === "skip") {
+      pattern += "(?:.+?)";
+      continue;
+    }
+    fields.push(field);
+    // A stated width is a fixed length, digits on the integer fields.
+    pattern += width
+      ? `(${MOCK_INTEGER_FIELDS.includes(field) ? "\\d" : "."}{${width}})`
+      : "(.+?)";
   }
   const match = new RegExp(pattern + "$").exec(subject);
   if (!match) return null;
@@ -5994,7 +6095,12 @@ function mockExtractFromName(mask, subject) {
   // "05" as "5"; normalize here too or the mock shows a value the app wouldn't.
   const numeric = ["track", "tracktotal", "disc", "disctotal"];
   return fields.map((field, i) => {
-    const value = match[i + 1].trim();
+    // Replacements first, then trim/normalize — the order the backend uses.
+    const replaced = (replacements || []).reduce(
+      (acc, r) => (r.from ? acc.split(r.from).join(r.to) : acc),
+      match[i + 1],
+    );
+    const value = replaced.trim();
     return [field, numeric.includes(field) && /^\d+$/.test(value) ? String(+value) : value];
   });
 }
@@ -6157,7 +6263,7 @@ function mockInvoke(cmd, args) {
     }
     case "probe_tags_from_name": {
       const subject = mockNameSubject(args.path, args.mask);
-      const fields = mockExtractFromName(args.mask, subject);
+      const fields = mockExtractFromName(args.mask, subject, args.replacements);
       return Promise.resolve({ subject, fields: fields || [], matched: !!fields });
     }
     case "preview_tags_from_name": {
@@ -6165,7 +6271,7 @@ function mockInvoke(cmd, args) {
         .map((p) => {
           const t = findTrack(p);
           if (!t) return null;
-          const fields = mockExtractFromName(args.mask, mockNameSubject(p, args.mask));
+          const fields = mockExtractFromName(args.mask, mockNameSubject(p, args.mask), args.replacements);
           if (!fields) return null;
           const tag_changes = fields
             .filter(([field, value]) => value && (t.tags[field] || "") !== value)

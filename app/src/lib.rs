@@ -110,6 +110,15 @@ fn field_value_invalid(field: &str, new: Option<&str>) -> bool {
     }
 }
 
+/// One row of the FROM NAME replacement table (#141): literal `from` -> `to`,
+/// run over every value the mask extracts. A row with an empty `from` is a
+/// half-typed row, not an error — it contributes nothing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct ReplacementDto {
+    pub from: String,
+    pub to: String,
+}
+
 /// What a mask sees in one file's name (#139): the string being matched — the
 /// stem, plus as many parent folders as the pattern asks for — and the
 /// storage-key/value pairs it pulls out, in the model's field order. `matched`
@@ -1046,15 +1055,21 @@ impl App {
     /// before anything is previewed, as it is for rename. The result is an
     /// ordinary [`PlanDto`], so this previews, applies and undoes through the
     /// same journaled path as every other change.
+    ///
+    /// `replacements` is the literal find-and-replace pass run over each
+    /// extracted value (#141) — names carry their separators as junk, and
+    /// `the_x_factor` has to reach the Artist tag as `the x factor`.
     pub fn preview_tags_from_name(
         &self,
         mask_pattern: &str,
         paths: &[PathBuf],
+        replacements: &[ReplacementDto],
     ) -> Result<PlanDto, AppError> {
         // The mask engine sees one separator; the user may type either (#71).
         let normalized = mask_pattern.replace('\\', "/");
         let mask = Mask::parse(&normalized)?;
         let depth = normalized.matches('/').count();
+        let cleanup = replacement_chain(replacements)?;
 
         let mut changes = Vec::new();
         for path in paths {
@@ -1075,7 +1090,9 @@ impl App {
 
             let mut tag_changes = Vec::new();
             for (field, value) in &extracted {
-                let value = normalize_extracted(field, value);
+                // Clean up first, normalize after: a replacement can leave
+                // whitespace at the edges, and the trim is what takes it off.
+                let value = normalize_extracted(field, &cleanup.apply(value));
                 if value.is_empty() {
                     continue;
                 }
@@ -1120,15 +1137,24 @@ impl App {
         &self,
         mask_pattern: &str,
         path: &Path,
+        replacements: &[ReplacementDto],
     ) -> Result<NameProbeDto, AppError> {
         let normalized = mask_pattern.replace('\\', "/");
         let mask = Mask::parse(&normalized)?;
         let depth = normalized.matches('/').count();
+        let cleanup = replacement_chain(replacements)?;
         let subject = name_subject(path, depth).unwrap_or_default();
         let fields = match mask.extract(&subject) {
             Ok(tags) => tags
                 .iter()
-                .map(|(field, value)| (field.to_storage_key(), normalize_extracted(field, value)))
+                // The replacements run here too: what the probe shows has to be
+                // what would be written.
+                .map(|(field, value)| {
+                    (
+                        field.to_storage_key(),
+                        normalize_extracted(field, &cleanup.apply(value)),
+                    )
+                })
                 .filter(|(_, value)| !value.is_empty())
                 .collect(),
             Err(MaskError::NoMatch) => {
@@ -2260,6 +2286,29 @@ fn name_subject(path: &Path, depth: usize) -> Option<String> {
     Some(parts.join("/"))
 }
 
+/// The cleanup pass FROM NAME runs over the values it extracts (#141), built
+/// from the panel's replacement table.
+///
+/// Literal, in table order, on the same [`Replace`] step GENERATOR's
+/// find-and-replace is built on — one implementation, so the two can't drift.
+/// The regex and whole-word options stay in GENERATOR: this is the quick pass
+/// for separators, not a second transformation engine. Rows with an empty
+/// `from` are skipped rather than refused, so a half-typed table still previews.
+fn replacement_chain(replacements: &[ReplacementDto]) -> Result<TransformChain, AppError> {
+    let mut chain = TransformChain::default();
+    for row in replacements {
+        if row.from.is_empty() {
+            continue;
+        }
+        chain.push(Box::new(Replace::new(
+            &row.from,
+            &row.to,
+            ReplaceOptions::default(),
+        )?));
+    }
+    Ok(chain)
+}
+
 /// Clean up one value pulled out of a file name (#139) before it becomes a tag
 /// change. Whitespace around a capture is an artifact of the separators in the
 /// pattern, never part of the value. Beyond that only the integer fields are
@@ -3022,7 +3071,11 @@ mod tests {
         let mut app = open_app(&dir);
 
         let plan = app
-            .preview_tags_from_name("%track% - %artist% - %title%", std::slice::from_ref(&track))
+            .preview_tags_from_name(
+                "%track% - %artist% - %title%",
+                std::slice::from_ref(&track),
+                &[],
+            )
             .unwrap();
         assert_eq!(plan.changes.len(), 1);
         let by_field = |field: &str| {
@@ -3084,7 +3137,7 @@ mod tests {
             "%albumartist%\\%album%\\%track% - %title%",
         ] {
             let plan = app
-                .preview_tags_from_name(pattern, std::slice::from_ref(&track))
+                .preview_tags_from_name(pattern, std::slice::from_ref(&track), &[])
                 .unwrap();
             assert_eq!(plan.changes.len(), 1, "pattern {pattern}");
             let value = |field: &str| {
@@ -3112,7 +3165,11 @@ mod tests {
         let app = open_app(&dir);
 
         let plan = app
-            .preview_tags_from_name("%artist% - %title%", &[matching.clone(), other, already])
+            .preview_tags_from_name(
+                "%artist% - %title%",
+                &[matching.clone(), other, already],
+                &[],
+            )
             .unwrap();
         assert_eq!(plan.changes.len(), 1);
         assert_eq!(plan.changes[0].path, matching.to_string_lossy());
@@ -3129,7 +3186,7 @@ mod tests {
 
         for pattern in ["%side%%track% - %title%", "%disc%%track% - %title%"] {
             assert!(app
-                .preview_tags_from_name(pattern, std::slice::from_ref(&track))
+                .preview_tags_from_name(pattern, std::slice::from_ref(&track), &[])
                 .is_err());
         }
     }
@@ -3143,7 +3200,7 @@ mod tests {
         let app = open_app(&dir);
 
         let plan = app
-            .preview_tags_from_name("%year% - %title%", std::slice::from_ref(&track))
+            .preview_tags_from_name("%year% - %title%", std::slice::from_ref(&track), &[])
             .unwrap();
         let year = plan.changes[0]
             .tag_changes
@@ -3152,6 +3209,56 @@ mod tests {
             .unwrap();
         assert_eq!(year.new.as_deref(), Some("Live"));
         assert!(year.invalid);
+    }
+
+    // #141: the replacement table runs over every extracted value, in both the
+    // plan and the probe — a name's separators are junk the tag shouldn't keep.
+    #[test]
+    fn replacements_clean_up_the_extracted_values() {
+        let dir = TempDir::new("fromname-replace");
+        let track = dir.tagged_flac("101_the_x_factor_-_desert_rain.flac", "Unknown", "Unknown");
+        let app = open_app(&dir);
+        let rows = [
+            ReplacementDto {
+                from: "_".into(),
+                to: " ".into(),
+            },
+            // Applied in table order, over the result of the row before it.
+            ReplacementDto {
+                from: "the x factor".into(),
+                to: "The X Factor".into(),
+            },
+            // A half-typed row contributes nothing instead of failing.
+            ReplacementDto::default(),
+        ];
+
+        let plan = app
+            .preview_tags_from_name(
+                "%disc:1%%track:2%_%artist%_-_%title%",
+                std::slice::from_ref(&track),
+                &rows,
+            )
+            .unwrap();
+        let value = |field: &str| {
+            plan.changes[0]
+                .tag_changes
+                .iter()
+                .find(|c| c.field == field)
+                .and_then(|c| c.new.clone())
+        };
+        assert_eq!(value("artist").as_deref(), Some("The X Factor"));
+        assert_eq!(value("title").as_deref(), Some("desert rain"));
+        assert_eq!(value("disc").as_deref(), Some("1"));
+        assert_eq!(value("track").as_deref(), Some("1"));
+
+        // The probe shows the replaced values, since that's what would be written.
+        let probe = app
+            .probe_tags_from_name("%disc:1%%track:2%_%artist%_-_%title%", &track, &rows)
+            .unwrap();
+        assert!(probe.matched);
+        assert!(probe
+            .fields
+            .contains(&("artist".to_string(), "The X Factor".to_string())));
     }
 
     // The live probe reports what the pattern sees, current tags irrelevant —
@@ -3163,7 +3270,7 @@ mod tests {
         let app = open_app(&dir);
 
         let hit = app
-            .probe_tags_from_name("%artist% - %title%", &track)
+            .probe_tags_from_name("%artist% - %title%", &track, &[])
             .unwrap();
         assert!(hit.matched);
         assert_eq!(hit.subject, "Autechre - Gantz Graf");
@@ -3177,7 +3284,7 @@ mod tests {
         );
 
         let miss = app
-            .probe_tags_from_name("%track%. %title%", &track)
+            .probe_tags_from_name("%track%. %title%", &track, &[])
             .unwrap();
         assert!(!miss.matched);
         assert!(miss.fields.is_empty());
@@ -3186,13 +3293,13 @@ mod tests {
 
         // A folder pattern shows how much of the path is in play.
         let deep = app
-            .probe_tags_from_name("%album%/%artist% - %title%", &track)
+            .probe_tags_from_name("%album%/%artist% - %title%", &track, &[])
             .unwrap();
         assert!(deep.subject.ends_with("/Autechre - Gantz Graf"));
 
         // A broken pattern is still an error.
         assert!(app
-            .probe_tags_from_name("%artist% - [%title%", &track)
+            .probe_tags_from_name("%artist% - [%title%", &track, &[])
             .is_err());
     }
 

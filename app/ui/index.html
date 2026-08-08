@@ -352,8 +352,19 @@
               <div class="mask-row">
                 <input id="from-name-mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
               </div>
+              <!-- Replacement table (#141): a literal cleanup pass over every
+                   extracted value, since names carry their separators as junk.
+                   Rows are built by renderReplacements. -->
+              <div class="repl">
+                <div class="repl-head">
+                  <span class="repl-title">Replace in values</span>
+                  <button id="repl-add" class="icon" type="button" title="Add a replacement" aria-label="Add a replacement"><svg class="ico"><use href="#i-plus"/></svg></button>
+                </div>
+                <div id="repl-rows" class="repl-rows"></div>
+              </div>
               <!-- Live read-out of what the pattern pulls out of the current
-                   row, so the mask can be tuned without staging a plan. -->
+                   row, replacements included, so the mask can be tuned without
+                   staging a plan. -->
               <div id="from-name-probe" class="probe"></div>
               <p class="hint muted">
                 The same placeholders RENAMER uses, read the other way. Add <code>/</code> (or

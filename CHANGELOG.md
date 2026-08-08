@@ -26,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   rather than failing the batch, and a value the field can't hold — a vinyl
   `A1` as a track number — is flagged in the diff instead of being written.
 
+- **FROM NAME gained a replacement table.** Names carry their separators as
+  junk, so `the_x_factor` was landing in the Artist tag verbatim, and fixing it
+  meant a second pass — extract, apply, then a GENERATOR chain over the same
+  files — two plans and two undo entries for what was one operation. A small
+  table under the pattern box now runs literal find-and-replace over every
+  value the mask extracts, before it becomes a change. It starts with the row
+  everybody needs, underscore to space, which is an ordinary row and can be
+  deleted. The live read-out shows the replaced values, since that is what
+  would be written, and the pattern and the table both come back next session.
+  Regex and whole-word matching stay in GENERATOR: this is the quick pass, not
+  a second transformation engine. (#141)
+
 - **A stated width now splits values that run together in a name.** Real
   numbering packs the disc and the track into one run — `101_artist_-_title` is
   disc 1, track 01 — and the pattern for it, `%disc:1%%track:2%`, was rejected

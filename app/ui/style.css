@@ -3419,6 +3419,69 @@ td[data-field="year"],
   background: var(--panel);
 }
 
+/* FROM NAME's replacement table (#141). A dense list of from -> to rows, on the
+   second control tier (24px) so it reads as secondary to the pattern box above
+   it. `find` and `replace with` hold name fragments, so both are mono. */
+.repl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.repl-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.repl-title {
+  font-size: var(--text-xs);
+  color: var(--muted);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+}
+
+.repl-head .icon {
+  height: var(--ctl-h-sm);
+  width: var(--ctl-h-sm);
+}
+
+.repl-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.repl-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.repl-row input {
+  flex: 1;
+  min-width: 0;
+  height: var(--ctl-h-sm);
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+}
+
+.repl-row .icon {
+  flex: 0 0 auto;
+  height: var(--ctl-h-sm);
+  width: var(--ctl-h-sm);
+}
+
+.repl-arrow {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.repl-empty {
+  font-size: var(--text-xs);
+}
+
 /* FROM NAME (#139): the live read-out under the pattern box. The subject line
    is what the mask is actually matched against — the stem, plus a folder per
    separator in the pattern — so it reads as a file name (mono), with the
