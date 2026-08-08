@@ -166,3 +166,16 @@ export let builtinGroups = [];
 export function setBuiltinGroups(value) {
   builtinGroups = value;
 }
+
+// One tag value off a track, empty string when absent — the reader every render
+// path uses, so a missing field is never `undefined` in the DOM.
+export function tag(track, key) {
+  return track.tags[key] || "";
+}
+
+// The open library indexed by path, built on demand. Callers that touch many
+// tracks at once (import, auto-match, the diff) build it once instead of
+// scanning the array per lookup.
+export function trackByPath() {
+  return new Map(tracks.map((t) => [t.path, t]));
+}

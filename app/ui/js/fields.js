@@ -55,4 +55,8 @@ const KNOWN_CUSTOM_LABELS = {
 // reconstructs the vinyl side notation (A1/B2) from media + disc + track.
 const VIRTUAL_COLUMNS = [["position", "Position"]];
 
-export { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS };
+// Group key for a track that belongs to no dropped folder (a loose dropped
+// file, #127). Not a valid absolute path, so it can't collide with a folder key.
+const DROP_LOOSE_KEY = "::loose::";
+
+export { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS, DROP_LOOSE_KEY };

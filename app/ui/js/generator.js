@@ -9,6 +9,7 @@ import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
 import { hooks } from "./hooks.js";
 import { currentFieldValue } from "./editor.js";
+import { groupKeyOf } from "./grouping.js";
 import {
   actionGroups,
   groupBy,
