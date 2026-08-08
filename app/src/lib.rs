@@ -1015,10 +1015,11 @@ impl App {
     /// Preview applying a transformation chain, without writing (#34).
     ///
     /// `scope` is either `filename` — rewriting the file's stem, extension
-    /// untouched — or a tag storage key, or `tags` for every text field the file
-    /// carries. Producing a normal [`PlanDto`] means transformations preview,
-    /// apply and undo through exactly the same journaled path as every other
-    /// change; nothing here writes.
+    /// untouched — `fileext` (#137), its mirror image: the extension alone,
+    /// stem untouched — or a tag storage key, or `tags` for every text field the
+    /// file carries. Producing a normal [`PlanDto`] means transformations
+    /// preview, apply and undo through exactly the same journaled path as every
+    /// other change; nothing here writes.
     pub fn preview_transform(
         &self,
         paths: &[PathBuf],
@@ -1050,6 +1051,41 @@ impl App {
                     path: path.to_string_lossy().into_owned(),
                     rename_to: Some(
                         path.with_file_name(file_name)
+                            .to_string_lossy()
+                            .into_owned(),
+                    ),
+                    tag_changes: Vec::new(),
+                    cover_change: None,
+                    sidecar_renames: Vec::new(),
+                };
+                self.attach_sidecars(&mut change);
+                changes.push(change);
+                continue;
+            }
+
+            // The extension alone (#137) — `.MP3` -> `.mp3` is the case that
+            // motivates it, so the chain sees the extension without its dot and
+            // the stem is carried through untouched. A file with no extension has
+            // nothing to transform: skipped rather than given one.
+            if scope == "fileext" {
+                let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
+                    continue;
+                };
+                let renamed = chain.apply(ext);
+                // A separator would move the file, and a dot would change how many
+                // extensions the name has -- neither is a rename this scope offers.
+                if renamed == ext || renamed.trim().is_empty() || renamed.contains(['/', '\\', '.'])
+                {
+                    continue;
+                }
+                let stem = path
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                let mut change = FileChangeDto {
+                    path: path.to_string_lossy().into_owned(),
+                    rename_to: Some(
+                        path.with_file_name(format!("{stem}.{renamed}"))
                             .to_string_lossy()
                             .into_owned(),
                     ),
@@ -3141,6 +3177,33 @@ mod tests {
             )
         );
         assert!(renamed.changes[0].tag_changes.is_empty());
+    }
+
+    #[test]
+    fn preview_transform_fileext_scope_touches_only_the_extension() {
+        let dir = TempDir::new("transform-fileext");
+        let shouty = dir.tagged_flac("Desert_Rain.FLAC", "The X Factor", "Desert Rain");
+        let app = open_app(&dir);
+        let rules = vec![case_rule("lower")];
+
+        // Lower-casing the extension leaves the stem's capitals alone -- the whole
+        // point of a scope separate from `filename`.
+        let plan = app
+            .preview_transform(std::slice::from_ref(&shouty), &rules, "fileext")
+            .unwrap();
+        assert_eq!(
+            plan.changes[0].rename_to.as_deref(),
+            Some(dir.0.join("Desert_Rain.flac").to_string_lossy().as_ref())
+        );
+        assert!(plan.changes[0].tag_changes.is_empty());
+
+        // A rule that would move the file rather than retype the extension is not
+        // a rename this scope offers, so the file is left out of the plan.
+        let escaping = vec![replace_rule("flac", "../flac")];
+        let refused = app
+            .preview_transform(std::slice::from_ref(&shouty), &escaping, "fileext")
+            .unwrap();
+        assert!(refused.changes.is_empty());
     }
 
     #[test]

@@ -2602,9 +2602,11 @@ async function previewTransform() {
       rules: transformRules,
       scope: el("transform-scope").value,
     });
-    // A filename transform is a rename; a tag transform is an edit. Either way
-    // it applies through the normal preview/apply/undo path.
-    previewSource = el("transform-scope").value === "filename" ? "rename" : "transform";
+    // A filename or extension transform is a rename; a tag transform is an edit.
+    // Either way it applies through the normal preview/apply/undo path.
+    previewSource = ["filename", "fileext"].includes(el("transform-scope").value)
+      ? "rename"
+      : "transform";
     renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
@@ -2691,11 +2693,18 @@ function deleteGroup(name) {
   renderGroupsMenu();
 }
 
+// Readable names for the scopes whose stored key isn't already a field label.
+const SCOPE_LABELS = {
+  tags: "all tags",
+  filename: "file name",
+  fileext: "file extension",
+};
+
 // One-line summary of a group for its tooltip.
 function groupSummary(group) {
   const on = (group.rules || []).filter((r) => r.enabled !== false).length;
   const total = (group.rules || []).length;
-  const scope = group.scope === "filename" ? "file name" : group.scope || "all tags";
+  const scope = SCOPE_LABELS[group.scope] || group.scope || "all tags";
   return `${on}/${total} step(s) · ${scope}`;
 }
 
@@ -5854,6 +5863,13 @@ function mockInvoke(cmd, args) {
             const ext = p.slice(p.lastIndexOf("."));
             const renamed = applyRules(base);
             return renamed === base ? null : { path: p, rename_to: `${dir}${renamed}${ext}`, tag_changes: [] };
+          }
+          if (args.scope === "fileext") {
+            const stem = p.slice(0, p.lastIndexOf("."));
+            const ext = p.slice(p.lastIndexOf(".") + 1);
+            const renamed = applyRules(ext);
+            if (renamed === ext || !renamed.trim() || /[/\\.]/.test(renamed)) return null;
+            return { path: p, rename_to: `${stem}.${renamed}`, tag_changes: [] };
           }
           const tag_changes = [];
           for (const [field, value] of Object.entries(t.tags)) {
