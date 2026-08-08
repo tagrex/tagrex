@@ -498,11 +498,16 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ActionGroupDto {
     pub name: String,
-    /// The transform scope the group runs at (`tags`, `filename`, or a single
-    /// field key) — mirrors the GENERATOR scope selector.
+    /// The transform scope the group runs at (`tags`, `filename`, `fileext`, or
+    /// a single field key) — mirrors the GENERATOR scope selector.
     #[serde(default)]
     pub scope: String,
     pub rules: Vec<TransformRuleDto>,
+    /// What the group is for, in one line (#137). Carried by the shipped
+    /// presets, where the name alone doesn't say what the chain does; empty for
+    /// groups the user saved, whose name is their own shorthand.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note: String,
 }
 
 /// What a drag-and-drop of paths resolves to (#127), reported to the frontend so
@@ -2130,6 +2135,107 @@ fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|v| !v.is_empty())
 }
 
+/// One step of a shipped preset, spelled out positionally so the tables below
+/// read as data. `style` doubles as the case style / key notation, unused by
+/// `replace`.
+fn preset_rule(kind: &str, from: &str, to: &str, regex: bool, style: &str) -> TransformRuleDto {
+    TransformRuleDto {
+        kind: kind.into(),
+        from: from.into(),
+        to: to.into(),
+        regex,
+        whole_word: false,
+        case_sensitive: false,
+        style: style.into(),
+        enabled: true,
+    }
+}
+
+/// The preset library that ships with the app (#137).
+///
+/// These are ordinary action groups — same rule shape, same scopes, run through
+/// the same preview/apply/undo path as a group the user saved. They differ only
+/// in where they live: in the binary rather than in settings.json, so they can't
+/// be deleted and can't drift. Loading one copies its steps into the live chain
+/// to edit and save under a new name; the preset itself stays as shipped.
+///
+/// Every one is a chain a user could have built by hand. Nothing here needs a
+/// rule kind that doesn't already exist — a preset that would is a feature
+/// request, not a preset. `builtin_presets_all_build` keeps that honest.
+pub fn builtin_action_groups() -> Vec<ActionGroupDto> {
+    let group =
+        |name: &str, scope: &str, note: &str, rules: Vec<TransformRuleDto>| ActionGroupDto {
+            name: name.into(),
+            scope: scope.into(),
+            rules,
+            note: note.into(),
+        };
+    let re = |from: &str, to: &str| preset_rule("replace", from, to, true, "");
+    let case = |style: &str| preset_rule("case", "", "", false, style);
+    let step = |kind: &str| preset_rule(kind, "", "", false, "");
+
+    vec![
+        group(
+            "Standard values",
+            "tags",
+            "Collapse runs of whitespace and trim the ends.",
+            vec![re(r"\s+", " "), re(r"^\s+|\s+$", "")],
+        ),
+        group(
+            "Discogs cleanup",
+            "tags",
+            "Drop the numeric disambiguator on artist names — \"Sunbeam (2)\" becomes \"Sunbeam\".",
+            vec![re(r"\s*\(\d+\)$", "")],
+        ),
+        group(
+            "Normalize english",
+            "tags",
+            "Title-case, keeping the acronyms and roman numerals the case step knows about.",
+            vec![case("title")],
+        ),
+        group(
+            "General Latin",
+            "tags",
+            "Romanize non-Latin scripts, then strip any accents left behind.",
+            vec![step("transliterate"), step("diacritics")],
+        ),
+        group(
+            "No dash",
+            "tags",
+            "Replace dashes with spaces, then collapse the gaps that leaves.",
+            vec![
+                re(r"[-\x{2013}\x{2014}]+", " "),
+                re(r"\s{2,}", " "),
+                re(r"^\s+|\s+$", ""),
+            ],
+        ),
+        group(
+            "Lower case",
+            "filename",
+            "Lower-case the file name's stem, extension untouched.",
+            vec![case("lower")],
+        ),
+        group(
+            "File extension",
+            "fileext",
+            "Lower-case the extension alone — \".FLAC\" becomes \".flac\".",
+            vec![case("lower")],
+        ),
+        group(
+            "FTP format",
+            "filename",
+            "Plain ASCII, no spaces — a file name that survives any server.",
+            vec![
+                step("transliterate"),
+                step("diacritics"),
+                re(r"[^A-Za-z0-9._-]+", "_"),
+                re(r"_{2,}", "_"),
+                re(r"^_+|_+$", ""),
+            ],
+        ),
+    ]
+}
+
 /// Turn the UI's rule list into a transform chain, rejecting a malformed rule
 /// rather than silently dropping it — a rule that quietly does nothing is worse
 /// than an error, because the preview would look like a no-op.
@@ -3204,6 +3310,42 @@ mod tests {
             .preview_transform(std::slice::from_ref(&shouty), &escaping, "fileext")
             .unwrap();
         assert!(refused.changes.is_empty());
+    }
+
+    #[test]
+    fn builtin_presets_all_build_into_a_chain() {
+        // A preset is data, so a typo in a pattern or a style would otherwise
+        // reach the user as an error toast on the day they click it.
+        for group in builtin_action_groups() {
+            assert!(!group.rules.is_empty(), "{} has no steps", group.name);
+            assert!(!group.note.is_empty(), "{} has no note", group.name);
+            build_chain(&group.rules)
+                .unwrap_or_else(|err| panic!("preset {} does not build: {err}", group.name));
+        }
+    }
+
+    #[test]
+    fn builtin_presets_do_what_their_names_say() {
+        let run = |name: &str, input: &str| {
+            let group = builtin_action_groups()
+                .into_iter()
+                .find(|g| g.name == name)
+                .unwrap_or_else(|| panic!("no preset named {name}"));
+            build_chain(&group.rules).unwrap().apply(input)
+        };
+
+        assert_eq!(run("Standard values", "  Desert   Rain "), "Desert Rain");
+        assert_eq!(run("Discogs cleanup", "Sunbeam (2)"), "Sunbeam");
+        assert_eq!(
+            run("No dash", "The X Factor - Desert Rain"),
+            "The X Factor Desert Rain"
+        );
+        assert_eq!(run("General Latin", "Пётр Ильич"), "Pyotr Ilich");
+        assert_eq!(
+            run("FTP format", "Björk — Jóga (12\" Mix)"),
+            "Bjork_Joga_12_Mix"
+        );
+        assert_eq!(run("File extension", "FLAC"), "flac");
     }
 
     #[test]

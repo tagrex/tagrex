@@ -15,9 +15,9 @@ use tauri::{Manager, State};
 
 use player::{Player, PlayerStatus};
 use tagrex::{
-    AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto,
-    DropResultDto, DuplicateGroupDto, ImportSelectionDto, ImportTrackDto, PlanDto, ReleaseDto,
-    SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
+    ActionGroupDto, AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto,
+    CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportSelectionDto, ImportTrackDto, PlanDto,
+    ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -483,6 +483,13 @@ fn load_settings(app: tauri::AppHandle) -> Result<SettingsDto, String> {
     Ok(read_settings(&app))
 }
 
+/// The shipped preset library (#137). Read-only and not part of settings: the
+/// frontend lists these below the user's own saved groups.
+#[tauri::command]
+fn builtin_action_groups() -> Vec<ActionGroupDto> {
+    tagrex::builtin_action_groups()
+}
+
 #[tauri::command]
 fn save_settings(
     app: tauri::AppHandle,
@@ -551,6 +558,7 @@ fn main() {
             player_stop,
             player_seek,
             player_set_volume,
+            builtin_action_groups,
             player_status
         ])
         .run(tauri::generate_context!())

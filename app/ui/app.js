@@ -2644,6 +2644,27 @@ async function persistActionGroups() {
   }
 }
 
+// ---- the shipped preset library (#137) ----
+// Action groups that come with the app rather than being saved by the user.
+// They are ordinary groups in every way that matters — same rule shape, same
+// scope, run and loaded through the same code — but they live in the binary,
+// not in settings.json, so they can't be deleted and can't drift. Loading one
+// copies its steps into the live chain, where they can be edited and saved
+// under a new name; the preset itself stays as shipped.
+//
+// The list is the backend's (`builtin_action_groups`) rather than a copy here,
+// so a preset's patterns are covered by the tests that build them into chains.
+let builtinGroups = [];
+
+async function initBuiltinGroups() {
+  try {
+    builtinGroups = (await invoke("builtin_action_groups")).map((g) => ({ ...g, builtin: true }));
+  } catch (e) {
+    builtinGroups = []; // no shelf is better than a broken one
+  }
+  renderGroupsMenu();
+}
+
 // A plain, serializable copy of one transform rule (no DOM id, `enabled` normalized).
 function ruleForGroup(r) {
   return {
@@ -2708,42 +2729,38 @@ function groupSummary(group) {
   return `${on}/${total} step(s) · ${scope}`;
 }
 
-// Build the Groups popover — mirrors the presets menu (#44): a Run/Load/Delete
-// row per group, plus a footer to name and save the current chain.
-function renderGroupsMenu() {
-  const menu = el("groups-menu");
-  menu.innerHTML = "";
-  if (!actionGroups.length) {
-    const empty = document.createElement("div");
-    empty.className = "col-menu-sep";
-    empty.textContent = "No saved groups";
-    menu.appendChild(empty);
-  }
-  for (const group of actionGroups) {
-    const row = document.createElement("div");
-    row.className = "col-menu-row preset-row";
+// One Run/Load(/Delete) row. Built-ins get no Delete — they aren't the user's
+// to remove — and carry their note in the tooltip instead of the bare summary.
+function groupMenuRow(group, menu) {
+  const row = document.createElement("div");
+  row.className = "col-menu-row preset-row";
 
-    const run = document.createElement("button");
-    run.type = "button";
-    run.className = "text-btn preset-apply";
-    run.textContent = group.name;
-    run.title = `Run: ${groupSummary(group)}`;
-    run.addEventListener("click", () => {
-      runGroup(group);
-      menu.hidden = true;
-    });
+  const run = document.createElement("button");
+  run.type = "button";
+  run.className = "text-btn preset-apply";
+  run.textContent = group.name;
+  run.title = group.note ? `${group.note}\nRun: ${groupSummary(group)}` : `Run: ${groupSummary(group)}`;
+  run.addEventListener("click", () => {
+    runGroup(group);
+    menu.hidden = true;
+  });
 
-    const load = document.createElement("button");
-    load.type = "button";
-    load.className = "text-btn group-load";
-    load.textContent = "Load";
-    load.title = "Load into the chain without running";
-    load.addEventListener("click", (e) => {
-      e.stopPropagation();
-      loadGroup(group);
-      menu.hidden = true;
-    });
+  const load = document.createElement("button");
+  load.type = "button";
+  load.className = "text-btn group-load";
+  load.textContent = "Load";
+  load.title = group.builtin
+    ? "Load into the chain to edit — the built-in stays as shipped"
+    : "Load into the chain without running";
+  load.addEventListener("click", (e) => {
+    e.stopPropagation();
+    loadGroup(group);
+    menu.hidden = true;
+  });
 
+  row.append(run, load);
+
+  if (!group.builtin) {
     const del = document.createElement("button");
     del.type = "button";
     del.className = "preset-del";
@@ -2753,9 +2770,33 @@ function renderGroupsMenu() {
       e.stopPropagation();
       deleteGroup(group.name);
     });
+    row.append(del);
+  }
 
-    row.append(run, load, del);
-    menu.appendChild(row);
+  return row;
+}
+
+// Build the Groups popover — mirrors the presets menu (#44): a Run/Load/Delete
+// row per group, plus a footer to name and save the current chain. The user's
+// own groups come first: they're the ones being iterated on, and the shipped
+// library below them (#137) is a stable shelf to reach for.
+function renderGroupsMenu() {
+  const menu = el("groups-menu");
+  menu.innerHTML = "";
+  if (!actionGroups.length) {
+    const empty = document.createElement("div");
+    empty.className = "col-menu-sep";
+    empty.textContent = "No saved groups";
+    menu.appendChild(empty);
+  }
+  for (const group of actionGroups) menu.appendChild(groupMenuRow(group, menu));
+
+  if (builtinGroups.length) {
+    const shipped = document.createElement("div");
+    shipped.className = "col-menu-sep";
+    shipped.textContent = "Built-in";
+    menu.appendChild(shipped);
+    for (const group of builtinGroups) menu.appendChild(groupMenuRow(group, menu));
   }
 
   const foot = document.createElement("div");
@@ -5628,6 +5669,7 @@ populateGroupMenu();
 el("search-per-page").value = String(searchPerPage);
 // Load saved action groups (#57) from settings.json into the Groups popover.
 initActionGroups();
+initBuiltinGroups();
 // Reflect saved filter-mode flags (#44) onto the toggles.
 syncFilterControls();
 
