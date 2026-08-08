@@ -18,7 +18,8 @@
 > **Status: 0.3.x.** Usable day to day: table editing, rename masks, text
 > transforms, online lookups, cover art, duplicate detection, exports, and a
 > transactional undo journal. Not 1.0, so expect rough edges — bug reports and
-> feedback are welcome. The design is written up in
+> feedback are welcome. How to use it is in the
+> [user guide](docs/guide/README.md); the design is written up in
 > [docs/architecture.md](docs/architecture.md); user-visible changes are in
 > [CHANGELOG.md](CHANGELOG.md).
 

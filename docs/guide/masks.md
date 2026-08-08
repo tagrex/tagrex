@@ -1,0 +1,144 @@
+# Mask reference
+
+A mask is a pattern that turns tags into a string: a file name, a folder path, a
+line in a report. `%artist% - %title%` is a mask.
+
+The same grammar is used by **Rename by mask** and **Reorganize into folders** in
+[RENAMER](renamer.md), and by the **Report** format in
+[EXPORTER](duplicates-and-export.md).
+
+## Placeholders
+
+Write a field name between percent signs. Names are case-insensitive.
+
+| Placeholder | Field |
+| --- | --- |
+| `%artist%` | Artist |
+| `%title%` | Title |
+| `%album%` | Album |
+| `%albumartist%` | Album Artist |
+| `%track%` | Track number |
+| `%tracktotal%` | Total tracks |
+| `%disc%` | Disc number |
+| `%disctotal%` | Total discs |
+| `%year%` | Year |
+| `%genre%` | Genre |
+| `%comment%` | Comment |
+| `%composer%` | Composer |
+| `%publisher%` | Publisher / label |
+| `%bpm%` | BPM |
+| `%isrc%` | ISRC |
+| `%key%` | Initial key |
+| `%catalognumber%` | Catalogue number |
+| `%url%` | URL |
+| `%media%` | Media type |
+| `%side%` | Vinyl/cassette side letter — **render only**, see below |
+
+The hint under the pattern box lists the common ones; the full set above is
+accepted. An unknown name is an error rather than being passed through as
+literal text, so a typo tells you instead of quietly producing
+`%artsit% - Title`.
+
+Custom (non-modeled) fields cannot be addressed from a mask yet.
+
+## Zero-padding
+
+`%field:width%` pads a numeric value with leading zeros to at least `width`
+digits. Non-numeric values are left alone.
+
+```
+%track%        →  07
+%track:3%      →  007
+%disc:2%       →  01
+```
+
+**Track numbers pad to two digits by default**, everything else prints as-is.
+That default exists because of one specific failure: `%disc%%track%` would
+otherwise render disc 1, track 1 as `11`, which a player reads as track eleven.
+With the default it is `101`. Set an explicit width when a release needs
+something else.
+
+## Optional sections
+
+Square brackets mark a section that is kept only if a placeholder inside it
+resolved to something, and dropped **whole** otherwise — including its literal
+text.
+
+```
+%album%[ (%year%)]
+```
+
+- Album with a year → `Blue Lines (1991)`
+- Album without one → `Blue Lines`, with no trailing space and no empty
+  parentheses
+
+This is what lets one mask serve a library where some releases have a year and
+some don't. Without it you would need two masks and a way to decide between them.
+
+Sections nest.
+
+## Literals
+
+The characters `%`, `[` and `]` are reserved. To use one literally, wrap it in
+single quotes:
+
+```
+'100%'         →  100%
+'['live']'     →  [live]
+```
+
+Two quotes in a row (`''`) produce one literal quote.
+
+## Folder paths
+
+In **Reorganize into folders**, `/` (or `\`) separates directories:
+
+```
+%albumartist%/%year% - %album%/%track% - %title%
+```
+
+Paths are built under the opened library root. A separator in a *tag value*
+cannot create a folder — only separators you write in the pattern do. An artist
+literally named `AC/DC` becomes one folder, not two.
+
+## `%side%` — vinyl sides
+
+`%side%` renders the side letter derived from the disc number: disc 1 → `A`,
+disc 2 → `B`, and so on. It is blank for non-vinyl media.
+
+```
+%side%%track:1% - %title%    →  A1 - Safe From Harm
+```
+
+It is **render-only**: it is computed from the disc number rather than stored, so
+a mask containing it can render a name but cannot be used to read tags back out
+of one.
+
+## Two directions
+
+The mask engine is bidirectional by design — one grammar that both *renders* a
+name from tags and *extracts* tags from a name — and both directions come from
+the same parsed pattern, so they cannot drift apart.
+
+Only the render direction is exposed in the interface today. Extraction
+(filling tags *from* file names) exists in the core, along with a `%skip%`
+placeholder for the junk in a filename that maps to no tag, but there is no UI
+for it yet. It is listed as not-yet in the [README](../../README.md).
+
+## Practical patterns
+
+```
+%artist% - %title%
+%track% - %title%
+%albumartist% - %album%[ (%year%)]/%track% - %title%
+%albumartist%/[%year% - ]%album%/%track% - %title%
+%side%%track:1% - %artist% - %title%
+[%catalognumber% - ]%album%
+```
+
+## When a mask can't render
+
+A mask that needs a tag a file doesn't have cannot render for that file. Rather
+than writing a name with a hole in it, that file is left out of the plan — you
+will see it missing from the preview. Wrap the fragile part in `[...]` if you
+want those files handled anyway.
