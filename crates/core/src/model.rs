@@ -111,6 +111,26 @@ impl AudioFormat {
         }
     }
 
+    /// A short, display-ready name for the container (#147) — what `%_codec%`
+    /// renders and what a UI shows in a format column. Deliberately the common
+    /// spelling rather than the variant name (`APE`, not `MonkeysAudio`).
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Mp3 => "MP3",
+            Self::Flac => "FLAC",
+            Self::OggVorbis => "Vorbis",
+            Self::M4a => "M4A",
+            Self::Aac => "AAC",
+            Self::Aiff => "AIFF",
+            Self::Wav => "WAV",
+            Self::Opus => "Opus",
+            Self::Speex => "Speex",
+            Self::Musepack => "Musepack",
+            Self::MonkeysAudio => "APE",
+            Self::WavPack => "WavPack",
+        }
+    }
+
     /// The tag type each format is read and written through, matching
     /// [`lofty::file::FileType::primary_tag_type`].
     fn primary_tag_type(self) -> TagType {
@@ -254,6 +274,10 @@ pub struct AudioProps {
     pub duration_secs: u64,
     /// Audio bitrate in kbps, when the backend reports one.
     pub bitrate_kbps: Option<u32>,
+    /// Sample rate in Hz, when the backend reports one (#147).
+    pub sample_rate_hz: Option<u32>,
+    /// Channel count, when the backend reports one (#147).
+    pub channels: Option<u8>,
 }
 
 /// A single audio file as seen by the table model.
@@ -360,14 +384,19 @@ impl TagEngine {
         Ok(tagged.properties().duration())
     }
 
-    /// Read duration and audio bitrate together from one probe (#40): the two
-    /// distinguishing properties the duplicate view needs beyond file size.
+    /// Read the technical audio properties from one probe (#40): duration and
+    /// bitrate, the two the duplicate view needs beyond file size, plus sample
+    /// rate and channel count for the `%_samplerate%` / `%_channels%` mask
+    /// placeholders (#147). One probe, so a mask asking for several of them
+    /// costs no more than asking for one.
     pub fn read_audio_props(path: &Path) -> Result<AudioProps, TagIoError> {
         let tagged = Probe::open(path)?.guess_file_type()?.read()?;
         let props = tagged.properties();
         Ok(AudioProps {
             duration_secs: props.duration().as_secs(),
             bitrate_kbps: props.audio_bitrate(),
+            sample_rate_hz: props.sample_rate(),
+            channels: props.channels(),
         })
     }
 

@@ -5,7 +5,7 @@
 //! is read-only with respect to the audio files: nothing here goes through the
 //! [`Executor`](crate::plan::Executor) pipeline, because nothing is modified.
 
-use crate::mask::Mask;
+use crate::mask::{FileContext, Mask};
 use crate::model::{TagField, TagMap, TrackFile};
 
 /// One playlist entry. `path` is written verbatim, so the caller decides
@@ -197,11 +197,13 @@ fn xml_element_name(name: &str) -> String {
 ///
 /// Rendering is lenient: a placeholder whose tag is missing becomes an empty
 /// string rather than dropping the whole line, so a report always covers every
-/// track it was given.
+/// track it was given. File and technical placeholders (#147) resolve too — a
+/// report is the obvious place to want `%_length%` or `%_bitrate%`.
 pub fn report(tracks: &[TrackFile], mask: &Mask) -> String {
     let mut out = String::new();
     for track in tracks {
-        if let Ok(line) = mask.render(&lenient_tags(&track.tags)) {
+        let file = FileContext::read(mask, track);
+        if let Ok(line) = mask.render_with(&lenient_tags(&track.tags), &file) {
             out.push_str(&line);
             out.push('\n');
         }

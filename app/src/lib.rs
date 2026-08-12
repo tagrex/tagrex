@@ -23,7 +23,7 @@ use thiserror::Error;
 use base64::Engine as _;
 use tagrex_core::export::{self, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
-use tagrex_core::mask::{Mask, MaskError};
+use tagrex_core::mask::{FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{is_writable_value, CoverArt, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
@@ -1012,7 +1012,7 @@ impl App {
             let Ok(track) = TagEngine::read(path) else {
                 continue;
             };
-            let Ok(stem) = mask.render(&track.tags) else {
+            let Ok(stem) = mask.render_with(&track.tags, &FileContext::read(&mask, &track)) else {
                 continue;
             };
             let new_name = match path.extension().and_then(|ext| ext.to_str()) {
@@ -1421,7 +1421,8 @@ impl App {
             let Ok(track) = TagEngine::read(path) else {
                 continue;
             };
-            let Ok(rendered) = mask.render(&track.tags) else {
+            let Ok(rendered) = mask.render_with(&track.tags, &FileContext::read(&mask, &track))
+            else {
                 continue;
             };
             // Both separators are accepted so a pattern stays portable and one
@@ -3032,6 +3033,38 @@ mod tests {
             .find(|t| t.path.ends_with("good.flac"))
             .unwrap();
         assert!(!good.unreadable);
+    }
+
+    /// The file placeholders (#147) reach the rename path with a real file
+    /// behind them: the folder name and the container come from the file rather
+    /// than from any tag, and the technical ones resolve off the actual probe.
+    #[test]
+    fn preview_rename_resolves_file_and_technical_placeholders() {
+        let dir = TempDir::new("filemask");
+        let track = dir.tagged_flac_at("Blue Lines/original.flac", "Massive Attack", "Safe");
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_rename(
+                "%foldername% - %title% (%_codec%)",
+                std::slice::from_ref(&track),
+            )
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        let expected = track.with_file_name("Blue Lines - Safe (FLAC).flac");
+        assert_eq!(
+            plan.changes[0].rename_to.as_deref(),
+            Some(expected.to_string_lossy().as_ref())
+        );
+
+        // An audio property costs a probe, which only a pattern asking for one
+        // pays for -- and it has to come back with a real value, not an empty
+        // string standing in for a read that never happened.
+        let probed = app
+            .preview_rename("%title% %_samplerate%", std::slice::from_ref(&track))
+            .unwrap();
+        let renamed = probed.changes[0].rename_to.as_deref().unwrap();
+        assert!(renamed.ends_with("Safe 44100.flac"), "got {renamed}");
     }
 
     #[test]

@@ -25,17 +25,25 @@
 //!   away a run of text (filename junk that maps to no tag), and may repeat; it
 //!   has no render value, so a mask carrying it is extract-only. It's the mirror
 //!   of `%side%`, which is render-only.
+//! - File and technical placeholders (#147) — `%filename%`, `%foldername%`,
+//!   `%_bitrate%`, … — properties of the *file* rather than of its tags. They
+//!   read from a [`FileContext`] instead of the [`TagMap`], and they are all
+//!   render-only for the same reason `%side%` is: there is no tag to extract a
+//!   bitrate into, and pulling `%filename%` back out of a filename is a
+//!   tautology.
 //!
-//! Only the first-class [`TagField`] variants are valid placeholder names —
-//! `Custom` fields aren't addressable from a mask yet. Deferred rather than
-//! ignored, same as scripting in architecture.md.
+//! Beyond those, only the first-class [`TagField`] variants are valid
+//! placeholder names — `Custom` fields aren't addressable from a mask yet.
+//! Deferred rather than ignored, same as scripting in architecture.md.
 
 use std::borrow::Cow;
+use std::path::Path;
+use std::time::SystemTime;
 
 use regex::Regex;
 use thiserror::Error;
 
-use crate::model::{TagField, TagMap};
+use crate::model::{AudioFormat, AudioProps, TagField, TagMap};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Segment {
@@ -62,6 +70,113 @@ enum Segment {
     /// it may repeat, each occurrence independent. It's the inverse of `%side%`
     /// — meaningless to render, so a mask carrying it is extract-only.
     Skip,
+    /// A property of the file rather than one of its tags (#147). Render-only,
+    /// like [`Side`](Self::Side).
+    File(FileValue),
+}
+
+/// A property of the file itself, addressable from a mask (#147).
+///
+/// Two families, distinguished by their spelling so a reader can tell at a
+/// glance which is which: the **path** ones (`%filename%`, `%foldername%`, …)
+/// name where the file lives, and the **technical** ones (`%_bitrate%`,
+/// `%_length%`, …) describe the audio and carry a leading underscore. All of
+/// them are render-only — a bitrate is not something a filename can be parsed
+/// back into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileValue {
+    /// `%filename%` — the name without its extension.
+    Name,
+    /// `%fileext%` — the extension alone, without the dot.
+    Ext,
+    /// `%filenameext%` — name and extension together.
+    NameExt,
+    /// `%filepath%` — the full path. Sanitized like every other rendered value,
+    /// so its separators are stripped: an identifier, not a reconstructable path.
+    Path,
+    /// `%foldername%` / `%foldername2%` / `%foldername3%` — the containing
+    /// folder and its ancestors, `1` being the immediate parent.
+    Folder(usize),
+    /// `%_length%` — playback duration as `m:ss` (`h:mm:ss` past an hour).
+    Length,
+    /// `%_length_sec%` — playback duration in whole seconds.
+    LengthSec,
+    /// `%_bitrate%` — audio bitrate in kbps.
+    Bitrate,
+    /// `%_samplerate%` — sample rate in Hz.
+    SampleRate,
+    /// `%_channels%` — channel count.
+    Channels,
+    /// `%_codec%` — the container's common name (`MP3`, `FLAC`, `APE`).
+    Codec,
+    /// `%_filesize%` — file size, human-readable (`7.3 MB`).
+    FileSize,
+    /// `%_filesize_bytes%` — file size in bytes.
+    FileSizeBytes,
+    /// `%_filedate%` — last-modified date as `YYYY-MM-DD`, UTC.
+    FileDate,
+}
+
+impl FileValue {
+    /// Whether reading this needs the audio properties, which cost a probe of
+    /// the file. Callers use [`Mask::needs_audio_props`] to skip that read for
+    /// the vast majority of masks, which ask for none of these.
+    fn needs_audio_props(self) -> bool {
+        matches!(
+            self,
+            Self::Length | Self::LengthSec | Self::Bitrate | Self::SampleRate | Self::Channels
+        )
+    }
+
+    /// Whether reading this needs the filesystem metadata (size, mtime).
+    fn needs_metadata(self) -> bool {
+        matches!(self, Self::FileSize | Self::FileSizeBytes | Self::FileDate)
+    }
+}
+
+/// The file a mask is rendering *about* (#147) — everything the file
+/// placeholders read, none of which lives in a [`TagMap`].
+///
+/// Every part is optional and an absent one renders as empty, exactly like a
+/// `%side%` on a CD: a mask must never fail because the caller had no bitrate to
+/// hand. Assemble it with the [`Mask::needs_audio_props`] /
+/// [`Mask::needs_metadata`] guards so a pattern that asks for none of this
+/// costs no extra reads.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FileContext<'a> {
+    pub path: Option<&'a Path>,
+    pub format: Option<AudioFormat>,
+    pub props: Option<AudioProps>,
+    pub size_bytes: Option<u64>,
+    pub modified: Option<SystemTime>,
+}
+
+impl<'a> FileContext<'a> {
+    /// Gather what `mask` asks about `track` — the one place a mask causes file
+    /// I/O, deliberately here at the boundary rather than inside `render`, which
+    /// stays a pure string operation.
+    ///
+    /// The path and container are free (the caller already has the `TrackFile`);
+    /// a probe and a `metadata` call happen only when the pattern actually reads
+    /// an audio property or a size/date, so the overwhelmingly common
+    /// tags-only mask costs nothing extra. Anything unreadable stays `None` and
+    /// renders empty — a mask must not fail over a file property.
+    pub fn read(mask: &Mask, track: &'a crate::model::TrackFile) -> Self {
+        let metadata = mask
+            .needs_metadata()
+            .then(|| std::fs::metadata(&track.path).ok())
+            .flatten();
+        Self {
+            path: Some(&track.path),
+            format: Some(track.format),
+            props: mask
+                .needs_audio_props()
+                .then(|| crate::model::TagEngine::read_audio_props(&track.path).ok())
+                .flatten(),
+            size_bytes: metadata.as_ref().map(|m| m.len()),
+            modified: metadata.as_ref().and_then(|m| m.modified().ok()),
+        }
+    }
 }
 
 /// A parsed, validated mask pattern.
@@ -77,10 +192,17 @@ pub struct Mask {
     /// for the pattern as such — and it goes away as soon as one of the pair
     /// states its width (`%disc:1%%track:2%`, #140).
     adjacent_placeholders: bool,
-    /// The pattern contains a `%side%`, a computed presentation value. It renders
-    /// fine, but there's no single tag to extract it back into, so the mask is
-    /// render-only (the extract direction refuses it).
+    /// The pattern contains a `%side%` or a file placeholder (#147) — a computed
+    /// or file-derived value. Those render fine, but there's no tag to extract
+    /// them back into, so the mask is render-only (the extract direction
+    /// refuses it).
     render_only: bool,
+    /// The pattern reads an audio property, so rendering it needs a probe of the
+    /// file. Precomputed here so a caller can skip that read per file (#147).
+    needs_audio_props: bool,
+    /// The pattern reads file size or mtime, so rendering it needs a `metadata`
+    /// call. Precomputed for the same reason (#147).
+    needs_metadata: bool,
     /// The pattern contains a `%skip%`, a discard placeholder (#70). It extracts
     /// fine (matching and throwing away a run of text), but there's nothing to
     /// render for it, so the mask is extract-only (the render direction refuses it).
@@ -93,8 +215,10 @@ impl Mask {
         let segments = parse_segments(pattern)?;
         let mut previous = None;
         let adjacent_placeholders = has_ambiguous_adjacency(&segments, &mut previous);
-        let render_only = has_side(&segments);
+        let render_only = has_side(&segments) || has_file(&segments, |_| true);
         let extract_only = has_skip(&segments);
+        let needs_audio_props = has_file(&segments, FileValue::needs_audio_props);
+        let needs_metadata = has_file(&segments, FileValue::needs_metadata);
         let regex = build_regex(&segments);
         Ok(Self {
             pattern: pattern.to_string(),
@@ -103,18 +227,42 @@ impl Mask {
             adjacent_placeholders,
             render_only,
             extract_only,
+            needs_audio_props,
+            needs_metadata,
         })
     }
 
-    /// Tags -> filename (the Music Renamer direction).
+    /// Tags -> filename (the Music Renamer direction), with no file to read
+    /// properties from: the file placeholders (#147) render empty, the way
+    /// `%side%` does on a CD. Use [`render_with`](Self::render_with) wherever
+    /// the file is known.
     pub fn render(&self, tags: &TagMap) -> Result<String, MaskError> {
+        self.render_with(tags, &FileContext::default())
+    }
+
+    /// Tags + the file itself -> filename (#147).
+    pub fn render_with(&self, tags: &TagMap, file: &FileContext<'_>) -> Result<String, MaskError> {
         // `%skip%` discards text on extract and has nothing to render (#70).
         if self.extract_only {
             return Err(MaskError::ExtractOnly);
         }
         let mut out = String::new();
-        render_segments(&self.segments, tags, false, &mut out)?;
+        render_segments(&self.segments, tags, file, false, &mut out)?;
         Ok(out)
+    }
+
+    /// Whether rendering this pattern needs [`FileContext::props`], which costs
+    /// a probe of the file. False for every mask that asks for no audio
+    /// property — which is nearly all of them, so this is worth checking before
+    /// reading one per file (#147).
+    pub fn needs_audio_props(&self) -> bool {
+        self.needs_audio_props
+    }
+
+    /// Whether rendering this pattern needs [`FileContext::size_bytes`] or
+    /// [`FileContext::modified`], i.e. a filesystem `metadata` call (#147).
+    pub fn needs_metadata(&self) -> bool {
+        self.needs_metadata
     }
 
     /// Filename -> tags (the import direction).
@@ -124,7 +272,8 @@ impl Mask {
         if self.adjacent_placeholders {
             return Err(MaskError::Ambiguous);
         }
-        // `%side%` is a computed value with no tag to extract into.
+        // `%side%` and the file placeholders (#147) are computed or file-derived
+        // values with no tag to extract into.
         if self.render_only {
             return Err(MaskError::RenderOnly);
         }
@@ -246,6 +395,12 @@ fn parse_placeholder(spec: &str) -> Result<Segment, MaskError> {
     if spec.eq_ignore_ascii_case("skip") {
         return Ok(Segment::Skip);
     }
+    // Matched on the whole spec, before the `:width` split: a width is about
+    // zero-padding a number, which none of these are, so `%filename:5%` is an
+    // unknown placeholder rather than a silently ignored width (#147).
+    if let Some(value) = file_value_from_name(spec) {
+        return Ok(Segment::File(value));
+    }
     let (name, width) = match spec.split_once(':') {
         Some((name, width)) => (
             name,
@@ -314,6 +469,9 @@ fn build_regex_into(segments: &[Segment], index: &mut usize, out: &mut String) {
             // `%skip%` matches a run of text but keeps none of it: a non-capturing
             // group, so it consumes no index in either this walk or collect_captures.
             Segment::Skip => out.push_str("(?:.+?)"),
+            // Render-only like `%side%`: a mask carrying one refuses to extract,
+            // so it contributes no capture group and no index (#147).
+            Segment::File(_) => {}
         }
     }
 }
@@ -338,6 +496,8 @@ fn collect_captures(
             Segment::Side => {}
             // Matched a run of text but writes no tag (a non-capturing group, #70).
             Segment::Skip => {}
+            // Render-only; extraction is refused before reaching here (#147).
+            Segment::File(_) => {}
         }
     }
 }
@@ -351,6 +511,7 @@ fn collect_captures(
 fn render_segments(
     segments: &[Segment],
     tags: &TagMap,
+    file: &FileContext<'_>,
     optional: bool,
     out: &mut String,
 ) -> Result<bool, MaskError> {
@@ -371,7 +532,7 @@ fn render_segments(
             },
             Segment::Section(inner) => {
                 let mut buffer = String::new();
-                if render_segments(inner, tags, true, &mut buffer)? {
+                if render_segments(inner, tags, file, true, &mut buffer)? {
                     out.push_str(&buffer);
                     produced = true;
                 }
@@ -387,9 +548,132 @@ fn render_segments(
             // `%skip%` has no render value; render() refuses the mask before we
             // get here, so this is just defensive exhaustiveness (#70).
             Segment::Skip => return Err(MaskError::ExtractOnly),
+            // A file property (#147). Sanitized like a tag value, since it lands
+            // in the same filename; empty whenever the caller had nothing to give
+            // (no path, no probe) — never an error, same as `%side%` on a CD.
+            Segment::File(value) => {
+                let rendered = render_file_value(*value, file);
+                let clean = sanitize_for_filename(&rendered);
+                if !clean.is_empty() {
+                    produced = true;
+                }
+                out.push_str(&clean);
+            }
         }
     }
     Ok(produced)
+}
+
+/// One file placeholder's value, or empty when the context doesn't carry it.
+fn render_file_value(value: FileValue, file: &FileContext<'_>) -> String {
+    let component = |part: Option<&std::ffi::OsStr>| {
+        part.and_then(|p| p.to_str())
+            .map(str::to_string)
+            .unwrap_or_default()
+    };
+    match value {
+        FileValue::Name => file
+            .path
+            .map(|p| component(p.file_stem()))
+            .unwrap_or_default(),
+        FileValue::Ext => file
+            .path
+            .map(|p| component(p.extension()))
+            .unwrap_or_default(),
+        FileValue::NameExt => file
+            .path
+            .map(|p| component(p.file_name()))
+            .unwrap_or_default(),
+        FileValue::Path => file
+            .path
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        // `1` is the immediate parent, `2` its parent, and so on. Walking up
+        // past the root simply yields nothing rather than an error — a mask
+        // asking for a third folder level on a file two deep is a thin result,
+        // not a broken pattern.
+        FileValue::Folder(level) => file
+            .path
+            .and_then(|p| p.ancestors().nth(level))
+            .map(|p| component(p.file_name()))
+            .unwrap_or_default(),
+        FileValue::Length => file
+            .props
+            .map(|p| format_duration(p.duration_secs))
+            .unwrap_or_default(),
+        FileValue::LengthSec => file
+            .props
+            .map(|p| p.duration_secs.to_string())
+            .unwrap_or_default(),
+        FileValue::Bitrate => optional_number(file.props.and_then(|p| p.bitrate_kbps)),
+        FileValue::SampleRate => optional_number(file.props.and_then(|p| p.sample_rate_hz)),
+        FileValue::Channels => optional_number(file.props.and_then(|p| p.channels)),
+        FileValue::Codec => file
+            .format
+            .map(|f| f.name().to_string())
+            .unwrap_or_default(),
+        FileValue::FileSize => file.size_bytes.map(format_size).unwrap_or_default(),
+        FileValue::FileSizeBytes => optional_number(file.size_bytes),
+        FileValue::FileDate => file.modified.and_then(format_date).unwrap_or_default(),
+    }
+}
+
+fn optional_number(value: Option<impl std::fmt::Display>) -> String {
+    value.map(|v| v.to_string()).unwrap_or_default()
+}
+
+/// `m:ss`, or `h:mm:ss` once there's an hour to show. Seconds are always two
+/// digits so a column of durations lines up.
+fn format_duration(seconds: u64) -> String {
+    let (hours, minutes, seconds) = (seconds / 3600, (seconds / 60) % 60, seconds % 60);
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
+}
+
+/// A human-readable size, binary units (what a file manager shows), one decimal
+/// above the KB threshold. Bytes are printed whole — `512 B`, not `0.5 KB`.
+fn format_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["KB", "MB", "GB", "TB"];
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64 / 1024.0;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    format!("{value:.1} {}", UNITS[unit])
+}
+
+/// `YYYY-MM-DD` in UTC. A local-time rendering would make the same file produce
+/// different names on two machines, which is precisely what a rename mask must
+/// not do; UTC keeps it reproducible.
+fn format_date(time: SystemTime) -> Option<String> {
+    let seconds = time.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_secs();
+    let (year, month, day) = civil_from_days((seconds / 86_400) as i64);
+    Some(format!("{year:04}-{month:02}-{day:02}"))
+}
+
+/// Days since the Unix epoch -> calendar date (Howard Hinnant's `civil_from_days`,
+/// the standard branch-free conversion). Pulled in rather than a date crate: one
+/// arithmetic function is a smaller dependency surface than a calendar library
+/// we'd use for exactly this.
+fn civil_from_days(days: i64) -> (i64, u32, u32) {
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let day_of_era = z - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let mp = (5 * day_of_year + 2) / 153;
+    let day = (day_of_year - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (year + i64::from(month <= 2), month, day)
 }
 
 /// The side letter for `%side%`: only on side-based media (vinyl, cassette), and
@@ -434,6 +718,17 @@ fn has_skip(segments: &[Segment]) -> bool {
     })
 }
 
+/// Whether any segment is a file placeholder `predicate` accepts (#147) — one
+/// walk serving three questions: is the mask render-only, does it need a probe,
+/// does it need filesystem metadata.
+fn has_file(segments: &[Segment], predicate: fn(FileValue) -> bool) -> bool {
+    segments.iter().any(|segment| match segment {
+        Segment::File(value) => predicate(*value),
+        Segment::Section(inner) => has_file(inner, predicate),
+        _ => false,
+    })
+}
+
 /// Two placeholders with no literal text between them *and* no width to split
 /// them on, looking through section boundaries — `[%disc%]%track%` is just as
 /// unsplittable as `%disc%%track%`.
@@ -450,7 +745,7 @@ fn has_ambiguous_adjacency(segments: &[Segment], previous: &mut Option<bool>) ->
         // and neither can state a width.
         let stated = match segment {
             Segment::Placeholder(_, _, stated) => Some(*stated),
-            Segment::Side | Segment::Skip => Some(false),
+            Segment::Side | Segment::Skip | Segment::File(_) => Some(false),
             _ => None,
         };
         if let Some(stated) = stated {
@@ -517,6 +812,31 @@ fn pad_numeric(value: &str, width: usize) -> Cow<'_, str> {
 
 fn group_name(index: usize) -> String {
     format!("f{index}")
+}
+
+/// A file placeholder by name (#147), or `None` if the name isn't one — the
+/// caller then tries the tag fields, so an unknown name still reports
+/// `UnknownPlaceholder` naming the whole spec.
+fn file_value_from_name(name: &str) -> Option<FileValue> {
+    match name.to_ascii_lowercase().as_str() {
+        "filename" => Some(FileValue::Name),
+        "fileext" => Some(FileValue::Ext),
+        "filenameext" => Some(FileValue::NameExt),
+        "filepath" => Some(FileValue::Path),
+        "foldername" => Some(FileValue::Folder(1)),
+        "foldername2" => Some(FileValue::Folder(2)),
+        "foldername3" => Some(FileValue::Folder(3)),
+        "_length" => Some(FileValue::Length),
+        "_length_sec" => Some(FileValue::LengthSec),
+        "_bitrate" => Some(FileValue::Bitrate),
+        "_samplerate" => Some(FileValue::SampleRate),
+        "_channels" => Some(FileValue::Channels),
+        "_codec" => Some(FileValue::Codec),
+        "_filesize" => Some(FileValue::FileSize),
+        "_filesize_bytes" => Some(FileValue::FileSizeBytes),
+        "_filedate" => Some(FileValue::FileDate),
+        _ => None,
+    }
 }
 
 fn field_from_name(name: &str) -> Result<TagField, MaskError> {
@@ -1023,5 +1343,162 @@ mod tests {
         assert_eq!(mask.render(&TagMap::new()).unwrap(), "static-name");
         assert!(mask.extract("static-name").is_ok());
         assert!(mask.extract("other-name").is_err());
+    }
+
+    // ---- file and technical placeholders (#147) ----
+
+    fn file_at(path: &Path) -> FileContext<'_> {
+        FileContext {
+            path: Some(path),
+            ..FileContext::default()
+        }
+    }
+
+    #[test]
+    fn renders_the_path_placeholders() {
+        let path = Path::new("/music/Boards of Canada/Music Has the Right/03 Roygbiv.flac");
+        let file = file_at(path);
+        let render = |pattern: &str| {
+            Mask::parse(pattern)
+                .unwrap()
+                .render_with(&TagMap::new(), &file)
+                .unwrap()
+        };
+        assert_eq!(render("%filename%"), "03 Roygbiv");
+        assert_eq!(render("%fileext%"), "flac");
+        assert_eq!(render("%filenameext%"), "03 Roygbiv.flac");
+        assert_eq!(render("%foldername%"), "Music Has the Right");
+        assert_eq!(render("%foldername2%"), "Boards of Canada");
+        assert_eq!(render("%foldername3%"), "music");
+    }
+
+    #[test]
+    fn a_folder_level_above_the_root_renders_empty() {
+        // Two levels up from a file one deep is past the root: a thin result,
+        // not a broken pattern.
+        let file = file_at(Path::new("/track.flac"));
+        let mask = Mask::parse("%foldername2%").unwrap();
+        assert_eq!(mask.render_with(&TagMap::new(), &file).unwrap(), "");
+    }
+
+    #[test]
+    fn the_full_path_is_sanitized_like_any_other_value() {
+        // It lands in a filename like everything else, so its separators are
+        // stripped -- it identifies the file, it doesn't reconstruct its path.
+        let file = file_at(Path::new("/music/x/track.flac"));
+        let rendered = Mask::parse("%filepath%")
+            .unwrap()
+            .render_with(&TagMap::new(), &file)
+            .unwrap();
+        assert!(!rendered.contains('/'), "got {rendered}");
+        assert!(rendered.contains("track.flac"), "got {rendered}");
+    }
+
+    #[test]
+    fn renders_the_technical_placeholders() {
+        let path = Path::new("/music/track.mp3");
+        let file = FileContext {
+            path: Some(path),
+            format: Some(AudioFormat::Mp3),
+            props: Some(AudioProps {
+                duration_secs: 3812,
+                bitrate_kbps: Some(320),
+                sample_rate_hz: Some(44_100),
+                channels: Some(2),
+            }),
+            size_bytes: Some(7_654_321),
+            modified: Some(SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000)),
+        };
+        let render = |pattern: &str| {
+            Mask::parse(pattern)
+                .unwrap()
+                .render_with(&TagMap::new(), &file)
+                .unwrap()
+        };
+        assert_eq!(render("%_length%"), "1:03:32");
+        assert_eq!(render("%_length_sec%"), "3812");
+        assert_eq!(render("%_bitrate%"), "320");
+        assert_eq!(render("%_samplerate%"), "44100");
+        assert_eq!(render("%_channels%"), "2");
+        assert_eq!(render("%_codec%"), "MP3");
+        assert_eq!(render("%_filesize%"), "7.3 MB");
+        assert_eq!(render("%_filesize_bytes%"), "7654321");
+        assert_eq!(render("%_filedate%"), "2023-11-14");
+    }
+
+    #[test]
+    fn a_file_placeholder_without_a_context_renders_empty() {
+        // Same contract as `%side%` on a CD: an absent value is a valid outcome,
+        // never an error -- and it contributes nothing to a conditional section.
+        let mask = Mask::parse("%title%[ [%_bitrate%kbps]]").unwrap();
+        let rendered = mask.render(&tags(&[(TagField::Title, "Roygbiv")])).unwrap();
+        assert_eq!(rendered, "Roygbiv");
+    }
+
+    #[test]
+    fn a_file_placeholder_makes_the_mask_render_only() {
+        // There is no tag to extract a bitrate or a folder name into.
+        let mask = Mask::parse("%foldername%/%title%").unwrap();
+        assert!(matches!(
+            mask.extract("Album/Roygbiv"),
+            Err(MaskError::RenderOnly)
+        ));
+    }
+
+    #[test]
+    fn only_the_patterns_that_ask_for_them_need_a_probe_or_metadata() {
+        // The guard that keeps the common tags-only mask from paying for a
+        // second read of every file.
+        let plain = Mask::parse("%artist% - %title%").unwrap();
+        assert!(!plain.needs_audio_props());
+        assert!(!plain.needs_metadata());
+
+        let named = Mask::parse("%foldername% - %filename%").unwrap();
+        assert!(!named.needs_audio_props());
+        assert!(!named.needs_metadata());
+
+        let technical = Mask::parse("%title% [%_bitrate%]").unwrap();
+        assert!(technical.needs_audio_props());
+        assert!(!technical.needs_metadata());
+
+        let dated = Mask::parse("%title% [%_filedate%]").unwrap();
+        assert!(!dated.needs_audio_props());
+        assert!(dated.needs_metadata());
+    }
+
+    #[test]
+    fn a_width_on_a_file_placeholder_is_not_a_placeholder() {
+        // A width zero-pads a number; none of these are numbers to pad, so the
+        // spec is rejected rather than silently ignoring the width.
+        // Reported by name, the same way `%bogus:5%` is.
+        assert!(matches!(
+            Mask::parse("%filename:5%"),
+            Err(MaskError::UnknownPlaceholder(name)) if name == "filename"
+        ));
+    }
+
+    #[test]
+    fn file_placeholder_names_are_case_insensitive() {
+        let file = file_at(Path::new("/music/track.flac"));
+        let mask = Mask::parse("%FileName%").unwrap();
+        assert_eq!(mask.render_with(&TagMap::new(), &file).unwrap(), "track");
+    }
+
+    #[test]
+    fn formats_durations_sizes_and_dates() {
+        assert_eq!(format_duration(0), "0:00");
+        assert_eq!(format_duration(9), "0:09");
+        assert_eq!(format_duration(212), "3:32");
+        assert_eq!(format_duration(3600), "1:00:00");
+
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(1536), "1.5 KB");
+        assert_eq!(format_size(5 * 1024 * 1024), "5.0 MB");
+
+        assert_eq!(civil_from_days(0), (1970, 1, 1));
+        assert_eq!(civil_from_days(59), (1970, 3, 1));
+        // A leap day, the case the conversion is easiest to get wrong on.
+        assert_eq!(civil_from_days(19_782), (2024, 2, 29));
     }
 }

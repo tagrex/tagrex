@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Masks can now address the file, not just its tags.** Sixteen new
+  placeholders: the path ones — `%filename%`, `%fileext%`, `%filenameext%`,
+  `%filepath%`, `%foldername%`, `%foldername2%`, `%foldername3%` — and the
+  technical ones, which carry a leading underscore to mark them as properties of
+  the audio rather than of the file's place on disk: `%_length%`,
+  `%_length_sec%`, `%_bitrate%`, `%_samplerate%`, `%_channels%`, `%_codec%`,
+  `%_filesize%`, `%_filesize_bytes%`, `%_filedate%`. They work anywhere a mask
+  does — rename, reorganize, report — which is what makes an export like
+  `%artist% - %title% [%_bitrate%kbps %_length%]` expressible at all, and what
+  lets a rename keep the folder a file came from. All of them are render-only,
+  for the same reason `%side%` is: there is no tag to read a bitrate back into,
+  and pulling `%filename%` out of a filename says nothing, so a mask carrying one
+  is refused by FROM NAME rather than quietly matching. A value that isn't
+  available renders as empty instead of failing the file — an unreadable
+  property, a folder level above the root — so a pattern stays usable across a
+  mixed selection. Duration is `m:ss`, size is human-readable, and the date is
+  UTC so the same file renders the same name on any machine. The two that cost
+  a read (a probe for the audio properties, a `metadata` call for size and date)
+  are only paid for by patterns that actually ask for them, so the ordinary
+  tags-only mask is exactly as fast as before. (#147)
+
 - **Tags can now be read out of the file name.** The mask grammar has always
   been bidirectional — the same pattern that renames a file from its tags can
   read tags back out of a name — but only the renaming half was ever reachable,

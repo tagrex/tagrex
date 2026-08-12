@@ -114,6 +114,46 @@ It is **render-only**: it is computed from the disc number rather than stored, s
 a mask containing it can render a name but cannot be used to read tags back out
 of one.
 
+## File and technical placeholders
+
+Not everything worth putting in a name or a report is a tag. These describe the
+**file** instead.
+
+| Placeholder | Value |
+| --- | --- |
+| `%filename%` | Name without the extension |
+| `%fileext%` | Extension alone, no dot |
+| `%filenameext%` | Name and extension |
+| `%filepath%` | Full path |
+| `%foldername%` | Containing folder |
+| `%foldername2%` | Its parent |
+| `%foldername3%` | And its parent |
+| `%_length%` | Duration as `m:ss` (`h:mm:ss` past an hour) |
+| `%_length_sec%` | Duration in whole seconds |
+| `%_bitrate%` | Audio bitrate, kbps |
+| `%_samplerate%` | Sample rate, Hz |
+| `%_channels%` | Channel count |
+| `%_codec%` | Container name — `MP3`, `FLAC`, `APE` |
+| `%_filesize%` | Size, human-readable — `7.3 MB` |
+| `%_filesize_bytes%` | Size in bytes |
+| `%_filedate%` | Last-modified date, `YYYY-MM-DD` (UTC) |
+
+The leading underscore marks the technical ones: properties of the audio rather
+than of the file's place on disk. UTC rather than local time for the date, so the
+same file renders the same name on any machine.
+
+All of them are **render-only**, for the same reason `%side%` is — there is no
+tag to read a bitrate back into, and pulling `%filename%` out of a filename says
+nothing. A mask carrying one works in Rename, Reorganize and Report, and is
+refused by **Tags from the file name**.
+
+A value that isn't available renders as empty rather than failing: an unreadable
+file, a folder level above the root, a container that reports no bitrate. Wrap it
+in `[...]` if the surrounding text should disappear with it.
+
+`%filepath%` is sanitized like every other rendered value, so its separators are
+stripped. It identifies a file; it does not reconstruct a path.
+
 ## Two directions
 
 The mask engine is bidirectional by design — one grammar that both *renders* a
