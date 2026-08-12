@@ -628,6 +628,18 @@ function mockInvoke(cmd, args) {
           extract,
         }))
       );
+    // The import-field catalogue (#152). A trimmed stand-in — enough rows,
+    // including the two-key release-id one, to drive the settings section.
+    case "import_fields":
+      return Promise.resolve([
+        { keys: ["title"], label: "Title" },
+        { keys: ["artist"], label: "Artist" },
+        { keys: ["album"], label: "Album" },
+        { keys: ["genre"], label: "Genre" },
+        { keys: ["url"], label: "Release webpage" },
+        { keys: ["custom:RELEASECOUNTRY"], label: "Release country" },
+        { keys: ["custom:DISCOGS_RELEASE_ID", "custom:MUSICBRAINZ_ALBUMID"], label: "Release id" },
+      ]);
     case "saved_discogs_token":
       return Promise.resolve(mockInvoke.state?.token || "");
     case "save_discogs_token":
@@ -643,6 +655,7 @@ function mockInvoke(cmd, args) {
           read_priority: [],
           cover_max_px: 0,
           cover_quality: 85,
+          import_skip_fields: [],
         }
       );
     case "save_settings":

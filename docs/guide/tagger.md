@@ -130,3 +130,14 @@ source is about to give you — providers disagree about artist naming, about
 whether "feat." belongs in the title, about genre vocabulary. Untick the rows you
 don't want, apply the rest, then clean up the difference with
 [GENERATOR](generator.md).
+
+For a disagreement you have every time rather than once, **Settings › Online
+import** lists every tag an import can write, each with a checkbox. Switch off
+the ones you curate yourself — genre is the usual one — and an import leaves
+them exactly as the file has them, instead of writing them and making you undo
+it. Everything is on by default, and a field added to the import in a later
+version arrives switched on too.
+
+Cover art is not in that list: embedding one is its own button on the release
+card, so it is already something you ask for rather than something an import
+does on its own.

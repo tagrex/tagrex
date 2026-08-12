@@ -714,6 +714,20 @@
             <p class="settings-hint">A larger fetched or chosen cover is downscaled and re-encoded as JPEG before embedding, so it doesn't bloat every file.</p>
           </div>
 
+          <!-- Which fields an online import may write (#152). The rows are built
+               from the backend's own catalogue (`import_fields`), so the setting
+               can never offer a field the import doesn't produce. -->
+          <div class="settings-group">
+            <h3>Online import</h3>
+            <p class="settings-hint">Which tags an import from Discogs or MusicBrainz is allowed to write. Everything is on by default; a field switched off here is left exactly as the file has it.</p>
+            <div id="set-import-fields" class="import-fields"></div>
+            <div class="settings-inline import-fields-actions">
+              <button id="set-import-all" type="button" class="text-btn">All</button>
+              <button id="set-import-none" type="button" class="text-btn">None</button>
+            </div>
+            <p class="settings-hint">Cover art isn't listed: embedding one is its own button on the release card, not something an import does on its own.</p>
+          </div>
+
           <div class="settings-group">
             <h3>Files</h3>
             <div class="settings-row">

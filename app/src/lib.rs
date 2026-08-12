@@ -15,6 +15,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -268,6 +269,17 @@ pub struct SettingsDto {
     /// carry (#58). Case-insensitive. Defaults to a lyrics/cue/text/image set.
     #[serde(default = "default_sidecar_extensions")]
     pub sidecar_extensions: Vec<String>,
+    /// Storage keys an online import must NOT write (#152), e.g. `"genre"` or
+    /// `"custom:RELEASECOUNTRY"`.
+    ///
+    /// A *deny* list rather than an allow list, deliberately. Empty means "write
+    /// everything", which is both the historical behaviour and what an absent or
+    /// older settings.json deserializes to — an allow list would have to be
+    /// populated to mean the same thing, and would silently write nothing for
+    /// anyone upgrading. It also means a field added to the import later is
+    /// written by default instead of being invisibly excluded.
+    #[serde(default)]
+    pub import_skip_fields: Vec<String>,
 }
 
 fn default_carry_sidecars() -> bool {
@@ -298,6 +310,7 @@ impl Default for SettingsDto {
             action_groups: Vec::new(),
             carry_sidecars: default_carry_sidecars(),
             sidecar_extensions: default_sidecar_extensions(),
+            import_skip_fields: Vec::new(),
         }
     }
 }
@@ -675,6 +688,8 @@ pub struct App {
     carry_sidecars: Cell<bool>,
     /// Sidecar extensions to carry (#58), from settings.
     sidecar_extensions: RefCell<Vec<String>>,
+    /// Storage keys an online import must not write (#152), from settings.
+    import_skip_fields: RefCell<HashSet<String>>,
 }
 
 impl App {
@@ -694,6 +709,7 @@ impl App {
             cover_quality: Cell::new(85),
             carry_sidecars: Cell::new(default_carry_sidecars()),
             sidecar_extensions: RefCell::new(default_sidecar_extensions()),
+            import_skip_fields: RefCell::new(HashSet::new()),
         })
     }
 
@@ -776,6 +792,8 @@ impl App {
             .set(effective_cover_quality(settings.cover_quality));
         self.carry_sidecars.set(settings.carry_sidecars);
         *self.sidecar_extensions.borrow_mut() = settings.sidecar_extensions.clone();
+        *self.import_skip_fields.borrow_mut() =
+            settings.import_skip_fields.iter().cloned().collect();
     }
 
     /// Build a Discogs provider using the current proxy setting.
@@ -2269,13 +2287,22 @@ impl App {
             }
 
             let mut tag_changes = Vec::new();
+            // One gate for every field the import produces (#152), here at the
+            // end rather than beside each push: a field added to `desired` later
+            // is covered without anyone having to remember this exists.
+            let skip = self.import_skip_fields.borrow();
             for (field, new) in desired {
+                let key = field.to_storage_key();
+                if skip.contains(&key) {
+                    continue;
+                }
                 let new = new.filter(|value| !value.is_empty());
                 let old = current.tags.get(&field).cloned();
                 if new.is_some() && old != new {
-                    tag_changes.push(FieldChangeDto::new(field.to_storage_key(), old, new));
+                    tag_changes.push(FieldChangeDto::new(key, old, new));
                 }
             }
+            drop(skip);
             if !tag_changes.is_empty() {
                 changes.push(FileChangeDto {
                     path: path.to_string_lossy().into_owned(),
@@ -2563,6 +2590,60 @@ fn preset_rule(kind: &str, from: &str, to: &str, regex: bool, style: &str) -> Tr
         style: style.into(),
         enabled: true,
     }
+}
+
+/// One row of the "what may an online import write" setting (#152).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ImportFieldDto {
+    /// The storage keys this row governs. Usually one; the release id is two,
+    /// since the key depends on which provider the release came from and a user
+    /// unticking it means both.
+    pub keys: Vec<String>,
+    pub label: String,
+}
+
+/// Every tag field an online import can write (#152), in the order the setting
+/// lists them.
+///
+/// The import itself builds its fields inline, per file, so this cannot be
+/// derived from that code — but it must not drift from it either. The test
+/// `import_field_catalogue_covers_everything_an_import_writes` runs a maximal
+/// import and asserts the two agree in both directions, which is what keeps a
+/// newly added field from being unlistable and an obsolete row from lingering.
+///
+/// The cover is deliberately absent: embedding one is its own action on the
+/// release card, not something `preview_import` does, so there is nothing here
+/// to switch off.
+pub fn import_fields() -> Vec<ImportFieldDto> {
+    let one = |key: &str, label: &str| ImportFieldDto {
+        keys: vec![key.to_string()],
+        label: label.to_string(),
+    };
+    vec![
+        one("title", "Title"),
+        one("artist", "Artist"),
+        one("album", "Album"),
+        one("albumartist", "Album artist"),
+        one("track", "Track number"),
+        one("tracktotal", "Track total"),
+        one("disc", "Disc number"),
+        one("disctotal", "Disc total"),
+        one("year", "Year"),
+        one("genre", "Genre"),
+        one("publisher", "Label / publisher"),
+        one("catalognumber", "Catalogue number"),
+        one("isrc", "ISRC"),
+        one("url", "Release webpage"),
+        one("media", "Media type"),
+        one("custom:RELEASECOUNTRY", "Release country"),
+        ImportFieldDto {
+            keys: vec![
+                "custom:DISCOGS_RELEASE_ID".to_string(),
+                "custom:MUSICBRAINZ_ALBUMID".to_string(),
+            ],
+            label: "Release id".to_string(),
+        },
+    ]
 }
 
 /// One placeholder as the in-app reference shows it (#148).
@@ -3053,6 +3134,7 @@ mod tests {
             action_groups: Vec::new(),
             carry_sidecars: true,
             sidecar_extensions: Vec::new(),
+            import_skip_fields: Vec::new(),
         });
         assert_eq!(app.cover_max_px.get(), 500);
         assert_eq!(app.cover_quality.get(), 90);
@@ -4092,6 +4174,121 @@ mod tests {
                 Some(&"1".to_string())
             ),
             None
+        );
+    }
+
+    // ---- which fields an import may write (#152) ----
+
+    /// A selection with every album- and track-level value populated, so an
+    /// import off it emits the widest set of fields it ever can.
+    fn maximal_selection() -> ImportSelectionDto {
+        ImportSelectionDto {
+            album: Some("Album".into()),
+            album_artist: Some("Album Artist".into()),
+            year: Some("1996".into()),
+            genre: Some("House".into()),
+            release_id: Some("316795".into()),
+            source: Some("discogs".into()),
+            label: Some("Antler-Subway".into()),
+            catalog_number: Some("AS 5606".into()),
+            country: Some("Belgium".into()),
+            track_total: Some("15".into()),
+            url: Some("https://www.discogs.com/release/316795".into()),
+            media_type: Some("CD".into()),
+            disc_total: Some("2".into()),
+            tracks: vec![ImportTrackDto {
+                disc: Some(2),
+                position: "2-05".into(),
+                artist: "The X Factor".into(),
+                title: "Desert Rain".into(),
+                duration_secs: Some(278),
+                isrc: Some("GBAYE9800011".into()),
+            }],
+        }
+    }
+
+    /// The setting can only offer what the import actually writes, and the
+    /// import must not write anything the setting can't reach. `import_fields`
+    /// is a hand-kept list because `preview_import` builds its fields inline;
+    /// this is what stops the two drifting.
+    #[test]
+    fn import_field_catalogue_covers_everything_an_import_writes() {
+        let dir = TempDir::new("import-catalogue");
+        let path = dir.tagged_flac("f1.flac", "Old", "Old");
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_import(&[path], &maximal_selection(), false)
+            .unwrap();
+        let written: std::collections::BTreeSet<String> = plan.changes[0]
+            .tag_changes
+            .iter()
+            .map(|fc| fc.field.clone())
+            .collect();
+        let listed: std::collections::BTreeSet<String> =
+            import_fields().into_iter().flat_map(|f| f.keys).collect();
+
+        // Everything written is listed, so every field can be switched off.
+        let unlistable: Vec<&String> = written.difference(&listed).collect();
+        assert!(
+            unlistable.is_empty(),
+            "the import writes fields the setting cannot reach: {unlistable:?}"
+        );
+        // And nothing is listed that an import can never produce, except the
+        // MusicBrainz release-id key -- the same row covers both providers, and
+        // this selection is a Discogs one.
+        let stale: Vec<&String> = listed
+            .difference(&written)
+            .filter(|key| key.as_str() != "custom:MUSICBRAINZ_ALBUMID")
+            .collect();
+        assert!(stale.is_empty(), "the setting lists dead fields: {stale:?}");
+    }
+
+    #[test]
+    fn an_import_skips_the_fields_the_setting_denies() {
+        let dir = TempDir::new("import-skip");
+        let path = dir.tagged_flac("f1.flac", "Old", "Old");
+        let app = open_app(&dir);
+        app.apply_settings(&SettingsDto {
+            import_skip_fields: vec!["genre".into(), "url".into(), "custom:RELEASECOUNTRY".into()],
+            ..SettingsDto::default()
+        });
+
+        let plan = app
+            .preview_import(&[path], &maximal_selection(), false)
+            .unwrap();
+        let written: Vec<&str> = plan.changes[0]
+            .tag_changes
+            .iter()
+            .map(|fc| fc.field.as_str())
+            .collect();
+        for denied in ["genre", "url", "custom:RELEASECOUNTRY"] {
+            assert!(!written.contains(&denied), "{denied} was written anyway");
+        }
+        // The rest still arrives -- a denial is per field, not a switch on the
+        // whole import.
+        assert!(written.contains(&"album"));
+        assert!(written.contains(&"title"));
+    }
+
+    /// The historical behaviour, and what an older settings.json deserializes
+    /// to: an empty deny list writes everything.
+    #[test]
+    fn an_empty_deny_list_writes_every_field() {
+        let dir = TempDir::new("import-nodeny");
+        let path = dir.tagged_flac("f1.flac", "Old", "Old");
+        let app = open_app(&dir);
+        app.apply_settings(&SettingsDto::default());
+
+        let plan = app
+            .preview_import(&[path], &maximal_selection(), false)
+            .unwrap();
+        assert!(plan.changes[0].tag_changes.len() > 10);
+        assert_eq!(
+            serde_json::from_str::<SettingsDto>("{}")
+                .unwrap()
+                .import_skip_fields,
+            Vec::<String>::new()
         );
     }
 

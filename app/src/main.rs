@@ -16,9 +16,9 @@ use tauri::{Manager, State};
 use player::{Player, PlayerStatus};
 use tagrex::{
     ActionGroupDto, AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto,
-    CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportSelectionDto, ImportTrackDto,
-    NameProbeDto, PlaceholderDto, PlanDto, ReleaseDto, ReplacementDto, SaveImagesDto,
-    SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
+    CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportFieldDto, ImportSelectionDto,
+    ImportTrackDto, NameProbeDto, PlaceholderDto, PlanDto, ReleaseDto, ReplacementDto,
+    SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -525,6 +525,13 @@ fn mask_placeholders() -> Vec<PlaceholderDto> {
     tagrex::mask_placeholders()
 }
 
+/// Every field an online import can write (#152), for the setting that picks
+/// which of them it may. Read-only, like the placeholder reference.
+#[tauri::command]
+fn import_fields() -> Vec<ImportFieldDto> {
+    tagrex::import_fields()
+}
+
 /// Preview the ticked action groups run in order as one plan (#137).
 #[tauri::command]
 fn preview_transform_groups(
@@ -611,6 +618,7 @@ fn main() {
             player_set_volume,
             builtin_action_groups,
             mask_placeholders,
+            import_fields,
             preview_transform_groups,
             player_status
         ])
