@@ -131,6 +131,12 @@ whether "feat." belongs in the title, about genre vocabulary. Untick the rows yo
 don't want, apply the rest, then clean up the difference with
 [GENERATOR](generator.md).
 
+An import fills the disc number when the release says what it is: a disc-numbered
+track position (`1-05`), a MusicBrainz medium, or — on a release that states it
+holds a single disc — plain 1, so an ordinary album reads 1/1 rather than blank.
+A release stating two or more discs leaves a track whose position names no disc
+alone, because there 1 would be a guess.
+
 For a disagreement you have every time rather than once, **Settings › Online
 import** lists every tag an import can write, each with a checkbox. Switch off
 the ones you curate yourself — genre is the usual one — and an import leaves

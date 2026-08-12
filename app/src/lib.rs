@@ -2288,16 +2288,24 @@ impl App {
                 //    instruction, so it wins and overwrites;
                 // 2. the disc the release states (a Discogs `1-05` position, a
                 //    MusicBrainz medium) — the provider's own answer;
-                // 3. the file's folder, but only as a last resort and only when
-                //    the file has no disc yet, since a folder name is a guess
-                //    about the file rather than a statement about the release.
+                // 3. the file's folder, a guess about the file rather than a
+                //    statement about the release, so only when it has no disc yet;
+                // 4. plain `1`, but ONLY when the release states it holds exactly
+                //    one disc (#157).
                 //
-                // Nothing is written when none of the three applies: a
-                // single-disc release has no disc to state, and inventing "1"
-                // would touch every file for no reason.
-                let disc = side_disc.or(track.disc).or_else(|| {
-                    disc_from_folder_name(path, current.tags.get(&TagField::DiscNumber))
-                });
+                // That last one is not the invention it looks like. A release
+                // whose format quantity reads 1 is not silent about the disc —
+                // it says there is exactly one, which puts every track on disc 1
+                // of 1. The count is what licenses it: on a release stating two
+                // or more, a track whose position carries no prefix is genuinely
+                // unplaced, and 1 would be a guess. A release stating no count at
+                // all still writes nothing.
+                let disc = side_disc
+                    .or(track.disc)
+                    .or_else(|| {
+                        disc_from_folder_name(path, current.tags.get(&TagField::DiscNumber))
+                    })
+                    .or_else(|| single_disc_release(selection).then_some(1));
                 if let Some(disc) = disc {
                     let disc = disc.to_string();
                     if current.tags.get(&TagField::DiscNumber).map(String::as_str)
@@ -2307,10 +2315,11 @@ impl App {
                     }
                 }
                 // "of N" — but only where there is a disc for it to complete
-                // (#146). Unlike a track number, a disc number is often absent
-                // altogether, and a DiscTotal on its own is half a pair: every
-                // ordinary single-CD album would gain a `disctotal` of 1 saying
-                // nothing. Album-level value, applied per file for that reason.
+                // (#146). Unlike a track number, a disc number can be absent
+                // altogether, and a DiscTotal on its own is half a pair. Since
+                // #157 a stated single-disc release does get a disc, so those
+                // files now read 1/1 rather than nothing at all. Album-level
+                // value, applied per file for that reason.
                 if disc.is_some() || current.tags.contains_key(&TagField::DiscNumber) {
                     desired.push((TagField::DiscTotal, non_empty(selection.disc_total.clone())));
                 }
@@ -2444,6 +2453,20 @@ fn track_number_from_position(position: &str) -> Option<String> {
     digits.parse::<u32>().ok().map(|n| n.to_string())
 }
 
+/// Whether the release states it holds exactly one disc (#157).
+///
+/// `None` — the provider said nothing about a count — is deliberately NOT the
+/// same as `Some(1)`: the first is silence, the second is a statement, and only
+/// a statement licenses defaulting a track to disc 1.
+fn single_disc_release(selection: &ImportSelectionDto) -> bool {
+    selection
+        .disc_total
+        .as_deref()
+        .map(str::trim)
+        .and_then(|total| total.parse::<u32>().ok())
+        == Some(1)
+}
+
 /// Last-resort disc number from the file's own folder (#146): `CD2`, `CD 2`,
 /// `Disc 3`, `disk_1`.
 ///
@@ -2480,7 +2503,14 @@ fn disc_from_folder_name(path: &Path, existing: Option<&String>) -> Option<u32> 
         .chars()
         .take_while(char::is_ascii_digit)
         .collect();
-    digits.parse::<u32>().ok().filter(|disc| *disc > 0)
+    // A plausible disc number, not any number that follows the word. Box sets
+    // top out in the tens, so a folder yielding 99831 is not naming a disc --
+    // it is a keyword that happened to be followed by digits, which is exactly
+    // what a directory called `…-single-disc-99831` is.
+    digits
+        .parse::<u32>()
+        .ok()
+        .filter(|disc| (1..=99).contains(disc))
 }
 
 /// Map a vinyl-side track *position* to a disc number (#105): the side letter
@@ -4139,6 +4169,99 @@ mod tests {
             .all(|fc| fc.field != "disctotal"));
     }
 
+    /// A release stating it holds one disc puts every track on disc 1 of 1
+    /// (#157). That is the provider's own statement, not a default -- and it is
+    /// what stops an ordinary single-CD album reading blank next to files that
+    /// do carry a disc.
+    #[test]
+    fn a_stated_single_disc_release_writes_disc_one_of_one() {
+        let dir = TempDir::new("import-solo-release");
+        let path = dir.tagged_flac("f1.flac", "Old", "Old");
+        let app = open_app(&dir);
+        let selection = ImportSelectionDto {
+            album: Some("One Disc".into()),
+            disc_total: Some("1".into()),
+            tracks: vec![ImportTrackDto {
+                disc: None,
+                position: "3".into(),
+                artist: "X".into(),
+                title: "T".into(),
+                duration_secs: None,
+                isrc: None,
+            }],
+            ..ImportSelectionDto::default()
+        };
+
+        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        let field = |name: &str| {
+            plan.changes[0]
+                .tag_changes
+                .iter()
+                .find(|fc| fc.field == name)
+                .and_then(|fc| fc.new.clone())
+        };
+        assert_eq!(field("disc").as_deref(), Some("1"));
+        assert_eq!(field("disctotal").as_deref(), Some("1"));
+    }
+
+    /// The count is what licenses the default. On a release stating two discs, a
+    /// track whose position names no disc is genuinely unplaced -- 1 would be a
+    /// guess, so nothing is written.
+    #[test]
+    fn a_multi_disc_release_does_not_default_an_unplaced_track_to_disc_one() {
+        let dir = TempDir::new("import-multi-unplaced");
+        let path = dir.tagged_flac("f1.flac", "Old", "Old");
+        let app = open_app(&dir);
+        let selection = ImportSelectionDto {
+            album: Some("Two Discs".into()),
+            disc_total: Some("2".into()),
+            tracks: vec![ImportTrackDto {
+                disc: None,
+                position: "3".into(),
+                artist: "X".into(),
+                title: "T".into(),
+                duration_secs: None,
+                isrc: None,
+            }],
+            ..ImportSelectionDto::default()
+        };
+
+        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        assert!(plan.changes[0]
+            .tag_changes
+            .iter()
+            .all(|fc| fc.field != "disc"));
+    }
+
+    /// Silence is not a statement. A provider that reports no count at all still
+    /// produces no disc -- which is what the release from #146 does, and why
+    /// `import_writes_no_disc_when_the_release_states_none` still passes.
+    #[test]
+    fn no_stated_count_still_writes_no_disc() {
+        let dir = TempDir::new("import-count-silent");
+        let path = dir.tagged_flac("f1.flac", "Old", "Old");
+        let app = open_app(&dir);
+        let selection = ImportSelectionDto {
+            album: Some("Unknown".into()),
+            disc_total: None,
+            tracks: vec![ImportTrackDto {
+                disc: None,
+                position: "3".into(),
+                artist: "X".into(),
+                title: "T".into(),
+                duration_secs: None,
+                isrc: None,
+            }],
+            ..ImportSelectionDto::default()
+        };
+
+        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        assert!(plan.changes[0]
+            .tag_changes
+            .iter()
+            .all(|fc| fc.field != "disc" && fc.field != "disctotal"));
+    }
+
     /// Last resort only: the folder names the disc, the release doesn't, and the
     /// file has none yet.
     #[test]
@@ -4196,6 +4319,11 @@ mod tests {
         assert_eq!(disc("abcd 2"), None);
         // A keyword with no number, and a number with no keyword.
         assert_eq!(disc("CD"), None);
+        // A number no disc could be: the keyword was followed by digits that
+        // mean something else. Caught by a temp directory named
+        // "...-single-disc-<pid>-..." reading as disc 99831.
+        assert_eq!(disc("single-disc-99831"), None);
+        assert_eq!(disc("CD 12"), Some(12));
         assert_eq!(disc("Compilation (1996) 2"), None);
         // Never overrides a disc the file already carries.
         assert_eq!(

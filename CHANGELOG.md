@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **A single-disc release now imports as disc 1 of 1.** Writing no disc at all
+  when a release stated none was too blunt: a release whose format quantity reads
+  1 is not silent about the disc, it says there is exactly one, which puts every
+  track on disc 1. The effect was an ordinary single-CD album importing with an
+  empty DISC column beside files that do carry a disc, sorting and grouping as
+  missing rather than as one. The count is what licenses it — on a release
+  stating two or more discs, a track whose position names no disc is genuinely
+  unplaced and is still left alone, and a release stating no count at all still
+  writes nothing. The per-field switch in Settings › Online import turns it off
+  for anyone who would rather not have disc numbers at all. (#157)
+- The folder-name fallback for a disc now only accepts 1–99. Box sets do not
+  reach three digits, so a larger number means the keyword happened to be
+  followed by digits about something else — a directory named
+  `…-single-disc-99831-…` was reading as disc 99831. (#157)
+
 ### Fixed
 
 - **Column layout persists again, and header-grip resizing works again.** Three
