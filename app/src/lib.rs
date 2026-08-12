@@ -26,7 +26,7 @@ use tagrex_core::export::{self, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::{FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
-use tagrex_core::model::{is_writable_value, CoverArt, TagEngine, TagField};
+use tagrex_core::model::{is_writable_value, CoverArt, CoverKind, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
 use tagrex_core::provider::{MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
@@ -123,19 +123,30 @@ pub struct NameProbeDto {
     pub matched: bool,
 }
 
-/// An embedded cover image crossing the IPC boundary: base64 data + MIME.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// An embedded image crossing the IPC boundary: base64 data + MIME, plus what
+/// it depicts and its description (#56).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct CoverArtDto {
     pub mime: String,
     pub data_base64: String,
+    /// A [`CoverKind`] storage key (`front`, `back`, `media`, …). Absent or
+    /// unknown reads as the front cover, which is what an image picked, dropped
+    /// or fetched without saying otherwise is meant as.
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub description: String,
 }
 
-/// A planned cover-art change: `old` restored on undo, `new` embedded (or the
-/// cover removed when `None`).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// A planned change to a file's embedded images (#56). Both sides are the whole
+/// set: `old` is restored on undo, `new` is written; an empty side means no
+/// images at all.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct CoverChangeDto {
-    pub old: Option<CoverArtDto>,
-    pub new: Option<CoverArtDto>,
+    #[serde(default)]
+    pub old: Vec<CoverArtDto>,
+    #[serde(default)]
+    pub new: Vec<CoverArtDto>,
 }
 
 /// A planned change to one file: tag edits, a cover change, and/or a rename.
@@ -195,15 +206,21 @@ pub struct SaveImagesDto {
     pub conflicts: Vec<String>,
 }
 
-/// Front-cover state across a selection, for the EDITOR cover well: how many
-/// files carry a cover, whether they differ, and up to a few distinct covers to
-/// show (the shared one, or a small fan when the selection is mixed).
+/// Cover state across a selection, for the EDITOR cover well: how many files
+/// carry any image, whether they differ, and either the exact set they all
+/// share or a small fan of the distinct front covers when they don't.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CoverSummaryDto {
     pub total: usize,
     pub with_cover: usize,
     pub distinct: bool,
+    /// Distinct front covers to fan out when the selection is mixed.
     pub samples: Vec<CoverArtDto>,
+    /// The whole image set every selected file carries, when they all carry the
+    /// same one (#56). Empty when they differ — there is no single set to edit
+    /// then, only the fan above to show.
+    #[serde(default)]
+    pub shared_set: Vec<CoverArtDto>,
 }
 
 /// One file in a duplicate group (#40), with the columns needed to tell copies
@@ -1783,11 +1800,24 @@ impl App {
                 self.cover_quality.get(),
             )
         });
-        let new_dto = new_art.as_ref().map(cover_art_to_dto);
         let mut changes = Vec::new();
         for path in paths {
-            let old = TagEngine::read_cover(path)?;
-            if old == new_art {
+            let old = TagEngine::read_covers(path)?;
+            // Front cover in, every other image left as it is (#56): a picked,
+            // dropped or fetched image means "this is the cover", never "throw
+            // away the back and the disc".
+            let mut new = old.clone();
+            match &new_art {
+                Some(art) => {
+                    let front = art.clone();
+                    match new.iter().position(|c| c.kind == CoverKind::Front) {
+                        Some(at) => new[at] = front,
+                        None => new.insert(0, front),
+                    }
+                }
+                None => new.retain(|c| c.kind != CoverKind::Front),
+            }
+            if old == new {
                 continue; // already this exact cover
             }
             changes.push(FileChangeDto {
@@ -1795,8 +1825,8 @@ impl App {
                 rename_to: None,
                 tag_changes: Vec::new(),
                 cover_change: Some(CoverChangeDto {
-                    old: old.as_ref().map(cover_art_to_dto),
-                    new: new_dto.clone(),
+                    old: cover_arts_to_dto(&old),
+                    new: cover_arts_to_dto(&new),
                 }),
                 sidecar_renames: Vec::new(),
                 copy: false,
@@ -1809,31 +1839,102 @@ impl App {
         })
     }
 
-    /// Summarize the front-cover state across `paths` for the cover well: the
-    /// total, how many carry a cover, whether they differ, and up to three
-    /// distinct covers to show (one when shared, a small fan when mixed).
-    pub fn read_cover_summary(&self, paths: &[PathBuf]) -> Result<CoverSummaryDto, AppError> {
-        let mut covers: Vec<Option<CoverArt>> = Vec::with_capacity(paths.len());
+    /// Preview replacing every selected file's whole image set with `covers`
+    /// (#56), without writing.
+    ///
+    /// The one command behind add, remove, reorder and retype: the panel edits
+    /// its copy of the set and sends the result, which is also exactly what the
+    /// plan stores and what undo writes back. Files that already carry this set
+    /// are skipped. An empty `covers` removes every image.
+    pub fn preview_cover_set(
+        &self,
+        paths: &[PathBuf],
+        covers: &[CoverArtDto],
+    ) -> Result<PlanDto, AppError> {
+        // Resize once, up front (#41), so every file gets the same trimmed
+        // images and the preview shows what will really be written.
+        let new: Vec<CoverArt> = cover_dtos_to_art(covers)
+            .iter()
+            .map(|art| {
+                tagrex_core::cover::resize_cover(
+                    art,
+                    self.cover_max_px.get(),
+                    self.cover_quality.get(),
+                )
+            })
+            .collect();
+        let new_dtos = cover_arts_to_dto(&new);
+        let mut changes = Vec::new();
         for path in paths {
-            covers.push(TagEngine::read_cover(path)?);
+            let old = TagEngine::read_covers(path)?;
+            if old == new {
+                continue;
+            }
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes: Vec::new(),
+                cover_change: Some(CoverChangeDto {
+                    old: cover_arts_to_dto(&old),
+                    new: new_dtos.clone(),
+                }),
+                sidecar_renames: Vec::new(),
+                copy: false,
+            });
         }
-        let total = covers.len();
-        let with_cover = covers.iter().filter(|c| c.is_some()).count();
+        Ok(PlanDto {
+            description: if new.is_empty() {
+                "Remove cover art".to_string()
+            } else {
+                format!("Set {} cover image(s)", new.len())
+            },
+            changes,
+            prune_empty_dirs: false,
+        })
+    }
 
-        // Distinct unless the whole selection shares one identical cover state
-        // (all the same image, or all with none).
-        let mut unique: Vec<&Option<CoverArt>> = Vec::new();
-        for cover in &covers {
-            if !unique.contains(&cover) {
-                unique.push(cover);
+    /// Summarize the cover state across `paths` for the cover well: the total,
+    /// how many carry any image, whether they differ, and either the exact set
+    /// they all share (#56) or a small fan of distinct front covers when they
+    /// don't.
+    pub fn read_cover_summary(&self, paths: &[PathBuf]) -> Result<CoverSummaryDto, AppError> {
+        let mut sets: Vec<Vec<CoverArt>> = Vec::with_capacity(paths.len());
+        for path in paths {
+            sets.push(TagEngine::read_covers(path)?);
+        }
+        let total = sets.len();
+        let with_cover = sets.iter().filter(|set| !set.is_empty()).count();
+
+        // Distinct unless the whole selection carries one identical image SET —
+        // same images, same types, same order. Anything less is not a set the
+        // panel could offer to edit as one.
+        let mut unique: Vec<&Vec<CoverArt>> = Vec::new();
+        for set in &sets {
+            if !unique.contains(&set) {
+                unique.push(set);
             }
         }
         let distinct = unique.len() > 1;
+        let shared_set = if distinct {
+            Vec::new()
+        } else {
+            sets.first()
+                .map(|set| cover_arts_to_dto(set))
+                .unwrap_or_default()
+        };
 
-        // Up to three distinct present covers: the shared one, or a mixed fan.
+        // Up to three distinct front covers, for the mixed fan. `read_cover`'s
+        // rule (the front one, else the first) is what "the cover" means here.
         let mut samples: Vec<CoverArtDto> = Vec::new();
-        for cover in covers.iter().flatten() {
-            let dto = cover_art_to_dto(cover);
+        for set in &sets {
+            let Some(front) = set
+                .iter()
+                .find(|c| c.kind == CoverKind::Front)
+                .or_else(|| set.first())
+            else {
+                continue;
+            };
+            let dto = cover_art_to_dto(front);
             if !samples.contains(&dto) {
                 samples.push(dto);
                 if samples.len() == 3 {
@@ -1847,6 +1948,7 @@ impl App {
             with_cover,
             distinct,
             samples,
+            shared_set,
         })
     }
 
@@ -1870,6 +1972,7 @@ impl App {
                 return Ok(Some(CoverArtDto {
                     mime: mime_for_cover_path(&found).to_string(),
                     data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
+                    ..CoverArtDto::default()
                 }));
             }
         }
@@ -1882,8 +1985,10 @@ impl App {
     pub fn preview_cover_remove(&self, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
         let mut changes = Vec::new();
         for path in paths {
-            let old = TagEngine::read_cover(path)?;
-            if old.is_none() {
+            // Every image, not just the front one (#56) — this is the panel's
+            // "remove all", and per-image removal goes through `preview_cover_set`.
+            let old = TagEngine::read_covers(path)?;
+            if old.is_empty() {
                 continue;
             }
             changes.push(FileChangeDto {
@@ -1891,8 +1996,8 @@ impl App {
                 rename_to: None,
                 tag_changes: Vec::new(),
                 cover_change: Some(CoverChangeDto {
-                    old: old.as_ref().map(cover_art_to_dto),
-                    new: None,
+                    old: cover_arts_to_dto(&old),
+                    new: Vec::new(),
                 }),
                 sidecar_renames: Vec::new(),
                 copy: false,
@@ -2200,6 +2305,7 @@ impl App {
         Ok(CoverArtDto {
             mime: image.mime,
             data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),
+            ..CoverArtDto::default()
         })
     }
 
@@ -2835,6 +2941,7 @@ pub fn read_cover_image(path: &Path) -> Result<CoverArtDto, AppError> {
     Ok(CoverArtDto {
         mime: mime.to_string(),
         data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
+        ..CoverArtDto::default()
     })
 }
 
@@ -3119,6 +3226,10 @@ fn extension_for_mime(mime: &str) -> String {
     }
 }
 
+fn cover_dtos_to_art(dtos: &[CoverArtDto]) -> Vec<CoverArt> {
+    dtos.iter().filter_map(cover_dto_to_art).collect()
+}
+
 fn cover_dto_to_art(dto: &CoverArtDto) -> Option<CoverArt> {
     let data = base64::engine::general_purpose::STANDARD
         .decode(dto.data_base64.as_bytes())
@@ -3126,6 +3237,8 @@ fn cover_dto_to_art(dto: &CoverArtDto) -> Option<CoverArt> {
     Some(CoverArt {
         mime: dto.mime.clone(),
         data,
+        kind: CoverKind::from_storage_key(&dto.kind),
+        description: dto.description.clone(),
     })
 }
 
@@ -3133,7 +3246,13 @@ fn cover_art_to_dto(art: &CoverArt) -> CoverArtDto {
     CoverArtDto {
         mime: art.mime.clone(),
         data_base64: base64::engine::general_purpose::STANDARD.encode(&art.data),
+        kind: art.kind.to_storage_key().to_string(),
+        description: art.description.clone(),
     }
+}
+
+fn cover_arts_to_dto(arts: &[CoverArt]) -> Vec<CoverArtDto> {
+    arts.iter().map(cover_art_to_dto).collect()
 }
 
 impl From<tagrex_core::model::TrackFile> for TrackDto {
@@ -3176,8 +3295,8 @@ impl PlanDto {
                         })
                         .collect(),
                     cover_change: change.cover_change.as_ref().map(|c| CoverChange {
-                        old: c.old.as_ref().and_then(cover_dto_to_art),
-                        new: c.new.as_ref().and_then(cover_dto_to_art),
+                        old: cover_dtos_to_art(&c.old),
+                        new: cover_dtos_to_art(&c.new),
                     }),
                     sidecar_renames: change
                         .sidecar_renames
@@ -3773,6 +3892,114 @@ mod tests {
         assert!(library.join("dump/notes.txt").exists());
     }
 
+    // #56: embedding a cover replaces the FRONT image and leaves the rest of
+    // the set alone. "Here is the cover" must never mean "throw away the back
+    // and the disc".
+    #[test]
+    fn embedding_a_cover_keeps_the_other_images() {
+        let dir = TempDir::new("cover-set-embed");
+        let track = dir.tagged_flac("x.flac", "Autechre", "Gantz Graf");
+        let image = |kind: CoverKind, byte: u8| CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![0x89, 0x50, byte],
+            kind,
+            description: String::new(),
+        };
+        TagEngine::write_covers(
+            &track,
+            &[image(CoverKind::Front, 1), image(CoverKind::Back, 2)],
+        )
+        .unwrap();
+
+        let mut app = open_app(&dir);
+        let replacement = cover_art_to_dto(&image(CoverKind::Front, 9));
+        let plan = app
+            .preview_cover_embed(std::slice::from_ref(&track), &replacement)
+            .unwrap();
+        app.apply(&plan).unwrap();
+
+        let after = TagEngine::read_covers(&track).unwrap();
+        assert_eq!(after.len(), 2, "the back cover was dropped: {after:?}");
+        assert_eq!(after[0], image(CoverKind::Front, 9));
+        assert_eq!(after[1], image(CoverKind::Back, 2));
+    }
+
+    // #56: the whole set is one change — add, reorder and retype at once — and
+    // undo puts the previous set back exactly.
+    #[test]
+    fn setting_the_image_set_is_one_undoable_change() {
+        let dir = TempDir::new("cover-set");
+        let track = dir.tagged_flac("x.flac", "Autechre", "Gantz Graf");
+        let image = |kind: CoverKind, byte: u8| CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![0x89, 0x50, byte],
+            kind,
+            description: String::new(),
+        };
+        let before = vec![image(CoverKind::Front, 1), image(CoverKind::Back, 2)];
+        TagEngine::write_covers(&track, &before).unwrap();
+
+        let mut app = open_app(&dir);
+        // Reordered, retyped and grown, in one send.
+        let wanted = vec![
+            image(CoverKind::Front, 2),
+            image(CoverKind::Media, 1),
+            image(CoverKind::Artist, 3),
+        ];
+        let plan = app
+            .preview_cover_set(
+                std::slice::from_ref(&track),
+                &wanted.iter().map(cover_art_to_dto).collect::<Vec<_>>(),
+            )
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        let batch = app.apply(&plan).unwrap();
+        assert_eq!(TagEngine::read_covers(&track).unwrap(), wanted);
+
+        app.undo(batch.id).unwrap();
+        assert_eq!(TagEngine::read_covers(&track).unwrap(), before);
+
+        // An empty set is how the panel removes every image.
+        let plan = app
+            .preview_cover_set(std::slice::from_ref(&track), &[])
+            .unwrap();
+        app.apply(&plan).unwrap();
+        assert!(TagEngine::read_covers(&track).unwrap().is_empty());
+    }
+
+    // #56: the well can only offer a set to edit when every selected file
+    // carries the same one — same images, same types, same order.
+    #[test]
+    fn the_summary_reports_a_shared_set_only_when_it_is_really_shared() {
+        let dir = TempDir::new("cover-summary");
+        let a = dir.tagged_flac("a.flac", "Autechre", "A");
+        let b = dir.tagged_flac("b.flac", "Autechre", "B");
+        let image = |kind: CoverKind, byte: u8| CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![0x89, 0x50, byte],
+            kind,
+            description: String::new(),
+        };
+        let set = vec![image(CoverKind::Front, 1), image(CoverKind::Back, 2)];
+        TagEngine::write_covers(&a, &set).unwrap();
+        TagEngine::write_covers(&b, &set).unwrap();
+        let app = open_app(&dir);
+
+        let shared = app.read_cover_summary(&[a.clone(), b.clone()]).unwrap();
+        assert!(!shared.distinct);
+        assert_eq!(shared.with_cover, 2);
+        assert_eq!(shared.shared_set.len(), 2);
+        assert_eq!(shared.shared_set[1].kind, "back");
+
+        // Same images, different order — not the same set, so nothing to edit.
+        TagEngine::write_covers(&b, &[set[1].clone(), set[0].clone()]).unwrap();
+        let mixed = app.read_cover_summary(&[a, b]).unwrap();
+        assert!(mixed.distinct);
+        assert!(mixed.shared_set.is_empty());
+        // The fan still shows one entry: both files' FRONT cover is the same.
+        assert_eq!(mixed.samples.len(), 1);
+    }
+
     #[test]
     fn settings_deserialize_fills_defaults_and_applies() {
         // A partial (older) settings file still loads — every field defaults.
@@ -4253,8 +4480,9 @@ mod tests {
         let art = CoverArt {
             mime: "image/png".to_string(),
             data: vec![1, 2, 3, 4],
+            ..CoverArt::default()
         };
-        TagEngine::embed_cover(&track, &art).unwrap();
+        TagEngine::write_covers(&track, std::slice::from_ref(&art)).unwrap();
         let mut app = open_app(&dir);
 
         let plan = app
@@ -5512,8 +5740,9 @@ mod tests {
         let art = CoverArt {
             mime: "image/png".to_string(),
             data: vec![1, 2, 3, 4, 5],
+            ..CoverArt::default()
         };
-        TagEngine::embed_cover(&with_cover, &art).unwrap();
+        TagEngine::write_covers(&with_cover, std::slice::from_ref(&art)).unwrap();
         let app = open_app(&dir);
 
         let result = app
@@ -5591,9 +5820,10 @@ mod tests {
         let art = CoverArt {
             mime: "image/jpeg".to_string(),
             data: vec![9, 8, 7],
+            ..CoverArt::default()
         };
-        TagEngine::embed_cover(&a, &art).unwrap();
-        TagEngine::embed_cover(&b, &art).unwrap();
+        TagEngine::write_covers(&a, std::slice::from_ref(&art)).unwrap();
+        TagEngine::write_covers(&b, std::slice::from_ref(&art)).unwrap();
         let app = open_app(&dir);
 
         // Both files sit in the same folder, so both resolve to the same

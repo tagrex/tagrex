@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::model::{CoverArt, TagField};
+use crate::model::{CoverArt, CoverKind, TagField};
 use crate::plan::{ChangePlan, CoverChange, FieldChange, FileChange};
 
 /// Identifier of an applied batch, stable across restarts.
@@ -185,6 +185,15 @@ impl SqliteJournal {
                  from_path      TEXT NOT NULL,
                  to_path        TEXT NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS cover_images (
+                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                 file_change_id INTEGER NOT NULL REFERENCES file_changes(id) ON DELETE CASCADE,
+                 side           TEXT NOT NULL,
+                 kind           TEXT NOT NULL,
+                 description    TEXT NOT NULL,
+                 mime           TEXT NOT NULL,
+                 data           BLOB NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS removed_dirs (
                  id       INTEGER PRIMARY KEY AUTOINCREMENT,
                  batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
@@ -247,19 +256,27 @@ impl UndoJournal for SqliteJournal {
                 )?;
             }
 
+            // Both whole sides of the image set (#56), in order. The legacy
+            // `cover_changes` table held one old/new pair and is no longer
+            // written — only read, so a journal from an older build still undoes.
             if let Some(cover) = &change.cover_change {
-                tx.execute(
-                    "INSERT INTO cover_changes \
-                     (file_change_id, old_mime, old_data, new_mime, new_data) \
-                     VALUES (?1, ?2, ?3, ?4, ?5)",
-                    rusqlite::params![
-                        file_change_id,
-                        cover.old.as_ref().map(|c| c.mime.clone()),
-                        cover.old.as_ref().map(|c| c.data.clone()),
-                        cover.new.as_ref().map(|c| c.mime.clone()),
-                        cover.new.as_ref().map(|c| c.data.clone()),
-                    ],
-                )?;
+                for (side, images) in [("old", &cover.old), ("new", &cover.new)] {
+                    for image in images {
+                        tx.execute(
+                            "INSERT INTO cover_images \
+                             (file_change_id, side, kind, description, mime, data) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                            rusqlite::params![
+                                file_change_id,
+                                side,
+                                image.kind.to_storage_key(),
+                                image.description,
+                                image.mime,
+                                image.data,
+                            ],
+                        )?;
+                    }
+                }
             }
 
             for (from, to) in &change.sidecar_renames {
@@ -402,7 +419,47 @@ impl SqliteJournal {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
+    /// The image-set change for one file change (#56), or `None` when it carries
+    /// none. Reads the current `cover_images` rows; a file change with none of
+    /// those falls back to the legacy single-pair `cover_changes` row, so a
+    /// batch recorded before the set model can still be rolled back.
     fn load_cover_change(&self, file_change_id: i64) -> Result<Option<CoverChange>, JournalError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT side, kind, description, mime, data FROM cover_images \
+             WHERE file_change_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![file_change_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                CoverArt {
+                    kind: CoverKind::from_storage_key(&row.get::<_, String>(1)?),
+                    description: row.get::<_, String>(2)?,
+                    mime: row.get::<_, String>(3)?,
+                    data: row.get::<_, Vec<u8>>(4)?,
+                },
+            ))
+        })?;
+        let mut change = CoverChange::default();
+        let mut any = false;
+        for row in rows {
+            let (side, image) = row?;
+            any = true;
+            if side == "old" {
+                change.old.push(image);
+            } else {
+                change.new.push(image);
+            }
+        }
+        if any {
+            return Ok(Some(change));
+        }
+        self.load_legacy_cover_change(file_change_id)
+    }
+
+    fn load_legacy_cover_change(
+        &self,
+        file_change_id: i64,
+    ) -> Result<Option<CoverChange>, JournalError> {
         let mut stmt = self.conn.prepare(
             "SELECT old_mime, old_data, new_mime, new_data FROM cover_changes \
              WHERE file_change_id = ?1",
@@ -419,9 +476,15 @@ impl SqliteJournal {
             return Ok(None);
         };
         let (old_mime, old_data, new_mime, new_data) = row?;
+        // A pre-#56 pair: one front cover, or none on that side.
         let cover = |mime: Option<String>, data: Option<Vec<u8>>| match (mime, data) {
-            (Some(mime), Some(data)) => Some(CoverArt { mime, data }),
-            _ => None,
+            (Some(mime), Some(data)) => vec![CoverArt {
+                mime,
+                data,
+                kind: CoverKind::Front,
+                description: String::new(),
+            }],
+            _ => Vec::new(),
         };
         Ok(Some(CoverChange {
             old: cover(old_mime, old_data),

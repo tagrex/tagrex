@@ -112,6 +112,18 @@ function mockUntransliterate(value) {
 
 // The string a FROM NAME mask is matched against (#139), for the dev mock: the
 // stem plus one parent folder per separator in the pattern.
+// A stand-in image for the dev mock: a flat SVG square of the given colour.
+function mockCoverImage(fill, kind) {
+  return {
+    mime: "image/svg+xml",
+    data_base64: btoa(
+      `<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='${fill}'/></svg>`,
+    ),
+    kind,
+    description: "",
+  };
+}
+
 function mockNameSubject(path, mask) {
   const depth = (mask.match(/[/\\]/g) || []).length;
   const parts = path.split("/");
@@ -526,28 +538,54 @@ function mockInvoke(cmd, args) {
       return Promise.resolve({ description: "Embed cover art", changes });
     }
     case "read_cover_summary": {
-      // Mock: pretend the mock tracks carry a cover if their tags say so.
-      const svg = (fill) => ({
-        mime: "image/svg+xml",
-        data_base64: btoa(`<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='${fill}'/></svg>`),
-      });
-      const covers = args.paths.map((p) => {
+      // Mock: a track's `cover` colour becomes its image set (#56) — the front
+      // cover, plus whatever `coverSet` a previous preview_cover_set left on it.
+      const sets = args.paths.map((p) => {
         const t = findTrack(p);
-        return t && t.cover ? svg(t.cover) : null;
+        if (!t) return [];
+        if (t.coverSet) return t.coverSet;
+        return t.cover ? [mockCoverImage(t.cover, "front")] : [];
       });
-      const total = covers.length;
-      const with_cover = covers.filter(Boolean).length;
+      const total = sets.length;
+      const with_cover = sets.filter((set) => set.length).length;
       const uniq = [];
-      for (const c of covers) if (!uniq.some((u) => JSON.stringify(u) === JSON.stringify(c))) uniq.push(c);
+      for (const set of sets) {
+        if (!uniq.some((u) => JSON.stringify(u) === JSON.stringify(set))) uniq.push(set);
+      }
       const distinct = uniq.length > 1;
+      const shared_set = distinct ? [] : sets[0] || [];
       const samples = [];
-      for (const c of covers) {
-        if (c && !samples.some((s) => JSON.stringify(s) === JSON.stringify(c))) {
-          samples.push(c);
+      for (const set of sets) {
+        const front = set.find((c) => c.kind === "front") || set[0];
+        if (front && !samples.some((s) => JSON.stringify(s) === JSON.stringify(front))) {
+          samples.push(front);
           if (samples.length === 3) break;
         }
       }
-      return Promise.resolve({ total, with_cover, distinct, samples });
+      return Promise.resolve({ total, with_cover, distinct, samples, shared_set });
+    }
+    // The whole image set at once (#56). The mock keeps it on the track so the
+    // strip can be driven without a real tag write.
+    case "preview_cover_set": {
+      const changes = args.paths
+        .map((p) => {
+          const t = findTrack(p);
+          if (!t) return null;
+          const old = t.coverSet || (t.cover ? [mockCoverImage(t.cover, "front")] : []);
+          if (JSON.stringify(old) === JSON.stringify(args.covers)) return null;
+          t.coverSet = args.covers.map((c) => ({ ...c }));
+          return {
+            path: p,
+            rename_to: null,
+            tag_changes: [],
+            cover_change: { old, new: args.covers },
+          };
+        })
+        .filter(Boolean);
+      return Promise.resolve({
+        description: args.covers.length ? `Set ${args.covers.length} cover image(s)` : "Remove cover art",
+        changes,
+      });
     }
     case "preview_cover_remove": {
       const changes = args.paths

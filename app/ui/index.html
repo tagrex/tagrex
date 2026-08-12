@@ -368,6 +368,11 @@
                 <!-- The cover well (thumbnail + state + actions + drop target) is
                      built by renderCoverWell for the current selection. -->
                 <div id="cover-well"></div>
+                <!-- The rest of the images (#56), when the whole selection
+                     carries the same set: one row each, with its type, and a
+                     grip to reorder. Built by renderCoverSet; hidden when the
+                     selection's files don't agree on a set to edit. -->
+                <div id="cover-set" class="cover-set" hidden></div>
               </div>
             </div>
 

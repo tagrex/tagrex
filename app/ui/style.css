@@ -2144,6 +2144,71 @@ td.unreadable-note {
   width: fit-content;
 }
 
+/* The rest of the images (#56): one dense row each under the well, so the
+   well keeps meaning "the cover" and the set reads as a list rather than
+   competing with it. Second control tier throughout — these are secondary to
+   the well's own actions. */
+.cover-set {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+.cover-set[hidden] {
+  display: none;
+}
+.cover-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.cover-grip {
+  flex: none;
+  display: inline-flex;
+  color: var(--muted);
+  cursor: grab;
+}
+.cover-row-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+}
+.cover-kind {
+  flex: none;
+  height: var(--ctl-h-sm);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.cover-row-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+}
+.cover-row-rm {
+  flex: none;
+  height: var(--ctl-h-sm);
+  width: var(--ctl-h-sm);
+}
+.cover-add {
+  align-self: flex-start;
+  padding: 4px var(--space-3);
+  font-size: var(--text-sm);
+  box-shadow: none;
+}
+
 /* no-cover affordance — the well itself becomes the drop/click target */
 .cover-well.empty {
   cursor: pointer;

@@ -102,13 +102,14 @@ fn cover_embed_read_remove_and_survives_a_tag_write() {
     let cover = CoverArt {
         mime: "image/png".to_string(),
         data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5],
+        ..CoverArt::default()
     };
 
     // No cover initially.
     assert_eq!(TagEngine::read_cover(&path).unwrap(), None);
 
     // Embed, then read it back.
-    TagEngine::embed_cover(&path, &cover).unwrap();
+    TagEngine::write_covers(&path, std::slice::from_ref(&cover)).unwrap();
     let read = TagEngine::read_cover(&path)
         .unwrap()
         .expect("cover present");
@@ -130,7 +131,7 @@ fn cover_embed_read_remove_and_survives_a_tag_write() {
     );
 
     // Remove it.
-    TagEngine::remove_cover(&path).unwrap();
+    TagEngine::write_covers(&path, &[]).unwrap();
     assert_eq!(TagEngine::read_cover(&path).unwrap(), None);
 
     std::fs::remove_file(&path).ok();
@@ -205,12 +206,13 @@ fn mp3_write_preserves_non_text_frames() {
     );
 
     // Embedding a cover must not destroy it either.
-    TagEngine::embed_cover(
+    TagEngine::write_covers(
         &path,
-        &CoverArt {
+        &[CoverArt {
             mime: "image/png".to_string(),
             data: vec![1, 2, 3, 4],
-        },
+            ..CoverArt::default()
+        }],
     )
     .unwrap();
     assert_eq!(
@@ -444,6 +446,112 @@ fn mp3_multi_value_fields_become_one_frame_with_several_values() {
             .get(&TagField::Artist)
             .map(String::as_str),
         Some("Autechre; Gescom")
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
+/// Several images with their types round-trip, and the whole set is what a
+/// write replaces (#56). The front-cover reader keeps picking the front one out
+/// of the set, which is what "the cover" means everywhere else in the app.
+#[test]
+fn several_images_round_trip_with_their_types() {
+    use tagrex_core::model::CoverKind;
+
+    let path = temp_flac_path("cover-set");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    let image = |kind: CoverKind, byte: u8, description: &str| CoverArt {
+        mime: "image/png".to_string(),
+        data: vec![0x89, 0x50, 0x4e, 0x47, byte],
+        kind,
+        description: description.to_string(),
+    };
+    // Deliberately not front-first, so the order is the set's and not a
+    // by-product of how the writer sorts.
+    let set = vec![
+        image(CoverKind::Back, 2, ""),
+        image(CoverKind::Front, 1, "the sleeve"),
+        image(CoverKind::Media, 3, ""),
+    ];
+    TagEngine::write_covers(&path, &set).unwrap();
+
+    let read = TagEngine::read_covers(&path).unwrap();
+    assert_eq!(read, set, "types, descriptions and order must all survive");
+    // The single-cover reader still answers with the front one, not the first.
+    let front = TagEngine::read_cover(&path)
+        .unwrap()
+        .expect("a front cover");
+    assert_eq!(front.kind, CoverKind::Front);
+    assert_eq!(front.description, "the sleeve");
+
+    // A write replaces the whole set rather than adding to it.
+    let smaller = vec![image(CoverKind::Front, 9, "")];
+    TagEngine::write_covers(&path, &smaller).unwrap();
+    assert_eq!(TagEngine::read_covers(&path).unwrap(), smaller);
+
+    // And an empty set removes every image.
+    TagEngine::write_covers(&path, &[]).unwrap();
+    assert!(TagEngine::read_covers(&path).unwrap().is_empty());
+    assert_eq!(TagEngine::read_cover(&path).unwrap(), None);
+
+    std::fs::remove_file(&path).ok();
+}
+
+/// The same on the ID3v2 side, where the write goes through the concrete tag —
+/// and where clearing the old pictures must not take the private frames with it.
+#[test]
+fn mp3_keeps_several_images_and_its_private_frames() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::id3::v2::{Frame, Id3v2Tag, PrivateFrame};
+    use lofty::mpeg::MpegFile;
+    use lofty::prelude::TagExt;
+    use tagrex_core::model::CoverKind;
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-cover-set-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).unwrap();
+
+    let mut seeded = Id3v2Tag::new();
+    seeded.insert(PrivateFrame::new("SeratoMarkers".to_string(), vec![4, 3, 2]).into());
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+
+    let set = vec![
+        CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![0x89, 0x50, 1],
+            kind: CoverKind::Front,
+            description: String::new(),
+        },
+        CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![0x89, 0x50, 2],
+            kind: CoverKind::Back,
+            description: String::new(),
+        },
+    ];
+    TagEngine::write_covers(&path, &set).unwrap();
+    assert_eq!(TagEngine::read_covers(&path).unwrap(), set);
+
+    // Writing the set a second time must not accumulate pictures.
+    TagEngine::write_covers(&path, &set).unwrap();
+    assert_eq!(TagEngine::read_covers(&path).unwrap(), set);
+
+    let mut file = std::fs::File::open(&path).unwrap();
+    let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).unwrap();
+    let private = mpeg.id3v2().and_then(|tag| {
+        tag.into_iter().find_map(|frame| match frame {
+            Frame::Private(p) => Some(p.private_data.clone()),
+            _ => None,
+        })
+    });
+    assert_eq!(
+        private,
+        Some(vec![4, 3, 2]),
+        "clearing the pictures destroyed the private frame"
     );
 
     std::fs::remove_file(&path).ok();

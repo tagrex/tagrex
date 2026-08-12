@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A file can now carry several images, each saying what it depicts.** The
+  model held exactly one picture — the front cover — so a release's back cover,
+  disc scan or leaflet could not be kept even though every tag format allows
+  them, and opening such a file and saving it dropped all but one. EDITOR › Cover
+  art keeps the well for "the cover" and gains a strip below it listing the rest:
+  each image with its type (front, back, disc, leaflet, artist, label logo, icon,
+  other), a grip to reorder, and a ✕ to remove, plus **Add image…**. Embedding a
+  picked, dropped or fetched image now replaces the *front* one and leaves the
+  others alone, rather than throwing the set away.
+
+  The strip appears only when every selected file carries the same set — same
+  images, same types, same order — because with anything less there is no single
+  set to edit. Every edit stages the whole revised set as one change, which is
+  also exactly what undo writes back. A journal written by an older build still
+  rolls back: its single old/new pair reads as a one-image set. (#56)
+
 - **Reorganize can file tracks into a folder outside the opened library, and can
   copy instead of moving.** The target path was always built under the open
   library, so the workflow this feature is most wanted for — an unsorted folder

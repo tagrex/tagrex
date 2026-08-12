@@ -333,13 +333,103 @@ impl TagField {
 /// previews and diffs.
 pub type TagMap = BTreeMap<TagField, String>;
 
-/// An embedded front-cover image: raw bytes plus its MIME type. Kept out of
-/// [`TagMap`] (which is text-only) so binary art doesn't have to pretend to be
-/// a string.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What an embedded image depicts (#56). Every tag format we write can hold
+/// several pictures distinguished by exactly this, so it is part of the image
+/// rather than something a caller decides on the way past.
+///
+/// A deliberately short list: the handful of types that appear on real releases
+/// and that a person would pick from a menu. Everything else lofty knows about —
+/// and anything a file happens to carry — reads back as [`Other`](Self::Other)
+/// rather than being dropped, so a round trip never loses the image itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CoverKind {
+    /// The front cover — what "the cover" means everywhere else in the app.
+    #[default]
+    Front,
+    Back,
+    /// The disc, cassette or record itself.
+    Media,
+    Leaflet,
+    /// A picture of the artist or band.
+    Artist,
+    /// The label's or publisher's logo.
+    Logo,
+    Icon,
+    Other,
+}
+
+impl CoverKind {
+    /// Lossless string encoding, for the DTO boundary and the journal.
+    pub fn to_storage_key(self) -> &'static str {
+        match self {
+            Self::Front => "front",
+            Self::Back => "back",
+            Self::Media => "media",
+            Self::Leaflet => "leaflet",
+            Self::Artist => "artist",
+            Self::Logo => "logo",
+            Self::Icon => "icon",
+            Self::Other => "other",
+        }
+    }
+
+    /// Inverse of [`to_storage_key`](Self::to_storage_key). An unknown key is
+    /// `Other`, never an error: a journal or a frontend from another build must
+    /// not be able to make an image unreadable.
+    pub fn from_storage_key(key: &str) -> Self {
+        match key {
+            "front" => Self::Front,
+            "back" => Self::Back,
+            "media" => Self::Media,
+            "leaflet" => Self::Leaflet,
+            "artist" => Self::Artist,
+            "logo" => Self::Logo,
+            "icon" => Self::Icon,
+            _ => Self::Other,
+        }
+    }
+
+    fn to_picture_type(self) -> PictureType {
+        match self {
+            Self::Front => PictureType::CoverFront,
+            Self::Back => PictureType::CoverBack,
+            Self::Media => PictureType::Media,
+            Self::Leaflet => PictureType::Leaflet,
+            Self::Artist => PictureType::Artist,
+            Self::Logo => PictureType::PublisherLogo,
+            Self::Icon => PictureType::Icon,
+            Self::Other => PictureType::Other,
+        }
+    }
+
+    fn from_picture_type(picture_type: PictureType) -> Self {
+        match picture_type {
+            PictureType::CoverFront => Self::Front,
+            PictureType::CoverBack => Self::Back,
+            PictureType::Media => Self::Media,
+            PictureType::Leaflet => Self::Leaflet,
+            // Three ways of saying "a person on the release"; one menu entry.
+            PictureType::Artist | PictureType::LeadArtist | PictureType::Band => Self::Artist,
+            PictureType::PublisherLogo | PictureType::BandLogo => Self::Logo,
+            PictureType::Icon | PictureType::OtherIcon => Self::Icon,
+            _ => Self::Other,
+        }
+    }
+}
+
+/// An embedded image: raw bytes, its MIME type, what it depicts and its
+/// description (#56). Kept out of [`TagMap`] (which is text-only) so binary art
+/// doesn't have to pretend to be a string.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CoverArt {
     pub mime: String,
     pub data: Vec<u8>,
+    /// What the image depicts. Defaults to the front cover, which is what a
+    /// picked or fetched image is meant as unless said otherwise.
+    pub kind: CoverKind,
+    /// The description the format stores beside the picture. Usually empty;
+    /// carried so a round trip doesn't quietly drop it.
+    pub description: String,
 }
 
 /// A file's audio properties beyond its tags (#40).
@@ -495,66 +585,83 @@ impl TagEngine {
         })
     }
 
-    /// Read the file's front cover (or the first embedded image if there's no
-    /// explicit front cover), if any.
-    pub fn read_cover(path: &Path) -> Result<Option<CoverArt>, TagIoError> {
+    /// Every image the file carries (#56), in the order the tag holds them.
+    pub fn read_covers(path: &Path) -> Result<Vec<CoverArt>, TagIoError> {
         let tagged = Probe::open(path)?.guess_file_type()?.read()?;
-        let cover = tagged
+        let covers = tagged
             .primary_tag()
             .or_else(|| tagged.first_tag())
-            .and_then(|tag| {
-                tag.get_picture_type(PictureType::CoverFront)
-                    .or_else(|| tag.pictures().first())
-            })
-            .map(|picture| CoverArt {
-                mime: picture
-                    .mime_type()
-                    .map(|mime| mime.as_str().to_string())
-                    .unwrap_or_default(),
-                data: picture.data().to_vec(),
-            });
-        Ok(cover)
+            .map(|tag| tag.pictures().iter().map(cover_from_picture).collect())
+            .unwrap_or_default();
+        Ok(covers)
     }
 
-    /// Embed `cover` as the file's front cover, replacing any existing front
-    /// cover and preserving all text tags. Only [`Executor`](crate::plan::Executor)
-    /// should call this.
-    pub fn embed_cover(path: &Path, cover: &CoverArt) -> Result<(), TagIoError> {
-        let picture = Picture::new_unchecked(
-            PictureType::CoverFront,
-            Some(MimeType::from_str(&cover.mime)),
-            None,
-            cover.data.clone(),
-        );
+    /// The file's front cover (or the first embedded image if there's no
+    /// explicit front cover), if any — "the cover" as the rest of the app means
+    /// it, over the set [`read_covers`](Self::read_covers) returns.
+    pub fn read_cover(path: &Path) -> Result<Option<CoverArt>, TagIoError> {
+        let covers = Self::read_covers(path)?;
+        Ok(covers
+            .iter()
+            .find(|cover| cover.kind == CoverKind::Front)
+            .or_else(|| covers.first())
+            .cloned())
+    }
+
+    /// Replace the file's images with `covers`, preserving all text tags (#56).
+    ///
+    /// The whole set at once, rather than per-image operations: there is no
+    /// stable identity for an embedded picture to address, and writing the set
+    /// makes add / replace / remove / reorder / retype one operation whose undo
+    /// is simply the previous set. An empty slice removes every image.
+    ///
+    /// Only [`Executor`](crate::plan::Executor) should call this.
+    pub fn write_covers(path: &Path, covers: &[CoverArt]) -> Result<(), TagIoError> {
         // Same reason as `write`: going through the generic tag would drop an
         // MP3's non-representable frames, so edit the concrete tag instead.
         if is_id3v2_container(path) {
             let mut tag = read_id3v2(path)?.unwrap_or_default();
-            tag.remove_picture_type(PictureType::CoverFront);
-            tag.insert_picture(picture);
+            // `remove_picture_type` takes one type at a time and the file may
+            // hold types the model maps onto one of ours, so clear by rebuilding
+            // from the frames that are not pictures at all.
+            tag.retain(|frame| !matches!(frame, Frame::Picture(_)));
+            for cover in covers {
+                tag.insert_picture(picture_from_cover(cover));
+            }
             tag.save_to_path(path, id3_write_options())?;
             return Ok(());
         }
         let mut tag = load_or_new_tag(path)?;
-        tag.remove_picture_type(PictureType::CoverFront);
-        tag.push_picture(picture);
+        while !tag.pictures().is_empty() {
+            tag.remove_picture(0);
+        }
+        for cover in covers {
+            tag.push_picture(picture_from_cover(cover));
+        }
         tag.save_to_path(path, WriteOptions::default())?;
         Ok(())
     }
+}
 
-    /// Remove the file's front cover, preserving all text tags.
-    pub fn remove_cover(path: &Path) -> Result<(), TagIoError> {
-        if is_id3v2_container(path) {
-            let mut tag = read_id3v2(path)?.unwrap_or_default();
-            tag.remove_picture_type(PictureType::CoverFront);
-            tag.save_to_path(path, id3_write_options())?;
-            return Ok(());
-        }
-        let mut tag = load_or_new_tag(path)?;
-        tag.remove_picture_type(PictureType::CoverFront);
-        tag.save_to_path(path, WriteOptions::default())?;
-        Ok(())
+fn cover_from_picture(picture: &Picture) -> CoverArt {
+    CoverArt {
+        mime: picture
+            .mime_type()
+            .map(|mime| mime.as_str().to_string())
+            .unwrap_or_default(),
+        data: picture.data().to_vec(),
+        kind: CoverKind::from_picture_type(picture.pic_type()),
+        description: picture.description().unwrap_or_default().to_string(),
     }
+}
+
+fn picture_from_cover(cover: &CoverArt) -> Picture {
+    Picture::new_unchecked(
+        cover.kind.to_picture_type(),
+        Some(MimeType::from_str(&cover.mime)),
+        Some(cover.description.clone()).filter(|d| !d.is_empty()),
+        cover.data.clone(),
+    )
 }
 
 /// Write text tags into an MP3's ID3v2 tag, preserving every frame the model

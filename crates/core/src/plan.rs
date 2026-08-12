@@ -26,12 +26,18 @@ pub struct FieldChange {
     pub new: Option<String>,
 }
 
-/// A change to a file's embedded front cover. `old` is restored on undo;
-/// `new` is embedded (or the cover removed when `None`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A change to the file's embedded images (#56). Both sides are the WHOLE set:
+/// `old` is what the file carries and what undo writes back, `new` is what
+/// replaces it, and an empty side means no images at all.
+///
+/// A snapshot rather than a list of per-image operations, because an embedded
+/// picture has no stable identity to address. Adding, replacing, removing,
+/// reordering and retyping all become the same change, its undo is trivially
+/// the other side, and the staleness check stays one comparison.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CoverChange {
-    pub old: Option<CoverArt>,
-    pub new: Option<CoverArt>,
+    pub old: Vec<CoverArt>,
+    pub new: Vec<CoverArt>,
 }
 
 /// All changes planned for one file.
@@ -521,15 +527,15 @@ fn ensure_not_stale(change: &FileChange) -> Result<(), PlanError> {
         }
     }
     if let Some(cover_change) = &change.cover_change {
-        if TagEngine::read_cover(&change.path)? != cover_change.old {
+        if TagEngine::read_covers(&change.path)? != cover_change.old {
             return Err(PlanError::Stale(change.path.clone()));
         }
     }
     Ok(())
 }
 
-/// Embed the `new` cover (or the `old` one on undo), or remove it when the
-/// target side is `None`. No-op when the change carries no cover.
+/// Write the `new` image set (or the `old` one on undo). No-op when the change
+/// carries no cover change; an empty target set removes every image.
 fn apply_cover_change(
     path: &Path,
     change: &FileChange,
@@ -542,10 +548,7 @@ fn apply_cover_change(
         Direction::Apply => &cover_change.new,
         Direction::Undo => &cover_change.old,
     };
-    match target {
-        Some(cover) => TagEngine::embed_cover(path, cover)?,
-        None => TagEngine::remove_cover(path)?,
-    }
+    TagEngine::write_covers(path, target)?;
     Ok(())
 }
 

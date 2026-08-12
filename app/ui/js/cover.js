@@ -4,13 +4,41 @@
 // picked or dropped image, exporting one next to the files, and removing it.
 // Every change goes through the ordinary preview/apply/undo path; only the
 // export bypasses it, because it writes a new file and touches no track.
+//
+// A file can carry several images, each saying what it depicts (#56). The well
+// stays about "the cover" — the front one, which is what a picked, dropped or
+// fetched image means — and the strip below it is the rest of the set, editable
+// only when every selected file carries the same one. Every edit there sends the
+// WHOLE set, which is also what the plan stores and what undo writes back.
 import { el, escapeHtml, ico, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
+import { enablePointerReorder } from "./reorder.js";
 import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
 
 const coverWell = el("cover-well");
+const coverSetBox = el("cover-set");
 const coverFileInput = el("cover-file");
+
+// What an image can say it depicts. The backend's storage keys; anything it
+// doesn't know reads back as "other", so this list is the whole menu.
+const COVER_KINDS = [
+  ["front", "Front cover"],
+  ["back", "Back cover"],
+  ["media", "Disc / media"],
+  ["leaflet", "Leaflet"],
+  ["artist", "Artist"],
+  ["logo", "Label logo"],
+  ["icon", "Icon"],
+  ["other", "Other"],
+];
+
+// The set the strip is editing — the one every selected file carries. Replaced
+// on every refresh, so it is never stale against the disk.
+let coverSet = [];
+// Whether the next picked file joins the set rather than becoming the front
+// cover. Set by "Add image…", cleared as soon as the picker answers.
+let pickAppends = false;
 
 // ---- cover art ----
 function chooseCover() {
@@ -24,7 +52,27 @@ function chooseCover() {
 
 async function onCoverChosen() {
   const file = coverFileInput.files[0];
-  if (file) await embedCoverFile(file);
+  const appending = pickAppends;
+  pickAppends = false;
+  if (!file) return;
+  if (appending) await addCoverFile(file);
+  else await embedCoverFile(file);
+}
+
+// Read an image File into a cover DTO ({ mime, data_base64 }).
+async function readImageFile(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  // dataUrl is "data:<mime>;base64,<data>"
+  const comma = dataUrl.indexOf(",");
+  return {
+    mime: dataUrl.slice(5, dataUrl.indexOf(";")),
+    data_base64: dataUrl.slice(comma + 1),
+  };
 }
 
 // Read an image File, base64-encode it, and preview embedding it as the front
@@ -40,17 +88,41 @@ async function embedCoverFile(file) {
     toast("Select the tracks to embed the cover into first", true);
     return;
   }
-  const dataUrl = await new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-  // dataUrl is "data:<mime>;base64,<data>"
-  const comma = dataUrl.indexOf(",");
-  const mime = dataUrl.slice(5, dataUrl.indexOf(";"));
-  const data_base64 = dataUrl.slice(comma + 1);
-  await embedCoverDto({ mime, data_base64 });
+  await embedCoverDto(await readImageFile(file));
+}
+
+// Add a picked image to the set rather than replacing the front cover (#56).
+// New images join as "other": the front one is what the well is for, and
+// guessing a type from a file name would be worse than asking.
+async function addCoverFile(file) {
+  if (!file.type.startsWith("image/")) {
+    toast("Pick an image file", true);
+    return;
+  }
+  const image = await readImageFile(file);
+  await previewCoverSet([...coverSet, { ...image, kind: "other", description: "" }]);
+}
+
+// Stage a whole image set onto the selection (#56) — the one call behind add,
+// remove, reorder and retype.
+async function previewCoverSet(covers) {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast("Select the tracks whose images to edit first", true);
+    return;
+  }
+  try {
+    setPreviewPlan(await invoke("preview_cover_set", { paths, covers }));
+    setPreviewSource("cover");
+    hooks.renderPreview(previewPlan);
+    toast(
+      previewPlan.changes.length
+        ? `Previewing ${covers.length} image(s) on ${previewPlan.changes.length} file(s)`
+        : "Selected files already carry exactly these images"
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
 }
 
 // Embed an image dropped onto the cover well in the packaged app (#133): the
@@ -146,11 +218,14 @@ async function refreshCoverWell() {
     coverWell.innerHTML = `<div class="cover-thumb inert"></div>
       <div class="cover-body"><div class="cover-title">No selection</div>
       <div class="cover-hint">Select tracks to edit their cover.</div></div>`;
+    coverSetBox.hidden = true;
+    coverSet = [];
     return;
   }
   try {
     const summary = await invoke("read_cover_summary", { paths });
     renderCoverWell(summary);
+    renderCoverSet(summary);
     await showExternalCoverAction(paths);
   } catch (e) {
     toast(String(e), true);
@@ -262,6 +337,97 @@ function renderCoverWell(summary) {
     </div>`;
 }
 
+// ---- the image set (#56) ----
+// One row per image: a thumbnail, what it depicts, a grip to reorder and a ✕.
+// Only shown when every selected file carries the SAME set — with nothing
+// shared there is no single set to edit, and the well's mixed state already
+// says so. Each edit sends the whole revised set.
+function renderCoverSet(summary) {
+  coverSet = summary.distinct ? [] : summary.shared_set.map((image) => ({ ...image }));
+  // Nothing to manage until there is at least one image; the well's own
+  // "Embed cover…" is the way in, and Add image… appears once there is a set.
+  if (summary.distinct || coverSet.length === 0) {
+    coverSetBox.hidden = true;
+    coverSetBox.innerHTML = "";
+    return;
+  }
+  coverSetBox.hidden = false;
+  coverSetBox.innerHTML = "";
+
+  coverSet.forEach((image, index) => {
+    const row = document.createElement("div");
+    row.className = "cover-row";
+    row.dataset.key = String(index);
+
+    const grip = document.createElement("span");
+    grip.className = "cover-grip";
+    grip.innerHTML = ico("grip");
+    grip.title = "Drag to reorder";
+    // Order is what the file stores, and some players show the first picture
+    // rather than the front-typed one. Pointer events, not HTML5 DnD (#88).
+    enablePointerReorder(grip, row, coverSetBox, ".cover-row", (draggedKey, targetKey, below) => {
+      const from = Number(draggedKey);
+      let to = Number(targetKey);
+      if (Number.isNaN(from) || Number.isNaN(to)) return;
+      const next = coverSet.slice();
+      const [moved] = next.splice(from, 1);
+      if (from < to) to -= 1;
+      if (below) to += 1;
+      next.splice(Math.max(0, Math.min(next.length, to)), 0, moved);
+      previewCoverSet(next);
+    });
+
+    const thumb = document.createElement("img");
+    thumb.className = "cover-thumb cover-row-thumb";
+    thumb.alt = image.description || "embedded image";
+    thumb.src = `data:${image.mime};base64,${image.data_base64}`;
+
+    const kind = document.createElement("select");
+    kind.className = "cover-kind";
+    kind.title = "What this image shows";
+    for (const [value, label] of COVER_KINDS) {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      option.selected = (image.kind || "front") === value;
+      kind.appendChild(option);
+    }
+    kind.addEventListener("change", () => {
+      const next = coverSet.map((c, at) => (at === index ? { ...c, kind: kind.value } : c));
+      previewCoverSet(next);
+    });
+
+    const meta = document.createElement("span");
+    meta.className = "cover-row-meta";
+    meta.textContent = image.description || image.mime.replace("image/", "");
+
+    const remove = document.createElement("button");
+    remove.className = "icon cover-row-rm";
+    remove.type = "button";
+    remove.innerHTML = ico("close");
+    remove.title = "Remove this image";
+    remove.setAttribute("aria-label", "Remove this image");
+    remove.addEventListener("click", () =>
+      previewCoverSet(coverSet.filter((_, at) => at !== index))
+    );
+
+    row.append(grip, thumb, kind, meta, remove);
+    coverSetBox.appendChild(row);
+  });
+
+  const add = document.createElement("button");
+  add.className = "btn cover-add";
+  add.type = "button";
+  add.textContent = "Add image…";
+  add.title = "Embed another image beside the cover — a back cover, the disc, a leaflet";
+  add.addEventListener("click", () => {
+    pickAppends = true;
+    coverFileInput.value = ""; // allow re-picking the same file
+    coverFileInput.click();
+  });
+  coverSetBox.appendChild(add);
+}
+
 // Export the embedded cover of the selected files to disk (cover.<ext> next to
 // each file). Read-only for the audio: no preview/apply, it just writes.
 async function exportCover() {
@@ -315,6 +481,7 @@ coverWell.addEventListener("drop", (e) => {
 
 export {
   chooseCover,
+  previewCoverSet,
   embedCoverFile,
   embedCoverFromPath,
   embedExternalCover,

@@ -195,6 +195,21 @@ fn preview_tag_edits(state: State<AppState>, edits: Vec<TagEditDto>) -> Result<P
     })
 }
 
+/// Preview replacing every selected file's whole image set (#56) — the one
+/// command behind add, remove, reorder and set-the-type.
+#[tauri::command]
+fn preview_cover_set(
+    state: State<AppState>,
+    paths: Vec<String>,
+    covers: Vec<CoverArtDto>,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_cover_set(&paths, &covers)
+            .map_err(|e| e.to_string())
+    })
+}
+
 #[tauri::command]
 fn preview_cover_embed(
     state: State<AppState>,
@@ -625,6 +640,7 @@ fn main() {
             preview_transform,
             preview_tag_edits,
             preview_cover_embed,
+            preview_cover_set,
             export_cover,
             read_cover_summary,
             read_external_cover,

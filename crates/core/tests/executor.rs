@@ -333,6 +333,7 @@ fn embeds_cover_and_undo_removes_it() {
     let cover = CoverArt {
         mime: "image/png".to_string(),
         data: vec![0x89, 0x50, 0x4e, 0x47, 9, 8, 7],
+        ..CoverArt::default()
     };
     let plan = ChangePlan {
         description: "embed cover".to_string(),
@@ -340,8 +341,8 @@ fn embeds_cover_and_undo_removes_it() {
             path: track.clone(),
             tag_changes: vec![],
             cover_change: Some(CoverChange {
-                old: None,
-                new: Some(cover.clone()),
+                old: Vec::new(),
+                new: vec![cover.clone()],
             }),
             rename_to: None,
             sidecar_renames: Vec::new(),
