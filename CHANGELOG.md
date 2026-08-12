@@ -27,6 +27,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The Groups menu no longer opens off the bottom of the window.** It was
+  positioned by CSS, always below its button, which is fine for a toolbar and
+  wrong for the two places the button now sits low on screen: FROM NAME's pinned
+  footer, and the transform popover when that is anchored on the floating diff
+  bar. In a 920px window with only two saved groups the menu already ran 29px
+  past the edge; with a real shelf of saved groups plus the built-in ones, most
+  of the list was unreachable. It is now placed against its button from JS and
+  flips above it when there is no room below — the same treatment the placeholder
+  reference and the transform popover already had, now one shared helper. It
+  follows the button when the panel behind it scrolls, and the toolbar menus,
+  which have room below them, are left as they were. (#160)
 - **A track's several artists or genres are no longer silently reduced to the
   last one.** Both ID3v2.4 (several values in one frame) and Vorbis comments (a
   repeated key) can say a track has two artists, and reading such a file kept

@@ -3790,6 +3790,18 @@ td[data-field="year"],
 .col-menu[hidden] {
   display: none;
 }
+/* A menu whose button can sit near the bottom of the window is placed from JS
+   instead (#160) — fixed, so no scrolling ancestor clips it, and flipped above
+   its button when there is no room below. The offsets and the height cap are
+   inline, from placeFloating; the rules here only get the box out of the way of
+   the absolute ones above. The toolbar menus keep the CSS placement: they have
+   room below them and nothing to escape. */
+.col-menu.floating {
+  position: fixed;
+  top: auto;
+  right: auto;
+  max-height: none;
+}
 /* Every other popover of this kind hangs off a button near the right edge, so
    right-aligning it keeps it on screen. The Groups button is the exception: it
    sits at the left of a narrow column, and a right-aligned menu runs past that

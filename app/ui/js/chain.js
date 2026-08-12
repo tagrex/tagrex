@@ -10,7 +10,7 @@
 // What a panel supplies is its element ids and how the chain is run; what it
 // gets back is an object it renders and reads. Nothing here knows about a
 // preview, a plan or a panel.
-import { el, ico, toast } from "./dom.js";
+import { el, ico, placeFloating, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
 import {
@@ -598,12 +598,25 @@ function createGroupsMenu({
     updateRunTicked();
   }
 
+  // Placed from JS rather than by CSS (#160). This button is not always in the
+  // middle of a panel: it sits in FROM NAME's pinned footer, and inside the
+  // transform popover, which itself anchors on the floating diff bar — both near
+  // the bottom of the window, where a menu that only ever opens downward runs
+  // off the edge with most of itself out of reach.
+  function place() {
+    const box = el(menu);
+    box.classList.add("floating");
+    placeFloating(box, el(btn), { align: "right" });
+  }
+
   // Toggle + outside-click close, the same as the presets menu.
   el(btn).addEventListener("click", (e) => {
     e.stopPropagation();
     const box = el(menu);
     if (box.hidden) render();
     box.hidden = !box.hidden;
+    // After unhiding, so the box has a width to place by.
+    if (!box.hidden) place();
   });
   document.addEventListener("click", (e) => {
     const box = el(menu);
@@ -611,6 +624,18 @@ function createGroupsMenu({
       box.hidden = true;
     }
   });
+  // Fixed positioning does not follow its button, and the panel behind it
+  // scrolls — so follow it by hand while the menu is open.
+  window.addEventListener("resize", () => {
+    if (!el(menu).hidden) place();
+  });
+  document.addEventListener(
+    "scroll",
+    () => {
+      if (!el(menu).hidden) place();
+    },
+    true
+  );
 
   const api = {
     render,

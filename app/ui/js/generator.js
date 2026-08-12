@@ -10,7 +10,7 @@
 // chain reads the files. With a plan staged it reads THE PLAN — the values it
 // proposes — and gives back a revised plan, so producing values and cleaning
 // them up stay one Apply and one undo entry instead of two.
-import { el, toast } from "./dom.js";
+import { el, placeFloating, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { createGroupsMenu, createRuleChain, ruleForGroup } from "./chain.js";
@@ -297,22 +297,9 @@ let transformAnchor = "transform-btn";
 // Below the anchor when there is room, above it when there is not — the diff
 // bar floats near the bottom of the table, where "below" is off-screen.
 function placeTransformPopover() {
-  const pop = el("transform-pop");
-  const rect = el(transformAnchor).getBoundingClientRect();
-  const width = Math.min(420, window.innerWidth - 16);
-  pop.style.width = `${width}px`;
-  pop.style.left = `${Math.min(Math.max(8, rect.left), window.innerWidth - width - 8)}px`;
-  const below = window.innerHeight - rect.bottom - 16;
-  const above = rect.top - 16;
-  if (below >= 240 || below >= above) {
-    pop.style.top = `${rect.bottom + 4}px`;
-    pop.style.bottom = "auto";
-    pop.style.maxHeight = `${below}px`;
-  } else {
-    pop.style.top = "auto";
-    pop.style.bottom = `${window.innerHeight - rect.top + 4}px`;
-    pop.style.maxHeight = `${above}px`;
-  }
+  placeFloating(el("transform-pop"), el(transformAnchor), {
+    width: Math.min(420, window.innerWidth - 16),
+  });
 }
 
 function openTransformPopover(anchor = "transform-btn") {
