@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Reorganize can file tracks into a folder outside the opened library, and can
+  copy instead of moving.** The target path was always built under the open
+  library, so the workflow this feature is most wanted for — an unsorted folder
+  that gets tagged and then filed into the real library, which lives somewhere
+  else — could not be expressed at all. RENAMER › Reorganize now has an **Into**
+  destination (empty = the opened library, exactly as before), a **Move / Copy**
+  choice, and a **tidy up empty folders** option that removes the folders a move
+  leaves behind. A copy leaves every source file untouched and undoing it removes
+  the copies; undoing a move puts the emptied folders back so the files have
+  somewhere to return to.
+
+  Writing outside the library widens a deliberate safety boundary, so it is
+  widened deliberately: the destination is only ever a folder you picked in the
+  chooser — never something read out of a mask — and a plan aimed anywhere else
+  is still refused wholesale before anything is written. The roots a batch was
+  applied under are recorded with it, so a reorganize into an external folder is
+  still undoable in a later session, when the app no longer knows about that
+  folder. History lists a batch by where its files came from rather than where
+  they went, so an external reorganize does not vanish from it. (#153)
+
 ### Removed
 
 - **TAGGER › FROM NAME no longer has a cleanup chain of its own.** It had one

@@ -143,6 +143,10 @@ pub struct CoverChangeDto {
 pub struct FileChangeDto {
     pub path: String,
     pub rename_to: Option<String>,
+    /// Whether `rename_to` is a copy rather than a move (#153). The source is
+    /// left untouched; undo removes the copy.
+    #[serde(default)]
+    pub copy: bool,
     pub tag_changes: Vec<FieldChangeDto>,
     #[serde(default)]
     pub cover_change: Option<CoverChangeDto>,
@@ -157,6 +161,11 @@ pub struct FileChangeDto {
 pub struct PlanDto {
     pub description: String,
     pub changes: Vec<FileChangeDto>,
+    /// Whether applying this plan should remove the folders its moves empty
+    /// (#153). Defaults off, so every plan that isn't a reorganize behaves
+    /// exactly as before.
+    #[serde(default)]
+    pub prune_empty_dirs: bool,
 }
 
 /// One requested tag edit from the table: set `field` on `path` to `value`
@@ -688,6 +697,16 @@ pub struct App {
     sidecar_extensions: RefCell<Vec<String>>,
     /// Storage keys an online import must not write (#152), from settings.
     import_skip_fields: RefCell<HashSet<String>>,
+    /// Destinations outside `library_root` the user has explicitly chosen to
+    /// reorganize into during this session (#153), and which therefore bound
+    /// writes alongside the library root.
+    ///
+    /// Never inferred from a plan — that would make the containment check
+    /// circular — and never persisted: an external destination is authorized by
+    /// the user picking it in the folder chooser, for as long as the session
+    /// lasts. Undo of an older batch does not need this list, because the batch
+    /// records the roots it was applied under.
+    extra_roots: RefCell<Vec<PathBuf>>,
 }
 
 impl App {
@@ -708,6 +727,7 @@ impl App {
             carry_sidecars: Cell::new(default_carry_sidecars()),
             sidecar_extensions: RefCell::new(default_sidecar_extensions()),
             import_skip_fields: RefCell::new(HashSet::new()),
+            extra_roots: RefCell::new(Vec::new()),
         })
     }
 
@@ -1060,6 +1080,7 @@ impl App {
                 tag_changes: Vec::new(),
                 cover_change: None,
                 sidecar_renames: Vec::new(),
+                copy: false,
             };
             self.attach_sidecars(&mut change);
             changes.push(change);
@@ -1067,6 +1088,7 @@ impl App {
         Ok(PlanDto {
             description: format!("Rename by mask: {mask_pattern}"),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1143,11 +1165,13 @@ impl App {
                 tag_changes,
                 cover_change: None,
                 sidecar_renames: Vec::new(),
+                copy: false,
             });
         }
         Ok(PlanDto {
             description: format!("Tags from name: {mask_pattern}"),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1237,6 +1261,7 @@ impl App {
                     tag_changes: Vec::new(),
                     cover_change: None,
                     sidecar_renames: Vec::new(),
+                    copy: false,
                 };
                 self.attach_sidecars(&mut change);
                 changes.push(change);
@@ -1272,6 +1297,7 @@ impl App {
                     tag_changes: Vec::new(),
                     cover_change: None,
                     sidecar_renames: Vec::new(),
+                    copy: false,
                 };
                 self.attach_sidecars(&mut change);
                 changes.push(change);
@@ -1300,6 +1326,7 @@ impl App {
                     tag_changes,
                     cover_change: None,
                     sidecar_renames: Vec::new(),
+                    copy: false,
                 });
             }
         }
@@ -1307,6 +1334,7 @@ impl App {
         Ok(PlanDto {
             description: format!("Transform ({scope})"),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1411,6 +1439,7 @@ impl App {
                 tag_changes,
                 cover_change: None,
                 sidecar_renames: Vec::new(),
+                copy: false,
             };
             if renamed {
                 self.attach_sidecars(&mut change);
@@ -1422,6 +1451,7 @@ impl App {
         Ok(PlanDto {
             description: format!("Transform ({})", names.join(", ")),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1539,6 +1569,7 @@ impl App {
                 // Recomputed below rather than carried over: the sidecars follow
                 // the destination name, which a file-scoped chain just changed.
                 sidecar_renames: Vec::new(),
+                copy: false,
             };
             if renamed {
                 self.attach_sidecars(&mut revised);
@@ -1549,6 +1580,7 @@ impl App {
         Ok(PlanDto {
             description: cleaned_up_description(&plan.description),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1560,8 +1592,38 @@ impl App {
     /// — and the result is anchored at the library root. Tag *values* still have
     /// their separators stripped by the mask engine, so only literal slashes in
     /// the pattern create folders; a value can't inject one.
-    pub fn preview_move(&self, mask_pattern: &str, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
+    /// `destination` is the folder the rendered path is built under. `None` is
+    /// the library root, which is what this always did (#153); a folder outside
+    /// it is the point of the option — an unsorted download folder is tagged in
+    /// place and then filed into the library, which lives somewhere else. Such a
+    /// destination is remembered as a second allowed root for the session, so
+    /// the executor will accept the writes it authorizes; it is the user's own
+    /// pick from the folder chooser, never something read out of a mask.
+    ///
+    /// `copy` leaves every source file where it is. `prune_empty_dirs` removes
+    /// the folders a move empties, and is meaningless for a copy.
+    pub fn preview_move(
+        &self,
+        mask_pattern: &str,
+        paths: &[PathBuf],
+        destination: Option<&Path>,
+        copy: bool,
+        prune_empty_dirs: bool,
+    ) -> Result<PlanDto, AppError> {
         let mask = Mask::parse(mask_pattern)?;
+        let root = match destination {
+            Some(destination) => {
+                let destination = destination.to_path_buf();
+                if !destination.is_dir() {
+                    return Err(AppError::MissingDestination(
+                        destination.to_string_lossy().into_owned(),
+                    ));
+                }
+                self.authorize_root(&destination);
+                destination
+            }
+            None => self.library_root.clone(),
+        };
         let mut changes = Vec::new();
         for path in paths {
             let Ok(track) = TagEngine::read(path) else {
@@ -1592,7 +1654,7 @@ impl App {
             };
             // Pushed one at a time so the platform supplies its own separator
             // instead of us embedding one in the string.
-            let mut target = self.library_root.clone();
+            let mut target = root.clone();
             for component in components {
                 target.push(component);
             }
@@ -1606,13 +1668,19 @@ impl App {
                 tag_changes: Vec::new(),
                 cover_change: None,
                 sidecar_renames: Vec::new(),
+                copy,
             };
             self.attach_sidecars(&mut change);
             changes.push(change);
         }
         Ok(PlanDto {
-            description: format!("Reorganize by mask: {mask_pattern}"),
+            description: format!(
+                "{} by mask: {mask_pattern}",
+                if copy { "Copy" } else { "Reorganize" }
+            ),
             changes,
+            // A copy empties nothing, so there is nothing to prune either way.
+            prune_empty_dirs: prune_empty_dirs && !copy,
         })
     }
 
@@ -1647,12 +1715,14 @@ impl App {
                     tag_changes,
                     cover_change: None,
                     sidecar_renames: Vec::new(),
+                    copy: false,
                 });
             }
         }
         Ok(PlanDto {
             description: "Edit tags".to_string(),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1684,12 +1754,14 @@ impl App {
                     tag_changes,
                     cover_change: None,
                     sidecar_renames: Vec::new(),
+                    copy: false,
                 });
             }
         }
         Ok(PlanDto {
             description: "Clear tags".to_string(),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1727,11 +1799,13 @@ impl App {
                     new: new_dto.clone(),
                 }),
                 sidecar_renames: Vec::new(),
+                copy: false,
             });
         }
         Ok(PlanDto {
             description: "Embed cover art".to_string(),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1821,11 +1895,13 @@ impl App {
                     new: None,
                 }),
                 sidecar_renames: Vec::new(),
+                copy: false,
             });
         }
         Ok(PlanDto {
             description: "Remove cover art".to_string(),
             changes,
+            prune_empty_dirs: false,
         })
     }
 
@@ -1980,16 +2056,35 @@ impl App {
         Ok(target.to_string_lossy().into_owned())
     }
 
+    /// Remember a destination the user has chosen as a place this session may
+    /// write into (#153), beside the library root.
+    fn authorize_root(&self, root: &Path) {
+        let mut roots = self.extra_roots.borrow_mut();
+        if !roots.iter().any(|existing| existing == root) {
+            roots.push(root.to_path_buf());
+        }
+    }
+
+    /// Everywhere this session is allowed to write: the open library, plus any
+    /// destination the user picked for a reorganize (#153).
+    fn allowed_roots(&self) -> Vec<PathBuf> {
+        let mut roots = vec![self.library_root.clone()];
+        roots.extend(self.extra_roots.borrow().iter().cloned());
+        roots
+    }
+
     /// Apply a previewed plan to disk and record it for undo.
     pub fn apply(&mut self, plan: &PlanDto) -> Result<BatchDto, AppError> {
         let change_plan = plan.to_change_plan();
-        let batch = Executor::apply(&change_plan, &mut self.journal, &self.library_root)?;
+        let roots = self.allowed_roots();
+        let batch = Executor::apply(&change_plan, &mut self.journal, &roots)?;
         Ok(BatchDto::from(&batch))
     }
 
     /// Roll back a previously applied batch.
     pub fn undo(&mut self, batch_id: i64) -> Result<(), AppError> {
-        Executor::undo(&mut self.journal, BatchId(batch_id), &self.library_root)?;
+        let roots = self.allowed_roots();
+        Executor::undo(&mut self.journal, BatchId(batch_id), &roots)?;
         Ok(())
     }
 
@@ -2015,11 +2110,16 @@ impl App {
             .journal
             .batches()?
             .iter()
+            // Judged by where the files CAME FROM, not where they went (#153):
+            // a reorganize can now file them into a folder outside the library,
+            // and testing the destination would hide exactly the batch the user
+            // is most likely to want back.
             .filter(|batch| {
-                batch.plan.changes.iter().all(|change| {
-                    under_root(&change.path)
-                        && change.rename_to.as_ref().is_none_or(|to| under_root(to))
-                })
+                batch
+                    .plan
+                    .changes
+                    .iter()
+                    .all(|change| under_root(&change.path))
             })
             .map(BatchDto::from)
             .collect())
@@ -2463,12 +2563,14 @@ impl App {
                     tag_changes,
                     cover_change: None,
                     sidecar_renames: Vec::new(),
+                    copy: false,
                 });
             }
         }
         Ok(PlanDto {
             description: "Import Discogs release".to_string(),
             changes,
+            prune_empty_dirs: false,
         })
     }
 }
@@ -3053,12 +3155,14 @@ impl PlanDto {
     fn to_change_plan(&self) -> ChangePlan {
         ChangePlan {
             description: self.description.clone(),
+            prune_empty_dirs: self.prune_empty_dirs,
             changes: self
                 .changes
                 .iter()
                 .map(|change| FileChange {
                     path: PathBuf::from(&change.path),
                     rename_to: change.rename_to.as_ref().map(PathBuf::from),
+                    copy: change.copy,
                     tag_changes: change
                         .tag_changes
                         .iter()
@@ -3197,6 +3301,8 @@ pub enum AppError {
     EmptyDrop,
     #[error("not an image file: {0}")]
     NotAnImage(String),
+    #[error("the destination folder does not exist: {0}")]
+    MissingDestination(String),
     #[error(transparent)]
     Transform(#[from] tagrex_core::transform::TransformError),
     #[error("I/O error: {0}")]
@@ -3508,6 +3614,163 @@ mod tests {
             vec!["autechre - gantz graf.lrc"],
             "the sidecar must follow the revised name, not the staged one"
         );
+    }
+
+    // #153: the destination can be a folder outside the open library, which the
+    // executor would otherwise refuse. The user picking it is the authorization,
+    // and it has to survive into apply.
+    #[test]
+    fn a_reorganize_can_file_tracks_outside_the_library() {
+        let dir = TempDir::new("move-outside");
+        let library = dir.0.join("incoming");
+        let destination = dir.0.join("library");
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::create_dir_all(&destination).unwrap();
+        let track = dir.tagged_flac_at("incoming/x.flac", "Autechre", "Gantz Graf");
+        let mut app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+
+        let plan = app
+            .preview_move(
+                "%artist%/%title%",
+                std::slice::from_ref(&track),
+                Some(&destination),
+                false,
+                false,
+            )
+            .unwrap();
+        let target = PathBuf::from(plan.changes[0].rename_to.clone().unwrap());
+        assert!(target.starts_with(&destination), "got {target:?}");
+
+        let batch = app.apply(&plan).unwrap();
+        assert!(destination.join("Autechre/Gantz Graf.flac").exists());
+        assert!(!track.exists(), "a move must not leave the source behind");
+
+        // And it comes back — the destination is journaled with the batch, so
+        // undo is authorized for it.
+        app.undo(batch.id).unwrap();
+        assert!(track.exists());
+        assert!(!destination.join("Autechre/Gantz Graf.flac").exists());
+    }
+
+    // #153: an unauthorized destination is still refused. Only a folder the
+    // user picked becomes a root — a plan cannot nominate its own.
+    #[test]
+    fn an_unauthorized_destination_is_still_refused() {
+        let dir = TempDir::new("move-unauthorized");
+        let library = dir.0.join("incoming");
+        let elsewhere = dir.0.join("elsewhere");
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::create_dir_all(&elsewhere).unwrap();
+        let track = dir.tagged_flac_at("incoming/x.flac", "Autechre", "Gantz Graf");
+        let mut app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+
+        // A hand-built plan aimed outside, as a crafted mask would produce.
+        let plan = PlanDto {
+            description: "sneaky".into(),
+            prune_empty_dirs: false,
+            changes: vec![FileChangeDto {
+                path: track.to_string_lossy().into_owned(),
+                rename_to: Some(elsewhere.join("stolen.flac").to_string_lossy().into_owned()),
+                tag_changes: Vec::new(),
+                cover_change: None,
+                sidecar_renames: Vec::new(),
+                copy: false,
+            }],
+        };
+        assert!(app.apply(&plan).is_err());
+        assert!(track.exists());
+        assert!(!elsewhere.join("stolen.flac").exists());
+    }
+
+    // #153: a copy leaves the source alone, and undoing it removes the copy.
+    #[test]
+    fn a_copy_keeps_the_source_and_undo_removes_the_copy() {
+        let dir = TempDir::new("move-copy");
+        let library = dir.0.join("incoming");
+        let destination = dir.0.join("library");
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::create_dir_all(&destination).unwrap();
+        let track = dir.tagged_flac_at("incoming/x.flac", "Autechre", "Gantz Graf");
+        let mut app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+
+        let plan = app
+            .preview_move(
+                "%artist%/%title%",
+                std::slice::from_ref(&track),
+                Some(&destination),
+                true,
+                // Asked for, but a copy empties nothing — the plan must say so.
+                true,
+            )
+            .unwrap();
+        assert!(plan.changes[0].copy);
+        assert!(!plan.prune_empty_dirs);
+
+        let batch = app.apply(&plan).unwrap();
+        let copy = destination.join("Autechre/Gantz Graf.flac");
+        assert!(copy.exists());
+        assert!(track.exists(), "a copy must leave the source in place");
+
+        app.undo(batch.id).unwrap();
+        assert!(!copy.exists());
+        assert!(track.exists(), "undoing a copy must not touch the source");
+    }
+
+    // #153: a move can be asked to clear up after itself, and undo puts the
+    // folders back so the files have somewhere to return to.
+    #[test]
+    fn pruning_removes_the_folders_a_move_empties_and_undo_restores_them() {
+        let dir = TempDir::new("move-prune");
+        let library = dir.0.join("incoming");
+        std::fs::create_dir_all(&library).unwrap();
+        let track = dir.tagged_flac_at("incoming/dump/deep/x.flac", "Autechre", "Gantz Graf");
+        let mut app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+
+        let plan = app
+            .preview_move(
+                "%artist%/%title%",
+                std::slice::from_ref(&track),
+                None,
+                false,
+                true,
+            )
+            .unwrap();
+        assert!(plan.prune_empty_dirs);
+        let batch = app.apply(&plan).unwrap();
+
+        assert!(library.join("Autechre/Gantz Graf.flac").exists());
+        assert!(!library.join("dump/deep").exists(), "emptied folder left");
+        assert!(!library.join("dump").exists(), "its emptied parent left");
+        // The library root itself is a boundary, never something to remove.
+        assert!(library.exists());
+
+        app.undo(batch.id).unwrap();
+        assert!(track.exists());
+        assert!(library.join("dump/deep").exists());
+    }
+
+    // #153: a folder that still holds something is not this batch's to delete.
+    #[test]
+    fn pruning_leaves_a_folder_that_still_has_something_in_it() {
+        let dir = TempDir::new("move-prune-busy");
+        let library = dir.0.join("incoming");
+        std::fs::create_dir_all(&library).unwrap();
+        let track = dir.tagged_flac_at("incoming/dump/x.flac", "Autechre", "Gantz Graf");
+        std::fs::write(library.join("dump/notes.txt"), "keep me").unwrap();
+        let mut app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+
+        let plan = app
+            .preview_move(
+                "%artist%/%title%",
+                std::slice::from_ref(&track),
+                None,
+                false,
+                true,
+            )
+            .unwrap();
+        app.apply(&plan).unwrap();
+        assert!(library.join("dump").exists());
+        assert!(library.join("dump/notes.txt").exists());
     }
 
     #[test]
@@ -5116,6 +5379,9 @@ mod tests {
             .preview_move(
                 "%year% - %album%/%artist% - %title%",
                 std::slice::from_ref(&track),
+                None,
+                false,
+                false,
             )
             .unwrap();
         assert_eq!(plan.changes.len(), 1);
@@ -5150,6 +5416,9 @@ mod tests {
             .preview_move(
                 "%albumartist% - %album% (%year%)/%disc%%track%. %artist% - %title%",
                 std::slice::from_ref(&track),
+                None,
+                false,
+                false,
             )
             .unwrap();
         assert_eq!(plan.changes.len(), 1);
@@ -5178,7 +5447,7 @@ mod tests {
         let expected = dir.0.join("La Bush/Plastic - Sexy Groove.flac");
         for pattern in ["%album%/%artist% - %title%", "%album%\\%artist% - %title%"] {
             let plan = app
-                .preview_move(pattern, std::slice::from_ref(&track))
+                .preview_move(pattern, std::slice::from_ref(&track), None, false, false)
                 .unwrap();
             assert_eq!(plan.changes.len(), 1, "pattern {pattern:?}");
             assert_eq!(
@@ -5197,7 +5466,13 @@ mod tests {
 
         // `%album%` is unset here, so the folder component would be empty.
         let empty = app
-            .preview_move("%album%/%title%", std::slice::from_ref(&track))
+            .preview_move(
+                "%album%/%title%",
+                std::slice::from_ref(&track),
+                None,
+                false,
+                false,
+            )
             .unwrap();
         assert!(
             empty.changes.is_empty(),
@@ -5208,7 +5483,7 @@ mod tests {
         // separator.
         for pattern in ["../%title%", "..\\%title%"] {
             let escaping = app
-                .preview_move(pattern, std::slice::from_ref(&track))
+                .preview_move(pattern, std::slice::from_ref(&track), None, false, false)
                 .unwrap();
             assert!(
                 escaping.changes.is_empty(),

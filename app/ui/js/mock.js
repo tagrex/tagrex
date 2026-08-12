@@ -461,10 +461,21 @@ function mockInvoke(cmd, args) {
             .replace("%track%", t.tags.track || "")
             .replace("%genre%", t.tags.genre || "");
           if (rendered.split("/").some((part) => !part.trim() || part === "..")) return null;
-          return { path: p, rename_to: `/music/${rendered}${ext}`, tag_changes: [] };
+          // The destination the user picked, or the opened library (#153).
+          const root = (args.destination || "/music").replace(/\/$/, "");
+          return {
+            path: p,
+            rename_to: `${root}/${rendered}${ext}`,
+            tag_changes: [],
+            copy: !!args.copy,
+          };
         })
         .filter(Boolean);
-      return Promise.resolve({ description: "Reorganize by mask", changes });
+      return Promise.resolve({
+        description: `${args.copy ? "Copy" : "Reorganize"} by mask`,
+        changes,
+        prune_empty_dirs: !!args.pruneEmptyDirs && !args.copy,
+      });
     }
     case "preview_tag_edits": {
       const byPath = {};

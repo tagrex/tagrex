@@ -43,6 +43,11 @@ pub struct FileChange {
     pub cover_change: Option<CoverChange>,
     /// Planned rename, if any.
     pub rename_to: Option<PathBuf>,
+    /// Whether `rename_to` is a COPY rather than a move (#153). The source is
+    /// left exactly as it is — which is what makes copy the safe half of writing
+    /// outside the library — so a copy change's tag and cover changes are
+    /// written to the *copy*, never to the original. Undo removes the copy.
+    pub copy: bool,
     /// Sidecar files that travel with this file's rename/move (#58): each a
     /// `(from, to)` pair. Detected at preview time and journaled with the plan so
     /// they move together and are restored together on undo. Empty when the file
@@ -58,6 +63,11 @@ pub struct ChangePlan {
     /// was (see [`AppliedBatch::description`]).
     pub description: String,
     pub changes: Vec<FileChange>,
+    /// Whether to remove the folders a move empties (#153). Off by default, so
+    /// a plain rename never prunes anything; the reorganize operation turns it
+    /// on. Only directories this batch actually emptied are removed, and undo
+    /// puts them back — see [`AppliedBatch::removed_dirs`].
+    pub prune_empty_dirs: bool,
 }
 
 impl ChangePlan {
@@ -97,27 +107,33 @@ impl Executor {
     /// Apply a plan's tag changes and renames to disk, then record the batch
     /// so it can be rolled back.
     ///
-    /// Every write and every rename target is confined to `allowed_root`: a
-    /// plan touching a path that resolves outside it is rejected wholesale
-    /// before anything is written. The entire plan is validated up front
-    /// (root containment + staleness + rename collisions) so a bad file
+    /// Every source path and every rename target is confined to `allowed_roots`:
+    /// a plan touching a path that resolves outside all of them is rejected
+    /// wholesale before anything is written. The entire plan is validated up
+    /// front (root containment + staleness + rename collisions) so a bad file
     /// cannot leave the batch half-applied.
+    ///
+    /// There is more than one root because a reorganize can file tracks into a
+    /// folder outside the open library (#153). That second root is not inferred
+    /// from the plan — which would make the containment check circular — it is a
+    /// destination the user picked, handed down from the caller and recorded on
+    /// the batch so undo is still authorized for it after a restart.
     pub fn apply(
         plan: &ChangePlan,
         journal: &mut dyn UndoJournal,
-        allowed_root: &Path,
+        allowed_roots: &[PathBuf],
     ) -> Result<AppliedBatch, PlanError> {
-        let root = canonical_root(allowed_root)?;
+        let roots = canonical_roots(allowed_roots)?;
 
         // Pre-flight: validate the WHOLE plan before touching disk. Rename
         // targets are collected so two files can't be planned onto the same
         // destination.
         let mut planned_targets = HashSet::new();
         for change in &plan.changes {
-            ensure_within_root(&change.path, &root)?;
+            ensure_within_roots(&change.path, &roots)?;
             ensure_not_stale(change)?;
             if let Some(target) = effective_rename(change) {
-                let canonical_target = resolve_target_within_root(target, &root)?;
+                let canonical_target = resolve_target_within_roots(target, &roots)?;
                 if canonical_target.exists() {
                     return Err(PlanError::RenameCollision(canonical_target));
                 }
@@ -125,12 +141,12 @@ impl Executor {
                     return Err(PlanError::RenameCollision(canonical_target));
                 }
             }
-            // Sidecars (#58) obey the same rules: source inside root, target
-            // inside root, and never overwrite an existing file or another
+            // Sidecars (#58) obey the same rules: source inside a root, target
+            // inside a root, and never overwrite an existing file or another
             // planned destination.
             for (from, to) in &change.sidecar_renames {
-                ensure_within_root(from, &root)?;
-                let canonical_target = resolve_target_within_root(to, &root)?;
+                ensure_within_roots(from, &roots)?;
+                let canonical_target = resolve_target_within_roots(to, &roots)?;
                 if canonical_target.exists() {
                     return Err(PlanError::RenameCollision(canonical_target));
                 }
@@ -140,33 +156,59 @@ impl Executor {
             }
         }
 
-        // Apply tags first (all files, at their original paths)...
+        // Tags first, at each file's original path — but only for the changes
+        // that move. A copy must not touch its source at all (#153), so its tag
+        // changes wait and are written to the copy below.
         for change in &plan.changes {
-            write_tag_changes(change, Direction::Apply)?;
-            apply_cover_change(change, Direction::Apply)?;
+            if change.copy {
+                continue;
+            }
+            write_tag_changes(&change.path, change, Direction::Apply)?;
+            apply_cover_change(&change.path, change, Direction::Apply)?;
         }
-        // ...then renames, creating any folders the targets need. Directories
-        // are created here rather than in the pre-flight so a validation
-        // failure can't leave empty folders behind.
+        // ...then the moves and copies, creating any folders the targets need.
+        // Directories are created here rather than in the pre-flight so a
+        // validation failure can't leave empty folders behind.
         let mut created_dirs = Vec::new();
         for change in &plan.changes {
             if let Some(target) = effective_rename(change) {
                 if let Some(parent) = target.parent() {
                     created_dirs.extend(create_dirs_recording(parent)?);
                 }
-                std::fs::rename(&change.path, target).map_err(PlanError::Io)?;
+                transfer(&change.path, target, change.copy)?;
             }
         }
-        // Sidecars move after the main renames so their target directories (which
-        // a move can create) already exist (#58).
+        // Sidecars follow their file, the same way (#58), after the main
+        // transfers so their target directories already exist.
         for change in &plan.changes {
             for (from, to) in &change.sidecar_renames {
                 if let Some(parent) = to.parent() {
                     created_dirs.extend(create_dirs_recording(parent)?);
                 }
-                std::fs::rename(from, to).map_err(PlanError::Io)?;
+                transfer(from, to, change.copy)?;
             }
         }
+        // Now that the source is a copy of its own, the copy gets the tag
+        // changes the source was spared.
+        for change in &plan.changes {
+            if !change.copy {
+                continue;
+            }
+            let Some(target) = effective_rename(change) else {
+                continue;
+            };
+            write_tag_changes(target, change, Direction::Apply)?;
+            apply_cover_change(target, change, Direction::Apply)?;
+        }
+
+        // A move can leave the folder it emptied behind (#153). Removing those
+        // is opt-in per plan, and only ever the directories THIS batch emptied —
+        // recorded so undo can put them back.
+        let removed_dirs = if plan.prune_empty_dirs {
+            prune_emptied_dirs(plan, &roots, &created_dirs)
+        } else {
+            Vec::new()
+        };
 
         let mut batch = AppliedBatch {
             // Placeholder: the journal assigns the real id on record so ids
@@ -176,71 +218,100 @@ impl Executor {
             applied_at: now_unix_secs(),
             plan: plan.clone(),
             created_dirs,
+            removed_dirs,
+            allowed_roots: roots,
         };
         batch.id = journal.record(&batch)?;
         Ok(batch)
     }
 
     /// Roll a previously applied batch back: move every renamed file back to
-    /// its original path, restore every field's `old` value, then remove the
-    /// batch from the journal.
+    /// its original path, remove every copy it made, restore every field's
+    /// `old` value, then remove the batch from the journal.
     ///
     /// Renames are reversed *before* tag restoration, mirroring apply in
     /// reverse: the file lives at its rename target now, so it has to move
-    /// back before the original-path tag write can find it. Everything is
-    /// confined to `allowed_root` the same way apply is.
+    /// back before the original-path tag write can find it.
+    ///
+    /// Containment works the same way as apply, over `allowed_roots` *plus the
+    /// roots the batch itself recorded*. That second part is what lets a
+    /// reorganize into a folder outside the library be undone in a later
+    /// session (#153), when the caller no longer knows about that folder: the
+    /// destination was confirmed by the user when the batch was applied, and
+    /// the journal is where that authorization lives. Undo can still only move
+    /// files back along paths the journal recorded, so this widens what undo
+    /// may touch without widening what a plan may reach.
     pub fn undo(
         journal: &mut dyn UndoJournal,
         batch_id: BatchId,
-        allowed_root: &Path,
+        allowed_roots: &[PathBuf],
     ) -> Result<(), PlanError> {
-        let root = canonical_root(allowed_root)?;
-
         let batch = journal
             .batches()?
             .into_iter()
             .find(|batch| batch.id == batch_id)
             .ok_or(PlanError::Journal(JournalError::UnknownBatch(batch_id)))?;
 
-        // Validate before touching disk: the file's current location (rename
-        // target if it was renamed, else its path) and the restore
-        // destination must both sit within root.
-        for change in &batch.plan.changes {
-            match effective_rename(change) {
-                Some(target) => {
-                    ensure_within_root(target, &root)?;
-                    resolve_target_within_root(&change.path, &root)?;
-                }
-                None => ensure_within_root(&change.path, &root)?,
-            }
-            // A sidecar currently lives at its `to`; it must move back to `from`,
-            // and both must sit within root (#58).
-            for (from, to) in &change.sidecar_renames {
-                ensure_within_root(to, &root)?;
-                resolve_target_within_root(from, &root)?;
+        let mut roots = canonical_roots(allowed_roots)?;
+        for root in &batch.allowed_roots {
+            if !roots.contains(root) {
+                roots.push(root.clone());
             }
         }
 
-        // Reverse renames first, so tag restoration finds each file back at
-        // its original path.
+        // Put back the folders the batch emptied, before anything moves: a file
+        // has to have a directory to move back into (#153).
+        for dir in &batch.removed_dirs {
+            if resolve_target_within_roots(dir, &roots).is_ok() {
+                std::fs::create_dir_all(dir).map_err(PlanError::Io)?;
+            }
+        }
+
+        // Validate before touching disk: the file's current location (rename
+        // target if it was renamed, else its path) and the restore
+        // destination must both sit within a root.
+        for change in &batch.plan.changes {
+            match effective_rename(change) {
+                Some(target) => {
+                    ensure_within_roots(target, &roots)?;
+                    resolve_target_within_roots(&change.path, &roots)?;
+                }
+                None => ensure_within_roots(&change.path, &roots)?,
+            }
+            // A sidecar currently lives at its `to`; it must go back to `from`,
+            // and both must sit within a root (#58).
+            for (from, to) in &change.sidecar_renames {
+                ensure_within_roots(to, &roots)?;
+                resolve_target_within_roots(from, &roots)?;
+            }
+        }
+
+        // Reverse the transfers first, so tag restoration finds each file back
+        // at its original path. Undoing a copy means removing the copy — the
+        // source was never touched, so there is nothing else to put back.
         for change in &batch.plan.changes {
             if let Some(target) = effective_rename(change) {
-                std::fs::rename(target, &change.path).map_err(PlanError::Io)?;
+                untransfer(target, &change.path, change.copy)?;
             }
             for (from, to) in &change.sidecar_renames {
-                std::fs::rename(to, from).map_err(PlanError::Io)?;
+                untransfer(to, from, change.copy)?;
             }
         }
         for change in &batch.plan.changes {
-            write_tag_changes(change, Direction::Undo)?;
-            apply_cover_change(change, Direction::Undo)?;
+            // A copy's tag changes were written to the copy, which no longer
+            // exists; the source still holds its original values.
+            if change.copy {
+                continue;
+            }
+            write_tag_changes(&change.path, change, Direction::Undo)?;
+            apply_cover_change(&change.path, change, Direction::Undo)?;
         }
 
         // Finally remove the folders this batch created, deepest first. Only
         // empty ones go: if the user has since put something in there, the
         // directory stays and rollback is still considered successful.
         for dir in batch.created_dirs.iter().rev() {
-            if ensure_within_root(dir, &root).is_ok() {
+            if ensure_within_roots(dir, &roots).is_ok() {
                 std::fs::remove_dir(dir).ok();
             }
         }
@@ -258,17 +329,109 @@ enum Direction {
     Undo,
 }
 
-fn canonical_root(allowed_root: &Path) -> Result<PathBuf, PlanError> {
-    std::fs::canonicalize(allowed_root).map_err(PlanError::Io)
+/// Canonicalize every allowed root, dropping the ones that no longer resolve.
+/// A root that has been deleted or renamed since it was chosen simply stops
+/// authorizing anything, which fails safe; only when NONE of them resolve is
+/// this an error, since then nothing could be written anyway.
+fn canonical_roots(allowed_roots: &[PathBuf]) -> Result<Vec<PathBuf>, PlanError> {
+    let mut roots = Vec::with_capacity(allowed_roots.len());
+    let mut first_error = None;
+    for root in allowed_roots {
+        match std::fs::canonicalize(root) {
+            Ok(canonical) => {
+                if !roots.contains(&canonical) {
+                    roots.push(canonical);
+                }
+            }
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    match first_error {
+        Some(error) if roots.is_empty() => Err(PlanError::Io(error)),
+        _ => Ok(roots),
+    }
+}
+
+/// Move or copy one file. The one place the two differ, so nothing above has to
+/// branch on it twice.
+fn transfer(from: &Path, to: &Path, copy: bool) -> Result<(), PlanError> {
+    if copy {
+        std::fs::copy(from, to).map(|_| ()).map_err(PlanError::Io)
+    } else {
+        std::fs::rename(from, to).map_err(PlanError::Io)
+    }
+}
+
+/// Reverse one [`transfer`]: a move goes back, a copy is removed.
+fn untransfer(target: &Path, original: &Path, copy: bool) -> Result<(), PlanError> {
+    if copy {
+        // The copy may already be gone (deleted by hand between apply and
+        // undo); that is the state undo wanted, not a failure.
+        match std::fs::remove_file(target) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(PlanError::Io(error)),
+        }
+    } else {
+        std::fs::rename(target, original).map_err(PlanError::Io)
+    }
+}
+
+/// Remove the directories this batch's moves emptied (#153), deepest first, and
+/// report them so undo can put them back.
+///
+/// Only a directory that is empty *now*, sits inside an allowed root, and is not
+/// one this same batch just created. Walking up from each source folder means a
+/// move that empties `Artist/Album` also clears `Artist` when nothing else is
+/// left in it — which is the point, since an unsorted folder is usually a tree.
+/// Anything that fails to remove is simply left alone: a folder that still holds
+/// something the plan never touched is not this batch's to delete.
+fn prune_emptied_dirs(plan: &ChangePlan, roots: &[PathBuf], created: &[PathBuf]) -> Vec<PathBuf> {
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    for change in &plan.changes {
+        if change.copy || effective_rename(change).is_none() {
+            continue;
+        }
+        let mut dir = change.path.parent();
+        while let Some(current) = dir {
+            let owned = current.to_path_buf();
+            // A root is the boundary, not something to remove.
+            if roots.contains(&owned) {
+                break;
+            }
+            if ensure_within_roots(current, roots).is_err() {
+                break;
+            }
+            if !candidates.contains(&owned) {
+                candidates.push(owned);
+            }
+            dir = current.parent();
+        }
+    }
+    // Deepest first, so a parent is only considered once its child is gone.
+    candidates.sort_by_key(|dir| std::cmp::Reverse(dir.components().count()));
+
+    let mut removed = Vec::new();
+    for dir in candidates {
+        if created.contains(&dir) {
+            continue;
+        }
+        if std::fs::remove_dir(&dir).is_ok() {
+            removed.push(dir);
+        }
+    }
+    removed
 }
 
 /// Resolve `path` (following symlinks, collapsing `..`) and require the result
-/// to sit inside `root`. This is what stops a crafted mask literal like
+/// to sit inside one of `roots`. This is what stops a crafted mask literal like
 /// `../../etc` from steering a write outside the scanned library. Requires the
 /// path to exist, since it canonicalizes the file itself.
-fn ensure_within_root(path: &Path, root: &Path) -> Result<(), PlanError> {
+fn ensure_within_roots(path: &Path, roots: &[PathBuf]) -> Result<(), PlanError> {
     let canonical = std::fs::canonicalize(path).map_err(PlanError::Io)?;
-    if canonical.starts_with(root) {
+    if roots.iter().any(|root| canonical.starts_with(root)) {
         Ok(())
     } else {
         Err(PlanError::OutsideRoot(canonical))
@@ -278,13 +441,13 @@ fn ensure_within_root(path: &Path, root: &Path) -> Result<(), PlanError> {
 /// A rename destination that doesn't exist yet can't be canonicalized directly.
 /// Resolve it against its nearest *existing* ancestor — which may be several
 /// levels up when the target lands in folders that still have to be created —
-/// and require that ancestor to sit inside `root`. Returns the resolved
+/// and require that ancestor to sit inside one of `roots`. Returns the resolved
 /// absolute target path.
 ///
 /// Canonicalizing the existing part is what makes the containment check
 /// meaningful: it collapses `..` and follows symlinks, so a crafted mask can't
 /// steer a move outside the library by way of a path that only looks contained.
-fn resolve_target_within_root(target: &Path, root: &Path) -> Result<PathBuf, PlanError> {
+fn resolve_target_within_roots(target: &Path, roots: &[PathBuf]) -> Result<PathBuf, PlanError> {
     let mut existing = target
         .parent()
         .ok_or_else(|| PlanError::OutsideRoot(target.to_path_buf()))?;
@@ -306,7 +469,7 @@ fn resolve_target_within_root(target: &Path, root: &Path) -> Result<PathBuf, Pla
     }
 
     let canonical = std::fs::canonicalize(existing).map_err(PlanError::Io)?;
-    if !canonical.starts_with(root) {
+    if !roots.iter().any(|root| canonical.starts_with(root)) {
         return Err(PlanError::OutsideRoot(target.to_path_buf()));
     }
     let mut resolved = canonical;
@@ -367,7 +530,11 @@ fn ensure_not_stale(change: &FileChange) -> Result<(), PlanError> {
 
 /// Embed the `new` cover (or the `old` one on undo), or remove it when the
 /// target side is `None`. No-op when the change carries no cover.
-fn apply_cover_change(change: &FileChange, direction: Direction) -> Result<(), PlanError> {
+fn apply_cover_change(
+    path: &Path,
+    change: &FileChange,
+    direction: Direction,
+) -> Result<(), PlanError> {
     let Some(cover_change) = &change.cover_change else {
         return Ok(());
     };
@@ -376,14 +543,21 @@ fn apply_cover_change(change: &FileChange, direction: Direction) -> Result<(), P
         Direction::Undo => &cover_change.old,
     };
     match target {
-        Some(cover) => TagEngine::embed_cover(&change.path, cover)?,
-        None => TagEngine::remove_cover(&change.path)?,
+        Some(cover) => TagEngine::embed_cover(path, cover)?,
+        None => TagEngine::remove_cover(path)?,
     }
     Ok(())
 }
 
-fn write_tag_changes(change: &FileChange, direction: Direction) -> Result<(), PlanError> {
-    let mut track = TagEngine::read(&change.path)?;
+fn write_tag_changes(
+    path: &Path,
+    change: &FileChange,
+    direction: Direction,
+) -> Result<(), PlanError> {
+    if change.tag_changes.is_empty() {
+        return Ok(());
+    }
+    let mut track = TagEngine::read(path)?;
     for field_change in &change.tag_changes {
         let value = match direction {
             Direction::Apply => &field_change.new,

@@ -33,6 +33,35 @@ pub struct AppliedBatch {
     /// without touching directories that already existed.
     #[allow(clippy::struct_field_names)]
     pub created_dirs: Vec<PathBuf>,
+    /// Directories this batch emptied and then removed (#153), deepest first.
+    /// Rollback recreates exactly these, before anything moves back, so a file
+    /// has a folder to return to.
+    #[allow(clippy::struct_field_names)]
+    pub removed_dirs: Vec<PathBuf>,
+    /// The roots this batch was authorized to write inside, canonicalized. Only
+    /// interesting when a reorganize filed tracks outside the open library
+    /// (#153): the destination was confirmed by the user at apply time, and
+    /// recording it here is what lets undo still reach those files in a later
+    /// session, when the caller knows nothing about that folder.
+    pub allowed_roots: Vec<PathBuf>,
+}
+
+/// Whether `table` already has `column`. Used to make the `copied` migration
+/// (#153) idempotent — `ALTER TABLE ADD COLUMN` has no `IF NOT EXISTS`, and
+/// `open` runs on every start.
+fn column_exists(
+    conn: &rusqlite::Connection,
+    table: &str,
+    column: &str,
+) -> Result<bool, JournalError> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = stmt.query([])?;
+    while let Some(row) = rows.next()? {
+        if row.get::<_, String>(1)? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 pub trait UndoJournal {
@@ -155,8 +184,27 @@ impl SqliteJournal {
                  file_change_id INTEGER NOT NULL REFERENCES file_changes(id) ON DELETE CASCADE,
                  from_path      TEXT NOT NULL,
                  to_path        TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS removed_dirs (
+                 id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                 batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+                 path     TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS allowed_roots (
+                 id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                 batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+                 path     TEXT NOT NULL
              );",
         )?;
+        // `copied` (#153) arrived after the table did, and a journal from an
+        // older build is a real thing to open — a whole point of this file is
+        // surviving restarts. `CREATE TABLE IF NOT EXISTS` cannot add it, so add
+        // the column only when it is missing; every existing row is a move.
+        if !column_exists(&conn, "file_changes", "copied")? {
+            conn.execute_batch(
+                "ALTER TABLE file_changes ADD COLUMN copied INTEGER NOT NULL DEFAULT 0",
+            )?;
+        }
         Ok(Self { conn })
     }
 }
@@ -172,7 +220,8 @@ impl UndoJournal for SqliteJournal {
 
         for change in &batch.plan.changes {
             tx.execute(
-                "INSERT INTO file_changes (batch_id, path, rename_to) VALUES (?1, ?2, ?3)",
+                "INSERT INTO file_changes (batch_id, path, rename_to, copied) \
+                 VALUES (?1, ?2, ?3, ?4)",
                 rusqlite::params![
                     batch_id,
                     change.path.to_string_lossy(),
@@ -180,6 +229,7 @@ impl UndoJournal for SqliteJournal {
                         .rename_to
                         .as_ref()
                         .map(|p| p.to_string_lossy().into_owned()),
+                    change.copy,
                 ],
             )?;
             let file_change_id = tx.last_insert_rowid();
@@ -231,6 +281,18 @@ impl UndoJournal for SqliteJournal {
                 rusqlite::params![batch_id, dir.to_string_lossy()],
             )?;
         }
+        for dir in &batch.removed_dirs {
+            tx.execute(
+                "INSERT INTO removed_dirs (batch_id, path) VALUES (?1, ?2)",
+                rusqlite::params![batch_id, dir.to_string_lossy()],
+            )?;
+        }
+        for root in &batch.allowed_roots {
+            tx.execute(
+                "INSERT INTO allowed_roots (batch_id, path) VALUES (?1, ?2)",
+                rusqlite::params![batch_id, root.to_string_lossy()],
+            )?;
+        }
 
         tx.commit()?;
         Ok(BatchId(batch_id))
@@ -252,7 +314,6 @@ impl UndoJournal for SqliteJournal {
         for row in rows {
             let (id, description, applied_at) = row?;
             let changes = self.load_file_changes(id)?;
-            let created_dirs = self.load_created_dirs(id)?;
             batches.push(AppliedBatch {
                 id: BatchId(id),
                 description: description.clone(),
@@ -260,8 +321,12 @@ impl UndoJournal for SqliteJournal {
                 plan: ChangePlan {
                     description,
                     changes,
+                    // Apply-time only: what it caused is in `removed_dirs`.
+                    prune_empty_dirs: false,
                 },
-                created_dirs,
+                created_dirs: self.load_paths("created_dirs", id)?,
+                removed_dirs: self.load_paths("removed_dirs", id)?,
+                allowed_roots: self.load_paths("allowed_roots", id)?,
             });
         }
         Ok(batches)
@@ -280,11 +345,12 @@ impl UndoJournal for SqliteJournal {
 }
 
 impl SqliteJournal {
-    /// Directories the batch created, shallowest first (insertion order).
-    fn load_created_dirs(&self, batch_id: i64) -> Result<Vec<PathBuf>, JournalError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT path FROM created_dirs WHERE batch_id = ?1 ORDER BY id")?;
+    /// One of the batch's plain path lists, in insertion order. `table` is a
+    /// literal from this module, never anything a caller supplies.
+    fn load_paths(&self, table: &str, batch_id: i64) -> Result<Vec<PathBuf>, JournalError> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT path FROM {table} WHERE batch_id = ?1 ORDER BY id"
+        ))?;
         let rows = stmt.query_map(rusqlite::params![batch_id], |row| {
             row.get::<_, String>(0).map(PathBuf::from)
         })?;
@@ -293,24 +359,26 @@ impl SqliteJournal {
 
     fn load_file_changes(&self, batch_id: i64) -> Result<Vec<FileChange>, JournalError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, path, rename_to FROM file_changes WHERE batch_id = ?1 ORDER BY id",
+            "SELECT id, path, rename_to, copied FROM file_changes WHERE batch_id = ?1 ORDER BY id",
         )?;
         let rows = stmt.query_map(rusqlite::params![batch_id], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
+                row.get::<_, bool>(3)?,
             ))
         })?;
 
         let mut changes = Vec::new();
         for row in rows {
-            let (file_change_id, path, rename_to) = row?;
+            let (file_change_id, path, rename_to, copied) = row?;
             changes.push(FileChange {
                 path: PathBuf::from(path),
                 tag_changes: self.load_field_changes(file_change_id)?,
                 cover_change: self.load_cover_change(file_change_id)?,
                 rename_to: rename_to.map(PathBuf::from),
+                copy: copied,
                 sidecar_renames: self.load_sidecar_renames(file_change_id)?,
             });
         }

@@ -49,6 +49,12 @@ impl Drop for TempDir {
     }
 }
 
+/// The allowed-root slice the executor takes (#153). Every test here works
+/// inside one directory; the multi-root cases build their own.
+fn roots(dir: &Path) -> Vec<PathBuf> {
+    vec![dir.to_path_buf()]
+}
+
 fn set_artist(path: &Path, old: Option<&str>, new: Option<&str>) -> ChangePlan {
     ChangePlan {
         description: "set artist".to_string(),
@@ -62,7 +68,9 @@ fn set_artist(path: &Path, old: Option<&str>, new: Option<&str>) -> ChangePlan {
             cover_change: None,
             rename_to: None,
             sidecar_renames: Vec::new(),
+            ..FileChange::default()
         }],
+        ..ChangePlan::default()
     }
 }
 
@@ -74,7 +82,9 @@ fn batch_survives_reopening_the_database() {
     let batch_id = {
         let mut journal = SqliteJournal::open(&dir.db()).unwrap();
         let plan = set_artist(&track, None, Some("Persisted Artist"));
-        Executor::apply(&plan, &mut journal, dir.path()).unwrap().id
+        Executor::apply(&plan, &mut journal, &roots(dir.path()))
+            .unwrap()
+            .id
         // journal dropped here -> connection closed, simulating app exit
     };
 
@@ -105,7 +115,9 @@ fn undo_works_against_a_reopened_journal() {
     let batch_id = {
         let mut journal = SqliteJournal::open(&dir.db()).unwrap();
         let plan = set_artist(&track, None, Some("Temporary"));
-        Executor::apply(&plan, &mut journal, dir.path()).unwrap().id
+        Executor::apply(&plan, &mut journal, &roots(dir.path()))
+            .unwrap()
+            .id
     };
     assert!(TagEngine::read(&track)
         .unwrap()
@@ -114,7 +126,7 @@ fn undo_works_against_a_reopened_journal() {
 
     // Reopen and roll back -- the morning-after scenario.
     let mut journal = SqliteJournal::open(&dir.db()).unwrap();
-    Executor::undo(&mut journal, batch_id, dir.path()).unwrap();
+    Executor::undo(&mut journal, batch_id, &roots(dir.path())).unwrap();
 
     assert!(!TagEngine::read(&track)
         .unwrap()
@@ -140,12 +152,14 @@ fn custom_field_round_trips_through_storage() {
             cover_change: None,
             rename_to: None,
             sidecar_renames: Vec::new(),
+            ..FileChange::default()
         }],
+        ..ChangePlan::default()
     };
 
     {
         let mut journal = SqliteJournal::open(&dir.db()).unwrap();
-        Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+        Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
     }
 
     let journal = SqliteJournal::open(&dir.db()).unwrap();
@@ -166,7 +180,7 @@ fn ids_keep_climbing_across_reopens() {
         Executor::apply(
             &set_artist(&track, None, Some("A")),
             &mut journal,
-            dir.path(),
+            &roots(dir.path()),
         )
         .unwrap()
         .id
@@ -178,7 +192,7 @@ fn ids_keep_climbing_across_reopens() {
         Executor::apply(
             &set_artist(&track, Some("A"), Some("B")),
             &mut journal,
-            dir.path(),
+            &roots(dir.path()),
         )
         .unwrap()
         .id

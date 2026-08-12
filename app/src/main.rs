@@ -167,10 +167,24 @@ fn preview_move(
     state: State<AppState>,
     mask: String,
     paths: Vec<String>,
+    destination: Option<String>,
+    copy: bool,
+    prune_empty_dirs: bool,
 ) -> Result<PlanDto, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    let destination = destination
+        .map(|d| d.trim().to_string())
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from);
     with_app(&state, |app| {
-        app.preview_move(&mask, &paths).map_err(|e| e.to_string())
+        app.preview_move(
+            &mask,
+            &paths,
+            destination.as_deref(),
+            copy,
+            prune_empty_dirs,
+        )
+        .map_err(|e| e.to_string())
     })
 }
 

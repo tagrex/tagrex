@@ -3428,6 +3428,28 @@ td[data-field="year"],
   background: var(--panel);
 }
 
+/* Reorganize's destination + mode row (#153). The destination is chosen, never
+   typed, so its field reads as a value rather than an input; the mode segment
+   and the tidy-up flag share one row because they are one decision — what to do
+   with the source. A copy empties nothing, so the flag dims out with it. */
+#move-dest {
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+#move-dest:not(:placeholder-shown) {
+  color: var(--text);
+}
+.move-mode-row {
+  flex-wrap: wrap;
+}
+.move-mode-row .seg {
+  flex: 0 0 auto;
+}
+.move-mode-row .rule-flag.off {
+  opacity: 0.45;
+}
+
 /* FROM NAME (#139): the live read-out under the pattern box. The subject line
    is what the mask is actually matched against — the stem, plus a folder per
    separator in the pattern — so it reads as a file name (mono), with the

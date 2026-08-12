@@ -50,6 +50,12 @@ impl Drop for TempDir {
     }
 }
 
+/// The allowed-root slice the executor takes (#153). Every test here works
+/// inside one directory; the multi-root cases build their own.
+fn roots(dir: &Path) -> Vec<PathBuf> {
+    vec![dir.to_path_buf()]
+}
+
 fn set_artist(path: &Path, old: Option<&str>, new: Option<&str>) -> ChangePlan {
     ChangePlan {
         description: "set artist".to_string(),
@@ -63,7 +69,9 @@ fn set_artist(path: &Path, old: Option<&str>, new: Option<&str>) -> ChangePlan {
             cover_change: None,
             rename_to: None,
             sidecar_renames: Vec::new(),
+            ..FileChange::default()
         }],
+        ..ChangePlan::default()
     }
 }
 
@@ -74,7 +82,7 @@ fn apply_writes_tags_and_records_the_batch() {
     let mut journal = VecJournal::new();
 
     let plan = set_artist(&track, None, Some("Boards of Canada"));
-    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
 
     assert_eq!(
         TagEngine::read(&track)
@@ -96,13 +104,13 @@ fn undo_restores_the_previous_value() {
 
     // Field starts absent, so undo should remove it again.
     let plan = set_artist(&track, None, Some("Temporary"));
-    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
     assert!(TagEngine::read(&track)
         .unwrap()
         .tags
         .contains_key(&TagField::Artist));
 
-    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
 
     assert!(!TagEngine::read(&track)
         .unwrap()
@@ -131,9 +139,11 @@ fn rejects_an_invalid_year_without_poisoning_the_file() {
             cover_change: None,
             rename_to: None,
             sidecar_renames: Vec::new(),
+            ..FileChange::default()
         }],
+        ..ChangePlan::default()
     };
-    assert!(Executor::apply(&bad, &mut journal, dir.path()).is_err());
+    assert!(Executor::apply(&bad, &mut journal, &roots(dir.path())).is_err());
     // The file is still readable and carries no year — untouched.
     let tags = TagEngine::read(&track).unwrap().tags;
     assert!(!tags.contains_key(&TagField::Year));
@@ -151,9 +161,11 @@ fn rejects_an_invalid_year_without_poisoning_the_file() {
             cover_change: None,
             rename_to: None,
             sidecar_renames: Vec::new(),
+            ..FileChange::default()
         }],
+        ..ChangePlan::default()
     };
-    Executor::apply(&good, &mut journal, dir.path()).unwrap();
+    Executor::apply(&good, &mut journal, &roots(dir.path())).unwrap();
     assert_eq!(
         TagEngine::read(&track)
             .unwrap()
@@ -172,7 +184,7 @@ fn rejects_a_path_outside_the_allowed_root() {
     let mut journal = VecJournal::new();
 
     let plan = set_artist(&track, None, Some("Nope"));
-    let err = Executor::apply(&plan, &mut journal, root.path()).unwrap_err();
+    let err = Executor::apply(&plan, &mut journal, &roots(root.path())).unwrap_err();
 
     assert!(matches!(err, PlanError::OutsideRoot(_)));
     // Nothing recorded, nothing written.
@@ -192,7 +204,7 @@ fn rejects_a_stale_plan_without_writing() {
     // The file has no artist, but the plan claims the current value is
     // "Something Else" -- so the plan was built against a stale snapshot.
     let plan = set_artist(&track, Some("Something Else"), Some("New"));
-    let err = Executor::apply(&plan, &mut journal, dir.path()).unwrap_err();
+    let err = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap_err();
 
     assert!(matches!(err, PlanError::Stale(_)));
     assert!(journal.batches().unwrap().is_empty());
@@ -211,7 +223,7 @@ fn applies_tags_then_rename_and_undo_reverses_both() {
 
     let mut plan = set_artist(&track, None, Some("New Artist"));
     plan.changes[0].rename_to = Some(renamed.clone());
-    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
 
     // File moved, tags written at the new location.
     assert!(!track.exists());
@@ -225,7 +237,7 @@ fn applies_tags_then_rename_and_undo_reverses_both() {
         Some("New Artist")
     );
 
-    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
 
     // Moved back, tags restored (Artist was absent originally).
     assert!(track.exists());
@@ -245,7 +257,7 @@ fn rejects_a_rename_target_that_already_exists() {
 
     let mut plan = set_artist(&track, None, Some("New"));
     plan.changes[0].rename_to = Some(occupied.clone());
-    let err = Executor::apply(&plan, &mut journal, dir.path()).unwrap_err();
+    let err = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap_err();
 
     assert!(matches!(err, PlanError::RenameCollision(_)));
     // Nothing applied: source untouched, no tags written.
@@ -274,6 +286,7 @@ fn rejects_two_files_renamed_onto_the_same_target() {
                 cover_change: None,
                 rename_to: Some(target.clone()),
                 sidecar_renames: Vec::new(),
+                ..FileChange::default()
             },
             FileChange {
                 path: b,
@@ -281,10 +294,12 @@ fn rejects_two_files_renamed_onto_the_same_target() {
                 cover_change: None,
                 rename_to: Some(target),
                 sidecar_renames: Vec::new(),
+                ..FileChange::default()
             },
         ],
+        ..ChangePlan::default()
     };
-    let err = Executor::apply(&plan, &mut journal, dir.path()).unwrap_err();
+    let err = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap_err();
 
     assert!(matches!(err, PlanError::RenameCollision(_)));
     assert!(journal.batches().unwrap().is_empty());
@@ -299,7 +314,7 @@ fn rejects_a_rename_target_outside_the_root() {
 
     let mut plan = set_artist(&track, None, Some("New"));
     plan.changes[0].rename_to = Some(outside.path().join("escaped.flac"));
-    let err = Executor::apply(&plan, &mut journal, root.path()).unwrap_err();
+    let err = Executor::apply(&plan, &mut journal, &roots(root.path())).unwrap_err();
 
     assert!(matches!(err, PlanError::OutsideRoot(_)));
     assert!(track.exists());
@@ -330,16 +345,18 @@ fn embeds_cover_and_undo_removes_it() {
             }),
             rename_to: None,
             sidecar_renames: Vec::new(),
+            ..FileChange::default()
         }],
+        ..ChangePlan::default()
     };
 
-    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
     assert_eq!(
         TagEngine::read_cover(&track).unwrap().map(|c| c.data),
         Some(cover.data.clone())
     );
 
-    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
     assert_eq!(TagEngine::read_cover(&track).unwrap(), None);
 }
 
@@ -375,10 +392,11 @@ fn rename_into_new_folders_creates_them_and_undo_removes_them() {
                 ..FileChange::default()
             },
         ],
+        ..ChangePlan::default()
     };
 
     let mut journal = VecJournal::default();
-    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
 
     assert!(target.exists(), "file moved into the new folder tree");
     assert!(!track.exists());
@@ -387,7 +405,7 @@ fn rename_into_new_folders_creates_them_and_undo_removes_them() {
     assert_eq!(batch.created_dirs.len(), 2);
     assert!(batch.created_dirs.iter().all(|d| d.starts_with(dir.path())));
 
-    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
 
     assert!(track.exists(), "file restored to its original path");
     assert!(!target.exists());
@@ -418,10 +436,11 @@ fn rename_into_new_folders_still_cannot_escape_the_root() {
             rename_to: Some(dir.path().join("../outside/new/track.flac")),
             ..FileChange::default()
         }],
+        ..ChangePlan::default()
     };
 
     let mut journal = VecJournal::default();
-    let result = Executor::apply(&plan, &mut journal, dir.path());
+    let result = Executor::apply(&plan, &mut journal, &roots(dir.path()));
     assert!(matches!(result, Err(PlanError::OutsideRoot(_))));
     assert!(track.exists(), "nothing moved");
     assert!(
@@ -452,17 +471,18 @@ fn sidecar_files_move_and_restore_with_the_track() {
             sidecar_renames: vec![(lrc.clone(), lrc_target.clone())],
             ..FileChange::default()
         }],
+        ..ChangePlan::default()
     };
 
     let mut journal = VecJournal::default();
-    let batch = Executor::apply(&plan, &mut journal, dir.path()).unwrap();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
     assert!(
         target.exists() && lrc_target.exists(),
         "both moved to target"
     );
     assert!(!track.exists() && !lrc.exists(), "originals gone");
 
-    Executor::undo(&mut journal, batch.id, dir.path()).unwrap();
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
     assert!(track.exists() && lrc.exists(), "both restored");
     assert!(
         !target.exists() && !lrc_target.exists(),
@@ -491,10 +511,11 @@ fn sidecar_never_overwrites_an_existing_target() {
             sidecar_renames: vec![(lrc.clone(), occupied.clone())],
             ..FileChange::default()
         }],
+        ..ChangePlan::default()
     };
 
     let mut journal = VecJournal::default();
-    let result = Executor::apply(&plan, &mut journal, dir.path());
+    let result = Executor::apply(&plan, &mut journal, &roots(dir.path()));
     assert!(matches!(result, Err(PlanError::RenameCollision(_))));
     assert!(track.exists() && lrc.exists(), "nothing moved");
     assert_eq!(

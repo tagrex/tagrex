@@ -1,12 +1,26 @@
 // The RENAMER mode (#143 split it out of app.js).
 //
 // Two masks over the selection: one renders each file's new name, the other a
-// folder path under the library root. Both produce an ordinary plan, so the
-// rename and the move preview, apply and undo exactly like every other change.
+// folder path. Both produce an ordinary plan, so the rename and the move
+// preview, apply and undo exactly like every other change.
+//
+// The reorganize half also carries where to file the tracks (#153): a folder
+// outside the opened library, move or copy, and whether to clear up the folders
+// a move empties. The destination is only ever what the user picked here —
+// choosing it is what authorizes the backend to write there.
 import { el, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
+
+// The destination and mode are working state for the panel, not backend
+// settings — and re-picking the same library folder every session is exactly
+// the friction this feature exists to remove.
+const MOVE_DEST_STORAGE_KEY = "tagrex.moveDestination";
+const MOVE_MODE_STORAGE_KEY = "tagrex.moveMode";
+const MOVE_PRUNE_STORAGE_KEY = "tagrex.movePrune";
+
+let moveMode = "move";
 
 // Rename by mask (#37): render each selected file's new name from its tags.
 async function previewRename() {
@@ -24,7 +38,7 @@ async function previewRename() {
   }
 }
 
-// ---- reorganize into folders (#37) ----
+// ---- reorganize into folders (#37, destination + copy in #153) ----
 // Builds the plan and shows it in the usual preview view, so the move is
 // applied (and undone) through exactly the same path as a rename.
 async function previewMove() {
@@ -33,13 +47,22 @@ async function previewMove() {
     toast("Select the tracks to move first", true);
     return;
   }
+  const copy = moveMode === "copy";
   try {
-    setPreviewPlan(await invoke("preview_move", { mask: el("move-mask").value, paths }));
+    setPreviewPlan(
+      await invoke("preview_move", {
+        mask: el("move-mask").value,
+        paths,
+        destination: el("move-dest").value || null,
+        copy,
+        pruneEmptyDirs: el("move-prune").checked,
+      })
+    );
     setPreviewSource("rename");
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing move of ${previewPlan.changes.length} file(s) — click Apply`
+        ? `Previewing ${copy ? "copy" : "move"} of ${previewPlan.changes.length} file(s) — click Apply`
         : "Nothing to move (check the pattern's tags are set)",
       previewPlan.changes.length === 0
     );
@@ -48,6 +71,74 @@ async function previewMove() {
   }
 }
 
+// Move or copy. Pruning only means anything for a move — a copy empties
+// nothing — so the checkbox goes inert rather than quietly doing nothing.
+function setMoveMode(mode) {
+  moveMode = mode;
+  el("move-mode")
+    .querySelectorAll(".seg-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.moveMode === mode));
+  const prune = el("move-prune");
+  prune.disabled = mode === "copy";
+  prune.closest(".rule-flag").classList.toggle("off", mode === "copy");
+  el("move-preview").textContent = mode === "copy" ? "Preview copy" : "Preview move";
+  writeStored(MOVE_MODE_STORAGE_KEY, mode);
+}
+
+function writeStored(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
+function readStored(key) {
+  try {
+    return localStorage.getItem(key);
+  } catch (e) {
+    return null;
+  }
+}
+
+// The native folder chooser, the same plugin the library Browse button uses.
+// Outside Tauri there is none, so browser-dev gets a typed path instead — it is
+// the only way to exercise the flow there.
+async function pickDestination() {
+  const dialog = window.__TAURI__ && window.__TAURI__.dialog;
+  if (!dialog) {
+    const typed = prompt("Destination folder (browser dev only)");
+    if (typed) setDestination(typed);
+    return;
+  }
+  try {
+    const picked = await dialog.open({ directory: true, multiple: false });
+    if (!picked) return; // user cancelled
+    setDestination(picked);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+function setDestination(path) {
+  el("move-dest").value = path || "";
+  writeStored(MOVE_DEST_STORAGE_KEY, path || "");
+}
+
 // ---- wire up ----
 el("preview").addEventListener("click", previewRename);
 el("move-preview").addEventListener("click", previewMove);
+el("move-dest-pick").addEventListener("click", pickDestination);
+el("move-dest-clear").addEventListener("click", () => setDestination(""));
+el("move-mode").addEventListener("click", (e) => {
+  const btn = e.target.closest(".seg-btn");
+  if (btn) setMoveMode(btn.dataset.moveMode);
+});
+el("move-prune").addEventListener("change", () =>
+  writeStored(MOVE_PRUNE_STORAGE_KEY, el("move-prune").checked ? "1" : "")
+);
+
+// Last session's destination and mode (#153).
+el("move-dest").value = readStored(MOVE_DEST_STORAGE_KEY) || "";
+el("move-prune").checked = !!readStored(MOVE_PRUNE_STORAGE_KEY);
+setMoveMode(readStored(MOVE_MODE_STORAGE_KEY) === "copy" ? "copy" : "move");

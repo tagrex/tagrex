@@ -223,14 +223,34 @@
             <h2>Reorganize into folders</h2>
             <p class="hint muted">
               Use <code>/</code> (or <code>\</code>) to separate folders. Optional parts go in
-              [brackets] and vanish when empty. Paths are built under the opened library; tag values
-              can't introduce a folder, only separators in the pattern do.
+              [brackets] and vanish when empty. Tag values can't introduce a folder, only separators
+              in the pattern do.
             </p>
             <label class="export-row"
               >Pattern
               <input id="move-mask" type="text" spellcheck="false" value="%albumartist%/%year% - %album%/%track% - %title%" />
               <button class="icon ph-btn" type="button" data-ph-target="move-mask" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
             </label>
+            <!-- Destination (#153): the folder the pattern is built under. Empty
+                 means the opened library, which is what this always did. A folder
+                 outside it is what makes the tag-then-file workflow possible, and
+                 picking it here is what authorizes writing there. -->
+            <label class="export-row"
+              >Into
+              <input id="move-dest" type="text" spellcheck="false" placeholder="the opened library" readonly />
+              <button id="move-dest-pick" class="btn" type="button" title="Choose a destination folder">Choose…</button>
+              <button id="move-dest-clear" class="icon" type="button" title="Back to the opened library" aria-label="Back to the opened library"><svg class="ico"><use href="#i-close"/></svg></button>
+            </label>
+            <div class="export-row move-mode-row">
+              <span>Files</span>
+              <div class="seg" id="move-mode" role="tablist" aria-label="Move or copy">
+                <button class="seg-btn active" type="button" data-move-mode="move">Move</button>
+                <button class="seg-btn" type="button" data-move-mode="copy">Copy</button>
+              </div>
+              <label class="rule-flag" title="Remove folders this move leaves empty. Undo puts them back.">
+                <input id="move-prune" type="checkbox" />tidy up empty folders
+              </label>
+            </div>
             <div class="panel-actions">
               <div class="spacer"></div>
               <button id="move-preview" class="primary">Preview move</button>
