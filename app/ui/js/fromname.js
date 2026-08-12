@@ -1,71 +1,86 @@
-// The FROM NAME sub-tab of TAGGER (#139, #141, #143 split it out of app.js).
+// The FROM NAME sub-tab of TAGGER (#139, #143 split it out of app.js).
 //
-// The file's own name read back into tags: the pattern, the replacement table
-// that cleans up what it extracts, and the live read-out of what the pattern
+// The file's own name read back into tags: the pattern, the cleanup chain that
+// tidies what it extracts (#144), and the live read-out of what the pattern
 // sees. Extraction itself is the mask engine's job in Rust — one grammar, one
 // implementation — so this only stages the plan it returns.
 import { el, escapeHtml, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
+import { createGroupsMenu, createRuleChain } from "./chain.js";
 import { columnLabel } from "./columns.js";
 import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
 
-// FROM NAME's pattern and its replacement table (#141). Both are the user's
-// working state for the panel, not backend settings, so they live in
-// localStorage beside the other persisted panel prefs — a replacement table
-// retyped every session would defeat the point of having one.
+// FROM NAME's pattern and its cleanup chain. Both are the user's working state
+// for the panel, not backend settings, so they live in localStorage beside the
+// other persisted panel prefs — a chain retyped every session would defeat the
+// point of having one. (The action groups it can load from are settings.json's,
+// shared with GENERATOR; only this panel's live chain is stored here.)
 const FROM_NAME_MASK_STORAGE_KEY = "tagrex.fromNameMask";
+const FROM_NAME_CHAIN_STORAGE_KEY = "tagrex.fromNameChain";
+// Superseded by the chain above (#144). Read once so a table typed under #141
+// carries over as ordinary replace rules instead of silently disappearing.
 const FROM_NAME_REPL_STORAGE_KEY = "tagrex.fromNameReplacements";
-// Separators are what names carry instead of spaces, so the table starts with
-// the one everybody needs; it's an ordinary row and can be deleted.
-const DEFAULT_REPLACEMENTS = [{ from: "_", to: " " }];
-let nameReplacements = DEFAULT_REPLACEMENTS.slice();
+
+// Separators are what names carry instead of spaces, so the chain starts with
+// the one everybody needs; it's an ordinary rule and can be deleted.
+const DEFAULT_CHAIN = {
+  scope: "tags",
+  rules: [{ kind: "replace", from: "_", to: " " }],
+};
+
+// The chain persists on every edit and the read-out follows it, so both hang off
+// the component's one change hook.
+const cleanupChain = createRuleChain({
+  ids: { rules: "fn-rules", empty: "fn-empty", kind: "fn-kind", add: "fn-add", scope: "fn-scope" },
+  onChange: () => {
+    saveFromNamePrefs();
+    scheduleNameProbe();
+  },
+});
+
+// The Groups popover over the cleanup chain (#144), assigned below once the
+// panel's own chain exists.
+let cleanupMenu = null;
+
+// The cleanup as the backend takes it: a list of action groups, so this panel's
+// chain and a saved group are the same thing to it (#144). The live chain runs
+// first — it is the generic pass over every value — and the ticked groups after
+// it, in list order, each on the value its scope names. That is how per-field
+// cleanup is expressed: tick one group scoped to Artist and another to Title.
+function cleanupGroups() {
+  return [cleanupChain.asGroup(), ...(cleanupMenu?.tickedInOrder() || [])];
+}
 
 function loadFromNamePrefs() {
+  let chain = null;
   try {
     const mask = localStorage.getItem(FROM_NAME_MASK_STORAGE_KEY);
     if (mask) el("from-name-mask").value = mask;
-    const stored = localStorage.getItem(FROM_NAME_REPL_STORAGE_KEY);
+    const stored = localStorage.getItem(FROM_NAME_CHAIN_STORAGE_KEY);
     if (stored) {
-      const rows = JSON.parse(stored);
-      // An empty table is a real choice (the user deleted every row), so only
+      const saved = JSON.parse(stored);
+      // An empty chain is a real choice (the user deleted every rule), so only
       // a malformed value falls back to the default.
-      if (Array.isArray(rows)) {
-        nameReplacements = rows.map((r) => ({ from: String(r.from || ""), to: String(r.to || "") }));
+      if (saved && Array.isArray(saved.rules)) chain = saved;
+    } else {
+      const table = JSON.parse(localStorage.getItem(FROM_NAME_REPL_STORAGE_KEY) || "null");
+      if (Array.isArray(table)) {
+        chain = { scope: "tags", rules: table.map((r) => ({ kind: "replace", ...r })) };
       }
     }
   } catch (e) {
     /* unreadable or unavailable — fall back to the defaults */
   }
-  renderReplacements();
+  cleanupChain.load(chain || DEFAULT_CHAIN);
 }
 
 function saveFromNamePrefs() {
   try {
     localStorage.setItem(FROM_NAME_MASK_STORAGE_KEY, el("from-name-mask").value);
-    localStorage.setItem(FROM_NAME_REPL_STORAGE_KEY, JSON.stringify(nameReplacements));
+    localStorage.setItem(FROM_NAME_CHAIN_STORAGE_KEY, JSON.stringify(cleanupChain.asGroup()));
   } catch (e) {
     /* localStorage unavailable — preference just won't persist */
-  }
-}
-
-// One row per replacement, rebuilt whenever the list changes. Typing in a row
-// updates the list in place (no re-render, or the caret would jump).
-function renderReplacements() {
-  const box = el("repl-rows");
-  box.innerHTML = nameReplacements
-    .map(
-      (row, i) => `
-      <div class="repl-row" data-index="${i}">
-        <input class="repl-from" type="text" placeholder="find" spellcheck="false" value="${escapeHtml(row.from)}" />
-        <span class="repl-arrow" aria-hidden="true">→</span>
-        <input class="repl-to" type="text" placeholder="replace with" spellcheck="false" value="${escapeHtml(row.to)}" />
-        <button class="icon repl-del" type="button" title="Remove" aria-label="Remove"><svg class="ico"><use href="#i-close"/></svg></button>
-      </div>`,
-    )
-    .join("");
-  if (!nameReplacements.length) {
-    box.innerHTML = `<div class="repl-empty muted">Values go into the tags exactly as the name spells them.</div>`;
   }
 }
 
@@ -83,7 +98,7 @@ async function previewTagsFromName() {
     const plan = await invoke("preview_tags_from_name", {
       mask: el("from-name-mask").value,
       paths,
-      replacements: nameReplacements,
+      cleanup: cleanupGroups(),
     });
     // Distinguish "nothing to do" from a silent no-op: with this feature an
     // empty plan usually means the pattern doesn't fit the names.
@@ -115,7 +130,7 @@ async function refreshNameProbe() {
     const probe = await invoke("probe_tags_from_name", {
       mask: el("from-name-mask").value,
       path,
-      replacements: nameReplacements,
+      cleanup: cleanupGroups(),
     });
     const subject = `<div class="probe-subject">${escapeHtml(probe.subject)}</div>`;
     if (!probe.matched || probe.fields.length === 0) {
@@ -149,35 +164,24 @@ el("from-name-mask").addEventListener("input", () => {
   saveFromNamePrefs();
   scheduleNameProbe();
 });
-
-// The replacement table (#141). Typing edits the row in place — re-rendering on
-// every keystroke would move the caret — and the list is what both the probe
-// and the preview send.
-el("repl-rows").addEventListener("input", (e) => {
-  const row = e.target.closest(".repl-row");
-  if (!row) return;
-  const entry = nameReplacements[Number(row.dataset.index)];
-  if (!entry) return;
-  if (e.target.classList.contains("repl-from")) entry.from = e.target.value;
-  if (e.target.classList.contains("repl-to")) entry.to = e.target.value;
-  saveFromNamePrefs();
-  scheduleNameProbe();
-});
-el("repl-rows").addEventListener("click", (e) => {
-  const del = e.target.closest(".repl-del");
-  if (!del) return;
-  nameReplacements.splice(Number(del.closest(".repl-row").dataset.index), 1);
-  renderReplacements();
-  saveFromNamePrefs();
-  scheduleNameProbe();
-});
-el("repl-add").addEventListener("click", () => {
-  nameReplacements.push({ from: "", to: "" });
-  renderReplacements();
-  el("repl-rows").querySelector(".repl-row:last-child .repl-from")?.focus();
+// The Groups popover over the cleanup chain (#144). A tick here means "take
+// part in the cleanup" rather than "run now" — the values being cleaned don't
+// exist until Preview tags builds them — so there is no Run button and the
+// button below counts what is ticked instead. Groups scoped to the file name or
+// its extension are hidden: there is neither among the values a mask extracts.
+cleanupMenu = createGroupsMenu({
+  btn: "fn-groups-btn",
+  menu: "fn-groups-menu",
+  chain: cleanupChain,
+  hideFileScopes: true,
+  tickTitle: "Include in the cleanup, after the chain above",
+  onTicksChanged: (ticked) => {
+    el("fn-groups-count").textContent = ticked.length ? String(ticked.length) : "";
+    scheduleNameProbe();
+  },
 });
 
-// The pattern and the table come back from the last session (#141).
+// The pattern and the cleanup chain come back from the last session (#144).
 loadFromNamePrefs();
 
 export { previewTagsFromName, refreshNameProbe, scheduleNameProbe };

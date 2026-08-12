@@ -364,15 +364,41 @@
                 <input id="from-name-mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
                 <button class="icon ph-btn" type="button" data-ph-target="from-name-mask" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
               </div>
-              <!-- Replacement table (#141): a literal cleanup pass over every
-                   extracted value, since names carry their separators as junk.
-                   Rows are built by renderReplacements. -->
-              <div class="repl">
-                <div class="repl-head">
-                  <span class="repl-title">Replace in values</span>
-                  <button id="repl-add" class="icon" type="button" title="Add a replacement" aria-label="Add a replacement"><svg class="ico"><use href="#i-plus"/></svg></button>
+              <!-- Cleanup chain (#144): the same rule cards and action groups
+                   GENERATOR uses, over the values the mask extracts, since
+                   names carry their separators as junk. A scope here names
+                   WHICH extracted value a chain acts on; the file-name and
+                   file-extension scopes are absent because neither exists among
+                   these values. Cards are built by the chain component. -->
+              <div class="fn-clean">
+                <label class="export-row"
+                  >Clean up
+                  <select id="fn-scope">
+                    <option value="tags">Every value</option>
+                    <option value="artist">Artist</option>
+                    <option value="title">Title</option>
+                    <option value="album">Album</option>
+                    <option value="albumartist">Album Artist</option>
+                    <option value="genre">Genre</option>
+                    <option value="comment">Comment</option>
+                    <option value="key">Key</option>
+                  </select>
+                </label>
+                <div id="fn-rules" class="rule-chain"></div>
+                <p id="fn-empty" class="empty inert-panel rule-chain-empty" hidden>
+                  No cleanup — values go into the tags exactly as the name spells them.
+                </p>
+                <div class="gen-add">
+                  <select id="fn-kind">
+                    <option value="replace">Find and replace</option>
+                    <option value="case">Change case</option>
+                    <option value="diacritics">Remove diacritics</option>
+                    <option value="transliterate">Transliterate to Latin</option>
+                    <option value="untransliterate">Transliterate to Cyrillic</option>
+                    <option value="key">Key notation</option>
+                  </select>
+                  <button id="fn-add" class="btn">Add rule</button>
                 </div>
-                <div id="repl-rows" class="repl-rows"></div>
               </div>
               <!-- Live read-out of what the pattern pulls out of the current
                    row, replacements included, so the mask can be tuned without
@@ -390,6 +416,12 @@
               </p>
             </div></div>
             <div class="panel-actions from-name-actions">
+              <!-- The same saved action groups GENERATOR offers (#144), minus
+                   the ones scoped to a file name or extension. -->
+              <div class="col-picker">
+                <button id="fn-groups-btn" class="io" title="Saved action groups: tick the ones to include in the cleanup, or load one into the chain"><svg class="ico"><use href="#i-presets"/></svg>Groups<span id="fn-groups-count" class="group-count"></span></button>
+                <div id="fn-groups-menu" class="col-menu" hidden></div>
+              </div>
               <div class="spacer"></div>
               <button id="from-name-preview" class="primary">Preview tags</button>
             </div>

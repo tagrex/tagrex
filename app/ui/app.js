@@ -41,13 +41,8 @@ import {
 } from "./js/columns.js";
 import { dropGroupKey, folderGroupLabel, groupKeyOf, groupLabel } from "./js/grouping.js";
 import { loadSavedToken, searchBusy, searchPerPage, stopLoading } from "./js/online.js";
-import {
-  closeTransformPopover,
-  initActionGroups,
-  initBuiltinGroups,
-  refreshGenerator,
-  renderGroupsMenu,
-} from "./js/generator.js";
+import { closeTransformPopover, refreshGenerator } from "./js/generator.js";
+import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
 import { initPlaceholderReference } from "./js/placeholders.js";
 import {
@@ -1773,19 +1768,8 @@ document.addEventListener("click", (e) => {
     menu.hidden = true;
   }
 });
-// Action-groups popover (#57): same toggle + outside-click close as presets.
-el("groups-btn").addEventListener("click", (e) => {
-  e.stopPropagation();
-  const menu = el("groups-menu");
-  if (menu.hidden) renderGroupsMenu();
-  menu.hidden = !menu.hidden;
-});
-document.addEventListener("click", (e) => {
-  const menu = el("groups-menu");
-  if (!menu.hidden && !menu.contains(e.target) && !el("groups-btn").contains(e.target)) {
-    menu.hidden = true;
-  }
-});
+// The action-groups popovers (#57) wire their own toggle and outside-click
+// close, in chain.js, since there is one per rule chain (#144).
 // Track edits on any editable cell (event delegation).
 tracksBody.addEventListener("input", (e) => {
   if (e.target.classList.contains("editable")) onCellEdit(e.target);

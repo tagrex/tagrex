@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **TAGGER › FROM NAME now cleans up its extracted values with the same rule
+  chain and action groups as GENERATOR.** The panel had a replacement table of
+  its own: two mechanisms for one idea, in neighbouring panels, and the flat
+  table could only ever do a literal find-and-replace over every value at once.
+  It now shows the same rule cards — find and replace with regex and whole-word,
+  change case, remove diacritics, transliterate either way, key notation — and
+  the same Groups popover, backed by the same saved groups in settings.json. A
+  group's scope is read here as *which extracted value* it acts on, so ticking
+  one scoped to Artist and another to Title gives per-field cleanup, which the
+  table could not express at all. The live read-out follows the chain as it is
+  edited, and the chain persists across sessions like the pattern does; a
+  replacement table typed under the old panel carries over as ordinary replace
+  rules. Groups scoped to the file name or its extension are hidden, since
+  neither exists among the values a mask extracts. (#144)
+
 ### Fixed
 
 - **The Folder name and File name query presets no longer search for
