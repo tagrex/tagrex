@@ -3880,6 +3880,103 @@ td[data-field="year"],
   color: var(--muted);
 }
 
+/* ---- placeholder reference (#148) -----------------------------------------
+   The popover every mask input's ? button opens. It borrows the .col-menu
+   shell's surface but positions itself `fixed` from JS: it is tall, and the
+   mode panel it opens from scrolls, which would clip an absolutely-positioned
+   one. */
+.ph-menu {
+  position: fixed;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--space-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.ph-menu[hidden] {
+  display: none;
+}
+.ph-head {
+  flex: none;
+  padding-bottom: var(--space-2);
+}
+.ph-head input {
+  width: 100%;
+  height: var(--ctl-h-sm);
+  font-size: var(--text-xs);
+}
+.ph-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ph-group-name {
+  margin: var(--space-2) var(--space-2) var(--space-1);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--muted);
+}
+.ph-group:first-child .ph-group-name {
+  margin-top: 0;
+}
+.ph-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 3px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+/* Grammar entries describe syntax rather than a token to insert, so they get the
+   same layout without the affordance. */
+.ph-row-static {
+  cursor: default;
+}
+.ph-row:not(.ph-row-static):hover {
+  background: var(--row-hover);
+}
+.ph-token {
+  flex: none;
+  font-family: var(--font-mono-bundled);
+  color: var(--accent);
+}
+.ph-desc {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+/* "name only" / "read only": which direction a placeholder works in. Only the
+   handful that are restricted carry one, so it reads as an exception. */
+.ph-dir {
+  flex: none;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.ph-empty {
+  padding: var(--space-2);
+  font-size: var(--text-xs);
+}
+.ph-foot {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--text-2xs);
+}
+
 /* ---- drag-and-drop-to-open overlay (#127) ---------------------------------
    Hidden until files are dragged over the window; body.drag-active reveals it
    as a dimmed backdrop with a dashed accent frame, echoing the cover well's

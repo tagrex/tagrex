@@ -34,10 +34,14 @@ Write a field name between percent signs. Names are case-insensitive.
 | `%media%` | Media type |
 | `%side%` | Vinyl/cassette side letter — **render only**, see below |
 
-The hint under the pattern box lists the common ones; the full set above is
-accepted. An unknown name is an error rather than being passed through as
-literal text, so a typo tells you instead of quietly producing
-`%artsit% - Title`.
+**The same list is in the app**, behind the **?** button beside every pattern
+box: every placeholder, grouped, with a line of description, and a click inserts
+one at the caret. It is built from the parser's own tables, so what it shows is
+what parses — and it works offline, which is when a reference is most needed.
+
+An unknown name is an error rather than being passed through as literal text, so
+a typo tells you instead of quietly producing `%artsit% - Title`. Hovering a
+table column header names the placeholder that addresses it.
 
 Custom (non-modeled) fields cannot be addressed from a mask yet.
 

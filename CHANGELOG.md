@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A placeholder reference inside the app.** Every pattern box — Rename by
+  mask, Reorganize into folders, Tags from the file name, the Report export —
+  gets a **?** button that opens the full list: every placeholder the parser
+  accepts, grouped into Tags / File / Technical / Special, one line of
+  description each, and the grammar (`%field:2%`, `[…]`, folder separators,
+  quoted literals) below it. Clicking one inserts it at the caret rather than at
+  the end, since a pattern is usually edited in the middle, and a filter box
+  narrows the list. Hovering a table column header now names the placeholder
+  that addresses that column, so the table answers the question where it is
+  asked. Previously the only list inside the app was one hint under the RENAMER
+  box that named nine of the nineteen tag fields — and `%catalognumber%` was not
+  among them, which left guessing at `%catno%` or `%cataloguenumber%` as the only
+  way to find it, and left anyone offline with no way at all. That hint has been
+  rewritten to point at the button. The list is built from the same tables the
+  parser reads, so a name it shows is by construction a name that parses, and
+  the tests fail if the two ever disagree. (#148)
+
 - **Masks can now address the file, not just its tags.** Sixteen new
   placeholders: the path ones — `%filename%`, `%fileext%`, `%filenameext%`,
   `%filepath%`, `%foldername%`, `%foldername2%`, `%foldername3%` — and the

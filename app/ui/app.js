@@ -42,6 +42,7 @@ import {
   renderGroupsMenu,
 } from "./js/generator.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
+import { initPlaceholderReference } from "./js/placeholders.js";
 import {
   currentFieldValue,
   refreshFieldEditor,
@@ -1802,6 +1803,10 @@ initActionGroups();
 initBuiltinGroups();
 // Reflect saved filter-mode flags (#44) onto the toggles.
 syncFilterControls();
+// Wire the placeholder reference (#148) and warm its catalogue, so the column
+// headers can name their placeholder without an await per header. The head is
+// already drawn by then, so it is redrawn once the names are available.
+initPlaceholderReference().then(renderTableHead);
 
 // ---- dev surface (#143) ----
 // app.js is a module now, so nothing in it is global by accident. The

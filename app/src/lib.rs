@@ -2488,6 +2488,39 @@ fn preset_rule(kind: &str, from: &str, to: &str, regex: bool, style: &str) -> Tr
     }
 }
 
+/// One placeholder as the in-app reference shows it (#148).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PlaceholderDto {
+    /// Ready to insert, percent signs included — `%catalognumber%`.
+    pub token: String,
+    pub name: String,
+    pub description: String,
+    /// Section heading: Tags / File / Technical / Special.
+    pub group: String,
+    pub render: bool,
+    pub extract: bool,
+}
+
+/// Every placeholder the mask parser accepts (#148).
+///
+/// Read-only and stateless, like the preset library: it describes the grammar,
+/// not the open library, so the reference works before a folder is even opened —
+/// which is the point. Being offline is exactly when there is no documentation
+/// to fall back on.
+pub fn mask_placeholders() -> Vec<PlaceholderDto> {
+    tagrex_core::mask::placeholder_reference()
+        .into_iter()
+        .map(|doc| PlaceholderDto {
+            token: format!("%{}%", doc.name),
+            name: doc.name.to_string(),
+            description: doc.description.to_string(),
+            group: doc.group.label().to_string(),
+            render: doc.render,
+            extract: doc.extract,
+        })
+        .collect()
+}
+
 /// The preset library that ships with the app (#137).
 ///
 /// These are ordinary action groups — same rule shape, same scopes, run through

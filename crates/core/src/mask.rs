@@ -865,28 +865,196 @@ fn field_from_name(name: &str) -> Result<TagField, MaskError> {
 }
 
 fn field_name(field: &TagField) -> &'static str {
+    tag_placeholder_doc(field).0
+}
+
+/// What a tag field is called in a mask, and how the reference describes it
+/// (#148).
+///
+/// Exhaustive over [`TagField`] on purpose: adding a field breaks this match,
+/// so a new field cannot reach the parser without someone deciding what to call
+/// it *and* what the in-app reference says about it. That is the whole fix for
+/// the problem this documents — a user who cannot see the list has no way to
+/// guess that the catalogue number is `%catalognumber%` and not `%catno%`.
+fn tag_placeholder_doc(field: &TagField) -> (&'static str, &'static str) {
     match field {
-        TagField::Artist => "artist",
-        TagField::Title => "title",
-        TagField::Album => "album",
-        TagField::AlbumArtist => "albumartist",
-        TagField::TrackNumber => "track",
-        TagField::TrackTotal => "tracktotal",
-        TagField::DiscNumber => "disc",
-        TagField::DiscTotal => "disctotal",
-        TagField::Year => "year",
-        TagField::Genre => "genre",
-        TagField::Comment => "comment",
-        TagField::Composer => "composer",
-        TagField::Publisher => "publisher",
-        TagField::Bpm => "bpm",
-        TagField::Isrc => "isrc",
-        TagField::InitialKey => "key",
-        TagField::CatalogNumber => "catalognumber",
-        TagField::Url => "url",
-        TagField::MediaType => "media",
-        TagField::Custom(_) => "custom",
+        TagField::Artist => ("artist", "Track artist"),
+        TagField::Title => ("title", "Track title"),
+        TagField::Album => ("album", "Album title"),
+        TagField::AlbumArtist => ("albumartist", "Album artist — the release's credit"),
+        TagField::TrackNumber => ("track", "Track number (pads to two digits)"),
+        TagField::TrackTotal => ("tracktotal", "Number of tracks on the release"),
+        TagField::DiscNumber => ("disc", "Disc number"),
+        TagField::DiscTotal => ("disctotal", "Number of discs in the set"),
+        TagField::Year => ("year", "Release year"),
+        TagField::Genre => ("genre", "Genre"),
+        TagField::Comment => ("comment", "Comment"),
+        TagField::Composer => ("composer", "Composer"),
+        TagField::Publisher => ("publisher", "Label / publisher"),
+        TagField::Bpm => ("bpm", "Beats per minute"),
+        TagField::Isrc => ("isrc", "ISRC recording code"),
+        TagField::InitialKey => ("key", "Musical key"),
+        TagField::CatalogNumber => ("catalognumber", "Label catalogue number"),
+        TagField::Url => ("url", "Release webpage"),
+        TagField::MediaType => ("media", "Media type — Vinyl, CD, Cassette, File"),
+        TagField::Custom(_) => ("custom", "Custom field — not addressable from a mask"),
     }
+}
+
+/// What a file placeholder is called and what it holds (#148). Exhaustive over
+/// [`FileValue`] for the same reason [`tag_placeholder_doc`] is over
+/// [`TagField`].
+fn file_placeholder_doc(value: FileValue) -> (&'static str, &'static str) {
+    match value {
+        FileValue::Name => ("filename", "File name without the extension"),
+        FileValue::Ext => ("fileext", "Extension alone, no dot"),
+        FileValue::NameExt => ("filenameext", "File name with the extension"),
+        FileValue::Path => ("filepath", "Full path (separators stripped)"),
+        FileValue::Folder(1) => ("foldername", "Containing folder"),
+        FileValue::Folder(2) => ("foldername2", "The folder above that"),
+        FileValue::Folder(_) => ("foldername3", "Two folders above"),
+        FileValue::Length => ("_length", "Duration, m:ss"),
+        FileValue::LengthSec => ("_length_sec", "Duration in seconds"),
+        FileValue::Bitrate => ("_bitrate", "Bitrate, kbps"),
+        FileValue::SampleRate => ("_samplerate", "Sample rate, Hz"),
+        FileValue::Channels => ("_channels", "Channel count"),
+        FileValue::Codec => ("_codec", "Container — MP3, FLAC, APE"),
+        FileValue::FileSize => ("_filesize", "Size, human-readable"),
+        FileValue::FileSizeBytes => ("_filesize_bytes", "Size in bytes"),
+        FileValue::FileDate => ("_filedate", "Modified date, YYYY-MM-DD"),
+    }
+}
+
+/// One entry in the placeholder reference (#148).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlaceholderDoc {
+    /// The bare name; write it between percent signs.
+    pub name: &'static str,
+    pub description: &'static str,
+    /// Which section of the reference it belongs under.
+    pub group: PlaceholderGroup,
+    /// Whether it can be used to build a name from tags.
+    pub render: bool,
+    /// Whether it can be used to read tags out of a name.
+    pub extract: bool,
+}
+
+/// How the reference groups placeholders (#148).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaceholderGroup {
+    /// A tag field.
+    Tag,
+    /// Where the file lives.
+    File,
+    /// A property of the audio.
+    Technical,
+    /// `%side%` and `%skip%`, which behave unlike the rest.
+    Special,
+}
+
+impl PlaceholderGroup {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Tag => "Tags",
+            Self::File => "File",
+            Self::Technical => "Technical",
+            Self::Special => "Special",
+        }
+    }
+}
+
+/// Every placeholder the parser accepts, in reference order (#148).
+///
+/// This is what the in-app reference renders, and it comes off the same tables
+/// the parser reads — a name shown here is by construction a name that parses.
+/// `Custom` is excluded because it isn't addressable from a mask.
+pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
+    let tag_order = [
+        TagField::Artist,
+        TagField::Title,
+        TagField::Album,
+        TagField::AlbumArtist,
+        TagField::TrackNumber,
+        TagField::TrackTotal,
+        TagField::DiscNumber,
+        TagField::DiscTotal,
+        TagField::Year,
+        TagField::Genre,
+        TagField::Comment,
+        TagField::Composer,
+        TagField::Publisher,
+        TagField::Bpm,
+        TagField::Isrc,
+        TagField::InitialKey,
+        TagField::CatalogNumber,
+        TagField::Url,
+        TagField::MediaType,
+    ];
+    let file_order = [
+        FileValue::Name,
+        FileValue::Ext,
+        FileValue::NameExt,
+        FileValue::Path,
+        FileValue::Folder(1),
+        FileValue::Folder(2),
+        FileValue::Folder(3),
+        FileValue::Length,
+        FileValue::LengthSec,
+        FileValue::Bitrate,
+        FileValue::SampleRate,
+        FileValue::Channels,
+        FileValue::Codec,
+        FileValue::FileSize,
+        FileValue::FileSizeBytes,
+        FileValue::FileDate,
+    ];
+
+    let mut docs: Vec<PlaceholderDoc> = tag_order
+        .iter()
+        .map(|field| {
+            let (name, description) = tag_placeholder_doc(field);
+            PlaceholderDoc {
+                name,
+                description,
+                group: PlaceholderGroup::Tag,
+                render: true,
+                extract: true,
+            }
+        })
+        .collect();
+    docs.extend(file_order.into_iter().map(|value| {
+        let (name, description) = file_placeholder_doc(value);
+        PlaceholderDoc {
+            name,
+            description,
+            // The underscore that marks a technical value in the pattern marks
+            // it here too, so the split can't drift from the spelling.
+            group: if name.starts_with('_') {
+                PlaceholderGroup::Technical
+            } else {
+                PlaceholderGroup::File
+            },
+            // Render-only, every one of them: there is no tag to read a bitrate
+            // or a folder name back into (#147).
+            render: true,
+            extract: false,
+        }
+    }));
+    docs.push(PlaceholderDoc {
+        name: "side",
+        description: "Vinyl side letter, from the disc number",
+        group: PlaceholderGroup::Special,
+        render: true,
+        extract: false,
+    });
+    docs.push(PlaceholderDoc {
+        name: "skip",
+        description: "Matches and discards a run of text",
+        group: PlaceholderGroup::Special,
+        render: false,
+        extract: true,
+    });
+    docs
 }
 
 /// Path separators in a tag value would otherwise split the rendered string
@@ -1482,6 +1650,59 @@ mod tests {
         let file = file_at(Path::new("/music/track.flac"));
         let mask = Mask::parse("%FileName%").unwrap();
         assert_eq!(mask.render_with(&TagMap::new(), &file).unwrap(), "track");
+    }
+
+    // ---- the placeholder reference (#148) ----
+
+    #[test]
+    fn every_documented_placeholder_actually_parses() {
+        // The point of the reference is that what it shows is what the parser
+        // takes. A name in the list that doesn't parse would be worse than no
+        // list at all -- it would send the user down exactly the guessing path
+        // the reference exists to end.
+        for doc in placeholder_reference() {
+            let pattern = format!("%{}%", doc.name);
+            assert!(
+                Mask::parse(&pattern).is_ok(),
+                "the reference lists {pattern}, which the parser rejects"
+            );
+        }
+    }
+
+    #[test]
+    fn the_reference_agrees_with_each_placeholders_direction() {
+        // A direction is refused by exactly one error each: everything else a
+        // single-placeholder mask can return (a missing tag, no match) is about
+        // the data, not about what the placeholder is capable of.
+        for doc in placeholder_reference() {
+            let mask = Mask::parse(&format!("%{}%", doc.name)).unwrap();
+            let renders = !matches!(mask.render(&TagMap::new()), Err(MaskError::ExtractOnly));
+            let extracts = !matches!(mask.extract("value"), Err(MaskError::RenderOnly));
+            assert_eq!(renders, doc.render, "{} renders differently", doc.name);
+            assert_eq!(extracts, doc.extract, "{} extracts differently", doc.name);
+        }
+    }
+
+    #[test]
+    fn the_reference_has_no_duplicate_names() {
+        let mut names: Vec<&str> = placeholder_reference().iter().map(|d| d.name).collect();
+        let total = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), total, "a placeholder is listed twice");
+    }
+
+    #[test]
+    fn the_technical_group_is_exactly_the_underscored_names() {
+        for doc in placeholder_reference() {
+            let technical = doc.group == PlaceholderGroup::Technical;
+            assert_eq!(
+                technical,
+                doc.name.starts_with('_'),
+                "{} is grouped against its spelling",
+                doc.name
+            );
+        }
     }
 
     #[test]

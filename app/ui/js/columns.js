@@ -8,6 +8,7 @@
 import { el, escapeHtml, ico } from "./dom.js";
 import { hooks } from "./hooks.js";
 import { EXTENDED_FIELDS, VIRTUAL_COLUMNS } from "./fields.js";
+import { placeholderToken } from "./placeholders.js";
 import { groupByPref, saveGroupBy } from "./prefs.js";
 import { enablePointerReorder } from "./reorder.js";
 import {
@@ -136,6 +137,13 @@ function renderTableHead() {
     th.dataset.sort = key;
     th.className = "sortable";
     th.style.width = `${columnWidth(key)}px`;
+    // Name the mask placeholder that addresses this column (#148). The column
+    // header is where someone is already looking when they wonder what to write
+    // for a field, and the spelling is not always guessable — Catalogue # is
+    // %catalognumber%. Columns no placeholder addresses (File, Position) get
+    // their label alone.
+    const token = placeholderToken(key);
+    th.title = token ? `${columnLabel(key)} · ${token}` : columnLabel(key);
     // A drag grip on the right edge resizes the column; a label span keeps the
     // header text clipping (ellipsis) independent of the grip.
     th.innerHTML =

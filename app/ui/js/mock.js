@@ -603,6 +603,31 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case "player_status":
       return Promise.resolve(mockPlayer.status());
+    // The placeholder reference (#148). A trimmed stand-in: enough of each group
+    // for the popover's grouping, filtering and insertion to be exercised in the
+    // browser. The real list comes off the parser's own tables.
+    case "mask_placeholders":
+      return Promise.resolve(
+        [
+          ["artist", "Track artist", "Tags", true, true],
+          ["title", "Track title", "Tags", true, true],
+          ["track", "Track number (pads to two digits)", "Tags", true, true],
+          ["catalognumber", "Label catalogue number", "Tags", true, true],
+          ["filename", "File name without the extension", "File", true, false],
+          ["foldername", "Containing folder", "File", true, false],
+          ["_bitrate", "Bitrate, kbps", "Technical", true, false],
+          ["_length", "Duration, m:ss", "Technical", true, false],
+          ["side", "Vinyl side letter, from the disc number", "Special", true, false],
+          ["skip", "Matches and discards a run of text", "Special", false, true],
+        ].map(([name, description, group, render, extract]) => ({
+          token: `%${name}%`,
+          name,
+          description,
+          group,
+          render,
+          extract,
+        }))
+      );
     case "saved_discogs_token":
       return Promise.resolve(mockInvoke.state?.token || "");
     case "save_discogs_token":
