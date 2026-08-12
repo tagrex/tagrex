@@ -2143,6 +2143,36 @@ impl App {
         Ok(annotate(by_content))
     }
 
+    /// Render `pattern` over `paths` for a mask-defined table column (#150) —
+    /// one string per path, in the order given.
+    ///
+    /// Batched deliberately. The mask engine lives in Rust (one grammar, two
+    /// directions — architecture.md), so a column that reimplemented rendering
+    /// in the frontend would be a second grammar drifting from the first. But a
+    /// round-trip per cell per repaint is not an option either, so the frontend
+    /// asks once per pattern and caches the answers against the paths.
+    ///
+    /// Rendering is lenient in the same way a report is: a placeholder with
+    /// nothing behind it becomes empty rather than dropping the row, because a
+    /// column must show something for every file. A file that cannot be read at
+    /// all, or a pattern that refuses to render (an extract-only `%skip%`),
+    /// yields an empty string for that row rather than failing the batch — a
+    /// half-typed pattern is a normal state while someone is typing one.
+    pub fn render_column(&self, pattern: &str, paths: &[PathBuf]) -> Result<Vec<String>, AppError> {
+        let mask = Mask::parse(pattern)?;
+        Ok(paths
+            .iter()
+            .map(|path| {
+                let Ok(track) = TagEngine::read(path) else {
+                    return String::new();
+                };
+                let file = FileContext::read(&mask, &track);
+                mask.render_with(&export::lenient_tags(&track.tags), &file)
+                    .unwrap_or_default()
+            })
+            .collect())
+    }
+
     /// Preview importing a user-resolved release selection onto `paths`,
     /// without writing. The frontend decides the mapping (TagScanner-style):
     /// the user toggles which release tracks participate and orders the files
@@ -4175,6 +4205,90 @@ mod tests {
             ),
             None
         );
+    }
+
+    // ---- mask-defined table columns (#150) ----
+
+    #[test]
+    fn render_column_renders_a_pattern_over_a_batch() {
+        let dir = TempDir::new("render-column");
+        let a = dir.tagged_flac("a.flac", "Massive Attack", "Safe From Harm");
+        let b = dir.tagged_flac("b.flac", "Boards of Canada", "Roygbiv");
+        let app = open_app(&dir);
+
+        let rendered = app
+            .render_column("%artist% — %title%", &[a.clone(), b.clone()])
+            .unwrap();
+        assert_eq!(
+            rendered,
+            vec![
+                "Massive Attack — Safe From Harm".to_string(),
+                "Boards of Canada — Roygbiv".to_string(),
+            ]
+        );
+        // Order follows the paths given, since the frontend keys the cache on it.
+        let reversed = app.render_column("%title%", &[b, a]).unwrap();
+        assert_eq!(
+            reversed,
+            vec!["Roygbiv".to_string(), "Safe From Harm".to_string()]
+        );
+    }
+
+    /// A column must show something for every row. A placeholder with nothing
+    /// behind it renders empty instead of dropping the file -- otherwise the
+    /// column would silently disagree with the table about how many rows exist.
+    #[test]
+    fn render_column_is_lenient_about_missing_tags() {
+        let dir = TempDir::new("render-column-lenient");
+        let track = dir.tagged_flac("a.flac", "Massive Attack", "Safe From Harm");
+        let app = open_app(&dir);
+
+        // Neither year nor media is set on this file. The bracketed part is a
+        // conditional section, so it drops whole; the bare %media% renders empty
+        // rather than failing the row.
+        let rendered = app
+            .render_column("%title% [(%year%)] %media%", std::slice::from_ref(&track))
+            .unwrap();
+        assert_eq!(rendered, vec!["Safe From Harm  ".to_string()]);
+        assert_eq!(rendered.len(), 1);
+    }
+
+    /// File and technical placeholders (#147) work here too -- a column showing
+    /// the bitrate or the containing folder is much of the point.
+    #[test]
+    fn render_column_resolves_file_placeholders() {
+        let dir = TempDir::new("render-column-file");
+        let track = dir.tagged_flac_at("Blue Lines/a.flac", "Massive Attack", "Safe");
+        let app = open_app(&dir);
+
+        let rendered = app
+            .render_column("%foldername% · %_codec%", std::slice::from_ref(&track))
+            .unwrap();
+        assert_eq!(rendered, vec!["Blue Lines · FLAC".to_string()]);
+    }
+
+    /// A pattern that cannot render at all is an error before anything is shown,
+    /// but a file that cannot be READ is just an empty cell -- the rest of the
+    /// column still renders.
+    #[test]
+    fn render_column_reports_a_bad_pattern_and_tolerates_a_bad_file() {
+        let dir = TempDir::new("render-column-bad");
+        let good = dir.tagged_flac("a.flac", "Massive Attack", "Safe");
+        let broken = dir.0.join("broken.flac");
+        std::fs::write(&broken, b"not audio").unwrap();
+        let app = open_app(&dir);
+
+        assert!(app
+            .render_column("%bogus%", std::slice::from_ref(&good))
+            .is_err());
+        // %skip% is extract-only, so it can never render.
+        let extract_only = app
+            .render_column("%skip%", std::slice::from_ref(&good))
+            .unwrap();
+        assert_eq!(extract_only, vec![String::new()]);
+
+        let mixed = app.render_column("%title%", &[good, broken]).unwrap();
+        assert_eq!(mixed, vec!["Safe".to_string(), String::new()]);
     }
 
     // ---- which fields an import may write (#152) ----

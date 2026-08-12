@@ -532,6 +532,20 @@ fn import_fields() -> Vec<ImportFieldDto> {
     tagrex::import_fields()
 }
 
+/// Render a mask-defined column over a batch of files (#150).
+#[tauri::command]
+fn render_column(
+    state: State<AppState>,
+    pattern: String,
+    paths: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.render_column(&pattern, &paths)
+            .map_err(|e| e.to_string())
+    })
+}
+
 /// Preview the ticked action groups run in order as one plan (#137).
 #[tauri::command]
 fn preview_transform_groups(
@@ -619,6 +633,7 @@ fn main() {
             builtin_action_groups,
             mask_placeholders,
             import_fields,
+            render_column,
             preview_transform_groups,
             player_status
         ])

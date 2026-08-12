@@ -3880,6 +3880,53 @@ td[data-field="year"],
   color: var(--muted);
 }
 
+/* ---- mask-defined columns (#150) ------------------------------------------
+   The cell reuses the Position column's read-only look — both are computed, so
+   neither is editable — plus the per-column alignment the editor sets. */
+#tracks th.align-center,
+#tracks td.align-center {
+  text-align: center;
+}
+#tracks th.align-right,
+#tracks td.align-right {
+  text-align: right;
+}
+/* The edit/remove buttons on a mask column's row in the picker. They sit at the
+   end, so the label keeps the space it needs. */
+.col-menu-row .col-row-btn {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+}
+.col-menu-row .col-row-btn + .col-row-btn {
+  margin-left: 0;
+}
+.modal.colmask {
+  width: min(440px, 92vw);
+  text-align: left;
+}
+.colmask-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xs);
+}
+.colmask-row input[type="text"] {
+  width: 100%;
+}
+.colmask-pattern {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+.colmask-pattern input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ---- online-import field picker (#152) ------------------------------------
    Seventeen checkboxes would be a long column in a settings sheet, so they flow
    into as many columns as fit. Rows are built from the backend catalogue. */

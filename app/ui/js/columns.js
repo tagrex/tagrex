@@ -5,7 +5,8 @@
 // reorders them; plus the grouping selector, which shares the same field list.
 // The chosen columns and their widths live in the state module, since the table
 // renderer reads them on every paint.
-import { el, escapeHtml, ico } from "./dom.js";
+import { el, escapeHtml, ico, toast } from "./dom.js";
+import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { EXTENDED_FIELDS, VIRTUAL_COLUMNS } from "./fields.js";
 import { placeholderToken } from "./placeholders.js";
@@ -39,11 +40,18 @@ const COLUMN_MIN_WIDTH = 48;
 // ---- configurable columns (#43) ----
 // "file" plus every modeled tag field, the pool the user picks columns from.
 function allColumnKeys() {
-  return ["file", ...EXTENDED_FIELDS.map(([key]) => key), ...VIRTUAL_COLUMNS.map(([key]) => key)];
+  return [
+    "file",
+    ...EXTENDED_FIELDS.map(([key]) => key),
+    ...VIRTUAL_COLUMNS.map(([key]) => key),
+    ...customColumns.map((c) => customColumnKey(c.id)),
+  ];
 }
 
 function columnLabel(key) {
   if (key === "file") return "File";
+  const custom = customColumnOf(key);
+  if (custom) return custom.name;
   const found =
     EXTENDED_FIELDS.find(([k]) => k === key) || VIRTUAL_COLUMNS.find(([k]) => k === key);
   return found ? found[1] : key;
@@ -122,6 +130,183 @@ function defaultColumnWidth(key) {
 
 function columnWidth(key) {
   return columnWidths[key] || defaultColumnWidth(key);
+}
+
+// ---- mask-defined columns (#150) ----
+//
+// A column whose value is a mask rendered per row, so a derived value — "artist
+// — title", a catalogue number beside the year, the bitrate — can be a column
+// without being a tag.
+//
+// Rendering happens in Rust: the mask engine is one grammar serving both
+// directions (architecture.md), and a renderer reimplemented here would be a
+// second one drifting from it. A round-trip per cell per repaint is impossible,
+// so the whole column is rendered in one call and cached against the paths,
+// refreshed when the pattern or the track list changes.
+const CUSTOM_COLUMNS_STORAGE_KEY = "tagrex.customColumns";
+const CUSTOM_PREFIX = "custom:";
+
+// [{ id, name, pattern, align }]. `id` is only ever generated here, so it stays
+// a safe suffix for the column key.
+let customColumns = [];
+// id -> Map<path, rendered>. Dropped wholesale when a definition changes.
+const customValues = new Map();
+
+function loadCustomColumns() {
+  const saved = readStoredJson(CUSTOM_COLUMNS_STORAGE_KEY);
+  if (!Array.isArray(saved)) return;
+  customColumns = saved
+    .filter((c) => c && typeof c.id === "string" && typeof c.pattern === "string")
+    .map((c) => ({
+      id: c.id,
+      name: typeof c.name === "string" && c.name ? c.name : c.pattern,
+      pattern: c.pattern,
+      align: ["left", "center", "right"].includes(c.align) ? c.align : "left",
+    }));
+}
+
+function saveCustomColumns() {
+  writeStored(CUSTOM_COLUMNS_STORAGE_KEY, JSON.stringify(customColumns));
+}
+
+function customColumnKey(id) {
+  return CUSTOM_PREFIX + id;
+}
+
+function customColumnOf(key) {
+  if (!key.startsWith(CUSTOM_PREFIX)) return null;
+  const id = key.slice(CUSTOM_PREFIX.length);
+  return customColumns.find((c) => c.id === id) || null;
+}
+
+// The rendered value for one row, or "" until the batch answers.
+function customColumnValue(key, path) {
+  const column = customColumnOf(key);
+  if (!column) return "";
+  return customValues.get(column.id)?.get(path) ?? "";
+}
+
+// Render every visible custom column over `paths`, one call each. Skipped
+// entirely when no custom column is shown, which is the normal case.
+async function refreshCustomColumns(paths) {
+  const shown = visibleColumns.map(customColumnOf).filter(Boolean);
+  if (!shown.length || !paths.length) return false;
+  let changed = false;
+  for (const column of shown) {
+    const cached = customValues.get(column.id);
+    // Nothing to do when the cache already covers exactly these paths.
+    if (cached && cached.size === paths.length && paths.every((p) => cached.has(p))) continue;
+    try {
+      const rendered = await invoke("render_column", { pattern: column.pattern, paths });
+      customValues.set(column.id, new Map(paths.map((p, i) => [p, rendered[i] ?? ""])));
+      changed = true;
+    } catch (e) {
+      // A pattern the parser refuses (a typo, or half-typed) leaves the column
+      // blank rather than blocking the paint or spamming a toast per repaint.
+      customValues.set(column.id, new Map());
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+// A definition changed: its cached values are meaningless now.
+function invalidateCustomColumn(id) {
+  customValues.delete(id);
+}
+
+// The library was re-read, so every cached value is suspect. After an apply the
+// paths are often IDENTICAL while the tags behind them are not, which is the one
+// case the "cache already covers these paths" check cannot catch (#150).
+function invalidateCustomColumns() {
+  customValues.clear();
+}
+
+// Render whatever the visible mask columns need for the current track list and
+// repaint if anything arrived. The one call site for "make the columns current".
+async function refreshCustomColumnCells() {
+  if (await refreshCustomColumns(tracks.map((t) => t.path))) hooks.renderTracks();
+}
+
+function upsertCustomColumn(column) {
+  const at = customColumns.findIndex((c) => c.id === column.id);
+  if (at >= 0) customColumns[at] = column;
+  else customColumns.push(column);
+  invalidateCustomColumn(column.id);
+  saveCustomColumns();
+}
+
+function removeCustomColumn(id) {
+  customColumns = customColumns.filter((c) => c.id !== id);
+  invalidateCustomColumn(id);
+  saveCustomColumns();
+  applyColumns(visibleColumns.filter((k) => k !== customColumnKey(id)));
+  renderColumnsMenu();
+}
+
+// ---- the mask-column editor (#150) ----
+//
+// One modal serving both "add" and "edit": which it is depends on whether it was
+// opened with an existing column. Ids are minted here and never come from
+// storage input, so a column key stays a safe string.
+let editingColumn = null;
+let editingAlign = "left";
+
+function setColumnAlign(align) {
+  editingAlign = align;
+  el("colmask-align")
+    .querySelectorAll(".seg-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.align === align));
+}
+
+function openColumnEditor(column) {
+  editingColumn = column;
+  el("colmask-title").textContent = column ? "Edit column" : "Add column";
+  el("colmask-ok").textContent = column ? "Save" : "Add column";
+  el("colmask-name").value = column ? column.name : "";
+  el("colmask-pattern").value = column ? column.pattern : "";
+  setColumnAlign(column ? column.align : "left");
+  el("colmask-modal").hidden = false;
+  el("colmask-pattern").focus();
+}
+
+function closeColumnEditor() {
+  el("colmask-modal").hidden = true;
+  editingColumn = null;
+}
+
+async function commitColumnEditor() {
+  const pattern = el("colmask-pattern").value.trim();
+  if (!pattern) {
+    toast("A column needs a pattern", true);
+    return;
+  }
+  // Check the pattern before storing it, so a typo is reported once, here,
+  // rather than silently blanking the column on every repaint.
+  try {
+    await invoke("render_column", { pattern, paths: [] });
+  } catch (e) {
+    toast(String(e), true);
+    return;
+  }
+  const column = {
+    id: editingColumn ? editingColumn.id : `c${Date.now().toString(36)}`,
+    // An unnamed column is labelled by its own pattern, which beats "Column 3".
+    name: el("colmask-name").value.trim() || pattern,
+    pattern,
+    align: editingAlign,
+  };
+  const isNew = !editingColumn;
+  upsertCustomColumn(column);
+  closeColumnEditor();
+  // A new column is shown straight away — it was just asked for.
+  if (isNew) applyColumns([...visibleColumns, customColumnKey(column.id)]);
+  else {
+    renderTableHead();
+    hooks.renderTracks();
+  }
+  renderColumnsMenu();
+  await refreshCustomColumnCells();
 }
 
 // ---- fit a column to its content (#151) ----
@@ -252,8 +437,18 @@ function renderTableHead() {
     // for a field, and the spelling is not always guessable — Catalogue # is
     // %catalognumber%. Columns no placeholder addresses (File, Position) get
     // their label alone.
-    const token = placeholderToken(key);
-    th.title = token ? `${columnLabel(key)} · ${token}` : columnLabel(key);
+    const custom = customColumnOf(key);
+    if (custom) {
+      // A mask column names its pattern instead of a placeholder — the pattern
+      // IS the answer to "where does this value come from?" (#150). An unnamed
+      // column is labelled by its pattern already, so don't print it twice.
+      th.title =
+        custom.name === custom.pattern ? custom.pattern : `${custom.name} · ${custom.pattern}`;
+      th.classList.add(`align-${custom.align}`);
+    } else {
+      const token = placeholderToken(key);
+      th.title = token ? `${columnLabel(key)} · ${token}` : columnLabel(key);
+    }
     // A drag grip on the right edge resizes the column; a label span keeps the
     // header text clipping (ellipsis) independent of the grip.
     th.innerHTML =
@@ -364,6 +559,22 @@ function renderColumnsMenu() {
     menu.appendChild(sep);
     for (const key of hidden) menu.appendChild(colMenuRow(key, false));
   }
+  // Defining a new mask column (#150) belongs with the list of columns, since
+  // that is where someone goes looking for one that isn't there.
+  const addFoot = document.createElement("div");
+  addFoot.className = "col-menu-foot";
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "text-btn";
+  add.textContent = "Add column…";
+  add.title = "A column whose value is a mask, rendered per row";
+  add.addEventListener("click", () => {
+    menu.hidden = true;
+    openColumnEditor(null);
+  });
+  addFoot.appendChild(add);
+  menu.appendChild(addFoot);
+
   // Fit-to-content (#151), above the reset row: it acts on the widths, which is
   // what the rows above configure, while Reset throws the whole set away.
   const fitFoot = document.createElement("div");
@@ -440,6 +651,8 @@ function colMenuRow(key, visible) {
   box.addEventListener("change", () => {
     applyColumns(box.checked ? [...visibleColumns, key] : visibleColumns.filter((k) => k !== key));
     renderColumnsMenu();
+    // A mask column being shown for the first time has nothing cached yet (#150).
+    if (box.checked && customColumnOf(key)) refreshCustomColumnCells();
   });
 
   const label = document.createElement("span");
@@ -447,6 +660,37 @@ function colMenuRow(key, visible) {
   label.textContent = columnLabel(key) + (isFile ? " (always shown)" : "");
 
   row.append(grip, box, label);
+
+  // A mask column is defined by the user, so it can be edited and deleted from
+  // the same row that shows it (#150). A tag column has nothing to edit.
+  const custom = customColumnOf(key);
+  if (custom) {
+    row.title = custom.pattern;
+
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.className = "icon col-row-btn";
+    edit.innerHTML = ico("rename");
+    edit.title = `Edit — ${custom.pattern}`;
+    edit.setAttribute("aria-label", `Edit column ${custom.name}`);
+    edit.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openColumnEditor(custom);
+    });
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "icon col-row-btn";
+    remove.innerHTML = ico("close");
+    remove.title = "Remove this column";
+    remove.setAttribute("aria-label", `Remove column ${custom.name}`);
+    remove.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      removeCustomColumn(custom.id);
+    });
+    row.append(edit, remove);
+  }
   return row;
 }
 
@@ -454,6 +698,11 @@ export {
   COLUMN_MIN_WIDTH,
   allColumnKeys,
   applyColumns,
+  customColumnOf,
+  customColumnValue,
+  invalidateCustomColumns,
+  loadCustomColumns,
+  refreshCustomColumnCells,
   autofitEnabled,
   fitAllColumns,
   fitColumn,
@@ -469,3 +718,20 @@ export {
   saveColumnWidths,
   setGroupBy,
 };
+
+// ---- wire up the mask-column editor (#150) ----
+el("colmask-align").addEventListener("click", (e) => {
+  const btn = e.target.closest(".seg-btn");
+  if (btn) setColumnAlign(btn.dataset.align);
+});
+el("colmask-cancel").addEventListener("click", closeColumnEditor);
+el("colmask-ok").addEventListener("click", commitColumnEditor);
+el("colmask-modal").addEventListener("click", (e) => {
+  if (e.target === el("colmask-modal")) closeColumnEditor();
+});
+el("colmask-pattern").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    commitColumnEditor();
+  }
+});

@@ -213,7 +213,17 @@ pub fn report(tracks: &[TrackFile], mask: &Mask) -> String {
 
 /// A tag map with every well-known field present (empty unless the track sets
 /// it), so [`Mask::render`] can't fail with `MissingTag`.
-fn lenient_tags(tags: &TagMap) -> TagMap {
+///
+/// Public because two callers want the same leniency for the same reason: a
+/// report covers every track it was given, and a mask-defined table column
+/// (#150) shows a value for every row. Neither may drop a file just because one
+/// placeholder has nothing behind it.
+///
+/// The list must cover every field a mask can name. `DiscTotal`, `Url` and
+/// `MediaType` were missing — added to the model after this function was
+/// written — which meant a mask using one of them failed for any file lacking
+/// it, and silently produced no line.
+pub fn lenient_tags(tags: &TagMap) -> TagMap {
     let mut lenient = TagMap::new();
     for field in [
         TagField::Artist,
@@ -223,6 +233,7 @@ fn lenient_tags(tags: &TagMap) -> TagMap {
         TagField::TrackNumber,
         TagField::TrackTotal,
         TagField::DiscNumber,
+        TagField::DiscTotal,
         TagField::Year,
         TagField::Genre,
         TagField::Comment,
@@ -232,6 +243,8 @@ fn lenient_tags(tags: &TagMap) -> TagMap {
         TagField::Isrc,
         TagField::InitialKey,
         TagField::CatalogNumber,
+        TagField::Url,
+        TagField::MediaType,
     ] {
         lenient.insert(field, String::new());
     }

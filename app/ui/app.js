@@ -26,9 +26,14 @@ import {
   allColumnKeys,
   columnLabel,
   columnWidth,
+  customColumnOf,
+  customColumnValue,
+  invalidateCustomColumns,
   loadColumnWidths,
   loadColumns,
+  loadCustomColumns,
   maybeAutofit,
+  refreshCustomColumnCells,
   populateGroupMenu,
   renderColumnsMenu,
   renderTableHead,
@@ -139,6 +144,8 @@ function sortValue(track, key) {
     const trk = parseInt(track.tags.track || "0", 10) || 0;
     return String(disc).padStart(4, "0") + String(trk).padStart(5, "0");
   }
+  // A mask column sorts on what it renders, which is what the eye compares.
+  if (customColumnOf(key)) return customColumnValue(key, track.path).toLowerCase();
   return (key === "file" ? fileName(track.path) : track.tags[key] || "").toLowerCase();
 }
 
@@ -147,6 +154,7 @@ function sortValue(track, key) {
 function fieldValue(track, key) {
   if (key === "file") return fileName(track.path);
   if (key === "position") return vinylPositionOf(track, edits.get(track.path));
+  if (customColumnOf(key)) return customColumnValue(key, track.path);
   return track.tags[key] || "";
 }
 
@@ -390,6 +398,16 @@ function appendTrackRow(track, groupKey) {
       <td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
   for (const field of visibleColumns) {
     if (field === "file") continue; // rendered above (structural, always first)
+    // A mask column (#150): computed, so read-only like Position — and it shows
+    // what is on disk, since the backend renders it from the file.
+    const custom = customColumnOf(field);
+    if (custom) {
+      const td = document.createElement("td");
+      td.className = `position-cell align-${custom.align}`;
+      td.textContent = customColumnValue(field, track.path);
+      tr.appendChild(td);
+      continue;
+    }
     // Position (#106): a derived, read-only view of the vinyl side notation —
     // not a tag, so it isn't editable and carries no dirty state.
     if (field === "position") {
@@ -810,6 +828,10 @@ async function afterOpen(label) {
   syncFilterControls(); // clears the parsed query + any regex-error state
   setGroupBy(dropFolders ? "drop" : groupByPref(), { persist: false, rerender: false });
   renderTracks();
+  // Mask columns (#150) are rendered by the backend, so they arrive a beat after
+  // the rows do. The table paints immediately with the cells blank and repaints
+  // once the values land — a visible column is never worth blocking the open on.
+  refreshCustomColumnCells();
   showView("files");
   showPlayerBar();
   await refreshHistory();
@@ -881,8 +903,12 @@ async function apply() {
     }
     // cover apply leaves the tag-edits buffer untouched (separate change kind)
     setTracks(await invoke("list_tracks", {}));
+    // Mask columns render from disk, and an apply is exactly when what is on
+    // disk changed under unchanged paths (#150).
+    invalidateCustomColumns();
     // exitDiffState() drops the plan + apply scope and repaints the plain table.
     exitDiffState();
+    refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
     toast(String(e), true);
@@ -897,8 +923,10 @@ async function undo() {
     toast("Undid last batch");
     resetEdits();
     setTracks(await invoke("list_tracks", {}));
+    invalidateCustomColumns();
     // exitDiffState() also clears previewPlan/previewSource and repaints.
     exitDiffState();
+    refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
     toast(String(e), true);
@@ -1778,6 +1806,7 @@ loadSavedToken();
 // The persisted filter-mode flags (#44), read at start-up into shared state.
 setFilterRegex(regexModeEnabled());
 setFilterCase(caseSensitiveEnabled());
+loadCustomColumns(); // before loadColumns: it validates keys against the pool
 loadColumns();
 loadColumnWidths();
 renderTableHead();

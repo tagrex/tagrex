@@ -90,6 +90,22 @@ widths — to the defaults.
 rather than a tag column, and it stays first. Everything else is yours to
 arrange.
 
+### A column of your own
+
+**Add column…** at the bottom of the columns menu defines a column whose value is
+a mask, rendered per row: `%artist% — %title%`, `%catalognumber% · %year%`,
+`%_bitrate% kbps`. Give it a name, a pattern and an alignment; the **?** button
+beside the pattern lists every placeholder.
+
+Such a column is read-only — the value is computed, so there is nothing to edit
+in the cell — and it sorts and filters on the rendered text. Its definition is
+remembered with the rest of the column layout, and the row in the columns menu
+carries buttons to edit or remove it.
+
+It renders **what is on disk**. Staged edits appear once applied, not while they
+sit in the preview. A pattern the parser refuses is reported when you save it,
+not silently blanked.
+
 ### Fitting a column to its content
 
 **Double-click a column's right edge** to size it to its widest value. **Fit to

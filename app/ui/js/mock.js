@@ -630,6 +630,40 @@ function mockInvoke(cmd, args) {
       );
     // The import-field catalogue (#152). A trimmed stand-in — enough rows,
     // including the two-key release-id one, to drive the settings section.
+    // Mask-defined columns (#150). The dev mock renders a couple of plain
+    // placeholders so the column can be seen filling in; the real grammar is
+    // mask.rs and this is not a second implementation of it.
+    case "render_column": {
+      // The real backend parses the mask first, so an unknown placeholder is an
+      // error before any file is touched — the editor relies on that to reject a
+      // typo once instead of blanking the column on every repaint. Model it, or
+      // the dev path silently accepts patterns the app would refuse.
+      const known = [
+        "artist", "title", "album", "albumartist", "track", "tracktotal", "disc",
+        "disctotal", "year", "genre", "comment", "composer", "publisher", "bpm",
+        "isrc", "key", "catalognumber", "url", "media", "side", "skip",
+        "filename", "fileext", "filenameext", "filepath", "foldername",
+        "foldername2", "foldername3", "_length", "_length_sec", "_bitrate",
+        "_samplerate", "_channels", "_codec", "_filesize", "_filesize_bytes",
+        "_filedate",
+      ];
+      for (const [, name] of String(args.pattern || "").matchAll(/%([a-z_0-9]+?)(?::\d+)?%/gi)) {
+        if (!known.includes(name.toLowerCase())) {
+          return Promise.reject(`unknown placeholder: ${name}`);
+        }
+      }
+      return Promise.resolve(
+        (args.paths || []).map((path) => {
+          const t = (s.tracks || []).find((x) => x.path === path);
+          return String(args.pattern || "").replace(/%([a-z_]+)%/gi, (_, name) => {
+            const key = name.toLowerCase();
+            if (key === "filename") return fileName(path).replace(/\.[^.]*$/, "");
+            if (key === "_codec") return "MP3";
+            return (t && t.tags && t.tags[key]) || "";
+          });
+        })
+      );
+    }
     case "import_fields":
       return Promise.resolve([
         { keys: ["title"], label: "Title" },

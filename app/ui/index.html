@@ -608,6 +608,40 @@
       <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem">Select All</button>
     </div>
 
+    <!-- Mask-defined column editor (#150). A column whose value is a mask
+         rendered per row, so a derived value can be a column without being a
+         tag. The pattern field carries the same ? placeholder reference every
+         other mask input has. -->
+    <div id="colmask-modal" class="modal-backdrop" hidden>
+      <div class="modal colmask" role="dialog" aria-modal="true" aria-labelledby="colmask-title">
+        <h3 id="colmask-title" class="modal-msg">Add column</h3>
+        <label class="colmask-row">
+          <span>Name</span>
+          <input id="colmask-name" type="text" spellcheck="false" placeholder="Artist — Title" />
+        </label>
+        <label class="colmask-row">
+          <span>Pattern</span>
+          <span class="colmask-pattern">
+            <input id="colmask-pattern" type="text" class="mono" spellcheck="false" placeholder="%artist% — %title%" />
+            <button class="icon ph-btn" type="button" data-ph-target="colmask-pattern" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+          </span>
+        </label>
+        <div class="colmask-row">
+          <span>Align</span>
+          <div id="colmask-align" class="seg">
+            <button type="button" class="seg-btn active" data-align="left">Left</button>
+            <button type="button" class="seg-btn" data-align="center">Center</button>
+            <button type="button" class="seg-btn" data-align="right">Right</button>
+          </div>
+        </div>
+        <p class="settings-hint">Read-only: the value is computed, so the cell can't be edited. It sorts on the rendered text, and it reflects what is on disk — staged edits show once applied.</p>
+        <div class="modal-actions">
+          <button id="colmask-cancel">Cancel</button>
+          <button id="colmask-ok" class="primary">Add column</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Transform popover (#149): the toolbar's entry point to the rule chain.
          Deliberately empty in the markup — opening it MOVES the GENERATOR
          panel's #transform-block in here, and closing puts it back, so there is
