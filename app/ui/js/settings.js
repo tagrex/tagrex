@@ -8,7 +8,7 @@
 import { el, ico, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
-import { actionGroups, setSavedSettings } from "./state.js";
+import { actionGroups, savedSettings, setSavedSettings } from "./state.js";
 import {
   applyBadgeFont,
   clampTableFont,
@@ -143,6 +143,63 @@ function parseSidecarExts(raw) {
   ];
 }
 
+// ---- which fields an online import may write (#152) ----
+//
+// The rows come from the backend (`import_fields`), which is also what
+// `preview_import` is tested against, so this list cannot offer a field the
+// import doesn't produce or miss one it does.
+//
+// Stored as a DENY list of storage keys: a ticked box means "not in the list".
+// That way an absent or older settings.json means "write everything", which is
+// the historical behaviour, and a field added later is written by default rather
+// than silently excluded.
+let importFieldRows = [];
+
+async function renderImportFields(skip) {
+  const host = el("set-import-fields");
+  if (!importFieldRows.length) {
+    try {
+      importFieldRows = await invoke("import_fields", {});
+    } catch (e) {
+      host.innerHTML = "";
+      return; // no catalogue — leave the section empty rather than guessing
+    }
+  }
+  const denied = new Set(skip || []);
+  host.innerHTML = "";
+  for (const field of importFieldRows) {
+    const row = document.createElement("label");
+    row.className = "import-field";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    // A row is on unless every key it governs is denied — the release-id row
+    // covers both provider keys.
+    box.checked = !field.keys.every((k) => denied.has(k));
+    box.dataset.keys = field.keys.join(" ");
+    const name = document.createElement("span");
+    name.textContent = field.label;
+    row.append(box, name);
+    host.appendChild(row);
+  }
+}
+
+// The deny list the form currently describes.
+function importSkipFromForm() {
+  const skip = [];
+  el("set-import-fields")
+    .querySelectorAll("input[type=checkbox]")
+    .forEach((box) => {
+      if (!box.checked) skip.push(...box.dataset.keys.split(" "));
+    });
+  return skip;
+}
+
+function setAllImportFields(on) {
+  el("set-import-fields")
+    .querySelectorAll("input[type=checkbox]")
+    .forEach((box) => (box.checked = on));
+}
+
 async function openSettings() {
   // Populate from saved values (the token is already in #discogs-token).
   try {
@@ -158,11 +215,13 @@ async function openSettings() {
       ? s.sidecar_extensions
       : DEFAULT_SIDECAR_EXTS
     ).join(" ");
+    await renderImportFields(s.import_skip_fields);
   } catch (e) {
     /* defaults already in the DOM */
     readPriority = PRIO_KEYS.slice();
     el("set-carry-sidecars").checked = true;
     el("set-sidecar-exts").value = DEFAULT_SIDECAR_EXTS.join(" ");
+    await renderImportFields([]);
   }
   // Display prefs live in localStorage, not the backend settings.
   setThemeChoice(themeMode());
@@ -182,28 +241,35 @@ function closeSettings() {
 }
 
 async function saveSettings() {
-  const token = el("discogs-token").value.trim();
-  // Spread the last-known settings so we keep fields this form doesn't edit —
-  // notably the saved action groups (#57), which also live in settings.json.
-  const settings = {
-    ...savedSettings,
-    proxy: el("set-proxy").value.trim(),
-    rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
-    id3_v23: id3Choice === "v23",
-    read_priority: readPriority.slice(),
-    cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
-    cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
-    action_groups: actionGroups,
-    carry_sidecars: el("set-carry-sidecars").checked,
-    sidecar_extensions: parseSidecarExts(el("set-sidecar-exts").value),
-  };
-  setSavedSettings(settings);
-  // Display prefs are local-only; apply + persist before the backend round-trip.
-  // (Table font size already applies live on input; persisted here too.)
-  applyCheckboxCol(el("set-checkbox-col").checked);
-  // (Value font, like the theme, is a live control — already applied on click.)
-  applyTableFont(parseInt(el("set-table-font").value, 10));
+  // Everything from here on is inside the try, not just the two invokes: the
+  // object below is built from the form and from imported state, and when a
+  // `savedSettings` that was never imported threw there, the failure escaped as
+  // an unhandled rejection — no toast, sheet left open, nothing saved, and no
+  // sign anything had gone wrong (#156).
   try {
+    const token = el("discogs-token").value.trim();
+    // Spread the last-known settings so we keep fields this form doesn't edit —
+    // notably the saved action groups (#57), which also live in settings.json.
+    const settings = {
+      ...savedSettings,
+      proxy: el("set-proxy").value.trim(),
+      rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
+      id3_v23: id3Choice === "v23",
+      read_priority: readPriority.slice(),
+      cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
+      cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
+      action_groups: actionGroups,
+      carry_sidecars: el("set-carry-sidecars").checked,
+      sidecar_extensions: parseSidecarExts(el("set-sidecar-exts").value),
+      import_skip_fields: importSkipFromForm(),
+    };
+    setSavedSettings(settings);
+    // Display prefs are local-only; apply + persist before the backend
+    // round-trip. (Table font size already applies live on input; persisted
+    // here too.)
+    applyCheckboxCol(el("set-checkbox-col").checked);
+    // (Value font, like the theme, is a live control — already applied on click.)
+    applyTableFont(parseInt(el("set-table-font").value, 10));
     await invoke("save_discogs_token", { token });
     await invoke("save_settings", { settings });
     updateSettingsDot();
@@ -227,6 +293,8 @@ async function cancelSettings() {
 }
 
 // ---- wire up ----
+el("set-import-all").addEventListener("click", () => setAllImportFields(true));
+el("set-import-none").addEventListener("click", () => setAllImportFields(false));
 el("settings-open").addEventListener("click", openSettings);
 el("settings-close").addEventListener("click", cancelSettings);
 el("settings-cancel").addEventListener("click", cancelSettings);
