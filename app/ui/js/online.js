@@ -310,14 +310,29 @@ function presetSourceTrack() {
   return (first && byPath.get(first)) || tracks[0] || null;
 }
 
+// A name off the disk, made searchable (#158). Downloaded music is routinely
+// filed with underscores for spaces, and a provider asked for
+// `various_-_la_bush_-_music_from_the_temple_of_house` matches nothing — which
+// reads as "this release isn't in the database" rather than "that isn't a query".
+//
+// Underscores only. A dot carries meaning in real titles (`Ltd.`, `Vol. 2`,
+// `M.I.A.`), so rewriting those would break as many queries as it fixed;
+// an underscore in a release title is essentially unheard of.
+function searchableName(name) {
+  return name.replace(/_/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function queryFromPreset(kind) {
   const t = presetSourceTrack();
   if (!t) return "";
   switch (kind) {
+    // The two path-derived presets normalise; the tag-derived ones below don't —
+    // an underscore in a tag was put there on purpose, and cleaning tag values
+    // up is what GENERATOR is for.
     case "folder":
-      return folderNameOf(t.path);
+      return searchableName(folderNameOf(t.path));
     case "filename":
-      return baseNameNoExt(t.path);
+      return searchableName(baseNameNoExt(t.path));
     case "album":
       return (t.tags.album || "").trim();
     case "artist-title":

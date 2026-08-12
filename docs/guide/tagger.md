@@ -79,6 +79,13 @@ already on disk:
 **Folder name** is the workhorse for a collection ripped into
 `Artist - Album (Year)` folders.
 
+The two path-derived presets replace underscores with spaces, since downloaded
+music is routinely filed with them and no provider will match
+`la_bush_-_music_from_the_temple_of_house`. Dots are left alone — they mean
+something in `Ltd.` and `Vol. 2`. The tag-derived presets are not touched at all:
+an underscore in a tag was put there deliberately, and tidying tag values is
+[GENERATOR](generator.md)'s job.
+
 You can also narrow results by media type — CD, Vinyl, LP, File — and choose how
 many results per page (5, 10, 15). **Load more** fetches the next page. A search
 in progress can be stopped: the magnifier turns into a stop square, and Escape

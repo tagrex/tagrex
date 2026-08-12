@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Folder name and File name query presets no longer search for
+  underscores.** Downloaded music is routinely filed as
+  `various_-_la_bush_-_music_from_the_temple_of_house_(as_5606)_(1996)`, and that
+  string was handed to the provider verbatim — where it matches nothing, which
+  reads as "this release isn't in the database" rather than "that isn't a query".
+  The presets exist to save typing and were making you retype the whole thing.
+  Both now replace underscores with spaces and collapse the result. Verified
+  against the live search: the raw folder name returns no hits, the normalised
+  one returns the right release. Dots are deliberately left alone, since they
+  carry meaning in `Ltd.` and `Vol. 2`, and the tag-derived presets are untouched
+  — an underscore in a tag was put there on purpose. (#158)
+
 ### Changed
 
 - **A single-disc release now imports as disc 1 of 1.** Writing no disc at all
