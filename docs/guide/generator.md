@@ -8,6 +8,13 @@ Bulk cleanup. Three blocks that share the panel: a chain of text **transforms**,
 A transform is an ordered chain of rules. They run top to bottom over whatever
 the scope says, and the result is staged like any other change.
 
+**The chain is also reachable from the toolbar**, behind the wand button, in
+every mode except this one — the cleanup a chain does is usually cleanup after
+something done elsewhere, and fixing the case of tags just read out of file names
+should not mean leaving TAGGER. It is the same chain, not a copy: the block is
+moved into the popover and back, so rules composed in one place are there in the
+other. The button is hidden in GENERATOR, where the chain is already on screen.
+
 ### Scope — what the rules act on
 
 **Apply to** decides what the chain sees:

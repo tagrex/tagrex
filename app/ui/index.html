@@ -134,6 +134,13 @@
                only — cover art and DJ cue points survive — and it stages a
                preview rather than writing, so Apply/Discard still gates it. -->
           <span class="tb-div" aria-hidden="true"></span>
+          <!-- The transform chain, surfaced here for the same reason as Clear
+               tags below: the mess it cleans up is made in another mode. After
+               reading tags out of file names in TAGGER, fixing their case should
+               not mean leaving the mode. The popover is filled with the GENERATOR
+               panel's own chain — the block is moved in and back out, so there is
+               one chain and one implementation, not a copy (#149). -->
+          <button id="transform-btn" class="icon" title="Transform the selected files' tags — the GENERATOR rule chain, without leaving this mode" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
           <button id="clear-tags" class="icon" title="Clear text tags on the selected files (cover and DJ cue points are kept) — previewed before anything is written" aria-label="Clear text tags on the selected files"><svg class="ico"><use href="#i-eraser"/></svg></button>
         </div>
 
@@ -391,7 +398,12 @@
 
         <!-- GENERATOR: an ordered chain of cleanup rules over tags or filenames. -->
         <section id="panel-generator" class="mode-panel" hidden>
-          <div class="panel-block">
+          <!-- This block is not always here: the toolbar's Transform button
+               moves it into #transform-pop and back, so the chain can be reached
+               from any mode without a second copy of it existing (#149).
+               #transform-home marks where it belongs. -->
+          <div id="transform-home"></div>
+          <div id="transform-block" class="panel-block">
             <h2>Transform <span id="transform-count" class="muted"></span></h2>
             <p class="hint muted" style="padding: 0">
               Rules run top to bottom. Nothing is written until you review the preview and press Apply.
@@ -595,6 +607,13 @@
       <div class="ctx-sep"></div>
       <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem">Select All</button>
     </div>
+
+    <!-- Transform popover (#149): the toolbar's entry point to the rule chain.
+         Deliberately empty in the markup — opening it MOVES the GENERATOR
+         panel's #transform-block in here, and closing puts it back, so there is
+         exactly one chain with one set of listeners. Positioned from JS like the
+         placeholder reference, since the toolbar sits above a scrolling area. -->
+    <div id="transform-pop" class="transform-pop" hidden role="dialog" aria-label="Transform"></div>
 
     <!-- Placeholder reference (#148): one popover shared by every mask input,
          opened from the ? button beside it and positioned against that button.

@@ -3880,6 +3880,38 @@ td[data-field="year"],
   color: var(--muted);
 }
 
+/* ---- transform popover (#149) ---------------------------------------------
+   The toolbar's entry point to the rule chain. It holds the GENERATOR panel's
+   own #transform-block, moved in on open and back out on close, so everything
+   inside is already styled by the panel rules — this only provides the shell and
+   keeps a long chain from growing past the window. Fixed-positioned from JS,
+   like the placeholder reference, because the area under the toolbar scrolls. */
+.transform-pop {
+  position: fixed;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-2);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+.transform-pop[hidden] {
+  display: none;
+}
+.transform-pop > .panel-block {
+  min-height: 0;
+  margin: 0;
+}
+/* Only the rule list scrolls. Putting the overflow here rather than on the
+   popover keeps the Groups menu — which opens from the row BELOW the list — out
+   of a scrolling container that would clip it. */
+.transform-pop #transform-rules {
+  overflow-y: auto;
+  max-height: 46vh;
+}
+
 /* ---- placeholder reference (#148) -----------------------------------------
    The popover every mask input's ? button opens. It borrows the .col-menu
    shell's surface but positions itself `fixed` from JS: it is tall, and the

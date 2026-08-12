@@ -36,6 +36,7 @@ import {
 import { dropGroupKey, folderGroupLabel, groupKeyOf, groupLabel } from "./js/grouping.js";
 import { loadSavedToken, searchBusy, searchPerPage, stopLoading } from "./js/online.js";
 import {
+  closeTransformPopover,
   initActionGroups,
   initBuiltinGroups,
   refreshGenerator,
@@ -923,6 +924,12 @@ const MODE_REFRESH = {
 
 function setMode(name) {
   setCurrentMode(name);
+  // The Transform popover borrows the GENERATOR panel's chain block (#149);
+  // give it back before any mode is shown, or GENERATOR opens without it.
+  closeTransformPopover();
+  // In GENERATOR the chain is already on screen, and the button would pull it
+  // out of the panel it is sitting in — so there is nothing for it to do there.
+  el("transform-btn").hidden = name === "generator";
   document.querySelectorAll(".mode-tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.mode === name);
   });

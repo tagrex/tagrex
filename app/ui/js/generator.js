@@ -403,6 +403,9 @@ async function previewTransform() {
     setPreviewSource(["filename", "fileext"].includes(el("transform-scope").value)
       ? "rename"
       : "transform");
+    // The result lands on the table, which the popover sits over (#149). An
+    // error leaves it open instead, so the chain can be fixed where it is.
+    closeTransformPopover();
     hooks.renderPreview(plan);
     toast(
       plan.changes.length
@@ -561,6 +564,7 @@ async function runTickedGroups() {
     setPreviewSource(groups.some((g) => ["filename", "fileext"].includes(g.scope))
       ? "rename"
       : "transform");
+    closeTransformPopover();
     hooks.renderPreview(plan);
     toast(
       plan.changes.length
@@ -714,9 +718,81 @@ function renderGroupsMenu() {
   updateRunTicked();
 }
 
+// ---- the chain, reachable from any mode (#149) ----
+//
+// The cleanup a chain does is almost always cleanup after something done in
+// another mode — tags just read out of file names, a just-finished import — so
+// requiring a trip into GENERATOR to fix a case is backwards.
+//
+// The popover is filled by MOVING `#transform-block` out of the GENERATOR panel
+// and putting it back on close. That is the whole trick: there is one chain,
+// one set of elements and one set of listeners, so the two entry points cannot
+// drift, and `renderTransformRules` neither knows nor cares where the block
+// currently lives.
+
+function transformPopoverOpen() {
+  return !el("transform-pop").hidden;
+}
+
+// Place the popover under its toolbar button, clamped to the window. Fixed
+// rather than absolute for the same reason as the placeholder reference: the
+// area below the toolbar scrolls and would clip it.
+function placeTransformPopover() {
+  const pop = el("transform-pop");
+  const rect = el("transform-btn").getBoundingClientRect();
+  const width = Math.min(420, window.innerWidth - 16);
+  pop.style.width = `${width}px`;
+  pop.style.left = `${Math.min(Math.max(8, rect.left), window.innerWidth - width - 8)}px`;
+  pop.style.top = `${rect.bottom + 4}px`;
+  pop.style.maxHeight = `${window.innerHeight - rect.bottom - 16}px`;
+}
+
+function openTransformPopover() {
+  const pop = el("transform-pop");
+  pop.appendChild(el("transform-block"));
+  pop.hidden = false;
+  // The block's header counts the selection, and refreshGenerator only runs on
+  // entering the mode — so bring them up to date for the mode we're actually in.
+  refreshGenerator();
+  placeTransformPopover();
+}
+
+function closeTransformPopover() {
+  if (!transformPopoverOpen()) return;
+  // Back into the GENERATOR panel, at its marked position, so that panel is
+  // whole again whether or not the user ever opens the mode.
+  el("transform-home").after(el("transform-block"));
+  el("transform-pop").hidden = true;
+}
+
+function toggleTransformPopover() {
+  if (transformPopoverOpen()) closeTransformPopover();
+  else openTransformPopover();
+}
+
 // ---- wire up ----
 el("transform-add").addEventListener("click", addTransformRule);
 el("transform-preview").addEventListener("click", previewTransform);
+el("transform-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleTransformPopover();
+});
+// Dismissal: anywhere outside, or Escape. The Groups popover nested inside opens
+// over the block, so a click landing in it must not count as "outside".
+document.addEventListener("click", (e) => {
+  if (!transformPopoverOpen()) return;
+  if (e.target.closest?.("#transform-pop, #transform-btn")) return;
+  closeTransformPopover();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && transformPopoverOpen()) {
+    closeTransformPopover();
+    el("transform-btn").focus();
+  }
+});
+window.addEventListener("resize", () => {
+  if (transformPopoverOpen()) placeTransformPopover();
+});
 el("autonum-run").addEventListener("click", numberTracks);
 el("vinyl-split").addEventListener("click", splitVinylSides);
 // Rule reorder is wired per-card in renderTransformRules via enablePointerReorder
@@ -724,6 +800,7 @@ el("vinyl-split").addEventListener("click", splitVinylSides);
 
 export {
   addTransformRule,
+  closeTransformPopover,
   initActionGroups,
   initBuiltinGroups,
   numberTracks,

@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The transform chain is reachable from any mode.** A wand button in the
+  toolbar opens the GENERATOR rule chain as a popover, so a cleanup can be
+  composed and run without leaving the mode that created the mess — which is
+  almost always where it was made. Fixing the case of tags just read out of file
+  names in TAGGER previously meant switching to GENERATOR, re-selecting the
+  intent, and coming back. It is the same chain rather than a second copy: the
+  panel block is moved into the popover and back out again, so one set of rules
+  and one set of controls exist and the two entry points cannot drift apart.
+  Saved action groups come with it. Preview closes the popover and stages the
+  diff on the table behind it; an error leaves it open so the chain can be fixed
+  where it stands. The button is hidden in GENERATOR itself, where the chain is
+  already on screen. (#149)
+
 - **A multi-disc release now imports with its disc numbers.** The disc was only
   ever derived from a vinyl side letter, so a 2×CD imported as if it had no
   discs at all — every track landed with no disc, and reorganizing by
