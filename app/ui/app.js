@@ -696,6 +696,9 @@ function enterDiffState() {
   el("ab-plan").textContent = previewPlan.description ? ` · ${previewPlan.description}` : "";
   el("diff-actionbar").hidden = false;
   updateDiffBar();
+  // The rule chain acts on the staged plan while one is staged (#142), and its
+  // wording says so — so it has to hear about entering and leaving this state.
+  refreshGenerator();
 }
 
 // Leave the diff-state: drop the plan + apply scope and repaint the plain table.
@@ -708,6 +711,7 @@ function exitDiffState() {
   el("tracks").classList.remove("show-old");
   el("diff-actionbar").hidden = true;
   renderTracks();
+  refreshGenerator();
 }
 
 // Sync the floating action bar (apply count + enabled) and the header select-all

@@ -560,6 +560,20 @@ fn preview_transform_groups(
     })
 }
 
+/// Run the ticked action groups over a staged plan rather than over the files
+/// (#142) — cleanup composed into the operation that produced the values.
+#[tauri::command]
+fn preview_transform_over_plan(
+    state: State<AppState>,
+    plan: PlanDto,
+    groups: Vec<ActionGroupDto>,
+) -> Result<PlanDto, String> {
+    with_app(&state, |app| {
+        app.preview_transform_over_plan(&plan, &groups)
+            .map_err(|e| e.to_string())
+    })
+}
+
 #[tauri::command]
 fn save_settings(
     app: tauri::AppHandle,
@@ -635,6 +649,7 @@ fn main() {
             import_fields,
             render_column,
             preview_transform_groups,
+            preview_transform_over_plan,
             player_status
         ])
         .run(tauri::generate_context!())

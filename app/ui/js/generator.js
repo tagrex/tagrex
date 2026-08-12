@@ -5,6 +5,11 @@
 // (#105). The chain itself and the named action groups behind it (#57) are a
 // component shared with TAGGER › FROM NAME (#144) and live in chain.js;
 // what stays here is this panel's instance of it and how the panel runs it.
+//
+// "How the panel runs it" has two cases since #142. With nothing staged the
+// chain reads the files. With a plan staged it reads THE PLAN — the values it
+// proposes — and gives back a revised plan, so producing values and cleaning
+// them up stay one Apply and one undo entry instead of two.
 import { el, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
@@ -15,6 +20,7 @@ import { parseVinylPosition } from "./vinyl.js";
 import {
   groupBy,
   edits,
+  previewPlan,
   selectedPaths,
   setPreviewPlan,
   setPreviewSource,
@@ -35,14 +41,58 @@ const transformChain = createRuleChain({
   },
 });
 
+// Whether the chain is about to act on a staged plan rather than on the files
+// (#142). One question, asked everywhere, so the block's wording and what the
+// run actually does can never disagree.
+function overStagedPlan() {
+  return !!previewPlan && previewPlan.changes.length > 0;
+}
+
 // Refresh the GENERATOR panel for the current selection (called on entering the
 // mode). The rule chain persists across mode switches within a session.
 function refreshGenerator() {
   const count = selectedPaths().length;
-  el("transform-count").textContent = count ? `— ${count} file(s)` : "";
+  const staged = overStagedPlan();
+  el("transform-count").textContent = staged
+    ? `— ${previewPlan.changes.length} staged file(s)`
+    : count
+      ? `— ${count} file(s)`
+      : "";
+  el("transform-over-plan").hidden = !staged;
+  el("transform-preview").textContent = staged ? "Clean up staged" : "Preview changes";
   el("autonum-count").textContent = count ? `— ${count} selected` : "";
   el("vinyl-count").textContent = count ? `— ${count} selected` : "";
   transformChain.render();
+}
+
+// Stage the plan a run produced and report it. Shared by the single-chain and
+// the checklist paths, and by both the on-disk and the over-a-plan cases (#142).
+//
+// `scopes` are the scopes that ran: a file name or extension makes this a
+// rename, which has to apply through the rename path. Over a staged plan the
+// source is the one already there — the plan is still the import / FROM NAME /
+// rename it started as, and apply() branches on that to decide what to do with
+// the pending-edits buffer — unless a file scope has now put a rename in it.
+function stageRun(plan, scopes, wasStaged) {
+  const renames = scopes.some((scope) => ["filename", "fileext"].includes(scope));
+  setPreviewPlan(plan);
+  if (!wasStaged) {
+    setPreviewSource(renames ? "rename" : "transform");
+  } else if (renames) {
+    setPreviewSource("rename");
+  }
+  // The result lands on the table, which the popover sits over (#149). An
+  // error leaves it open instead, so the chain can be fixed where it is.
+  closeTransformPopover();
+  hooks.renderPreview(plan);
+}
+
+// What a run reports when it changed nothing — the staged case has its own
+// wording, since "the selection" is not what it looked at.
+function nothingChanged(wasStaged, subject) {
+  return wasStaged
+    ? `${subject} change nothing in the staged plan`
+    : `${subject} change nothing on the selection`;
 }
 
 // ---- auto-number selected tracks (#39) ----
@@ -153,34 +203,30 @@ async function splitVinylSides() {
 }
 
 async function previewTransform() {
-  const paths = selectedPaths();
   if (transformChain.length === 0) {
     toast("Add at least one rule", true);
     return;
   }
+  const wasStaged = overStagedPlan();
   try {
     // Reported from the plan just built, not from the staged one (#145): an
     // empty plan makes renderPreview leave the diff state, which clears the
     // staged plan out from under the message below.
-    const plan = await invoke("preview_transform", {
-      paths,
-      rules: transformChain.rules(),
-      scope: transformChain.getScope(),
-    });
-    setPreviewPlan(plan);
-    // A filename or extension transform is a rename; a tag transform is an edit.
-    // Either way it applies through the normal preview/apply/undo path.
-    setPreviewSource(["filename", "fileext"].includes(transformChain.getScope())
-      ? "rename"
-      : "transform");
-    // The result lands on the table, which the popover sits over (#149). An
-    // error leaves it open instead, so the chain can be fixed where it is.
-    closeTransformPopover();
-    hooks.renderPreview(plan);
+    const plan = wasStaged
+      ? await invoke("preview_transform_over_plan", {
+          plan: previewPlan,
+          groups: [transformChain.asGroup()],
+        })
+      : await invoke("preview_transform", {
+          paths: selectedPaths(),
+          rules: transformChain.rules(),
+          scope: transformChain.getScope(),
+        });
+    stageRun(plan, [transformChain.getScope()], wasStaged);
     toast(
       plan.changes.length
         ? `Previewing ${plan.changes.length} file(s) — click Apply`
-        : "These rules change nothing on the selection",
+        : nothingChanged(wasStaged, "These rules"),
       plan.changes.length === 0
     );
   } catch (e) {
@@ -193,31 +239,28 @@ async function previewTransform() {
 // compose into a single rename instead of the second undoing the first.
 async function runTickedGroups(groups) {
   if (!groups.length) return;
+  const wasStaged = overStagedPlan();
   const paths = selectedPaths();
-  if (!paths.length) {
+  if (!wasStaged && !paths.length) {
     toast("Select at least one file", true);
     return;
   }
+  const payload = groups.map((g) => ({
+    name: g.name,
+    scope: g.scope,
+    rules: (g.rules || []).map(ruleForGroup),
+  }));
   try {
     // Same as the single-chain preview (#145): report from this plan, not the
     // staged one, which an empty result clears.
-    const plan = await invoke("preview_transform_groups", {
-      paths,
-      groups: groups.map((g) => ({ name: g.name, scope: g.scope, rules: (g.rules || []).map(ruleForGroup) })),
-    });
-    setPreviewPlan(plan);
-    // A run that renames has to apply through the rename path; one that only
-    // edits tags through the transform path. Mixed, rename wins — it is the
-    // stricter of the two.
-    setPreviewSource(groups.some((g) => ["filename", "fileext"].includes(g.scope))
-      ? "rename"
-      : "transform");
-    closeTransformPopover();
-    hooks.renderPreview(plan);
+    const plan = wasStaged
+      ? await invoke("preview_transform_over_plan", { plan: previewPlan, groups: payload })
+      : await invoke("preview_transform_groups", { paths, groups: payload });
+    stageRun(plan, groups.map((g) => g.scope), wasStaged);
     toast(
       plan.changes.length
         ? `Previewing ${plan.changes.length} file(s) — click Apply`
-        : "These groups change nothing on the selection",
+        : nothingChanged(wasStaged, "These groups"),
       plan.changes.length === 0
     );
   } catch (e) {
@@ -242,25 +285,44 @@ function transformPopoverOpen() {
   return !el("transform-pop").hidden;
 }
 
-// Place the popover under its toolbar button, clamped to the window. Fixed
+// Which button the popover is currently anchored to — the toolbar wand, or the
+// diff bar's Clean up (#142). Remembered so a window resize re-places it where
+// it was opened.
+let transformAnchor = "transform-btn";
+
+// Place the popover against its anchor button, clamped to the window. Fixed
 // rather than absolute for the same reason as the placeholder reference: the
 // area below the toolbar scrolls and would clip it.
+//
+// Below the anchor when there is room, above it when there is not — the diff
+// bar floats near the bottom of the table, where "below" is off-screen.
 function placeTransformPopover() {
   const pop = el("transform-pop");
-  const rect = el("transform-btn").getBoundingClientRect();
+  const rect = el(transformAnchor).getBoundingClientRect();
   const width = Math.min(420, window.innerWidth - 16);
   pop.style.width = `${width}px`;
   pop.style.left = `${Math.min(Math.max(8, rect.left), window.innerWidth - width - 8)}px`;
-  pop.style.top = `${rect.bottom + 4}px`;
-  pop.style.maxHeight = `${window.innerHeight - rect.bottom - 16}px`;
+  const below = window.innerHeight - rect.bottom - 16;
+  const above = rect.top - 16;
+  if (below >= 240 || below >= above) {
+    pop.style.top = `${rect.bottom + 4}px`;
+    pop.style.bottom = "auto";
+    pop.style.maxHeight = `${below}px`;
+  } else {
+    pop.style.top = "auto";
+    pop.style.bottom = `${window.innerHeight - rect.top + 4}px`;
+    pop.style.maxHeight = `${above}px`;
+  }
 }
 
-function openTransformPopover() {
+function openTransformPopover(anchor = "transform-btn") {
+  transformAnchor = anchor;
   const pop = el("transform-pop");
   pop.appendChild(el("transform-block"));
   pop.hidden = false;
-  // The block's header counts the selection, and refreshGenerator only runs on
-  // entering the mode — so bring them up to date for the mode we're actually in.
+  // The block's header counts the selection (or the staged plan) and its button
+  // says which of the two it will act on, and refreshGenerator only runs on
+  // entering the mode — so bring them up to date for where we actually are.
   refreshGenerator();
   placeTransformPopover();
 }
@@ -273,9 +335,11 @@ function closeTransformPopover() {
   el("transform-pop").hidden = true;
 }
 
-function toggleTransformPopover() {
-  if (transformPopoverOpen()) closeTransformPopover();
-  else openTransformPopover();
+function toggleTransformPopover(anchor = "transform-btn") {
+  // A second click on the OTHER button re-anchors rather than closing: the two
+  // are entry points to one popover, not two toggles.
+  if (transformPopoverOpen() && transformAnchor === anchor) closeTransformPopover();
+  else openTransformPopover(anchor);
 }
 
 // ---- wire up ----
@@ -285,7 +349,6 @@ createGroupsMenu({
   btn: "groups-btn",
   menu: "groups-menu",
   chain: transformChain,
-  ticks: true,
   onRun: runTickedGroups,
 });
 el("transform-preview").addEventListener("click", previewTransform);
@@ -293,17 +356,23 @@ el("transform-btn").addEventListener("click", (e) => {
   e.stopPropagation();
   toggleTransformPopover();
 });
+// The diff bar's second entry point to the same popover (#142).
+el("diff-cleanup").addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleTransformPopover("diff-cleanup");
+});
 // Dismissal: anywhere outside, or Escape. The Groups popover nested inside opens
 // over the block, so a click landing in it must not count as "outside".
 document.addEventListener("click", (e) => {
   if (!transformPopoverOpen()) return;
-  if (e.target.closest?.("#transform-pop, #transform-btn")) return;
+  if (e.target.closest?.("#transform-pop, #transform-btn, #diff-cleanup")) return;
   closeTransformPopover();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && transformPopoverOpen()) {
+    const anchor = transformAnchor;
     closeTransformPopover();
-    el("transform-btn").focus();
+    el(anchor).focus();
   }
 });
 window.addEventListener("resize", () => {

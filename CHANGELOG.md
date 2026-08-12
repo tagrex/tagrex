@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A rule chain can now run over the staged changes, not just over what is on
+  disk.** Every flow that produces values needs the same second step — clean
+  them up — and that step could only ever read the file, so producing and
+  cleaning meant writing first and transforming afterwards: two previews, two
+  Applies and two undo entries for what was one operation. Values that exist
+  nowhere yet, like tags a mask has just read out of a file name, could not be
+  cleaned at all. While a plan is staged, the chain reads the plan instead: each
+  group sees the value the plan proposes for the field it is scoped to, and the
+  revised plan replaces the staged one, so it stays one Apply and one undo entry.
+  The floating diff bar gets a **Clean up** button that opens the same chain the
+  toolbar wand does — one chain, one set of rules, two ways in — and the panel
+  says which of the two it is about to act on. A cleanup that lands back on the
+  file's current value stops being a change and leaves the plan; a file-scoped
+  chain revises the rename the plan proposes rather than adding a second one,
+  and the sidecar files follow the revised name. (#142)
+
 ### Fixed
 
 - **A track's several artists or genres are no longer silently reduced to the

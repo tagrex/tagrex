@@ -184,6 +184,10 @@
           <span class="ab-sep"></span>
           <label class="toggle-old" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="diff-show-old" /> Show old values</label>
           <span class="ab-sep"></span>
+          <!-- Clean up the staged values before they are written (#142): opens
+               the same rule chain the wand button does, which acts on the plan
+               rather than on the files while one is staged. -->
+          <button id="diff-cleanup" class="btn" title="Run a rule chain over the staged values — one plan, one undo entry"><svg class="ico"><use href="#i-wand"/></svg>Clean up</button>
           <button id="diff-discard" class="btn">Discard</button>
           <button id="diff-apply" class="btn primary" disabled>Apply</button>
         </div>
@@ -439,6 +443,12 @@
             <h2>Transform <span id="transform-count" class="muted"></span></h2>
             <p class="hint muted" style="padding: 0">
               Rules run top to bottom. Nothing is written until you review the preview and press Apply.
+            </p>
+            <!-- Shown only while a plan is staged (#142): the same chain, over
+                 the values the plan proposes instead of the ones on disk. -->
+            <p id="transform-over-plan" class="hint inert-panel" style="padding: 6px 8px" hidden>
+              Acting on the staged changes, not on the files — the result replaces the plan, so it
+              stays one Apply and one undo entry.
             </p>
             <label class="export-row"
               >Apply to

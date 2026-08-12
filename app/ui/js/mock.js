@@ -413,6 +413,43 @@ function mockInvoke(cmd, args) {
         .filter(Boolean);
       return Promise.resolve({ description: "Transform", changes });
     }
+    // The same chains, over a STAGED plan rather than over the files (#142):
+    // the input is what the plan proposes, and the output replaces it.
+    case "preview_transform_over_plan": {
+      const changes = args.plan.changes
+        .map((c) => {
+          const proposed = c.rename_to || c.path;
+          const dir = c.path.slice(0, c.path.lastIndexOf("/") + 1);
+          let name = proposed.slice(proposed.lastIndexOf("/") + 1, proposed.lastIndexOf("."));
+          let ext = proposed.slice(proposed.lastIndexOf(".") + 1);
+          let tag_changes = (c.tag_changes || []).map((t) => ({ ...t }));
+          for (const group of args.groups) {
+            if (group.scope === "filename") {
+              const next = mockApplyRules(name, group.rules);
+              if (next.trim()) name = next;
+            } else if (group.scope === "fileext") {
+              const next = mockApplyRules(ext, group.rules);
+              if (next.trim() && !/[/\.]/.test(next)) ext = next;
+            } else {
+              for (const t of tag_changes) {
+                if (group.scope !== "tags" && group.scope !== t.field) continue;
+                if (t.new != null) t.new = mockApplyRules(t.new, group.rules);
+              }
+            }
+          }
+          // A cleanup that lands back on the old value is not a change.
+          tag_changes = tag_changes.filter((t) => (t.old ?? null) !== (t.new ?? null));
+          const file_name = `${name}.${ext}`;
+          const renamed = file_name !== c.path.slice(c.path.lastIndexOf("/") + 1);
+          if (!tag_changes.length && !renamed) return null;
+          return { path: c.path, rename_to: renamed ? `${dir}${file_name}` : null, tag_changes };
+        })
+        .filter(Boolean);
+      const description = (args.plan.description || "").endsWith(" · cleaned up")
+        ? args.plan.description
+        : `${args.plan.description || ""} · cleaned up`;
+      return Promise.resolve({ description, changes });
+    }
     case "preview_move": {
       const changes = args.paths
         .map((p) => {

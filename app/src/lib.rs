@@ -1439,6 +1439,133 @@ impl App {
         })
     }
 
+    /// Run action groups over a **staged plan** rather than over the files (#142).
+    ///
+    /// Every flow that *produces* values needs the same second step — clean them
+    /// up — and until now that step could only read what was already on disk. So
+    /// producing and cleaning meant writing first and transforming afterwards:
+    /// two plans and two undo entries for what the user did as one operation,
+    /// and no way at all to clean values that exist nowhere yet (tags a mask has
+    /// just read out of a file name).
+    ///
+    /// The input here is the plan's own proposal, not the file. Each chain sees
+    /// the `new` value of a change it is scoped to, and the revised value goes
+    /// back into the same change — `old` is untouched, because it is still what
+    /// is on disk and still what the diff and the executor's staleness check
+    /// must compare against. The result is an ordinary [`PlanDto`] that replaces
+    /// the staged one, so the whole thing still applies and undoes as one batch.
+    ///
+    /// A change the cleanup turns back into its `old` value is no longer a
+    /// change and is dropped, as is a file left with nothing to do. Values are
+    /// re-validated on the way out: a cleanup can just as easily rescue a
+    /// rejected value as break a good one.
+    pub fn preview_transform_over_plan(
+        &self,
+        plan: &PlanDto,
+        groups: &[ActionGroupDto],
+    ) -> Result<PlanDto, AppError> {
+        // Same as the on-disk runner: build every chain up front so a malformed
+        // rule is an error before anything is revised.
+        let chains = groups
+            .iter()
+            .map(|group| Ok((group.scope.as_str(), build_chain(&group.rules)?)))
+            .collect::<Result<Vec<_>, AppError>>()?;
+
+        let mut changes = Vec::new();
+        for change in &plan.changes {
+            let path = Path::new(&change.path);
+
+            // The name the plan proposes — the rename it already carries, or the
+            // file's own name when it proposes none. A file-scoped chain that
+            // changes it turns into (or replaces) this file's rename.
+            let proposed = change
+                .rename_to
+                .clone()
+                .unwrap_or_else(|| change.path.clone());
+            let proposed = Path::new(&proposed);
+            let mut name = proposed
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let mut ext = proposed
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_string);
+
+            let mut tag_changes = change.tag_changes.clone();
+            for (scope, chain) in &chains {
+                match *scope {
+                    "filename" => {
+                        let next = chain.apply(&name);
+                        if !next.trim().is_empty() {
+                            name = next;
+                        }
+                    }
+                    "fileext" => {
+                        if let Some(current) = &ext {
+                            let next = chain.apply(current);
+                            if !next.trim().is_empty() && !next.contains(['/', '\\', '.']) {
+                                ext = Some(next);
+                            }
+                        }
+                    }
+                    scope => {
+                        for field in tag_changes.iter_mut() {
+                            if scope != "tags" && scope != field.field {
+                                continue;
+                            }
+                            // Only a value the plan actually proposes. A change
+                            // that clears a field has nothing to clean up.
+                            if let Some(value) = &field.new {
+                                field.new = Some(chain.apply(value));
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Re-validate, then drop what the cleanup turned back into a no-op.
+            let tag_changes: Vec<FieldChangeDto> = tag_changes
+                .into_iter()
+                .filter(|field| field.old != field.new)
+                .map(|field| FieldChangeDto::new(field.field, field.old, field.new))
+                .collect();
+
+            let file_name = match &ext {
+                Some(ext) => format!("{name}.{ext}"),
+                None => name.clone(),
+            };
+            let renamed = path.file_name().map(|n| n.to_string_lossy().into_owned())
+                != Some(file_name.clone());
+
+            if tag_changes.is_empty() && !renamed && change.cover_change.is_none() {
+                continue;
+            }
+            let mut revised = FileChangeDto {
+                path: change.path.clone(),
+                rename_to: renamed.then(|| {
+                    path.with_file_name(&file_name)
+                        .to_string_lossy()
+                        .into_owned()
+                }),
+                tag_changes,
+                cover_change: change.cover_change.clone(),
+                // Recomputed below rather than carried over: the sidecars follow
+                // the destination name, which a file-scoped chain just changed.
+                sidecar_renames: Vec::new(),
+            };
+            if renamed {
+                self.attach_sidecars(&mut revised);
+            }
+            changes.push(revised);
+        }
+
+        Ok(PlanDto {
+            description: cleaned_up_description(&plan.description),
+            changes,
+        })
+    }
+
     /// Build a plan that moves files into a folder structure rendered from a
     /// mask, without writing (#37).
     ///
@@ -2360,6 +2487,19 @@ impl App {
     }
 }
 
+/// The description a plan carries once a cleanup chain has been run over it
+/// (#142). The plan is still the one the user staged — the bar should keep
+/// saying where it came from — with a note that it has been cleaned up. Running
+/// a second chain over it does not stack a second note: it is the same staged
+/// plan either way.
+fn cleaned_up_description(description: &str) -> String {
+    const SUFFIX: &str = " · cleaned up";
+    if description.ends_with(SUFFIX) {
+        return description.to_string();
+    }
+    format!("{description}{SUFFIX}")
+}
+
 /// The tag field a release id is stored under, by provider source (#20).
 /// `MUSICBRAINZ_ALBUMID` is the de-facto standard (what Picard writes); Discogs
 /// has no standard tag, so a matching `DISCOGS_RELEASE_ID` custom field is used.
@@ -3264,6 +3404,156 @@ mod tests {
                 .ends_with("Autechre; Gescom - Gantz Graf.flac"),
             "got {:?}",
             plan.changes[0].rename_to
+        );
+    }
+
+    // #142: a cleanup chain over a STAGED plan cleans the values the plan
+    // proposes, not the ones on disk. This is the case that could not be done
+    // at all before — the extracted values exist nowhere yet, so a chain run
+    // against the file would see the old tags and clean the wrong thing.
+    #[test]
+    fn a_chain_over_a_staged_plan_cleans_the_proposed_values() {
+        let dir = TempDir::new("plan-cleanup");
+        let track = dir.tagged_flac("the_x_factor_-_desert_rain.flac", "Old Artist", "Old Title");
+        let app = open_app(&dir);
+
+        let staged = app
+            .preview_tags_from_name("%artist%_-_%title%", std::slice::from_ref(&track), &[])
+            .unwrap();
+        let value = |plan: &PlanDto, field: &str| {
+            plan.changes[0]
+                .tag_changes
+                .iter()
+                .find(|c| c.field == field)
+                .and_then(|c| c.new.clone())
+        };
+        assert_eq!(value(&staged, "artist").as_deref(), Some("the_x_factor"));
+
+        let cleaned = app
+            .preview_transform_over_plan(
+                &staged,
+                &[
+                    ActionGroupDto {
+                        name: "separators".into(),
+                        scope: "tags".into(),
+                        rules: vec![replace_rule("_", " ")],
+                        note: String::new(),
+                    },
+                    // Scoped, and applied over the result of the group before it.
+                    ActionGroupDto {
+                        name: "artist upper".into(),
+                        scope: "artist".into(),
+                        rules: vec![case_rule("upper")],
+                        note: String::new(),
+                    },
+                ],
+            )
+            .unwrap();
+        assert_eq!(value(&cleaned, "artist").as_deref(), Some("THE X FACTOR"));
+        assert_eq!(value(&cleaned, "title").as_deref(), Some("desert rain"));
+        // `old` still describes the file, so the diff and the staleness check
+        // keep comparing against what is really there.
+        assert_eq!(
+            cleaned.changes[0]
+                .tag_changes
+                .iter()
+                .find(|c| c.field == "artist")
+                .and_then(|c| c.old.clone())
+                .as_deref(),
+            Some("Old Artist")
+        );
+        assert!(cleaned.description.ends_with(" · cleaned up"));
+
+        // It stays one plan and one undo entry: apply the cleaned one and the
+        // cleaned values are what land on disk.
+        let mut app = app;
+        app.apply(&cleaned).unwrap();
+        let after = TagEngine::read(&track).unwrap();
+        assert_eq!(
+            after.tags.get(&TagField::Artist).map(String::as_str),
+            Some("THE X FACTOR")
+        );
+    }
+
+    // #142: a cleanup that undoes the change is not a change any more, and a
+    // file left with nothing to do leaves the plan.
+    #[test]
+    fn a_cleanup_that_restores_the_old_value_drops_the_change() {
+        let dir = TempDir::new("plan-cleanup-noop");
+        let track = dir.tagged_flac("x.flac", "Aphex Twin", "Xtal");
+        let app = open_app(&dir);
+
+        let staged = app
+            .preview_tag_edits(&[TagEditDto {
+                path: track.to_string_lossy().into_owned(),
+                field: "artist".into(),
+                value: Some("APHEX TWIN".into()),
+            }])
+            .unwrap();
+        assert_eq!(staged.changes.len(), 1);
+
+        // Title-casing the proposal lands back on what the file already says.
+        let cleaned = app
+            .preview_transform_over_plan(
+                &staged,
+                &[ActionGroupDto {
+                    name: "title case".into(),
+                    scope: "artist".into(),
+                    rules: vec![case_rule("title")],
+                    note: String::new(),
+                }],
+            )
+            .unwrap();
+        assert!(
+            cleaned.changes.is_empty(),
+            "a no-op should leave the plan, got {:?}",
+            cleaned.changes
+        );
+    }
+
+    // #142: a file-scoped chain acts on the name the plan PROPOSES, not the one
+    // on disk — so a rename and its cleanup compose into a single rename instead
+    // of the second undoing the first. The sidecars follow the revised name.
+    #[test]
+    fn a_file_scoped_chain_revises_the_rename_the_plan_proposes() {
+        let dir = TempDir::new("plan-cleanup-rename");
+        let track = dir.tagged_flac("x.flac", "Autechre", "Gantz Graf");
+        std::fs::write(dir.0.join("x.lrc"), "lyrics").unwrap();
+        let app = open_app(&dir);
+
+        let staged = app
+            .preview_rename("%artist% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        assert!(staged.changes[0]
+            .rename_to
+            .as_deref()
+            .unwrap()
+            .ends_with("Autechre - Gantz Graf.flac"));
+
+        let cleaned = app
+            .preview_transform_over_plan(
+                &staged,
+                &[ActionGroupDto {
+                    name: "lower".into(),
+                    scope: "filename".into(),
+                    rules: vec![case_rule("lower")],
+                    note: String::new(),
+                }],
+            )
+            .unwrap();
+        let renamed = cleaned.changes[0].rename_to.as_deref().unwrap();
+        assert!(
+            renamed.ends_with("autechre - gantz graf.flac"),
+            "got {renamed}"
+        );
+        assert_eq!(
+            cleaned.changes[0]
+                .sidecar_renames
+                .iter()
+                .map(|(_, to)| to.rsplit('/').next().unwrap().to_string())
+                .collect::<Vec<_>>(),
+            vec!["autechre - gantz graf.lrc"],
+            "the sidecar must follow the revised name, not the staged one"
         );
     }
 
