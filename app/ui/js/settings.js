@@ -210,6 +210,9 @@ async function openSettings() {
     el("set-cover-max").value = s.cover_max_px || 0;
     el("set-cover-quality").value = s.cover_quality || 85;
     readPriority = normalizePriority(s.read_priority);
+    // The separator is whitespace-significant ("; " is not ";"), so it goes
+    // into the box verbatim and comes back verbatim — no trim anywhere (#46).
+    el("set-multi-sep").value = s.multi_value_separator || "";
     el("set-carry-sidecars").checked = s.carry_sidecars !== false;
     el("set-sidecar-exts").value = (s.sidecar_extensions && s.sidecar_extensions.length
       ? s.sidecar_extensions
@@ -219,6 +222,7 @@ async function openSettings() {
   } catch (e) {
     /* defaults already in the DOM */
     readPriority = PRIO_KEYS.slice();
+    el("set-multi-sep").value = "";
     el("set-carry-sidecars").checked = true;
     el("set-sidecar-exts").value = DEFAULT_SIDECAR_EXTS.join(" ");
     await renderImportFields([]);
@@ -256,6 +260,7 @@ async function saveSettings() {
       rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
       id3_v23: id3Choice === "v23",
       read_priority: readPriority.slice(),
+      multi_value_separator: el("set-multi-sep").value,
       cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
       cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
       action_groups: actionGroups,

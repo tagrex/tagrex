@@ -74,6 +74,61 @@ fn choose_priority_type(present: &[TagType], priority: &[TagType]) -> Option<Tag
     priority.iter().copied().find(|tt| present.contains(tt))
 }
 
+/// The text that joins several values of one field into the single string
+/// [`TagMap`] holds, and splits them apart again on write (#46).
+pub const DEFAULT_MULTI_VALUE_SEPARATOR: &str = "; ";
+
+/// The configured separator, empty until the app sets one. App-wide and rarely
+/// changed, the same process-global model as [`WRITE_ID3V23`] and
+/// [`READ_PRIORITY`], behind a lock because it is a string.
+static MULTI_VALUE_SEPARATOR: RwLock<String> = RwLock::new(String::new());
+
+/// Set the separator multi-value fields are joined with on read and split on
+/// write (#46). An empty string restores [`DEFAULT_MULTI_VALUE_SEPARATOR`].
+pub fn set_multi_value_separator(separator: &str) {
+    if let Ok(mut guard) = MULTI_VALUE_SEPARATOR.write() {
+        *guard = separator.to_string();
+    }
+}
+
+/// The separator in force. Falls back to the default when unset, and — because
+/// splitting on an empty string would explode every value into characters —
+/// whenever the configured one is blank.
+pub fn multi_value_separator() -> String {
+    MULTI_VALUE_SEPARATOR
+        .read()
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.clone())
+        .unwrap_or_else(|| DEFAULT_MULTI_VALUE_SEPARATOR.to_string())
+}
+
+/// Split a stored value back into the individual values to write (#46).
+/// Whitespace around a part is separator formatting, never part of the value;
+/// an empty part is a stray separator, not a value to write. A value carrying
+/// no separator comes back as itself, so the ordinary single-value case is
+/// untouched.
+///
+/// Takes the separator rather than reading the global so it can be tested
+/// without a process-wide setting the rest of the suite would race against.
+fn split_multi_value_with(value: &str, separator: &str) -> Vec<String> {
+    let parts: Vec<String> = value
+        .split(separator)
+        .map(|part| part.trim().to_string())
+        .filter(|part| !part.is_empty())
+        .collect();
+    if parts.is_empty() {
+        // The whole value was separators and space. Keep it verbatim rather
+        // than writing nothing, so nothing is silently dropped here either.
+        return vec![value.to_string()];
+    }
+    parts
+}
+
+fn split_multi_value(value: &str) -> Vec<String> {
+    split_multi_value_with(value, &multi_value_separator())
+}
+
 /// Audio container formats we read and write. Covers everything the tag backend
 /// (lofty) supports; the preview player already decodes all of these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -223,6 +278,25 @@ impl TagField {
         }
     }
 
+    /// Whether this field genuinely holds several values (#46).
+    ///
+    /// A track can have two artists and three genres, and both ID3v2.4 (several
+    /// values in one frame) and Vorbis comments (a repeated key) can say so.
+    /// Those values are joined into one string for [`TagMap`] and split apart
+    /// again on write — see [`multi_value_separator`].
+    ///
+    /// The list is deliberately short. Splitting a field that is *not* on it
+    /// would turn a title reading `Hello; Goodbye` into two titles, and the tags
+    /// that are repeatable in practice are the credit and classification ones.
+    /// Every other field keeps its previous behaviour exactly: the last value
+    /// present wins on read, one value is written.
+    pub fn is_multi_value(&self) -> bool {
+        matches!(
+            self,
+            Self::Artist | Self::AlbumArtist | Self::Genre | Self::Composer
+        )
+    }
+
     /// Inverse of [`to_storage_key`](Self::to_storage_key).
     pub fn from_storage_key(key: &str) -> Self {
         if let Some(name) = key.strip_prefix("custom:") {
@@ -328,7 +402,28 @@ impl TagEngine {
                     _ => None,
                 };
                 if let Some(value) = value {
-                    tags.insert(item_key_to_tag_field(item.key()), value);
+                    let field = item_key_to_tag_field(item.key());
+                    // A file really can carry several artists or genres, as
+                    // separate Vorbis comments or as one multi-value ID3v2.4
+                    // frame — lofty surfaces both as repeated items here. Joining
+                    // them is what keeps the extras (#46); overwriting, as this
+                    // did, kept only the last and any edit then wrote that one
+                    // value back over all of them. Fields that are not
+                    // multi-valued keep the old last-wins behaviour.
+                    match tags.entry(field) {
+                        std::collections::btree_map::Entry::Vacant(slot) => {
+                            slot.insert(value);
+                        }
+                        std::collections::btree_map::Entry::Occupied(mut slot) => {
+                            if slot.key().is_multi_value() {
+                                let joined =
+                                    format!("{}{}{}", slot.get(), multi_value_separator(), value);
+                                slot.insert(joined);
+                            } else {
+                                slot.insert(value);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -474,11 +569,12 @@ impl TagEngine {
 fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
     let mut generic = Tag::new(TagType::Id3v2);
     for (field, value) in tags {
-        generic.insert_unchecked(TagItem::new(
-            tag_field_to_item_key(field),
-            item_value_for(field, value),
-        ));
+        push_field_items(&mut generic, field, value);
     }
+    // `Id3v2Tag::from` joins repeated items of one key into a single
+    // multi-value frame with ID3v2.4's own separator, so the several items
+    // pushed above become one well-formed TPE1/TCON rather than duplicate
+    // frames (#46).
     let mut updated = Id3v2Tag::from(generic);
 
     if let Some(original) = read_id3v2(path)? {
@@ -550,14 +646,11 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
     tag.retain(|item| item.value().text().is_none() || desired.contains(item.key()));
 
     for (field, value) in &file.tags {
-        let key = tag_field_to_item_key(field);
-        // Replace rather than append, so repeated writes can't accumulate
-        // duplicate entries for the same field.
-        tag.remove_key(&key);
-        // `insert_text`/`insert` silently drop `ItemKey::Unknown` (Custom
-        // fields) since they refuse to write keys without a known mapping for
-        // the tag type. `insert_unchecked` is the documented escape hatch.
-        tag.insert_unchecked(TagItem::new(key, item_value_for(field, value)));
+        // Clear first rather than append, so repeated writes can't accumulate
+        // duplicate entries for the same field — then push what the model says,
+        // which for a multi-value field is more than one item (#46).
+        tag.remove_key(&tag_field_to_item_key(field));
+        push_field_items(&mut tag, field, value);
     }
     tag.save_to_path(&file.path, WriteOptions::default())?;
     Ok(())
@@ -573,6 +666,25 @@ fn load_or_new_tag(path: &Path) -> Result<Tag, TagIoError> {
         .or_else(|| tagged.first_tag())
         .cloned()
         .unwrap_or_else(|| Tag::new(tag_type)))
+}
+
+/// Push one field's stored string onto `tag` as the items to write: several for
+/// a multi-value field carrying several values (#46), one otherwise. The caller
+/// is responsible for having cleared any previous items of the key.
+///
+/// `push_unchecked` rather than `insert_unchecked`, because inserting *replaces*
+/// every item of the key and would leave only the last value. The `unchecked`
+/// half is unchanged and still needed: the checked calls silently drop
+/// `ItemKey::Unknown` (`Custom` fields), which have no mapping to verify.
+fn push_field_items(tag: &mut Tag, field: &TagField, value: &str) {
+    let key = tag_field_to_item_key(field);
+    if !field.is_multi_value() {
+        tag.push_unchecked(TagItem::new(key, item_value_for(field, value)));
+        return;
+    }
+    for part in split_multi_value(value) {
+        tag.push_unchecked(TagItem::new(key.clone(), item_value_for(field, &part)));
+    }
 }
 
 /// The `ItemValue` a field's string should be written as. Almost everything is
@@ -812,6 +924,56 @@ mod tests {
         let key = tag_field_to_item_key(&field);
         assert_eq!(key, ItemKey::Unknown("MOOD".to_string()));
         assert_eq!(item_key_to_tag_field(&key), field);
+    }
+
+    #[test]
+    fn only_the_credit_and_classification_fields_are_multi_value() {
+        // Several artists / genres on one track is ordinary; several titles or
+        // years is not, and splitting those would corrupt a value that happens
+        // to contain the separator.
+        assert!(TagField::Artist.is_multi_value());
+        assert!(TagField::AlbumArtist.is_multi_value());
+        assert!(TagField::Genre.is_multi_value());
+        assert!(TagField::Composer.is_multi_value());
+        for field in [
+            TagField::Title,
+            TagField::Album,
+            TagField::Comment,
+            TagField::Year,
+            TagField::TrackNumber,
+            TagField::Isrc,
+            TagField::Custom("MOOD".to_string()),
+        ] {
+            assert!(!field.is_multi_value(), "{field:?} must not be split");
+        }
+    }
+
+    #[test]
+    fn splitting_a_stored_value_drops_the_separator_formatting() {
+        let sep = DEFAULT_MULTI_VALUE_SEPARATOR;
+        assert_eq!(
+            split_multi_value_with("Autechre; Gescom", sep),
+            vec!["Autechre", "Gescom"]
+        );
+        // A single value is itself, untouched — the ordinary case.
+        assert_eq!(split_multi_value_with("Autechre", sep), vec!["Autechre"]);
+        // Whitespace around a part is the separator's, not the value's, and a
+        // stray separator contributes no value.
+        assert_eq!(
+            split_multi_value_with("Rock ;  Pop ; ; Jazz", "; "),
+            vec!["Rock", "Pop", "Jazz"]
+        );
+        assert_eq!(split_multi_value_with("A;B", sep), vec!["A;B"]);
+        // Nothing but separators still writes something rather than vanishing.
+        assert_eq!(split_multi_value_with("; ", sep), vec!["; "]);
+        assert_eq!(split_multi_value_with("", sep), vec![""]);
+    }
+
+    #[test]
+    fn an_empty_configured_separator_falls_back_to_the_default() {
+        // Splitting on "" would explode every value into characters, so a blank
+        // setting has to mean "the default", not "no separator".
+        assert_eq!(multi_value_separator(), DEFAULT_MULTI_VALUE_SEPARATOR);
     }
 
     #[test]

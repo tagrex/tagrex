@@ -759,6 +759,12 @@
               <ol id="set-prio" class="prio-list" aria-label="Tag-block read priority"></ol>
             </div>
             <p class="settings-hint">When a file carries more than one tag block, values are read from the highest one present. Drag to reorder. Most files have a single block, so this rarely matters.</p>
+
+            <div class="settings-row">
+              <label for="set-multi-sep">Multi-value separator</label>
+              <input id="set-multi-sep" type="text" class="mono" style="width: 80px" placeholder="; " spellcheck="false" />
+            </div>
+            <p class="settings-hint">A track can carry several artists or genres. They are shown and edited as one value joined by this text, and written back as separate values. Only Artist, Album Artist, Genre and Composer are treated this way — every other field keeps a separator as part of its value. Leave it blank for a semicolon and a space.</p>
           </div>
 
           <div class="settings-group">

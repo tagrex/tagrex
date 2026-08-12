@@ -691,6 +691,7 @@ function mockInvoke(cmd, args) {
           cover_max_px: 0,
           cover_quality: 85,
           import_skip_fields: [],
+          multi_value_separator: "",
         }
       );
     case "save_settings":

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A track's several artists or genres are no longer silently reduced to the
+  last one.** Both ID3v2.4 (several values in one frame) and Vorbis comments (a
+  repeated key) can say a track has two artists, and reading such a file kept
+  only whichever came last — so the file looked wrong, and any edit at all, even
+  to an unrelated field, wrote that single value back over all of them. The
+  extras were gone with no sign they had ever been there. Multiple values now
+  reach the app as one string joined by a separator (`; ` by default,
+  configurable under Settings › Tag defaults) and are written back out as
+  separate values: separate comments in a Vorbis file, one properly formed
+  multi-value frame in an ID3v2 one, not the out-of-spec duplicate frames most
+  players ignore. The joined form is the canonical one, so the table, masks and
+  exports show and use it with no special handling. Only Artist, Album Artist,
+  Genre and Composer are treated this way — splitting any other field would turn
+  a title reading `Hello; Goodbye` into two titles. Verified on a real file
+  tagged by other software: two artists in one frame read back joined, an
+  ordinary title edit left the frame byte-identical, and the ReplayGain data
+  survived. (#46)
+
 ### Changed
 
 - **TAGGER › FROM NAME now cleans up its extracted values with the same rule

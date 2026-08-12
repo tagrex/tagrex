@@ -331,6 +331,124 @@ fn read_priority_falls_back_to_present_block() {
     std::fs::remove_file(&path).ok();
 }
 
+/// Several artists and genres on one track survive a round trip, as a repeated
+/// Vorbis comment (#46).
+///
+/// This is the data loss the issue is about: the read loop used to overwrite,
+/// so a FLAC with `ARTIST=Autechre` and `ARTIST=Gescom` came back as `Gescom`
+/// alone, and the next write put that one value back over both. A field that is
+/// not multi-valued must NOT be split, or a title containing the separator
+/// would silently become two titles.
+#[test]
+fn multi_value_fields_round_trip_as_repeated_entries() {
+    use lofty::config::ParseOptions;
+    use lofty::file::AudioFile;
+    use lofty::flac::FlacFile;
+
+    let path = temp_flac_path("multi-value");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Autechre; Gescom".to_string());
+    tags.insert(TagField::Genre, "Electronic; IDM; Ambient".to_string());
+    // Not a multi-value field: the separator inside it is part of the title.
+    tags.insert(TagField::Title, "Hello; Goodbye".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags,
+    })
+    .expect("write tags");
+
+    // On disk it is genuinely several comments, not one joined string — that is
+    // what other players and taggers have to see for this to mean anything.
+    let entries = |key: &str| -> Vec<String> {
+        let mut file = std::fs::File::open(&path).unwrap();
+        let flac = FlacFile::read_from(&mut file, ParseOptions::new()).unwrap();
+        flac.vorbis_comments()
+            .unwrap()
+            .get_all(key)
+            .map(str::to_string)
+            .collect()
+    };
+    assert_eq!(entries("ARTIST"), vec!["Autechre", "Gescom"]);
+    assert_eq!(entries("GENRE"), vec!["Electronic", "IDM", "Ambient"]);
+    assert_eq!(entries("TITLE"), vec!["Hello; Goodbye"]);
+
+    // And it reads back as the one string the rest of the app works with.
+    let read = TagEngine::read(&path).expect("read back");
+    assert_eq!(
+        read.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Autechre; Gescom")
+    );
+    assert_eq!(
+        read.tags.get(&TagField::Genre).map(String::as_str),
+        Some("Electronic; IDM; Ambient")
+    );
+    assert_eq!(
+        read.tags.get(&TagField::Title).map(String::as_str),
+        Some("Hello; Goodbye")
+    );
+
+    // A second write must not accumulate duplicates.
+    TagEngine::write(&read).expect("rewrite");
+    assert_eq!(entries("ARTIST"), vec!["Autechre", "Gescom"]);
+
+    std::fs::remove_file(&path).ok();
+}
+
+/// The ID3v2 side of the same guarantee (#46): several values go into ONE
+/// multi-value frame, which is what ID3v2.4 specifies — not duplicate TPE1
+/// frames, which are out of spec and which most players ignore.
+#[test]
+fn mp3_multi_value_fields_become_one_frame_with_several_values() {
+    use lofty::config::ParseOptions;
+    use lofty::file::AudioFile;
+    use lofty::mpeg::MpegFile;
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-multi-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).unwrap();
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Autechre; Gescom".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags,
+    })
+    .unwrap();
+
+    let mut file = std::fs::File::open(&path).unwrap();
+    let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).unwrap();
+    let artist_frames: Vec<String> = mpeg
+        .id3v2()
+        .unwrap()
+        .into_iter()
+        .filter(|frame| frame.id().as_str() == "TPE1")
+        .map(|frame| match frame {
+            lofty::id3::v2::Frame::Text(text) => text.value.clone(),
+            other => format!("{other:?}"),
+        })
+        .collect();
+    assert_eq!(artist_frames.len(), 1, "one TPE1 frame, not several");
+    // ID3v2.4 separates the values inside the frame with a null byte.
+    assert_eq!(artist_frames[0], "Autechre\0Gescom");
+
+    assert_eq!(
+        TagEngine::read(&path)
+            .unwrap()
+            .tags
+            .get(&TagField::Artist)
+            .map(String::as_str),
+        Some("Autechre; Gescom")
+    );
+
+    std::fs::remove_file(&path).ok();
+}
+
 /// A minimal PCM WAV (8 kHz mono 8-bit silence) lofty accepts.
 fn minimal_wav() -> Vec<u8> {
     let samples: u32 = 800;

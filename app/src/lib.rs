@@ -271,6 +271,12 @@ pub struct SettingsDto {
     /// written by default instead of being invisibly excluded.
     #[serde(default)]
     pub import_skip_fields: Vec<String>,
+    /// What joins the several values of a multi-value field into the one string
+    /// the app edits, and splits them apart again on write (#46). Empty = the
+    /// backend's default (`"; "`), which is also what an older settings.json
+    /// deserializes to.
+    #[serde(default)]
+    pub multi_value_separator: String,
 }
 
 fn default_carry_sidecars() -> bool {
@@ -302,6 +308,7 @@ impl Default for SettingsDto {
             carry_sidecars: default_carry_sidecars(),
             sidecar_extensions: default_sidecar_extensions(),
             import_skip_fields: Vec::new(),
+            multi_value_separator: String::new(),
         }
     }
 }
@@ -778,6 +785,7 @@ impl App {
         );
         tagrex_core::model::set_write_id3v23(settings.id3_v23);
         tagrex_core::model::set_read_priority(&settings.read_priority);
+        tagrex_core::model::set_multi_value_separator(&settings.multi_value_separator);
         self.cover_max_px.set(settings.cover_max_px);
         self.cover_quality
             .set(effective_cover_quality(settings.cover_quality));
@@ -3172,6 +3180,93 @@ mod tests {
         App::open(dir.0.clone(), &dir.0.join("journal.sqlite")).unwrap()
     }
 
+    // #46: editing one field must not flatten a multi-value one on the way past.
+    // This is the loss the issue reports — a file with two artists came back
+    // with only the last, and the next write put that one value over both — so
+    // the guard belongs on the path an ordinary cell edit takes, not only on
+    // the engine.
+    #[test]
+    fn an_edit_leaves_the_other_fields_multi_values_intact() {
+        let dir = TempDir::new("multi-value-edit");
+        let path = dir.tagged_flac("x.flac", "placeholder", "Old Title");
+        // Seed a genuine multi-value artist, the way a file from elsewhere has it.
+        let mut seeded = TagEngine::read(&path).unwrap();
+        seeded
+            .tags
+            .insert(TagField::Artist, "Autechre; Gescom".to_string());
+        seeded
+            .tags
+            .insert(TagField::Genre, "Electronic; IDM".to_string());
+        TagEngine::write(&seeded).unwrap();
+
+        let mut app = open_app(&dir);
+        let plan = app
+            .preview_tag_edits(&[TagEditDto {
+                path: path.to_string_lossy().into_owned(),
+                field: "title".into(),
+                value: Some("New Title".into()),
+            }])
+            .unwrap();
+        // Only the title changed — the artist is not part of the plan at all.
+        assert_eq!(plan.changes[0].tag_changes.len(), 1);
+        let batch = app.apply(&plan).unwrap();
+
+        let after = TagEngine::read(&path).unwrap();
+        assert_eq!(
+            after.tags.get(&TagField::Title).map(String::as_str),
+            Some("New Title")
+        );
+        assert_eq!(
+            after.tags.get(&TagField::Artist).map(String::as_str),
+            Some("Autechre; Gescom"),
+            "editing the title flattened the multi-value artist"
+        );
+        assert_eq!(
+            after.tags.get(&TagField::Genre).map(String::as_str),
+            Some("Electronic; IDM")
+        );
+
+        // And undo restores the title without disturbing them either.
+        app.undo(batch.id).unwrap();
+        let undone = TagEngine::read(&path).unwrap();
+        assert_eq!(
+            undone.tags.get(&TagField::Title).map(String::as_str),
+            Some("Old Title")
+        );
+        assert_eq!(
+            undone.tags.get(&TagField::Artist).map(String::as_str),
+            Some("Autechre; Gescom")
+        );
+    }
+
+    // #46: a multi-value field reaches masks and exports as the one joined
+    // string the table shows — the point of the canonical form is that nothing
+    // downstream has to learn about it.
+    #[test]
+    fn a_multi_value_field_renders_into_a_mask_as_the_joined_string() {
+        let dir = TempDir::new("multi-value-mask");
+        let path = dir.tagged_flac("x.flac", "placeholder", "Gantz Graf");
+        let mut seeded = TagEngine::read(&path).unwrap();
+        seeded
+            .tags
+            .insert(TagField::Artist, "Autechre; Gescom".to_string());
+        TagEngine::write(&seeded).unwrap();
+
+        let app = open_app(&dir);
+        let plan = app
+            .preview_rename("%artist% - %title%", std::slice::from_ref(&path))
+            .unwrap();
+        assert!(
+            plan.changes[0]
+                .rename_to
+                .as_deref()
+                .unwrap()
+                .ends_with("Autechre; Gescom - Gantz Graf.flac"),
+            "got {:?}",
+            plan.changes[0].rename_to
+        );
+    }
+
     #[test]
     fn settings_deserialize_fills_defaults_and_applies() {
         // A partial (older) settings file still loads — every field defaults.
@@ -3198,6 +3293,7 @@ mod tests {
             carry_sidecars: true,
             sidecar_extensions: Vec::new(),
             import_skip_fields: Vec::new(),
+            multi_value_separator: String::new(),
         });
         assert_eq!(app.cover_max_px.get(), 500);
         assert_eq!(app.cover_quality.get(), 90);
