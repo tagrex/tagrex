@@ -22,6 +22,18 @@ import {
   visibleColumns,
 } from "./state.js";
 
+// Column persistence keys and the narrowest a column may be dragged.
+//
+// These live HERE, with the code that uses them, and are not re-declared
+// anywhere else. They were left behind in app.js by the #143 split while all
+// their users moved out, which made every reference below an undefined
+// identifier — silently, because the try/catch around each localStorage call
+// swallowed the ReferenceError. The whole column configuration stopped
+// persisting and header-grip resizing stopped working (#155).
+const COLUMNS_STORAGE_KEY = "tagrex.columns";
+const COLUMN_WIDTHS_STORAGE_KEY = "tagrex.colWidths";
+const COLUMN_MIN_WIDTH = 48;
+
 // ---- configurable columns (#43) ----
 // "file" plus every modeled tag field, the pool the user picks columns from.
 function allColumnKeys() {
@@ -154,52 +166,66 @@ function renderTableHead() {
   hooks.updateSortIndicators();
 }
 
-function saveColumns() {
+// The two localStorage calls, wrapped as narrowly as the failure they tolerate:
+// storage being unavailable or full. Everything else stays outside the try, so a
+// mistake in the surrounding code throws where it can be seen instead of being
+// mistaken for "storage wasn't there" — which is exactly how #155 hid for so long.
+function readStored(key) {
   try {
-    localStorage.setItem(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
+    return localStorage.getItem(key);
   } catch (e) {
-    /* localStorage unavailable — columns just won't persist */
+    return null; // storage unavailable — fall back to defaults
   }
 }
 
-function saveColumnWidths() {
+function writeStored(key, value) {
   try {
-    localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(columnWidths));
+    localStorage.setItem(key, value);
   } catch (e) {
-    /* localStorage unavailable — widths just won't persist */
+    /* storage unavailable or full — the preference just won't persist */
+  }
+}
+
+function saveColumns() {
+  writeStored(COLUMNS_STORAGE_KEY, JSON.stringify(visibleColumns));
+}
+
+function saveColumnWidths() {
+  writeStored(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(columnWidths));
+}
+
+// Parse stored JSON, treating malformed content as absent — a hand-edited or
+// half-written value is data, not a bug in this file.
+function readStoredJson(key) {
+  const raw = readStored(key);
+  if (raw === null) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    return null;
   }
 }
 
 // Load saved widths; keep only known keys with a sane positive number.
 function loadColumnWidths() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY));
-    if (saved && typeof saved === "object") {
-      const known = new Set(allColumnKeys());
-      for (const [key, w] of Object.entries(saved)) {
-        if (known.has(key) && Number.isFinite(w) && w >= COLUMN_MIN_WIDTH) {
-          columnWidths[key] = Math.round(w);
-        }
-      }
+  const saved = readStoredJson(COLUMN_WIDTHS_STORAGE_KEY);
+  if (!saved || typeof saved !== "object") return;
+  const known = new Set(allColumnKeys());
+  for (const [key, w] of Object.entries(saved)) {
+    if (known.has(key) && Number.isFinite(w) && w >= COLUMN_MIN_WIDTH) {
+      columnWidths[key] = Math.round(w);
     }
-  } catch (e) {
-    /* keep defaults */
   }
 }
 
 // Load the saved column choice; drop unknown keys and force "file" first.
 function loadColumns() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(COLUMNS_STORAGE_KEY));
-    if (Array.isArray(saved) && saved.length) {
-      const known = new Set(allColumnKeys());
-      const cols = saved.filter((k) => known.has(k) && k !== "file");
-      cols.unshift("file");
-      if (cols.length > 1) setVisibleColumns(cols);
-    }
-  } catch (e) {
-    /* keep defaults */
-  }
+  const saved = readStoredJson(COLUMNS_STORAGE_KEY);
+  if (!Array.isArray(saved) || !saved.length) return;
+  const known = new Set(allColumnKeys());
+  const cols = saved.filter((k) => known.has(k) && k !== "file");
+  cols.unshift("file");
+  if (cols.length > 1) setVisibleColumns(cols);
 }
 
 // Apply a new column set: persist, rebuild the header, repaint rows.
@@ -217,7 +243,7 @@ function resetColumns() {
   try {
     localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
   } catch (e) {
-    /* nothing persisted to clear */
+    /* storage unavailable — nothing was persisted to clear */
   }
   applyColumns(DEFAULT_COLUMNS.slice()); // persists + rebuilds head/rows
   renderColumnsMenu();
@@ -293,6 +319,7 @@ function colMenuRow(key, visible) {
 }
 
 export {
+  COLUMN_MIN_WIDTH,
   allColumnKeys,
   applyColumns,
   columnLabel,

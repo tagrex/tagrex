@@ -113,11 +113,6 @@ import {
   builtinGroups, setBuiltinGroups,
 } from "./js/state.js";
 
-// Column persistence keys; the columns themselves live in the state module.
-const COLUMNS_STORAGE_KEY = "tagrex.columns";
-const COLUMN_WIDTHS_STORAGE_KEY = "tagrex.colWidths";
-const COLUMN_MIN_WIDTH = 48;
-
 // ---- elements ----
 const rootInput = el("root");
 const tracksBody = el("tracks-body");

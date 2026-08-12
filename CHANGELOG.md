@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Column layout persists again, and header-grip resizing works again.** Three
+  constants — the two storage keys and the minimum column width — were left
+  behind in `app.js` when their users moved into their own modules, so in
+  `columns.js` and `tablegestures.js` they were undefined identifiers. Dragging a
+  grip threw on the first mouse move and the column never changed width; saving
+  and loading the column set and widths threw inside `try` blocks written to
+  tolerate an unavailable `localStorage`, which swallowed the error and returned
+  silently. The effect was that which columns you show, their order and their
+  widths were all discarded on restart, and it looked like a feature that had
+  never been finished rather than one that had broken. The constants now live
+  with the code that uses them, and those `try` blocks have been narrowed to the
+  storage call they were meant to guard, so the next mistake of this shape is
+  loud instead of invisible. (#155)
+
 ### Added
 
 - **The transform chain is reachable from any mode.** A wand button in the

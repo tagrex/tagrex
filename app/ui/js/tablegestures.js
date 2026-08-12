@@ -6,7 +6,7 @@
 // is a self-contained IIFE that wires itself to the DOM it owns.
 import { el } from "./dom.js";
 import { columnWidths, setColumnWidths } from "./state.js";
-import { renderTableHead, saveColumnWidths } from "./columns.js";
+import { COLUMN_MIN_WIDTH, renderTableHead, saveColumnWidths } from "./columns.js";
 
 // ---- resize the table / mode-panel split by dragging the divider ----
 // Mouse events (not a native splitter) for the same WKWebView reason as the row
