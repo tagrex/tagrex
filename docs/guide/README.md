@@ -24,7 +24,7 @@ read nothing else, read [Change plans, Apply and Undo](change-plans.md).
 3. [Change plans, Apply and Undo](change-plans.md) — the preview gate and the undo journal
 4. [TAGGER](tagger.md) — edit tags by hand, or pull them from an online source
 5. [RENAMER](renamer.md) — rename files and reorganize them into folders
-6. [Mask reference](masks.md) — the placeholder language used by RENAMER and reports
+6. [Mask reference](masks.md) — the placeholder language, in both directions
 7. [GENERATOR](generator.md) — text transforms, action groups, track numbering
 8. [DEDUPLICATOR and EXPORTER](duplicates-and-export.md) — find duplicates, write playlists and reports
 9. [Settings](settings.md) — every preference, and where they are stored

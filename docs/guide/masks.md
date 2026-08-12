@@ -4,8 +4,10 @@ A mask is a pattern that turns tags into a string: a file name, a folder path, a
 line in a report. `%artist% - %title%` is a mask.
 
 The same grammar is used by **Rename by mask** and **Reorganize into folders** in
-[RENAMER](renamer.md), and by the **Report** format in
-[EXPORTER](duplicates-and-export.md).
+[RENAMER](renamer.md), by **Tags from the file name** in [TAGGER](tagger.md) —
+which reads it the other way — by the **Report** format in
+[EXPORTER](duplicates-and-export.md), and by a mask-defined
+[table column](file-table.md).
 
 ## Placeholders
 
@@ -32,12 +34,17 @@ Write a field name between percent signs. Names are case-insensitive.
 | `%catalognumber%` | Catalogue number |
 | `%url%` | URL |
 | `%media%` | Media type |
-| `%side%` | Vinyl/cassette side letter — **render only**, see below |
+| `%side%` | Vinyl/cassette side letter — **name only**, see below |
+| `%skip%` | Matches and discards a run of text — **read only**, see below |
 
 **The same list is in the app**, behind the **?** button beside every pattern
 box: every placeholder, grouped, with a line of description, and a click inserts
-one at the caret. It is built from the parser's own tables, so what it shows is
-what parses — and it works offline, which is when a reference is most needed.
+one at the caret. It works offline, which is when a reference is most needed.
+
+That in-app list is the authoritative one — it is generated from the parser's own
+tables and tested against them, so what it shows is what parses. The tables on
+this page are written by hand for reading; if the two ever disagree, the app is
+right.
 
 An unknown name is an error rather than being passed through as literal text, so
 a typo tells you instead of quietly producing `%artsit% - Title`. Hovering a
@@ -114,9 +121,9 @@ disc 2 → `B`, and so on. It is blank for non-vinyl media.
 %side%%track:1% - %title%    →  A1 - Safe From Harm
 ```
 
-It is **render-only**: it is computed from the disc number rather than stored, so
-a mask containing it can render a name but cannot be used to read tags back out
-of one.
+It is **name only** (what the in-app reference calls it): computed from the disc
+number rather than stored, so a mask containing it can build a name but cannot be
+used to read tags back out of one.
 
 ## File and technical placeholders
 
@@ -146,10 +153,10 @@ The leading underscore marks the technical ones: properties of the audio rather
 than of the file's place on disk. UTC rather than local time for the date, so the
 same file renders the same name on any machine.
 
-All of them are **render-only**, for the same reason `%side%` is — there is no
-tag to read a bitrate back into, and pulling `%filename%` out of a filename says
-nothing. A mask carrying one works in Rename, Reorganize and Report, and is
-refused by **Tags from the file name**.
+All of them are **name only**, for the same reason `%side%` is — there is no tag
+to read a bitrate back into, and pulling `%filename%` out of a filename says
+nothing. A mask carrying one works in Rename, Reorganize, Report and a mask
+column, and is refused by **Tags from the file name**.
 
 A value that isn't available renders as empty rather than failing: an unreadable
 file, a folder level above the root, a container that reports no bitrate. Wrap it
@@ -164,10 +171,24 @@ The mask engine is bidirectional by design — one grammar that both *renders* a
 name from tags and *extracts* tags from a name — and both directions come from
 the same parsed pattern, so they cannot drift apart.
 
-Only the render direction is exposed in the interface today. Extraction
-(filling tags *from* file names) exists in the core, along with a `%skip%`
-placeholder for the junk in a filename that maps to no tag, but there is no UI
-for it yet. It is listed as not-yet in the [README](../../README.md).
+Both are reachable. **Rendering** builds a name from tags: RENAMER's *Rename by
+mask* and *Reorganize into folders*, the EXPORTER's report, and a mask-defined
+[table column](file-table.md). **Extraction** reads tags out of a name, in
+TAGGER › [**Tags from the file name**](tagger.md) — the same placeholders, read
+the other way, plus `%skip%` for the junk in a filename that maps to no tag. It
+produces an ordinary plan, so the same in-table diff, Apply and undo apply.
+
+A few placeholders work in one direction only, and the reference marks which:
+
+| | Direction | Why |
+| --- | --- | --- |
+| `%side%` | name only | computed from the disc number, so there is no tag to read it back into |
+| File and technical (`%filename%`, `%_bitrate%`, …) | name only | properties of the file, not tags |
+| `%skip%` | read only | it discards text, so there is nothing to render |
+
+Two placeholders with nothing between them can be rendered but not extracted —
+`%disc%%track%` produces `101`, and nothing says where to split it again. Give
+one of them a width (`%disc:1%%track:2%`) and it becomes unambiguous.
 
 ## Practical patterns
 
@@ -178,6 +199,15 @@ for it yet. It is listed as not-yet in the [README](../../README.md).
 %albumartist%/[%year% - ]%album%/%track% - %title%
 %side%%track:1% - %artist% - %title%
 [%catalognumber% - ]%album%
+```
+
+Read the other way, in **Tags from the file name**:
+
+```
+%track% - %artist% - %title%
+%albumartist%/%album%/%track% - %title%
+%disc:1%%track:2%_%artist%_-_%title%
+%skip% - %artist% - %title%
 ```
 
 ## When a mask can't render

@@ -69,5 +69,6 @@ A folder of files named `01.mp3`, `02.mp3`, … with good tags:
    default.
 5. Apply.
 
-The reverse case — good names, empty tags — is not yet available in the
-interface; see [Two directions](masks.md#two-directions).
+The reverse case — good names, empty tags — is **Tags from the file name** in
+[TAGGER](tagger.md): the same mask, read the other way. See
+[Two directions](masks.md#two-directions).
