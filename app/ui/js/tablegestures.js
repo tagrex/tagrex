@@ -6,7 +6,7 @@
 // is a self-contained IIFE that wires itself to the DOM it owns.
 import { el } from "./dom.js";
 import { columnWidths, setColumnWidths } from "./state.js";
-import { COLUMN_MIN_WIDTH, renderTableHead, saveColumnWidths } from "./columns.js";
+import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
 
 // ---- resize the table / mode-panel split by dragging the divider ----
 // Mouse events (not a native splitter) for the same WKWebView reason as the row
@@ -104,14 +104,15 @@ import { COLUMN_MIN_WIDTH, renderTableHead, saveColumnWidths } from "./columns.j
     document.removeEventListener("mouseup", onUp);
   }
 
-  // Double-click a grip to reset that column to its default width.
+  // Double-click a grip to fit that column to its content (#151) — the gesture
+  // every table with draggable columns uses for it. It replaced a reset to the
+  // default width: that is the rarer want by a distance, and the columns menu
+  // still offers "Reset to default" for the whole set.
   thead.addEventListener("dblclick", (e) => {
     const grip = e.target.closest(".col-resize");
     if (!grip) return;
     e.preventDefault();
     e.stopPropagation();
-    delete columnWidths[grip.dataset.key];
-    saveColumnWidths();
-    renderTableHead();
+    fitColumn(grip.dataset.key);
   });
 })();

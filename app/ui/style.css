@@ -3880,6 +3880,43 @@ td[data-field="year"],
   color: var(--muted);
 }
 
+/* ---- measuring columns for fit-to-content (#151) --------------------------
+   Worn for one synchronous read while the natural widths are taken, then
+   removed. Auto layout is what computes a content-driven width; the explicit
+   header widths are cleared from JS at the same time, and the body cells' clamp
+   has to come off or every long value would measure as exactly 320px. */
+#tracks.measuring {
+  table-layout: auto;
+  width: max-content;
+  /* The table normally carries `min-width: 100%` so few columns still fill the
+     pane. During measurement that is exactly wrong: auto layout hands the
+     leftover space out across the columns, and every one measures wider than its
+     content. With a 795px pane and columns worth 547px, the five headers read
+     335/143/125/103/90 instead of 230/98/86/71/62 — a fit that pads. */
+  min-width: 0;
+}
+#tracks.measuring tbody td,
+#tracks.measuring thead th {
+  max-width: none;
+}
+
+/* The fit footer holds an action and the sticky version of it. .col-menu-foot is
+   a right-aligned row, which crams the two together and wraps both labels, so
+   this one stacks: the button on its own line, the mode below it as an ordinary
+   checkbox row. */
+.col-menu-foot.col-fit-foot {
+  display: block;
+}
+.col-menu-foot.col-fit-foot .text-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+}
+.col-menu-row.col-autofit {
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 /* ---- transform popover (#149) ---------------------------------------------
    The toolbar's entry point to the rule chain. It holds the GENERATOR panel's
    own #transform-block, moved in on open and back out on close, so everything

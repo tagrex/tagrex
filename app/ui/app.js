@@ -28,6 +28,7 @@ import {
   columnWidth,
   loadColumnWidths,
   loadColumns,
+  maybeAutofit,
   populateGroupMenu,
   renderColumnsMenu,
   renderTableHead,
@@ -560,6 +561,9 @@ function renderTracks() {
   if (diffByPath) updateDiffBar();
   else syncSelectionUI();
   refreshRoving();
+  // Sticky autofit (#151): re-fit only when what the cells show has actually
+  // changed — this runs on every paint, including a plain row click.
+  maybeAutofit();
 }
 
 // Selection count in the status bar ("N/M selected"). Uses the checked-row

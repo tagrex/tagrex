@@ -15,10 +15,12 @@ import {
   DEFAULT_COLUMNS,
   collapsedGroups,
   columnWidths,
+  diffByPath,
   groupBy,
   setColumnWidths,
   setGroupByValue,
   setVisibleColumns,
+  tracks,
   visibleColumns,
 } from "./state.js";
 
@@ -120,6 +122,102 @@ function defaultColumnWidth(key) {
 
 function columnWidth(key) {
   return columnWidths[key] || defaultColumnWidth(key);
+}
+
+// ---- fit a column to its content (#151) ----
+//
+// A library of long album titles leaves every column truncated until each one is
+// dragged wider by hand, which is a lot of dragging for something the browser can
+// work out.
+//
+// Measuring is delegated to the browser rather than reimplemented: the fixed
+// layout and the explicit widths come off for one synchronous read, the natural
+// widths are taken, and everything goes back. That is exactly what "fit to
+// content" means, it costs one reflow for the whole table rather than a
+// measurement per cell, and it needs no second copy of what each cell renders —
+// nested markup, badges and the two-line file cell are all accounted for because
+// the browser is laying them out for real.
+const COLUMN_MAX_FIT_WIDTH = 480;
+const AUTOFIT_STORAGE_KEY = "tagrex.autofitColumns";
+
+// Natural width per key, in one pass. Reads happen after the class is on and
+// before anything is written back, so the browser flushes layout once.
+function measureColumns(keys) {
+  const table = el("tracks");
+  const headers = [...table.querySelectorAll("thead th.sortable")];
+  const saved = headers.map((th) => th.style.width);
+  for (const th of headers) th.style.width = "";
+  table.classList.add("measuring");
+  const natural = new Map();
+  for (const th of headers) {
+    if (keys.includes(th.dataset.sort)) {
+      natural.set(th.dataset.sort, th.getBoundingClientRect().width);
+    }
+  }
+  table.classList.remove("measuring");
+  headers.forEach((th, index) => (th.style.width = saved[index]));
+  return natural;
+}
+
+// Fit `keys` and persist the result — a fitted width is an ordinary width, no
+// different from a dragged one, so it is stored, restored and resizable after.
+//
+// Clamped at both ends: never narrower than a draggable column, and never so
+// wide that one pathological value (a 300-character comment) pushes the table
+// into horizontal scrolling on its own.
+function fitColumns(keys) {
+  const natural = measureColumns(keys);
+  if (!natural.size) return;
+  for (const [key, width] of natural) {
+    const clamped = Math.min(Math.max(width, COLUMN_MIN_WIDTH), COLUMN_MAX_FIT_WIDTH);
+    columnWidths[key] = Math.round(clamped);
+  }
+  saveColumnWidths();
+  renderTableHead();
+}
+
+function fitColumn(key) {
+  fitColumns([key]);
+}
+
+function fitAllColumns() {
+  fitColumns(visibleColumns.slice());
+}
+
+// Sticky mode: re-fit whenever what the table shows changes.
+function autofitEnabled() {
+  return readStored(AUTOFIT_STORAGE_KEY) === "1";
+}
+
+function setAutofit(on) {
+  writeStored(AUTOFIT_STORAGE_KEY, on ? "1" : "0");
+  if (on) fitAllColumns();
+}
+
+// What the last automatic fit was computed for. Re-fitting on every paint would
+// be wasteful and visibly jumpy — the table repaints on every row click, and a
+// selection change moves no text. So a fit is redone only when something that
+// can change a cell's contents changes: the rows, the columns, the diff state
+// (which reveals old values under the new ones) or the value font.
+let lastAutofitSignature = null;
+
+function autofitSignature() {
+  return [
+    tracks.length,
+    visibleColumns.join(","),
+    diffByPath ? diffByPath.size : 0,
+    document.body.className,
+    getComputedStyle(document.body).getPropertyValue("--table-font-size"),
+  ].join("|");
+}
+
+// Called at the end of every table paint.
+function maybeAutofit() {
+  if (!autofitEnabled()) return;
+  const signature = autofitSignature();
+  if (signature === lastAutofitSignature) return;
+  lastAutofitSignature = signature;
+  fitAllColumns();
 }
 
 // View state (does not change what's on disk). Sorting reorders the `tracks`
@@ -239,6 +337,9 @@ function applyColumns(cols) {
 
 // Reset columns to the default set, visibility, and widths (#91).
 function resetColumns() {
+  // Turn the sticky fit off first: leaving it on would re-fit immediately and
+  // the defaults would never be seen (#151).
+  writeStored(AUTOFIT_STORAGE_KEY, "0");
   setColumnWidths({});
   try {
     localStorage.removeItem(COLUMN_WIDTHS_STORAGE_KEY);
@@ -263,6 +364,37 @@ function renderColumnsMenu() {
     menu.appendChild(sep);
     for (const key of hidden) menu.appendChild(colMenuRow(key, false));
   }
+  // Fit-to-content (#151), above the reset row: it acts on the widths, which is
+  // what the rows above configure, while Reset throws the whole set away.
+  const fitFoot = document.createElement("div");
+  fitFoot.className = "col-menu-foot col-fit-foot";
+  const fit = document.createElement("button");
+  fit.type = "button";
+  fit.className = "text-btn";
+  fit.textContent = "Fit to content";
+  fit.title = "Size every column to its widest value (double-click a column edge for one)";
+  fit.addEventListener("click", () => {
+    menu.hidden = true;
+    fitAllColumns();
+  });
+  fitFoot.appendChild(fit);
+
+  // ...and the sticky version of the same thing, as a row rather than a button:
+  // it is a mode that stays on, not an action.
+  const autoRow = document.createElement("label");
+  autoRow.className = "col-menu-row col-autofit";
+  const autoBox = document.createElement("input");
+  autoBox.type = "checkbox";
+  autoBox.checked = autofitEnabled();
+  autoBox.addEventListener("change", () => setAutofit(autoBox.checked));
+  const autoLabel = document.createElement("span");
+  autoLabel.className = "col-menu-label";
+  autoLabel.textContent = "Autofit by content";
+  autoRow.title = "Keep columns sized to their content as the table changes";
+  autoRow.append(autoBox, autoLabel);
+  fitFoot.appendChild(autoRow);
+  menu.appendChild(fitFoot);
+
   // Reset-to-default footer (#91): default set, order, visibility, and widths.
   const foot = document.createElement("div");
   foot.className = "col-menu-foot";
@@ -322,6 +454,10 @@ export {
   COLUMN_MIN_WIDTH,
   allColumnKeys,
   applyColumns,
+  autofitEnabled,
+  fitAllColumns,
+  fitColumn,
+  maybeAutofit,
   columnLabel,
   columnWidth,
   defaultColumnWidth,

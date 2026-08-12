@@ -90,6 +90,20 @@ widths — to the defaults.
 rather than a tag column, and it stays first. Everything else is yours to
 arrange.
 
+### Fitting a column to its content
+
+**Double-click a column's right edge** to size it to its widest value. **Fit to
+content** in the columns menu does the same for every column at once, and
+**Autofit by content** keeps doing it as the table changes — when rows, columns
+or the value font change, not merely when the selection does.
+
+A fitted width is an ordinary width: it persists, and it can be dragged
+afterwards. Fitting is clamped at both ends, so a column never ends up narrower
+than its own header, and one 400-character comment cannot push the table into
+horizontal scrolling on its own.
+
+Hovering a column header names the mask placeholder that addresses it.
+
 Column layout is remembered between sessions.
 
 ## Presets
