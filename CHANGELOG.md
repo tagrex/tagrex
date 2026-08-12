@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A multi-disc release now imports with its disc numbers.** The disc was only
+  ever derived from a vinyl side letter, so a 2×CD imported as if it had no
+  discs at all — every track landed with no disc, and reorganizing by
+  `%disc%/%track%` had nothing to work with. Both providers state it and both
+  were being dropped: Discogs encodes the disc in the track position (`1-05`,
+  `CD1-3`) on a flat tracklist, and MusicBrainz keeps it as the medium, which was
+  thrown away when the media were flattened into one track list. Both are now
+  read, along with the disc count — Discogs' format quantity (`2×CD`), the number
+  of MusicBrainz media — written as the "of N" half of the pairing. Failing both,
+  the file's own folder is used as a last resort (`CD2`, `Disc 3`), but only when
+  the file has no disc yet, and only on a real keyword: a folder that merely ends
+  in a number is not a disc, since compilation series are routinely filed as
+  `… (1996) 2` where the 2 is the volume. A vinyl side is still a side, not a
+  disc, and mapping one to the other stays the explicit per-import toggle it was.
+  Nothing is written when a release states nothing — a single-CD album gains no
+  disc tag, and no lone `disctotal` of 1 either, since a disc total with no disc
+  number to complete says nothing. (#146)
+
 - **A placeholder reference inside the app.** Every pattern box — Rename by
   mask, Reorganize into folders, Tags from the file name, the Report export —
   gets a **?** button that opens the full list: every placeholder the parser

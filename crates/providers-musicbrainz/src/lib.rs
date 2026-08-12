@@ -344,18 +344,39 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
     let genres = genre_names(root.get("genres"));
 
     // Tracks live under media[].tracks[]; flatten every medium in order.
-    let tracks = root
-        .get("media")
-        .and_then(Value::as_array)
+    //
+    // The medium is the only place a MusicBrainz release says which disc a track
+    // is on — unlike Discogs it does not encode it in the track number, which
+    // restarts at 1 on every disc — so it has to be carried down as the flatten
+    // happens or it is gone (#146).
+    let media = root.get("media").and_then(Value::as_array);
+    let tracks = media
         .map(|media| {
             media
                 .iter()
-                .filter_map(|medium| medium.get("tracks").and_then(Value::as_array))
-                .flatten()
-                .map(parse_track)
+                .enumerate()
+                .flat_map(|(index, medium)| {
+                    // `position` is the medium's own 1-based number; fall back to
+                    // its place in the list when it isn't stated.
+                    let disc = medium
+                        .get("position")
+                        .and_then(Value::as_u64)
+                        .and_then(|n| u32::try_from(n).ok())
+                        .unwrap_or(index as u32 + 1);
+                    medium
+                        .get("tracks")
+                        .and_then(Value::as_array)
+                        .map(Vec::as_slice)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(move |track| parse_track(track, disc))
+                })
                 .collect()
         })
         .unwrap_or_default();
+    let disc_total = media
+        .and_then(|media| u32::try_from(media.len()).ok())
+        .filter(|count| *count > 0);
 
     Ok(Release {
         id: ReleaseId(id.clone()),
@@ -372,6 +393,7 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
             .filter(|value| !value.trim().is_empty())
             .map(str::to_string),
         format: media_formats(root.get("media")),
+        disc_total,
         url: Some(format!("https://musicbrainz.org/release/{id}")),
         cover_image_url: Some(cover_art_front_url(&id)),
         // The Cover Art Archive front image; CAA doesn't report dimensions in
@@ -385,8 +407,10 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
     })
 }
 
-fn parse_track(track: &Value) -> ReleaseTrack {
+/// One track, told which medium it was flattened out of (#146).
+fn parse_track(track: &Value, disc: u32) -> ReleaseTrack {
     ReleaseTrack {
+        disc: Some(disc),
         // `number` is the printed position ("1", "A1", "1-05"); fall back to the
         // numeric `position` when it's absent.
         position: string_field(track, "number")
@@ -695,6 +719,61 @@ mod tests {
             join_artist_credit(Some(&nested)).as_deref(),
             Some("Aphex Twin")
         );
+    }
+
+    /// MusicBrainz numbers tracks per medium -- both discs of a 2xCD start at
+    /// 1 -- so the disc lives only in the medium the track was flattened out of.
+    /// Before #146 that boundary was thrown away by the flatten and the disc was
+    /// unrecoverable.
+    #[test]
+    fn carries_the_medium_down_as_the_disc_number() {
+        let body = r#"{
+            "id": "aeb1c1c0-0000-0000-0000-000000000002",
+            "title": "Two Discs",
+            "artist-credit": [{ "name": "Various" }],
+            "media": [
+                {
+                    "format": "CD",
+                    "position": 1,
+                    "tracks": [
+                        { "number": "1", "title": "First" },
+                        { "number": "2", "title": "Second" }
+                    ]
+                },
+                {
+                    "format": "CD",
+                    "position": 2,
+                    "tracks": [{ "number": "1", "title": "Third" }]
+                }
+            ]
+        }"#;
+        let release = parse_release(body).unwrap();
+
+        assert_eq!(release.disc_total, Some(2));
+        let discs: Vec<Option<u32>> = release.tracks.iter().map(|t| t.disc).collect();
+        assert_eq!(discs, vec![Some(1), Some(1), Some(2)]);
+        // The track numbers restart on the second disc, which is exactly why the
+        // disc has to be carried separately.
+        assert_eq!(release.tracks[2].position, "1");
+    }
+
+    /// A medium without a stated `position` falls back to its place in the list,
+    /// so the discs still come out 1, 2, ... in order.
+    #[test]
+    fn a_medium_without_a_position_falls_back_to_its_index() {
+        let body = r#"{
+            "id": "aeb1c1c0-0000-0000-0000-000000000003",
+            "title": "Two Discs",
+            "artist-credit": [{ "name": "Various" }],
+            "media": [
+                { "format": "CD", "tracks": [{ "number": "1", "title": "First" }] },
+                { "format": "CD", "tracks": [{ "number": "1", "title": "Second" }] }
+            ]
+        }"#;
+        let release = parse_release(body).unwrap();
+        let discs: Vec<Option<u32>> = release.tracks.iter().map(|t| t.disc).collect();
+        assert_eq!(discs, vec![Some(1), Some(2)]);
+        assert_eq!(release.disc_total, Some(2));
     }
 
     #[test]

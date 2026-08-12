@@ -623,6 +623,8 @@ function enabledTracksOf(card) {
     const t = release.tracks[Number(cb.dataset.i)];
     return {
       position: t.position,
+      // The disc the release puts this track on (#146), when it says.
+      disc: t.disc ?? null,
       artist: t.artist || release.artist,
       title: t.title,
       duration_secs: t.duration_secs ?? null,
@@ -799,6 +801,8 @@ async function importRelease(card) {
     country: release.country || null,
     // Total tracks on the release (album-level), so a file reads as N/total.
     track_total: release.tracks && release.tracks.length ? String(release.tracks.length) : null,
+    // Discs in the set (album-level), so a file reads as N/total (#146).
+    disc_total: release.disc_total ? String(release.disc_total) : null,
     url: release.url || null,
     // Physical medium → drives the vinyl side view (#106).
     media_type: mediaTagValue(release.format),

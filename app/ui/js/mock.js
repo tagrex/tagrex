@@ -714,11 +714,15 @@ function mockInvoke(cmd, args) {
         year: 1996,
         genres: ["Electronic"],
         styles: ["Trance", "Tribal", "Techno"],
+        // A two-disc set, so the browser path exercises the disc pass-through
+        // (#146): Discogs states the disc in the position, and the count in the
+        // format quantity.
         tracks: [
-          { position: "1", artist: "The X Factor", title: "Desert Rain", duration_secs: 278 },
-          { position: "2", artist: "Wish Mountain", title: "Radio", duration_secs: 142 },
-          { position: "3", artist: "West Coast Connection", title: "Voodoo Rhythm", duration_secs: 321 },
+          { position: "1-1", disc: 1, artist: "The X Factor", title: "Desert Rain", duration_secs: 278 },
+          { position: "1-2", disc: 1, artist: "Wish Mountain", title: "Radio", duration_secs: 142 },
+          { position: "2-1", disc: 2, artist: "West Coast Connection", title: "Voodoo Rhythm", duration_secs: 321 },
         ],
+        disc_total: 2,
         // Two catalogue numbers from the same label (#90) — exercises the picker.
         labels: [
           { name: "Antler-Subway", catalog_number: "AS 5606" },

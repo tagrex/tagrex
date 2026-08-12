@@ -69,6 +69,12 @@ pub struct ReleaseCandidate {
 pub struct ReleaseTrack {
     /// Position as the provider reports it ("A1", "3", "1-05", ...).
     pub position: String,
+    /// Which disc of the set this track sits on (#146), 1-based, when the
+    /// provider says so — Discogs encodes it in the position (`1-05`), and on
+    /// MusicBrainz it is the medium the track was flattened out of. `None` for a
+    /// single-disc release, and for a vinyl side, which is a different thing
+    /// entirely and is resolved from the side letter at import time.
+    pub disc: Option<u32>,
     /// Track-level artist when it differs from the release artist.
     pub artist: Option<String>,
     pub title: String,
@@ -106,6 +112,11 @@ pub struct Release {
     /// Physical/source format descriptor, e.g. `Vinyl, 12", 33 ⅓ RPM` or `CD`
     /// (#106). Drives the media-type tag and the vinyl side view.
     pub format: Option<String>,
+    /// How many discs the set holds (#146) — Discogs states it as the format
+    /// quantity (`2×CD`), MusicBrainz as the number of media. `None` when the
+    /// provider doesn't say; `Some(1)` is a stated single disc, which is not the
+    /// same thing and is worth writing.
+    pub disc_total: Option<u32>,
     /// Public webpage for the release (the provider's release page), if any.
     pub url: Option<String>,
     /// URL of the release's primary image (full resolution), if it has one.
@@ -147,6 +158,37 @@ pub struct FetchedImage {
     pub data: Vec<u8>,
 }
 
+/// The disc a multi-disc track position names (#146): `1-05` -> 1, `2-1` -> 2,
+/// `CD1-3` -> 1, `D2-04` -> 2.
+///
+/// A provider that holds several discs in one flat tracklist has to say which
+/// disc a track is on somewhere, and the position is where Discogs puts it. Only
+/// the part *before* the separator is read here; the track number itself comes
+/// out of the tail as it always did.
+///
+/// Deliberately narrow. It returns `None` for a plain number (`5` — one disc,
+/// nothing to say), for a vinyl side (`A1` — a side is not a disc, and mapping
+/// one to the other is a separate, opt-in decision at import time), and for
+/// anything else it doesn't recognise, because inventing a disc number is worse
+/// than leaving the tag alone.
+pub fn disc_from_position(position: &str) -> Option<u32> {
+    let (head, _) = position.trim().split_once(['-', '.', '/'])?;
+    // An optional media prefix, so `CD1-3` and `D2-04` read like `1-3`. Matched
+    // case-insensitively and only as leading letters; anything left after
+    // stripping them must be plain digits.
+    let digits = head.trim_start_matches(|c: char| c.is_ascii_alphabetic());
+    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    // A letter prefix is only credible as a medium name. `A-1` is a vinyl side
+    // written with a separator, not disc 1 of a set with no number.
+    let prefix = &head[..head.len() - digits.len()];
+    if !prefix.is_empty() && !matches!(prefix.to_ascii_lowercase().as_str(), "cd" | "d" | "disc") {
+        return None;
+    }
+    digits.parse::<u32>().ok().filter(|disc| *disc > 0)
+}
+
 pub trait MetadataProvider: Send + Sync {
     /// Stable machine identifier ("discogs", "musicbrainz").
     fn id(&self) -> &'static str;
@@ -171,4 +213,39 @@ pub enum ProviderError {
     NotFound,
     #[error("{0}")]
     Other(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_disc_out_of_a_multi_disc_position() {
+        assert_eq!(disc_from_position("1-05"), Some(1));
+        assert_eq!(disc_from_position("2-1"), Some(2));
+        assert_eq!(disc_from_position("CD1-3"), Some(1));
+        assert_eq!(disc_from_position("cd2-04"), Some(2));
+        assert_eq!(disc_from_position("D2-04"), Some(2));
+        assert_eq!(disc_from_position("Disc3-1"), Some(3));
+        // Other separators the same release listing might use.
+        assert_eq!(disc_from_position("2.14"), Some(2));
+        assert_eq!(disc_from_position("2/14"), Some(2));
+    }
+
+    #[test]
+    fn refuses_positions_that_do_not_name_a_disc() {
+        // A single-disc release: nothing to say.
+        assert_eq!(disc_from_position("5"), None);
+        assert_eq!(disc_from_position(""), None);
+        // A vinyl side is not a disc. Mapping one to the other is a separate,
+        // opt-in decision made at import time (#105), not something to infer.
+        assert_eq!(disc_from_position("A1"), None);
+        assert_eq!(disc_from_position("A-1"), None);
+        // A letter prefix that isn't a medium name, and a non-numeric head.
+        assert_eq!(disc_from_position("X1-3"), None);
+        assert_eq!(disc_from_position("side-3"), None);
+        assert_eq!(disc_from_position("-3"), None);
+        // Disc zero is not a disc.
+        assert_eq!(disc_from_position("0-3"), None);
+    }
 }

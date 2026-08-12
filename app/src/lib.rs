@@ -360,6 +360,9 @@ pub struct CandidateDto {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReleaseTrackDto {
     pub position: String,
+    /// Which disc of the set the track sits on, when the release says (#146).
+    #[serde(default)]
+    pub disc: Option<u32>,
     pub artist: Option<String>,
     pub title: String,
     /// Length the release lists for this track, in seconds, when it states one.
@@ -391,6 +394,9 @@ pub struct ReleaseDto {
     /// Physical/source format descriptor, e.g. `Vinyl, 12", 33 ⅓ RPM` (#106).
     #[serde(default)]
     pub format: Option<String>,
+    /// How many discs the set holds, when the release states it (#146).
+    #[serde(default)]
+    pub disc_total: Option<u32>,
     /// Public webpage for the release, if any.
     #[serde(default)]
     pub url: Option<String>,
@@ -422,6 +428,10 @@ pub struct ReleaseLabelDto {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ImportTrackDto {
     pub position: String,
+    /// The disc this track sits on, as the release states it (#146). Used when
+    /// the position carries no vinyl side to map instead.
+    #[serde(default)]
+    pub disc: Option<u32>,
     pub artist: String,
     pub title: String,
     /// Length from the release listing, used to corroborate a match (#64).
@@ -481,6 +491,10 @@ pub struct ImportSelectionDto {
     /// the media tag (`TMED`/`MEDIA`). Album-level; drives the vinyl side view.
     #[serde(default)]
     pub media_type: Option<String>,
+    /// Number of discs in the set → written to the DiscTotal tag, so a file's
+    /// disc reads as N/total (#146). Album-level, like `track_total`.
+    #[serde(default)]
+    pub disc_total: Option<String>,
 }
 
 /// One rule in a transformation chain, as the UI describes it.
@@ -2220,13 +2234,37 @@ impl App {
                 if current_number.as_deref() != Some(position_number.as_str()) {
                     desired.push((TagField::TrackNumber, Some(position_number)));
                 }
-                if let Some(disc) = side_disc {
+                // Disc number, in precedence order (#146):
+                //
+                // 1. the vinyl side, when that opt-in is on — an explicit
+                //    instruction, so it wins and overwrites;
+                // 2. the disc the release states (a Discogs `1-05` position, a
+                //    MusicBrainz medium) — the provider's own answer;
+                // 3. the file's folder, but only as a last resort and only when
+                //    the file has no disc yet, since a folder name is a guess
+                //    about the file rather than a statement about the release.
+                //
+                // Nothing is written when none of the three applies: a
+                // single-disc release has no disc to state, and inventing "1"
+                // would touch every file for no reason.
+                let disc = side_disc.or(track.disc).or_else(|| {
+                    disc_from_folder_name(path, current.tags.get(&TagField::DiscNumber))
+                });
+                if let Some(disc) = disc {
                     let disc = disc.to_string();
                     if current.tags.get(&TagField::DiscNumber).map(String::as_str)
                         != Some(disc.as_str())
                     {
                         desired.push((TagField::DiscNumber, Some(disc)));
                     }
+                }
+                // "of N" — but only where there is a disc for it to complete
+                // (#146). Unlike a track number, a disc number is often absent
+                // altogether, and a DiscTotal on its own is half a pair: every
+                // ordinary single-CD album would gain a `disctotal` of 1 saying
+                // nothing. Album-level value, applied per file for that reason.
+                if disc.is_some() || current.tags.contains_key(&TagField::DiscNumber) {
+                    desired.push((TagField::DiscTotal, non_empty(selection.disc_total.clone())));
                 }
             }
 
@@ -2347,6 +2385,45 @@ fn track_number_from_position(position: &str) -> Option<String> {
         .collect();
     // Normalize leading zeros ("05" -> "5") via a round-trip through u32.
     digits.parse::<u32>().ok().map(|n| n.to_string())
+}
+
+/// Last-resort disc number from the file's own folder (#146): `CD2`, `CD 2`,
+/// `Disc 3`, `disk_1`.
+///
+/// Only reached when neither the vinyl-side opt-in nor the release itself gave
+/// an answer, and only when the file carries no disc yet — `existing` short-
+/// circuits it, because a folder name is a guess about one file, not a statement
+/// about the release, and it must never overwrite something real.
+///
+/// A **keyword is required**. A folder merely *ending* in a number is not a
+/// disc: the compilation series that prompted this issue is filed as
+/// `…_(as_5606)_(1996) 2`, where the 2 is the volume, and reading that as disc 2
+/// would tag every track of a single-CD release wrongly. Guessing is worse than
+/// leaving the tag alone.
+fn disc_from_folder_name(path: &Path, existing: Option<&String>) -> Option<u32> {
+    if existing.is_some_and(|value| !value.trim().is_empty()) {
+        return None;
+    }
+    let folder = path.parent()?.file_name()?.to_str()?.to_ascii_lowercase();
+    // The keyword has to start a word. Without that check `cd`/`disc` match
+    // inside ordinary words — `Discography`, or a folder named `nodisc-2` — and
+    // whatever digits happen to follow become a disc number.
+    let start = ["cd", "disc", "disk"]
+        .iter()
+        .flat_map(|word| {
+            folder
+                .match_indices(word)
+                .map(move |(at, _)| (at, at + word.len()))
+        })
+        .filter(|(at, _)| *at == 0 || !folder.as_bytes()[at - 1].is_ascii_alphanumeric())
+        .map(|(_, end)| end)
+        .max()?;
+    let digits: String = folder[start..]
+        .trim_start_matches([' ', '_', '-', '.'])
+        .chars()
+        .take_while(char::is_ascii_digit)
+        .collect();
+    digits.parse::<u32>().ok().filter(|disc| *disc > 0)
 }
 
 /// Map a vinyl-side track *position* to a disc number (#105): the side letter
@@ -2820,6 +2897,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                 .iter()
                 .map(|track| ReleaseTrackDto {
                     position: track.position.clone(),
+                    disc: track.disc,
                     artist: track.artist.clone(),
                     title: track.title.clone(),
                     duration_secs: track.duration_secs,
@@ -2836,6 +2914,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                 .collect(),
             country: release.country.clone(),
             format: release.format.clone(),
+            disc_total: release.disc_total,
             url: release.url.clone(),
             cover_image_url: release.cover_image_url.clone(),
             images: release
@@ -3633,6 +3712,7 @@ mod tests {
             genre: Some("House".into()),
             tracks: vec![
                 ImportTrackDto {
+                    disc: None,
                     position: "1".into(),
                     artist: String::new(),
                     title: "First".into(),
@@ -3640,6 +3720,7 @@ mod tests {
                     isrc: None,
                 },
                 ImportTrackDto {
+                    disc: None,
                     position: "5".into(),
                     artist: "Guest".into(),
                     title: "Fifth".into(),
@@ -3651,6 +3732,7 @@ mod tests {
             source: Some("discogs".into()),
             label: Some("Antler-Subway".into()),
             catalog_number: Some("AS 5606".into()),
+            disc_total: None,
             country: Some("Belgium".into()),
             track_total: Some("15".into()),
             url: Some("https://www.discogs.com/release/249504".into()),
@@ -3759,6 +3841,7 @@ mod tests {
         let selection = ImportSelectionDto {
             album: Some("Album".into()),
             tracks: vec![ImportTrackDto {
+                disc: None,
                 position: "5".into(),
                 artist: "Artist".into(),
                 title: "Title".into(),
@@ -3821,6 +3904,7 @@ mod tests {
         }
         let app = open_app(&dir);
         let track = |position: &str| ImportTrackDto {
+            disc: None,
             position: position.into(),
             artist: "X".into(),
             title: "T".into(),
@@ -3863,6 +3947,182 @@ mod tests {
         let off = app.preview_import(&[a1, a2, b], &selection, false).unwrap();
         assert_eq!(td(&off.changes[2]).1, Some("<none>".into())); // no disc change
         assert_eq!(td(&off.changes[2]).0, Some("3".into())); // index-based fallback
+    }
+
+    /// The disc the release itself states (#146): a Discogs `1-05` position or a
+    /// MusicBrainz medium, both of which arrive here as `ImportTrackDto::disc`.
+    /// Before this, only a vinyl side could ever set a disc, so a 2xCD imported
+    /// with no disc numbers at all.
+    #[test]
+    fn import_writes_the_disc_the_release_states() {
+        let dir = TempDir::new("import-disc");
+        let one = dir.tagged_flac("f1.flac", "Old", "Old");
+        let two = dir.tagged_flac("f2.flac", "Old", "Old");
+        let app = open_app(&dir);
+        let track = |disc: u32, position: &str| ImportTrackDto {
+            disc: Some(disc),
+            position: position.into(),
+            artist: "X".into(),
+            title: "T".into(),
+            duration_secs: None,
+            isrc: None,
+        };
+        let selection = ImportSelectionDto {
+            album: Some("Two Discs".into()),
+            tracks: vec![track(1, "1-05"), track(2, "2-01")],
+            disc_total: Some("2".into()),
+            ..ImportSelectionDto::default()
+        };
+
+        let plan = app.preview_import(&[one, two], &selection, false).unwrap();
+        let field = |change: &FileChangeDto, name: &str| {
+            change
+                .tag_changes
+                .iter()
+                .find(|fc| fc.field == name)
+                .and_then(|fc| fc.new.clone())
+        };
+        assert_eq!(field(&plan.changes[0], "disc").as_deref(), Some("1"));
+        assert_eq!(field(&plan.changes[1], "disc").as_deref(), Some("2"));
+        // The track number still comes out of the position's tail, unchanged by
+        // the disc prefix.
+        assert_eq!(field(&plan.changes[0], "track").as_deref(), Some("5"));
+        assert_eq!(field(&plan.changes[1], "track").as_deref(), Some("1"));
+        // "of N" for both files (album-level, like tracktotal).
+        assert_eq!(field(&plan.changes[0], "disctotal").as_deref(), Some("2"));
+        assert_eq!(field(&plan.changes[1], "disctotal").as_deref(), Some("2"));
+    }
+
+    /// A single-disc release says nothing about a disc, and nothing is what gets
+    /// written. Defaulting to "1" would touch every file of every ordinary album
+    /// for no reason.
+    #[test]
+    fn import_writes_no_disc_when_the_release_states_none() {
+        let dir = TempDir::new("import-nodisc");
+        let path = dir.tagged_flac("f1.flac", "Old", "Old");
+        let app = open_app(&dir);
+        let selection = ImportSelectionDto {
+            album: Some("One Disc".into()),
+            tracks: vec![ImportTrackDto {
+                disc: None,
+                position: "3".into(),
+                artist: "X".into(),
+                title: "T".into(),
+                duration_secs: None,
+                isrc: None,
+            }],
+            ..ImportSelectionDto::default()
+        };
+
+        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        assert!(plan.changes[0]
+            .tag_changes
+            .iter()
+            .all(|fc| fc.field != "disc"));
+        // And no lone "of N" either: a disc total with no disc number to
+        // complete says nothing, and would land on every ordinary album.
+        assert!(plan.changes[0]
+            .tag_changes
+            .iter()
+            .all(|fc| fc.field != "disctotal"));
+    }
+
+    /// Last resort only: the folder names the disc, the release doesn't, and the
+    /// file has none yet.
+    #[test]
+    fn import_falls_back_to_the_folder_name_for_a_disc() {
+        let dir = TempDir::new("import-folder-disc");
+        let inside = dir.tagged_flac_at("Album/CD2/f1.flac", "Old", "Old");
+        let plain = dir.tagged_flac_at("Album/Bonus/f2.flac", "Old", "Old");
+        // A folder that merely ends in a number is NOT a disc: the series that
+        // raised #146 is filed as "... (1996) 2", where the 2 is the volume.
+        let volume = dir.tagged_flac_at("Compilation (1996) 2/f3.flac", "Old", "Old");
+        let app = open_app(&dir);
+        let track = ImportTrackDto {
+            disc: None,
+            position: "1".into(),
+            artist: "X".into(),
+            title: "T".into(),
+            duration_secs: None,
+            isrc: None,
+        };
+        let selection = ImportSelectionDto {
+            album: Some("Album".into()),
+            tracks: vec![track.clone(), track.clone(), track],
+            ..ImportSelectionDto::default()
+        };
+
+        let plan = app
+            .preview_import(&[inside, plain, volume], &selection, false)
+            .unwrap();
+        let disc = |change: &FileChangeDto| {
+            change
+                .tag_changes
+                .iter()
+                .find(|fc| fc.field == "disc")
+                .and_then(|fc| fc.new.clone())
+        };
+        assert_eq!(disc(&plan.changes[0]).as_deref(), Some("2"));
+        assert_eq!(disc(&plan.changes[1]), None);
+        assert_eq!(disc(&plan.changes[2]), None);
+    }
+
+    #[test]
+    fn the_folder_disc_keyword_has_to_start_a_word() {
+        let disc = |folder: &str| {
+            disc_from_folder_name(&PathBuf::from(format!("/lib/{folder}/track.flac")), None)
+        };
+        assert_eq!(disc("CD2"), Some(2));
+        assert_eq!(disc("CD 2"), Some(2));
+        assert_eq!(disc("Disc 3"), Some(3));
+        assert_eq!(disc("disk_1"), Some(1));
+        assert_eq!(disc("Album - CD2"), Some(2));
+        // Inside another word it is not a keyword. These bit for real: a temp
+        // directory named "...-import-nodisc-<pid>-..." read the pid as a disc.
+        assert_eq!(disc("nodisc-2"), None);
+        assert_eq!(disc("Discography 2"), None);
+        assert_eq!(disc("abcd 2"), None);
+        // A keyword with no number, and a number with no keyword.
+        assert_eq!(disc("CD"), None);
+        assert_eq!(disc("Compilation (1996) 2"), None);
+        // Never overrides a disc the file already carries.
+        assert_eq!(
+            disc_from_folder_name(
+                &PathBuf::from("/lib/CD2/track.flac"),
+                Some(&"1".to_string())
+            ),
+            None
+        );
+    }
+
+    /// A disc the file already carries is never overwritten by a folder guess --
+    /// only by something the release or the user actually stated.
+    #[test]
+    fn the_folder_fallback_never_overwrites_an_existing_disc() {
+        let dir = TempDir::new("import-folder-keep");
+        let path = dir.tagged_flac_at("Album/CD2/f1.flac", "Old", "Old");
+        let mut file = TagEngine::read(&path).unwrap();
+        file.tags.insert(TagField::DiscNumber, "1".into());
+        TagEngine::write(&file).unwrap();
+        let app = open_app(&dir);
+        let selection = ImportSelectionDto {
+            album: Some("Album".into()),
+            tracks: vec![ImportTrackDto {
+                disc: None,
+                position: "1".into(),
+                artist: "X".into(),
+                title: "T".into(),
+                duration_secs: None,
+                isrc: None,
+            }],
+            ..ImportSelectionDto::default()
+        };
+
+        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        assert!(plan.changes[0]
+            .tag_changes
+            .iter()
+            .all(|fc| fc.field != "disc"));
     }
 
     fn replace_rule(from: &str, to: &str) -> TransformRuleDto {
@@ -4402,6 +4662,7 @@ mod tests {
 
         let tracks = vec![
             ImportTrackDto {
+                disc: None,
                 position: "11".into(),
                 artist: "B.B.E.".into(),
                 // Punctuation/decoration differs from the local tag.
@@ -4410,6 +4671,7 @@ mod tests {
                 isrc: None,
             },
             ImportTrackDto {
+                disc: None,
                 position: "14".into(),
                 artist: "Plastic".into(),
                 title: "Sexy Groove".into(),
@@ -4438,6 +4700,7 @@ mod tests {
 
         let tracks = vec![
             ImportTrackDto {
+                disc: None,
                 position: "1".into(),
                 artist: "Nobody".into(),
                 title: "Unrelated Release Title".into(),
@@ -4445,6 +4708,7 @@ mod tests {
                 isrc: Some("gbaye1234567".into()), // same ISRC, different formatting
             },
             ImportTrackDto {
+                disc: None,
                 position: "2".into(),
                 artist: "Nobody".into(),
                 title: "Totally Different Local Title".into(),

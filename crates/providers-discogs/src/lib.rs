@@ -19,8 +19,8 @@
 
 use serde_json::Value;
 use tagrex_core::provider::{
-    FetchedImage, MetadataProvider, ProviderError, Release, ReleaseCandidate, ReleaseId,
-    ReleaseImage, ReleaseLabel, ReleaseTrack, SearchQuery,
+    disc_from_position, FetchedImage, MetadataProvider, ProviderError, Release, ReleaseCandidate,
+    ReleaseId, ReleaseImage, ReleaseLabel, ReleaseTrack, SearchQuery,
 };
 use tagrex_core::transform::{TransformChain, TransformStep};
 
@@ -362,24 +362,31 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
             entries
                 .iter()
                 .filter(|entry| is_track(entry))
-                .map(|entry| ReleaseTrack {
-                    position: entry
+                .map(|entry| {
+                    let position = entry
                         .get("position")
                         .and_then(Value::as_str)
                         .unwrap_or_default()
-                        .to_string(),
-                    artist: join_artists(entry.get("artists"), &cleaner),
-                    title: entry
-                        .get("title")
-                        .and_then(Value::as_str)
-                        .unwrap_or_default()
-                        .to_string(),
-                    duration_secs: entry
-                        .get("duration")
-                        .and_then(Value::as_str)
-                        .and_then(parse_duration),
-                    // Discogs tracklists don't carry ISRCs.
-                    isrc: None,
+                        .to_string();
+                    ReleaseTrack {
+                        // A multi-disc Discogs release carries the disc in the
+                        // position itself (`1-05`), which is the only place it says
+                        // so — the tracklist is flat (#146).
+                        disc: disc_from_position(&position),
+                        position,
+                        artist: join_artists(entry.get("artists"), &cleaner),
+                        title: entry
+                            .get("title")
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string(),
+                        duration_secs: entry
+                            .get("duration")
+                            .and_then(Value::as_str)
+                            .and_then(parse_duration),
+                        // Discogs tracklists don't carry ISRCs.
+                        isrc: None,
+                    }
                 })
                 .collect()
         })
@@ -400,6 +407,7 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
             .filter(|value| !value.trim().is_empty())
             .map(str::to_string),
         format: parse_format(root.get("formats")),
+        disc_total: parse_disc_total(root.get("formats")),
         // The public release page (Discogs `uri`), e.g.
         // https://www.discogs.com/release/316795-…
         url: root
@@ -428,6 +436,25 @@ fn parse_format(value: Option<&Value>) -> Option<String> {
         .chain(descriptions)
         .collect();
     (!parts.is_empty()).then(|| parts.join(", "))
+}
+
+/// How many discs a Discogs release holds (#146), from the `qty` of its
+/// `formats` entries: a `2×CD` is `[{ "name": "CD", "qty": "2" }]`, and a set
+/// listing several media (`CD` + `DVD`) sums them, because that is what the disc
+/// numbering runs over.
+///
+/// `qty` is a string in the API and is occasionally missing or unparseable; an
+/// entry like that contributes nothing rather than defaulting to one, so a
+/// malformed release doesn't produce a confidently wrong total. `None` when
+/// nothing usable was found.
+fn parse_disc_total(value: Option<&Value>) -> Option<u32> {
+    let total: u32 = value
+        .and_then(Value::as_array)?
+        .iter()
+        .filter_map(|entry| entry.get("qty").and_then(Value::as_str))
+        .filter_map(|qty| qty.trim().parse::<u32>().ok())
+        .sum();
+    (total > 0).then_some(total)
 }
 
 /// Label / catalogue-number pairs from a Discogs release `labels` array, in
@@ -773,6 +800,87 @@ mod tests {
         assert_eq!(second.label, None);
         assert_eq!(second.format, None);
         assert_eq!(second.catalog_number, None);
+    }
+
+    /// A multi-disc release states the disc twice over -- in every track's
+    /// position prefix and in the format quantity -- and until #146 both were
+    /// dropped, so a 2xCD imported as if it had no discs at all.
+    #[test]
+    fn reads_the_disc_and_the_disc_count_of_a_multi_disc_release() {
+        let body = r#"{
+            "id": 12345,
+            "title": "Two Discs",
+            "artists": [{"name": "Various"}],
+            "formats": [
+                {"name": "CD", "qty": "2", "descriptions": ["Compilation"]}
+            ],
+            "tracklist": [
+                {"type_": "heading", "position": "", "title": "CD1"},
+                {"type_": "track", "position": "1-1", "title": "First"},
+                {"type_": "track", "position": "1-02", "title": "Second"},
+                {"type_": "track", "position": "2-1", "title": "Third"}
+            ]
+        }"#;
+        let release = parse_release(body).unwrap();
+
+        assert_eq!(release.disc_total, Some(2));
+        let discs: Vec<Option<u32>> = release.tracks.iter().map(|t| t.disc).collect();
+        assert_eq!(discs, vec![Some(1), Some(1), Some(2)]);
+    }
+
+    /// The release that raised #146 turned out NOT to be multi-disc: one CD,
+    /// plain positions. Nothing should be invented for it -- a disc tag written
+    /// on a single-CD release is a wrong tag, not a helpful default.
+    #[test]
+    fn a_single_disc_release_states_one_disc_and_no_per_track_disc() {
+        let body = r#"{
+            "id": 316795,
+            "title": "La Bush",
+            "artists": [{"name": "Various"}],
+            "formats": [
+                {"name": "CD", "qty": "1", "descriptions": ["Compilation", "Mixed"]}
+            ],
+            "tracklist": [
+                {"type_": "track", "position": "1", "title": "Desert Rain"},
+                {"type_": "track", "position": "2", "title": "Radio"}
+            ]
+        }"#;
+        let release = parse_release(body).unwrap();
+
+        assert_eq!(release.disc_total, Some(1));
+        assert!(release.tracks.iter().all(|t| t.disc.is_none()));
+    }
+
+    /// A vinyl side is not a disc. Positions like "A"/"B" must stay out of the
+    /// disc field -- mapping a side to a disc is the separate, opt-in #105 path.
+    #[test]
+    fn vinyl_sides_do_not_become_disc_numbers() {
+        let body = r#"{
+            "id": 249504,
+            "title": "Single",
+            "artists": [{"name": "Someone"}],
+            "formats": [{"name": "Vinyl", "qty": "1", "descriptions": ["12\""]}],
+            "tracklist": [
+                {"type_": "track", "position": "A1", "title": "A side"},
+                {"type_": "track", "position": "B", "title": "B side"}
+            ]
+        }"#;
+        let release = parse_release(body).unwrap();
+        assert!(release.tracks.iter().all(|t| t.disc.is_none()));
+    }
+
+    /// A malformed or missing `qty` contributes nothing rather than defaulting
+    /// to one, so a broken release doesn't produce a confidently wrong total.
+    #[test]
+    fn an_unusable_format_quantity_yields_no_disc_total() {
+        let body = r#"{
+            "id": 1,
+            "title": "T",
+            "artists": [{"name": "A"}],
+            "formats": [{"name": "CD", "qty": "", "descriptions": []}],
+            "tracklist": []
+        }"#;
+        assert_eq!(parse_release(body).unwrap().disc_total, None);
     }
 
     #[test]
