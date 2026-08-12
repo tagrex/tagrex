@@ -128,11 +128,10 @@ fn preview_tags_from_name(
     state: State<AppState>,
     mask: String,
     paths: Vec<String>,
-    cleanup: Vec<ActionGroupDto>,
 ) -> Result<PlanDto, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
-        app.preview_tags_from_name(&mask, &paths, &cleanup)
+        app.preview_tags_from_name(&mask, &paths)
             .map_err(|e| e.to_string())
     })
 }
@@ -142,10 +141,9 @@ fn probe_tags_from_name(
     state: State<AppState>,
     mask: String,
     path: String,
-    cleanup: Vec<ActionGroupDto>,
 ) -> Result<NameProbeDto, String> {
     with_app(&state, |app| {
-        app.probe_tags_from_name(&mask, &PathBuf::from(path), &cleanup)
+        app.probe_tags_from_name(&mask, &PathBuf::from(path))
             .map_err(|e| e.to_string())
     })
 }

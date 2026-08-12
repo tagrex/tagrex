@@ -1290,19 +1290,6 @@ body:not(.show-checkbox) #tracks td.sel {
   letter-spacing: 0.02em;
 }
 
-/* How many groups are ticked into FROM NAME's cleanup (#144). The popover there
-   has no Run button — the ticks feed Preview tags — so the count on the button
-   is what says the cleanup is more than the chain on screen. Empty when none
-   are ticked, so it takes no room in the ordinary case. */
-.group-count:not(:empty) {
-  margin-left: 4px;
-  padding: 0 4px;
-  border-radius: 6px;
-  background: var(--row-sel);
-  color: var(--text);
-  font-family: var(--font-mono-bundled);
-  font-size: var(--text-2xs);
-}
 .col-menu-foot.preset-run {
   justify-content: flex-end;
   padding-bottom: 4px;
@@ -3439,15 +3426,6 @@ td[data-field="year"],
   padding: 10px 14px;
   border-top: 1px solid var(--border);
   background: var(--panel);
-}
-
-/* FROM NAME's cleanup chain (#144). The rule cards are GENERATOR's — one
-   component, one stylesheet — so only the wrapper is local: the scope row and
-   the add row sit tighter here than in a panel of their own. */
-.fn-clean {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 /* FROM NAME (#139): the live read-out under the pattern box. The subject line

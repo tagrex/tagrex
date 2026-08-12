@@ -1,11 +1,11 @@
 // The transformation rule chain and the action groups behind it (#144 lifted
 // this out of generator.js, where it was wired to that panel's element ids).
 //
-// A chain is an ordered list of cleanup steps over strings, and it is the same
-// idea wherever values come from: tags already on disk (GENERATOR) or values a
-// mask has just pulled out of a file name (TAGGER › FROM NAME). So the cards,
-// the Groups popover and the saved `action_groups` are one component with two
-// instances rather than two mechanisms in neighbouring panels.
+// A chain is an ordered list of cleanup steps over strings. It is a component
+// rather than part of GENERATOR because what it acts on is not GENERATOR's
+// business: the same chain runs over the files, and over a staged plan when
+// there is one (#142). FROM NAME briefly held a second instance (#144); #159
+// removed it, since a chain over the plan does that job one step later.
 //
 // What a panel supplies is its element ids and how the chain is run; what it
 // gets back is an object it renders and reads. Nothing here knows about a
@@ -27,9 +27,8 @@ import {
 // backend; both are global, so every chain instance offers the same shelf.
 
 // Every Groups popover built by createGroupsMenu, so a save or a delete
-// refreshes all of them instead of only the one that was open. Ticks are per
-// popover — what GENERATOR is about to run has nothing to do with what FROM
-// NAME cleans its extracted values with — so a delete has to reach all of them.
+// refreshes all of them rather than only the one that was open, and a delete
+// clears that group's tick wherever it is ticked.
 const groupMenus = [];
 
 function renderAllGroupsMenus() {
@@ -95,11 +94,6 @@ const SCOPE_LABELS = {
   fileext: "file extension",
 };
 
-// The scopes that only make sense against a file on disk. FROM NAME hides
-// groups carrying one: there is no file name or extension among the values a
-// mask extracts, so such a group would silently do nothing there.
-const FILE_SCOPES = ["filename", "fileext"];
-
 // One-line summary of a group for its tooltip.
 function groupSummary(group) {
   const on = (group.rules || []).filter((r) => r.enabled !== false).length;
@@ -110,18 +104,14 @@ function groupSummary(group) {
 
 // ---- the rule chain (#34) ----
 //
-// `ids` names the elements this instance owns; `onChange` is called whenever
-// the chain or its scope changes, which is how a panel with a live read-out
-// (FROM NAME) keeps up without polling.
-function createRuleChain({ ids, onChange = () => {} }) {
+// `ids` names the elements this instance owns.
+function createRuleChain({ ids }) {
   // The rules live for as long as the panel is open; naming and saving chains
   // is the group library's job.
   let rules = [];
   // Stable per-rule id, so pointer-based reorder (#88) can key on identity
   // rather than a shifting array index.
   let ruleIdCounter = 0;
-
-  const changed = () => onChange();
 
   function addRule() {
     const kind = el(ids.kind).value;
@@ -256,19 +246,13 @@ function createRuleChain({ ids, onChange = () => {} }) {
         from.placeholder = "find";
         from.value = rule.from;
         from.spellcheck = false;
-        from.addEventListener("input", () => {
-          rule.from = from.value;
-          changed();
-        });
+        from.addEventListener("input", () => (rule.from = from.value));
         const to = document.createElement("input");
         to.type = "text";
         to.placeholder = "replace with";
         to.value = rule.to;
         to.spellcheck = false;
-        to.addEventListener("input", () => {
-          rule.to = to.value;
-          changed();
-        });
+        to.addEventListener("input", () => (rule.to = to.value));
         fields.append(from, to);
 
         const flags = document.createElement("div");
@@ -284,10 +268,7 @@ function createRuleChain({ ids, onChange = () => {} }) {
           const box = document.createElement("input");
           box.type = "checkbox";
           box.checked = rule[key];
-          box.addEventListener("change", () => {
-            rule[key] = box.checked;
-            changed();
-          });
+          box.addEventListener("change", () => (rule[key] = box.checked));
           label.append(box, document.createTextNode(text));
           flags.appendChild(label);
         }
@@ -311,7 +292,6 @@ function createRuleChain({ ids, onChange = () => {} }) {
           btn.addEventListener("click", () => {
             rule.style = value;
             seg.querySelectorAll(".seg-btn").forEach((s) => s.classList.toggle("active", s === btn));
-            changed();
           });
           seg.appendChild(btn);
         }
@@ -337,7 +317,6 @@ function createRuleChain({ ids, onChange = () => {} }) {
           btn.addEventListener("click", () => {
             rule.style = value;
             seg.querySelectorAll(".seg-btn").forEach((s) => s.classList.toggle("active", s === btn));
-            changed();
           });
           seg.appendChild(btn);
         }
@@ -362,7 +341,6 @@ function createRuleChain({ ids, onChange = () => {} }) {
 
       body.append(card);
     });
-    changed();
   }
 
   const chain = {
@@ -390,8 +368,6 @@ function createRuleChain({ ids, onChange = () => {} }) {
   };
 
   el(ids.add).addEventListener("click", addRule);
-  // The scope is part of the chain, so a panel watching the chain has to hear it.
-  el(ids.scope).addEventListener("change", changed);
   return chain;
 }
 
@@ -402,35 +378,21 @@ function createRuleChain({ ids, onChange = () => {} }) {
 // cleanup is two or three of these together, and one at a time means previewing
 // and applying each in turn.
 //
-// What the ticks feed differs by panel. GENERATOR runs them as one plan, so it
-// passes `onRun` and gets a Run button; FROM NAME folds them into its own
-// Preview instead, so it watches `onTicksChanged` and there is no button.
-// Ticks are session-only and private to this popover: a tick says "these, now".
-function createGroupsMenu({
-  btn,
-  menu,
-  chain,
-  hideFileScopes = false,
-  tickTitle = "Include in the next run",
-  onRun,
-  onTicksChanged = () => {},
-}) {
+// `onRun` is what the ticked groups are run through. Ticks are session-only and
+// private to this popover: a tick says "these, now", not a preference.
+function createGroupsMenu({ btn, menu, chain, onRun }) {
   const tickedGroups = new Set();
-  const visible = (list) =>
-    hideFileScopes ? list.filter((g) => !FILE_SCOPES.includes(g.scope)) : list;
 
   // Every group the checklist can offer, saved ones first — the order they run in.
-  const allGroups = () => [...visible(actionGroups), ...visible(builtinGroups)];
+  const allGroups = () => [...actionGroups, ...builtinGroups];
   const tickedInOrder = () => allGroups().filter((g) => tickedGroups.has(g.name));
 
   function updateRunTicked() {
     const run = el(menu).querySelector(".preset-run > button");
-    if (run) {
-      const n = tickedInOrder().length;
-      run.disabled = n === 0;
-      run.textContent = n ? `Run ${n} ticked` : "Run ticked";
-    }
-    onTicksChanged(tickedInOrder());
+    if (!run) return;
+    const n = tickedInOrder().length;
+    run.disabled = n === 0;
+    run.textContent = n ? `Run ${n} ticked` : "Run ticked";
   }
 
   function toggleTicked(name, on) {
@@ -475,7 +437,7 @@ function createGroupsMenu({
     tick.type = "checkbox";
     tick.className = "group-tick";
     tick.checked = tickedGroups.has(group.name);
-    tick.title = tickTitle;
+    tick.title = "Include in the next run";
     tick.addEventListener("change", (e) => {
       e.stopPropagation();
       toggleTicked(group.name, tick.checked);
@@ -533,8 +495,8 @@ function createGroupsMenu({
   function render() {
     const box = el(menu);
     box.innerHTML = "";
-    const saved = visible(actionGroups);
-    const shipped = visible(builtinGroups);
+    const saved = actionGroups;
+    const shipped = builtinGroups;
     if (!saved.length) {
       const empty = document.createElement("div");
       empty.className = "col-menu-sep";
@@ -552,8 +514,6 @@ function createGroupsMenu({
     }
 
     // The checklist's one action, above the save row: what the ticks are for.
-    // Only where the ticks run on their own — FROM NAME folds them into its own
-    // Preview, so a second button there would be a second way to do it.
     if (onRun) {
       const runFoot = document.createElement("div");
       runFoot.className = "col-menu-foot preset-run";

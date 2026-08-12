@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Removed
+
+- **TAGGER › FROM NAME no longer has a cleanup chain of its own.** It had one
+  because the values a mask extracts exist nowhere yet, so nothing that read the
+  file could tidy them. A chain now runs over the staged plan instead, which
+  does that job one step later and does it for every flow that produces values,
+  so keeping a second copy in one panel was two mechanisms for one idea. The
+  panel is back to the pattern and its read-out; cleaning up is **Preview tags**,
+  then **Clean up** on the preview bar. The read-out now shows what the mask
+  actually reads, raw — there is no plan to clean while a pattern is being
+  typed, and a pattern is tuned against what the name says. A chain saved under
+  the old panel is dropped; the saved action groups it could load are untouched
+  and still there in GENERATOR. (#159)
+
 ### Added
 
 - **A rule chain can now run over the staged changes, not just over what is on

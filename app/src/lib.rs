@@ -1087,22 +1087,19 @@ impl App {
     /// ordinary [`PlanDto`], so this previews, applies and undoes through the
     /// same journaled path as every other change.
     ///
-    /// `cleanup` is the transformation chain run over each extracted value
-    /// (#144) — names carry their separators as junk, and `the_x_factor` has to
-    /// reach the Artist tag as `the x factor`. It is a list of action groups,
-    /// the same shape GENERATOR saves, so a group's `scope` says *which*
-    /// extracted value it acts on.
+    /// The values come out as the name spells them (#159). Cleaning them up is
+    /// a chain over the staged plan — [`preview_transform_over_plan`](Self::preview_transform_over_plan),
+    /// #142 — which is the one mechanism every producer of values shares, so
+    /// there is no second one here.
     pub fn preview_tags_from_name(
         &self,
         mask_pattern: &str,
         paths: &[PathBuf],
-        cleanup: &[ActionGroupDto],
     ) -> Result<PlanDto, AppError> {
         // The mask engine sees one separator; the user may type either (#71).
         let normalized = mask_pattern.replace('\\', "/");
         let mask = Mask::parse(&normalized)?;
         let depth = normalized.matches('/').count();
-        let cleanup = extracted_cleanup(cleanup)?;
 
         let mut changes = Vec::new();
         for path in paths {
@@ -1123,9 +1120,7 @@ impl App {
 
             let mut tag_changes = Vec::new();
             for (field, value) in &extracted {
-                // Clean up first, normalize after: a replacement can leave
-                // whitespace at the edges, and the trim is what takes it off.
-                let value = normalize_extracted(field, &apply_cleanup(&cleanup, field, value));
+                let value = normalize_extracted(field, value);
                 if value.is_empty() {
                     continue;
                 }
@@ -1170,24 +1165,15 @@ impl App {
         &self,
         mask_pattern: &str,
         path: &Path,
-        cleanup: &[ActionGroupDto],
     ) -> Result<NameProbeDto, AppError> {
         let normalized = mask_pattern.replace('\\', "/");
         let mask = Mask::parse(&normalized)?;
         let depth = normalized.matches('/').count();
-        let cleanup = extracted_cleanup(cleanup)?;
         let subject = name_subject(path, depth).unwrap_or_default();
         let fields = match mask.extract(&subject) {
             Ok(tags) => tags
                 .iter()
-                // The cleanup runs here too: what the probe shows has to be
-                // what would be written.
-                .map(|(field, value)| {
-                    (
-                        field.to_storage_key(),
-                        normalize_extracted(field, &apply_cleanup(&cleanup, field, value)),
-                    )
-                })
+                .map(|(field, value)| (field.to_storage_key(), normalize_extracted(field, value)))
                 .filter(|(_, value)| !value.is_empty())
                 .collect(),
             Err(MaskError::NoMatch) => {
@@ -2532,39 +2518,6 @@ fn name_subject(path: &Path, depth: usize) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// The cleanup pass FROM NAME runs over the values it extracts (#144), built
-/// from the panel's rule chain and the action groups it has loaded.
-///
-/// The same [`ActionGroupDto`] GENERATOR saves and the same [`build_chain`], so
-/// there is one transformation vocabulary and the two panels can't drift. What
-/// differs is only what a scope *means* here: the values being cleaned up don't
-/// exist on disk yet, so a group's scope names which extracted value it acts on
-/// rather than which field on the file. A group scoped to the file name or its
-/// extension therefore matches nothing — no storage key spells either — which is
-/// why the panel hides those instead of offering a step that would do nothing.
-///
-/// Building every chain up front means a malformed rule is an error before any
-/// file is touched, not halfway through the list.
-fn extracted_cleanup(groups: &[ActionGroupDto]) -> Result<Vec<(String, TransformChain)>, AppError> {
-    groups
-        .iter()
-        .map(|group| Ok((group.scope.clone(), build_chain(&group.rules)?)))
-        .collect()
-}
-
-/// Run the cleanup chains over one extracted value, in list order, keeping only
-/// the ones whose scope covers this field (`tags` covers every one).
-fn apply_cleanup(cleanup: &[(String, TransformChain)], field: &TagField, value: &str) -> String {
-    let key = field.to_storage_key();
-    let mut out = value.to_string();
-    for (scope, chain) in cleanup {
-        if scope == "tags" || *scope == key {
-            out = chain.apply(&out);
-        }
-    }
-    out
-}
-
 /// Clean up one value pulled out of a file name (#139) before it becomes a tag
 /// change. Whitespace around a capture is an artifact of the separators in the
 /// pattern, never part of the value. Beyond that only the integer fields are
@@ -3418,7 +3371,7 @@ mod tests {
         let app = open_app(&dir);
 
         let staged = app
-            .preview_tags_from_name("%artist%_-_%title%", std::slice::from_ref(&track), &[])
+            .preview_tags_from_name("%artist%_-_%title%", std::slice::from_ref(&track))
             .unwrap();
         let value = |plan: &PlanDto, field: &str| {
             plan.changes[0]
@@ -3747,11 +3700,7 @@ mod tests {
         let mut app = open_app(&dir);
 
         let plan = app
-            .preview_tags_from_name(
-                "%track% - %artist% - %title%",
-                std::slice::from_ref(&track),
-                &[],
-            )
+            .preview_tags_from_name("%track% - %artist% - %title%", std::slice::from_ref(&track))
             .unwrap();
         assert_eq!(plan.changes.len(), 1);
         let by_field = |field: &str| {
@@ -3813,7 +3762,7 @@ mod tests {
             "%albumartist%\\%album%\\%track% - %title%",
         ] {
             let plan = app
-                .preview_tags_from_name(pattern, std::slice::from_ref(&track), &[])
+                .preview_tags_from_name(pattern, std::slice::from_ref(&track))
                 .unwrap();
             assert_eq!(plan.changes.len(), 1, "pattern {pattern}");
             let value = |field: &str| {
@@ -3841,11 +3790,7 @@ mod tests {
         let app = open_app(&dir);
 
         let plan = app
-            .preview_tags_from_name(
-                "%artist% - %title%",
-                &[matching.clone(), other, already],
-                &[],
-            )
+            .preview_tags_from_name("%artist% - %title%", &[matching.clone(), other, already])
             .unwrap();
         assert_eq!(plan.changes.len(), 1);
         assert_eq!(plan.changes[0].path, matching.to_string_lossy());
@@ -3862,7 +3807,7 @@ mod tests {
 
         for pattern in ["%side%%track% - %title%", "%disc%%track% - %title%"] {
             assert!(app
-                .preview_tags_from_name(pattern, std::slice::from_ref(&track), &[])
+                .preview_tags_from_name(pattern, std::slice::from_ref(&track))
                 .is_err());
         }
     }
@@ -3876,7 +3821,7 @@ mod tests {
         let app = open_app(&dir);
 
         let plan = app
-            .preview_tags_from_name("%year% - %title%", std::slice::from_ref(&track), &[])
+            .preview_tags_from_name("%year% - %title%", std::slice::from_ref(&track))
             .unwrap();
         let year = plan.changes[0]
             .tag_changes
@@ -3885,97 +3830,6 @@ mod tests {
             .unwrap();
         assert_eq!(year.new.as_deref(), Some("Live"));
         assert!(year.invalid);
-    }
-
-    // #144: the cleanup chain runs over every extracted value, in both the plan
-    // and the probe — a name's separators are junk the tag shouldn't keep.
-    #[test]
-    fn cleanup_groups_clean_up_the_extracted_values() {
-        let dir = TempDir::new("fromname-cleanup");
-        let track = dir.tagged_flac("101_the_x_factor_-_desert_rain.flac", "Unknown", "Unknown");
-        let app = open_app(&dir);
-        let cleanup = [
-            ActionGroupDto {
-                name: "separators".into(),
-                scope: "tags".into(),
-                rules: vec![replace_rule("_", " ")],
-                note: String::new(),
-            },
-            // Applied in list order, over the result of the group before it.
-            ActionGroupDto {
-                name: "casing".into(),
-                scope: "tags".into(),
-                rules: vec![case_rule("title")],
-                note: String::new(),
-            },
-        ];
-        let pattern = "%disc:1%%track:2%_%artist%_-_%title%";
-
-        let plan = app
-            .preview_tags_from_name(pattern, std::slice::from_ref(&track), &cleanup)
-            .unwrap();
-        let value = |field: &str| {
-            plan.changes[0]
-                .tag_changes
-                .iter()
-                .find(|c| c.field == field)
-                .and_then(|c| c.new.clone())
-        };
-        assert_eq!(value("artist").as_deref(), Some("The X Factor"));
-        assert_eq!(value("title").as_deref(), Some("Desert Rain"));
-        assert_eq!(value("disc").as_deref(), Some("1"));
-        assert_eq!(value("track").as_deref(), Some("1"));
-
-        // The probe shows the cleaned values, since that's what would be written.
-        let probe = app.probe_tags_from_name(pattern, &track, &cleanup).unwrap();
-        assert!(probe.matched);
-        assert!(probe
-            .fields
-            .contains(&("artist".to_string(), "The X Factor".to_string())));
-    }
-
-    // #144: a group's scope says WHICH extracted value it acts on — the
-    // per-field cleanup the flat replacement table couldn't express. A scope
-    // that names no tag field (a group saved against the file name) matches
-    // nothing rather than being applied to everything.
-    #[test]
-    fn a_cleanup_group_scope_picks_which_extracted_value_it_touches() {
-        let dir = TempDir::new("fromname-scope");
-        let track = dir.tagged_flac("the_x_factor_-_desert_rain.flac", "Unknown", "Unknown");
-        let app = open_app(&dir);
-        let cleanup = [
-            ActionGroupDto {
-                name: "separators".into(),
-                scope: "tags".into(),
-                rules: vec![replace_rule("_", " ")],
-                note: String::new(),
-            },
-            ActionGroupDto {
-                name: "artist only".into(),
-                scope: "artist".into(),
-                rules: vec![case_rule("upper")],
-                note: String::new(),
-            },
-            ActionGroupDto {
-                name: "file name".into(),
-                scope: "filename".into(),
-                rules: vec![case_rule("upper")],
-                note: String::new(),
-            },
-        ];
-
-        let plan = app
-            .preview_tags_from_name("%artist%_-_%title%", std::slice::from_ref(&track), &cleanup)
-            .unwrap();
-        let value = |field: &str| {
-            plan.changes[0]
-                .tag_changes
-                .iter()
-                .find(|c| c.field == field)
-                .and_then(|c| c.new.clone())
-        };
-        assert_eq!(value("artist").as_deref(), Some("THE X FACTOR"));
-        assert_eq!(value("title").as_deref(), Some("desert rain"));
     }
 
     // The live probe reports what the pattern sees, current tags irrelevant —
@@ -3987,7 +3841,7 @@ mod tests {
         let app = open_app(&dir);
 
         let hit = app
-            .probe_tags_from_name("%artist% - %title%", &track, &[])
+            .probe_tags_from_name("%artist% - %title%", &track)
             .unwrap();
         assert!(hit.matched);
         assert_eq!(hit.subject, "Autechre - Gantz Graf");
@@ -4001,7 +3855,7 @@ mod tests {
         );
 
         let miss = app
-            .probe_tags_from_name("%track%. %title%", &track, &[])
+            .probe_tags_from_name("%track%. %title%", &track)
             .unwrap();
         assert!(!miss.matched);
         assert!(miss.fields.is_empty());
@@ -4010,13 +3864,13 @@ mod tests {
 
         // A folder pattern shows how much of the path is in play.
         let deep = app
-            .probe_tags_from_name("%album%/%artist% - %title%", &track, &[])
+            .probe_tags_from_name("%album%/%artist% - %title%", &track)
             .unwrap();
         assert!(deep.subject.ends_with("/Autechre - Gantz Graf"));
 
         // A broken pattern is still an error.
         assert!(app
-            .probe_tags_from_name("%artist% - [%title%", &track, &[])
+            .probe_tags_from_name("%artist% - [%title%", &track)
             .is_err());
     }
 

@@ -124,7 +124,7 @@ function mockNameSubject(path, mask) {
 // The real bidirectional grammar is mask.rs, and this is not a second
 // implementation of it — anything subtle must be checked in the native app.
 const MOCK_INTEGER_FIELDS = ["track", "tracktotal", "disc", "disctotal"];
-function mockExtractFromName(mask, subject, cleanup) {
+function mockExtractFromName(mask, subject) {
   const fields = [];
   let pattern = "^";
   for (const part of mask.replace(/\\/g, "/").split(/(%[a-z]+(?::\d+)?%)/i)) {
@@ -152,13 +152,9 @@ function mockExtractFromName(mask, subject, cleanup) {
   // "05" as "5"; normalize here too or the mock shows a value the app wouldn't.
   const numeric = ["track", "tracktotal", "disc", "disctotal"];
   return fields.map((field, i) => {
-    // Cleanup first, then trim/normalize — the order the backend uses. A group
-    // acts on the value its scope names, "tags" on every one (#144).
-    const cleaned = (cleanup || []).reduce(
-      (acc, g) => (g.scope === "tags" || g.scope === field ? mockApplyRules(acc, g.rules) : acc),
-      match[i + 1],
-    );
-    const value = cleaned.trim();
+    // Raw, trimmed and normalized — cleaning up is a chain over the staged plan
+    // now (#159), not something extraction does.
+    const value = match[i + 1].trim();
     return [field, numeric.includes(field) && /^\d+$/.test(value) ? String(+value) : value];
   });
 }
@@ -321,7 +317,7 @@ function mockInvoke(cmd, args) {
     }
     case "probe_tags_from_name": {
       const subject = mockNameSubject(args.path, args.mask);
-      const fields = mockExtractFromName(args.mask, subject, args.cleanup);
+      const fields = mockExtractFromName(args.mask, subject);
       return Promise.resolve({ subject, fields: fields || [], matched: !!fields });
     }
     case "preview_tags_from_name": {
@@ -329,7 +325,7 @@ function mockInvoke(cmd, args) {
         .map((p) => {
           const t = findTrack(p);
           if (!t) return null;
-          const fields = mockExtractFromName(args.mask, mockNameSubject(p, args.mask), args.cleanup);
+          const fields = mockExtractFromName(args.mask, mockNameSubject(p, args.mask));
           if (!fields) return null;
           const tag_changes = fields
             .filter(([field, value]) => value && (t.tags[field] || "") !== value)
