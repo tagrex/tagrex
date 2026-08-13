@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-13
+
 ### Added
 
 - **A file can now carry several images, each saying what it depicts.** The
