@@ -3,8 +3,9 @@
 //! "Plugin" initially means a trait boundary in a separate crate, not dynamic
 //! loading (architecture.md). Providers compile into the binary but live in
 //! isolated crates: a dead upstream API kills one crate, the core is
-//! untouched. Lesson learned from Beatport closing its public API and
-//! TagScanner losing the feature entirely.
+//! untouched. The lesson comes from music stores that have closed their public
+//! APIs: a tagger with the integration wired straight into its core loses the
+//! feature outright, while here only the one crate dies.
 //!
 //! Concurrency decision: providers are called from worker threads; blocking
 //! HTTP inside implementations is acceptable. Revisit if the UI shell needs

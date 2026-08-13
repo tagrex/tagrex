@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Reworded the provider-boundary module comment so it makes its point about
+  crate isolation without naming a third-party application. (#163)
+
 ## [0.4.0] - 2026-08-13
 
 ### Added
