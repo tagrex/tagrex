@@ -384,8 +384,11 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
                             .get("duration")
                             .and_then(Value::as_str)
                             .and_then(parse_duration),
-                        // Discogs tracklists don't carry ISRCs.
+                        // Discogs tracklists don't carry ISRCs, and a database
+                        // of physical releases states neither tempo nor key.
                         isrc: None,
+                        bpm: None,
+                        key: None,
                     }
                 })
                 .collect()

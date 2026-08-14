@@ -3674,6 +3674,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tagrex-core",
+ "tagrex-providers-beatport",
  "tagrex-providers-discogs",
  "tagrex-providers-musicbrainz",
  "tauri",
@@ -3693,6 +3694,16 @@ dependencies = [
  "rusqlite",
  "thiserror 1.0.69",
  "walkdir",
+]
+
+[[package]]
+name = "tagrex-providers-beatport"
+version = "0.4.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tagrex-core",
+ "ureq",
 ]
 
 [[package]]

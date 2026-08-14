@@ -86,6 +86,15 @@ pub struct ReleaseTrack {
     /// ISRC (per-recording code), when the provider exposes it — a definitive
     /// match key (#54). MusicBrainz supplies these; Discogs does not.
     pub isrc: Option<String>,
+    /// Tempo in BPM, when the provider states one (#162). A store that sells to
+    /// DJs measures it; a general-purpose database does not, so this is `None`
+    /// for most sources.
+    pub bpm: Option<u16>,
+    /// Musical key in the compact spelling the tag wants (`Am`, `F#`) — the
+    /// provider normalizes whatever notation it publishes through
+    /// [`crate::transform::KeyNotation`], so the value here is ready to write
+    /// and can be converted to Camelot or Open Key like any other key value.
+    pub key: Option<String>,
 }
 
 /// A fully fetched release, ready to be mapped onto local files.

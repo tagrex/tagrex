@@ -755,7 +755,14 @@ function mockInvoke(cmd, args) {
         { keys: ["genre"], label: "Genre" },
         { keys: ["url"], label: "Release webpage" },
         { keys: ["custom:RELEASECOUNTRY"], label: "Release country" },
-        { keys: ["custom:DISCOGS_RELEASE_ID", "custom:MUSICBRAINZ_ALBUMID"], label: "Release id" },
+        {
+          keys: [
+            "custom:DISCOGS_RELEASE_ID",
+            "custom:MUSICBRAINZ_ALBUMID",
+            "custom:BEATPORT_RELEASE_ID",
+          ],
+          label: "Release id",
+        },
       ]);
     case "saved_discogs_token":
       return Promise.resolve(mockInvoke.state?.token || "");
@@ -763,6 +770,25 @@ function mockInvoke(cmd, args) {
       mockInvoke.state = mockInvoke.state || {};
       mockInvoke.state.token = args.token;
       return Promise.resolve();
+    // Beatport sign-in (#162). The real flow opens an OAuth window, which a
+    // plain browser page can't do, so the mock just flips a flag — enough to
+    // exercise the settings row and the "signed out" search gate.
+    case "beatport_status":
+      return Promise.resolve({
+        authorized: !!mockInvoke.state?.beatport,
+        username: mockInvoke.state?.beatport || "",
+      });
+    case "beatport_login":
+      mockInvoke.state = mockInvoke.state || {};
+      mockInvoke.state.beatport = "mock-dj";
+      return Promise.resolve("mock-dj");
+    case "beatport_logout":
+      if (mockInvoke.state) mockInvoke.state.beatport = "";
+      return Promise.resolve();
+    case "beatport_token":
+      return mockInvoke.state?.beatport
+        ? Promise.resolve("mock-beatport-access-token")
+        : Promise.reject("Not signed in to Beatport");
     case "load_settings":
       return Promise.resolve(
         mockInvoke.state?.settings || {

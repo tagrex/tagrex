@@ -89,17 +89,38 @@ function stopLoading() {
   toast("Stopped loading results");
 }
 
+// The credential the given source needs (#162). Discogs takes the personal
+// token from settings; Beatport takes an OAuth access token the backend keeps
+// fresh behind `beatport_token`; MusicBrainz takes none. An empty string means
+// "no usable credential" — the caller decides whether that is worth a message,
+// and a request sent without one fails with the provider's own auth error,
+// which is what the user needs to read anyway.
+async function providerToken(source) {
+  if (source !== "beatport") return el("discogs-token").value.trim();
+  try {
+    return await invoke("beatport_token", {});
+  } catch (e) {
+    return "";
+  }
+}
+
 async function runSearch(reset) {
   const source = el("online-source").value;
-  const token = el("discogs-token").value.trim();
+  const token = await providerToken(source);
   const query = el("discogs-query").value.trim();
   // Only Discogs needs a token; MusicBrainz is unauthenticated (#33).
   if (source === "discogs" && !token) {
     toast("Enter your Discogs token", true);
     return;
   }
-  // Remember the token locally so it's prefilled next time.
-  if (token) invoke("save_discogs_token", { token }).catch(() => {});
+  if (source === "beatport" && !token) {
+    toast("Sign in to Beatport in Settings", true);
+    return;
+  }
+  // Remember the token locally so it's prefilled next time — the Discogs one
+  // only: the Beatport token is an OAuth token the backend already stores, and
+  // writing it into the Discogs token file would break the next Discogs search.
+  if (source === "discogs" && token) invoke("save_discogs_token", { token }).catch(() => {});
 
   if (reset) {
     releaseSource = source;
@@ -435,7 +456,7 @@ async function applyImage(c) {
   const cached = imageCache.get(c.id) || {};
   let dataUri = cached[kind];
   if (!dataUri) {
-    const token = el("discogs-token").value.trim();
+    const token = await providerToken(releaseSource);
     try {
       const img = await invoke("provider_fetch_image", { source: releaseSource, token, url });
       dataUri = `data:${img.mime};base64,${img.data_base64}`;
@@ -461,7 +482,7 @@ async function applyImage(c) {
 const PREFETCH_CONCURRENCY = 4;
 
 async function prefetchReleaseCounts(items, gen) {
-  const token = el("discogs-token").value.trim();
+  const token = await providerToken(releaseSource);
   const queue = (items || releaseCandidates).filter((c) => !releaseCache.has(c.id));
   if (queue.length === 0) return;
   // The sweep is interruptible background work — show Stop while it runs (#108).
@@ -517,7 +538,7 @@ async function toggleCard(card) {
       <div class="skeleton-line w-60"></div>
       <div class="skeleton-line w-40"></div>
     </div>`;
-  const token = el("discogs-token").value.trim();
+  const token = await providerToken(releaseSource);
   try {
     let release = releaseCache.get(id);
     if (!release) {
@@ -644,6 +665,9 @@ function enabledTracksOf(card) {
       title: t.title,
       duration_secs: t.duration_secs ?? null,
       isrc: t.isrc ?? null,
+      // Tempo and key (#162) — stated only by a source that measures them.
+      bpm: t.bpm ?? null,
+      key: t.key ?? null,
     };
   });
 }
@@ -651,7 +675,7 @@ function enabledTracksOf(card) {
 // Fetch the full-size cover once (for embedding) and upgrade the card thumbnail.
 async function loadFullCover(id, url, card) {
   if (!url || coverCache.has(id)) return;
-  const token = el("discogs-token").value.trim();
+  const token = await providerToken(releaseSource);
   try {
     const cover = await invoke("provider_fetch_image", { source: releaseSource, token, url });
     coverCache.set(id, cover);
@@ -769,7 +793,7 @@ async function saveReleaseImages(card, all) {
     return;
   }
   const urls = all ? images.map((i) => i.url) : [images[0].url];
-  const token = el("discogs-token").value.trim();
+  const token = await providerToken(releaseSource);
   const args = { source: releaseSource, token, path: paths[0], urls, overwrite: false };
   try {
     let res = await invoke("save_release_images", args);

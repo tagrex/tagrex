@@ -34,6 +34,7 @@ use tagrex_core::transform::{
     CaseStyle, ChangeCase, KeyNotation, KeyStyle, RemoveDiacritics, Replace, ReplaceOptions,
     TransformChain, Transliterate, Untransliterate,
 };
+use tagrex_providers_beatport::BeatportProvider;
 use tagrex_providers_discogs::DiscogsProvider;
 use tagrex_providers_musicbrainz::MusicBrainzProvider;
 
@@ -407,6 +408,13 @@ pub struct ReleaseTrackDto {
     /// Per-recording ISRC, when the provider exposes it (#54).
     #[serde(default)]
     pub isrc: Option<String>,
+    /// Tempo in BPM, when the provider states one (#162).
+    #[serde(default)]
+    pub bpm: Option<u16>,
+    /// Musical key in compact spelling (`Am`), when the provider states one
+    /// (#162).
+    #[serde(default)]
+    pub key: Option<String>,
 }
 
 /// A fully fetched release.
@@ -478,6 +486,13 @@ pub struct ImportTrackDto {
     /// written to the file on import when it's missing one.
     #[serde(default)]
     pub isrc: Option<String>,
+    /// Tempo in BPM, when the source states one (#162). Only a store that sells
+    /// to DJs does, so this is empty for most imports.
+    #[serde(default)]
+    pub bpm: Option<u16>,
+    /// Musical key, already in the compact spelling the tag wants (#162).
+    #[serde(default)]
+    pub key: Option<String>,
 }
 
 /// One file's auto-align result (#53/#54): the release-track index it lined up
@@ -704,6 +719,10 @@ pub struct App {
     /// so it gets its own timestamp and a hard 1s floor in
     /// [`throttle_musicbrainz`](App::throttle_musicbrainz).
     last_musicbrainz_request: Cell<Option<Instant>>,
+    /// When the last Beatport request went out (#162). Beatport documents no
+    /// rate limit at all, which is not a promise there isn't one, so it gets a
+    /// modest floor of its own in [`throttle_beatport`](App::throttle_beatport).
+    last_beatport_request: Cell<Option<Instant>>,
     /// Max cover dimension before embedding, 0 = off (#41), from settings.
     cover_max_px: Cell<u32>,
     /// JPEG quality for a resized cover (#41), from settings.
@@ -739,6 +758,7 @@ impl App {
             discogs_min_interval: Cell::new(None),
             last_discogs_request: Cell::new(None),
             last_musicbrainz_request: Cell::new(None),
+            last_beatport_request: Cell::new(None),
             cover_max_px: Cell::new(0),
             cover_quality: Cell::new(85),
             carry_sidecars: Cell::new(default_carry_sidecars()),
@@ -849,10 +869,22 @@ impl App {
         )?)
     }
 
+    /// Build a Beatport provider (#162). The "token" is the OAuth access token
+    /// the shell keeps fresh, so this looks like the Discogs case even though
+    /// the credential behind it is a different animal. Reuses the same network
+    /// proxy as the other two.
+    fn beatport_provider(&self, access_token: &str) -> Result<BeatportProvider, AppError> {
+        Ok(BeatportProvider::with_proxy(
+            access_token,
+            self.discogs_proxy.borrow().as_deref(),
+        )?)
+    }
+
     /// Throttle the next provider request for `source`.
     fn throttle(&self, source: &str) {
         match source {
             "musicbrainz" => self.throttle_musicbrainz(),
+            "beatport" => self.throttle_beatport(),
             _ => self.throttle_discogs(),
         }
     }
@@ -889,6 +921,26 @@ impl App {
             }
         }
         self.last_musicbrainz_request.set(Some(Instant::now()));
+    }
+
+    /// Space Beatport requests out (#162). Nothing is documented, so this is a
+    /// politeness floor rather than an enforced limit: half a second, or the
+    /// user's own rate-limit setting when that is stricter. The release picker
+    /// prefetches one request per candidate, which is exactly the burst worth
+    /// smoothing.
+    fn throttle_beatport(&self) {
+        let floor = Duration::from_millis(500);
+        let min = self
+            .discogs_min_interval
+            .get()
+            .map_or(floor, |user| user.max(floor));
+        if let Some(last) = self.last_beatport_request.get() {
+            let elapsed = last.elapsed();
+            if elapsed < min {
+                std::thread::sleep(min - elapsed);
+            }
+        }
+        self.last_beatport_request.set(Some(Instant::now()));
     }
 
     /// Scan the library and read each file's tags. A file whose tags can't be
@@ -2230,8 +2282,9 @@ impl App {
             .collect())
     }
 
-    /// Search a metadata provider (`source` = "discogs" | "musicbrainz") with
-    /// the given personal token (ignored by token-less providers).
+    /// Search a metadata provider (`source` = "discogs" | "musicbrainz" |
+    /// "beatport") with the given token: the personal token for Discogs, the
+    /// OAuth access token for Beatport, ignored by token-less MusicBrainz.
     ///
     /// Results are re-scored against the query text and re-sorted: the provider
     /// score is only "the API returned this one first", which is not evidence of
@@ -2246,6 +2299,7 @@ impl App {
         let search = query.to_search_query();
         let candidates = match source {
             "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
+            "beatport" => self.beatport_provider(token)?.search(&search)?,
             _ => self.discogs_provider(token)?.search(&search)?,
         };
         let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
@@ -2280,6 +2334,7 @@ impl App {
         let rid = ReleaseId(id.to_string());
         let release = match source {
             "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
+            "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
             _ => self.discogs_provider(token)?.fetch_release(&rid)?,
         };
         Ok(ReleaseDto::from(&release))
@@ -2300,6 +2355,7 @@ impl App {
         self.throttle(source);
         let image = match source {
             "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
+            "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
             _ => self.discogs_provider(token)?.fetch_image(url)?,
         };
         Ok(CoverArtDto {
@@ -2336,6 +2392,7 @@ impl App {
             self.throttle(source);
             let image = match source {
                 "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
+                "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
                 _ => self.discogs_provider(token)?.fetch_image(url)?,
             };
             let ext = extension_for_mime(&image.mime);
@@ -2564,6 +2621,11 @@ impl App {
                 // Write the provider's ISRC when the file is missing one (#54);
                 // preview_import only emits a change when it actually differs.
                 desired.push((TagField::Isrc, non_empty(track.isrc.clone())));
+                // Tempo and key (#162) — the fields a general-purpose database
+                // doesn't carry and the reason a DJ reaches for a store as a
+                // source. Both are per track, both are silent when unstated.
+                desired.push((TagField::Bpm, track.bpm.map(|bpm| bpm.to_string())));
+                desired.push((TagField::InitialKey, non_empty(track.key.clone())));
 
                 // Vinyl side -> disc (#105): a vinyl-side position ("A1", the
                 // reverse "1A", or a bare side "B") can't keep its letter in the
@@ -2702,6 +2764,7 @@ fn cleaned_up_description(description: &str) -> String {
 fn release_id_field(source: Option<&str>) -> TagField {
     match source {
         Some("musicbrainz") => TagField::Custom("MUSICBRAINZ_ALBUMID".to_string()),
+        Some("beatport") => TagField::Custom("BEATPORT_RELEASE_ID".to_string()),
         _ => TagField::Custom("DISCOGS_RELEASE_ID".to_string()),
     }
 }
@@ -3006,6 +3069,8 @@ pub fn import_fields() -> Vec<ImportFieldDto> {
         one("publisher", "Label / publisher"),
         one("catalognumber", "Catalogue number"),
         one("isrc", "ISRC"),
+        one("bpm", "BPM"),
+        one("key", "Key"),
         one("url", "Release webpage"),
         one("media", "Media type"),
         one("custom:RELEASECOUNTRY", "Release country"),
@@ -3013,6 +3078,7 @@ pub fn import_fields() -> Vec<ImportFieldDto> {
             keys: vec![
                 "custom:DISCOGS_RELEASE_ID".to_string(),
                 "custom:MUSICBRAINZ_ALBUMID".to_string(),
+                "custom:BEATPORT_RELEASE_ID".to_string(),
             ],
             label: "Release id".to_string(),
         },
@@ -3370,6 +3436,8 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                     title: track.title.clone(),
                     duration_secs: track.duration_secs,
                     isrc: track.isrc.clone(),
+                    bpm: track.bpm,
+                    key: track.key.clone(),
                 })
                 .collect(),
             labels: release
@@ -4635,6 +4703,8 @@ mod tests {
                     title: "First".into(),
                     duration_secs: None,
                     isrc: None,
+                    bpm: None,
+                    key: None,
                 },
                 ImportTrackDto {
                     disc: None,
@@ -4643,6 +4713,8 @@ mod tests {
                     title: "Fifth".into(),
                     duration_secs: None,
                     isrc: None,
+                    bpm: None,
+                    key: None,
                 },
             ],
             release_id: Some("249504".into()),
@@ -4720,6 +4792,64 @@ mod tests {
     }
 
     #[test]
+    fn an_import_writes_the_tempo_and_key_only_when_the_source_states_them() {
+        let dir = TempDir::new("import-bpm-key");
+        let stated = dir.tagged_flac("a.flac", "Old", "Old Title");
+        let silent = dir.tagged_flac("b.flac", "Old", "Old Title");
+        let mut app = open_app(&dir);
+
+        let track = |bpm, key: Option<&str>| ImportTrackDto {
+            position: "1".into(),
+            disc: None,
+            artist: "Artist".into(),
+            title: "Title".into(),
+            duration_secs: None,
+            isrc: None,
+            bpm,
+            key: key.map(str::to_string),
+        };
+        let selection = ImportSelectionDto {
+            album: Some("Album".into()),
+            source: Some("beatport".into()),
+            tracks: vec![track(Some(128), Some("Am")), track(None, None)],
+            ..ImportSelectionDto::default()
+        };
+        let plan = app
+            .preview_import(&[stated.clone(), silent], &selection, false)
+            .unwrap();
+
+        let fields = |change: &FileChangeDto| -> std::collections::BTreeMap<_, _> {
+            change
+                .tag_changes
+                .iter()
+                .map(|fc| (fc.field.clone(), fc.new.clone().unwrap_or_default()))
+                .collect()
+        };
+        let first = fields(&plan.changes[0]);
+        assert_eq!(first.get("bpm").map(String::as_str), Some("128"));
+        assert_eq!(first.get("key").map(String::as_str), Some("Am"));
+        // A source that measures neither leaves both alone rather than clearing
+        // whatever the file already carries.
+        let second = fields(&plan.changes[1]);
+        assert!(!second.contains_key("bpm"));
+        assert!(!second.contains_key("key"));
+
+        // A planned change is not proof the file keeps it, so apply and read
+        // back. The key does survive here. The tempo does NOT, on this FLAC:
+        // it is written through ID3v2's TBPM item, which Vorbis Comments have no
+        // mapping for, so it is dropped on save (#165 — a pre-existing bug in
+        // the write path, not in the import). On an ID3v2 format it round-trips.
+        // When #165 lands, this assertion becomes `Some("128")`.
+        app.apply(&plan).unwrap();
+        let written = TagEngine::read(&stated).unwrap();
+        assert_eq!(
+            written.tags.get(&TagField::InitialKey).map(String::as_str),
+            Some("Am")
+        );
+        assert_eq!(written.tags.get(&TagField::Bpm), None);
+    }
+
+    #[test]
     fn preview_import_stores_musicbrainz_release_id_under_its_own_key() {
         let dir = TempDir::new("import-mbid");
         let path = dir.tagged_flac("a.flac", "Old", "Old Title");
@@ -4764,6 +4894,8 @@ mod tests {
                 title: "Title".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             }],
             ..ImportSelectionDto::default()
         };
@@ -4827,6 +4959,8 @@ mod tests {
             title: "T".into(),
             duration_secs: None,
             isrc: None,
+            bpm: None,
+            key: None,
         };
         let selection = ImportSelectionDto {
             album: Some("Album".into()),
@@ -4883,6 +5017,8 @@ mod tests {
             title: "T".into(),
             duration_secs: None,
             isrc: None,
+            bpm: None,
+            key: None,
         };
         let selection = ImportSelectionDto {
             album: Some("Two Discs".into()),
@@ -4927,6 +5063,8 @@ mod tests {
                 title: "T".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             }],
             ..ImportSelectionDto::default()
         };
@@ -4963,6 +5101,8 @@ mod tests {
                 title: "T".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             }],
             ..ImportSelectionDto::default()
         };
@@ -4997,6 +5137,8 @@ mod tests {
                 title: "T".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             }],
             ..ImportSelectionDto::default()
         };
@@ -5026,6 +5168,8 @@ mod tests {
                 title: "T".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             }],
             ..ImportSelectionDto::default()
         };
@@ -5055,6 +5199,8 @@ mod tests {
             title: "T".into(),
             duration_secs: None,
             isrc: None,
+            bpm: None,
+            key: None,
         };
         let selection = ImportSelectionDto {
             album: Some("Album".into()),
@@ -5220,6 +5366,8 @@ mod tests {
                 title: "Desert Rain".into(),
                 duration_secs: Some(278),
                 isrc: Some("GBAYE9800011".into()),
+                bpm: Some(128),
+                key: Some("Am".into()),
             }],
         }
     }
@@ -5252,11 +5400,16 @@ mod tests {
             "the import writes fields the setting cannot reach: {unlistable:?}"
         );
         // And nothing is listed that an import can never produce, except the
-        // MusicBrainz release-id key -- the same row covers both providers, and
+        // other providers' release-id keys -- one row covers all of them, and
         // this selection is a Discogs one.
         let stale: Vec<&String> = listed
             .difference(&written)
-            .filter(|key| key.as_str() != "custom:MUSICBRAINZ_ALBUMID")
+            .filter(|key| {
+                !matches!(
+                    key.as_str(),
+                    "custom:MUSICBRAINZ_ALBUMID" | "custom:BEATPORT_RELEASE_ID"
+                )
+            })
             .collect();
         assert!(stale.is_empty(), "the setting lists dead fields: {stale:?}");
     }
@@ -5328,6 +5481,8 @@ mod tests {
                 title: "T".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             }],
             ..ImportSelectionDto::default()
         };
@@ -5897,6 +6052,8 @@ mod tests {
                 title: "Seven Days & One Week (Original Mix)".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             },
             ImportTrackDto {
                 disc: None,
@@ -5905,6 +6062,8 @@ mod tests {
                 title: "Sexy Groove".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             },
         ];
 
@@ -5934,6 +6093,8 @@ mod tests {
                 title: "Unrelated Release Title".into(),
                 duration_secs: None,
                 isrc: Some("gbaye1234567".into()), // same ISRC, different formatting
+                bpm: None,
+                key: None,
             },
             ImportTrackDto {
                 disc: None,
@@ -5942,6 +6103,8 @@ mod tests {
                 title: "Totally Different Local Title".into(),
                 duration_secs: None,
                 isrc: None,
+                bpm: None,
+                key: None,
             },
         ];
 

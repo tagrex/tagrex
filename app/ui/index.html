@@ -276,6 +276,7 @@
                   <select id="online-source" title="Metadata source">
                     <option value="discogs">Discogs</option>
                     <option value="musicbrainz">MusicBrainz</option>
+                    <option value="beatport">Beatport</option>
                   </select>
                 </label>
                 <div class="spacer"></div>
@@ -718,6 +719,24 @@
               <input id="discogs-token" type="password" class="mono" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
             </div>
             <p class="settings-hint">Used for search, release lookups, and cover fetches.</p>
+          </div>
+
+          <div class="settings-group">
+            <h3>Beatport</h3>
+            <div class="settings-row">
+              <label>Account</label>
+              <div class="bp-auth">
+                <span id="beatport-account" class="settings-hint">Not signed in</span>
+                <button id="beatport-signin" class="btn">Sign in…</button>
+                <button id="beatport-signout" class="btn" hidden>Sign out</button>
+              </div>
+            </div>
+            <p class="settings-hint">
+              Signs in to your own Beatport account in a separate window; TagRex never sees your
+              password. Beatport issues API credentials to partners only, so this uses the public
+              client from its documentation page — unofficial access that can stop working without
+              notice.
+            </p>
           </div>
 
           <div class="settings-group">

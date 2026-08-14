@@ -200,7 +200,51 @@ function setAllImportFields(on) {
     .forEach((box) => (box.checked = on));
 }
 
+// ---- Beatport sign-in (#162) ----
+// The account is not part of SettingsDto: the backend owns the tokens and this
+// only reflects them, so signing in and out take effect at once rather than on
+// Save. Sign-in opens Beatport's own login window — nothing is typed here.
+async function refreshBeatportAccount() {
+  let status = { authorized: false, username: "" };
+  try {
+    status = await invoke("beatport_status", {});
+  } catch (e) {
+    /* treat an unreadable session as signed out */
+  }
+  el("beatport-account").textContent = status.authorized
+    ? `Signed in${status.username ? ` as ${status.username}` : ""}`
+    : "Not signed in";
+  el("beatport-signin").textContent = status.authorized ? "Sign in again…" : "Sign in…";
+  el("beatport-signout").hidden = !status.authorized;
+}
+
+async function beatportSignIn() {
+  const btn = el("beatport-signin");
+  btn.disabled = true;
+  el("beatport-account").textContent = "Waiting for the Beatport window…";
+  try {
+    const username = await invoke("beatport_login", {});
+    toast(username ? `Signed in to Beatport as ${username}` : "Signed in to Beatport");
+  } catch (e) {
+    toast(String(e), true);
+  } finally {
+    btn.disabled = false;
+    await refreshBeatportAccount();
+  }
+}
+
+async function beatportSignOut() {
+  try {
+    await invoke("beatport_logout", {});
+    toast("Signed out of Beatport");
+  } catch (e) {
+    toast(String(e), true);
+  }
+  await refreshBeatportAccount();
+}
+
 async function openSettings() {
+  await refreshBeatportAccount();
   // Populate from saved values (the token is already in #discogs-token).
   try {
     const s = await invoke("load_settings", {});
@@ -320,6 +364,8 @@ el("set-value-font").addEventListener("click", (e) => {
   if (btn) setValueFontChoice(btn.dataset.valueFont);
 });
 el("set-prio-reset").addEventListener("click", resetPriority);
+el("beatport-signin").addEventListener("click", beatportSignIn);
+el("beatport-signout").addEventListener("click", beatportSignOut);
 // Table font size is a live control: drag to apply (and persist) immediately so
 // the effect is visible behind the settings sheet.
 // LAB sliders/segments are live controls too — the effect shows behind the sheet.

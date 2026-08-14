@@ -450,6 +450,9 @@ fn parse_track(track: &Value, disc: u32) -> ReleaseTrack {
             .and_then(|codes| codes.first())
             .and_then(Value::as_str)
             .map(str::to_string),
+        // Tempo and key are not part of the MusicBrainz release data.
+        bpm: None,
+        key: None,
     }
 }
 

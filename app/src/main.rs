@@ -100,6 +100,9 @@ fn release_url(source: &str, id: &str) -> Result<String, String> {
     match source {
         "discogs" => Ok(format!("https://www.discogs.com/release/{id}")),
         "musicbrainz" => Ok(format!("https://musicbrainz.org/release/{id}")),
+        // The slug is cosmetic; the store resolves a release by its id alone
+        // (#162), so nothing user-supplied has to go into the path.
+        "beatport" => Ok(format!("https://www.beatport.com/release/-/{id}")),
         other => Err(format!("unknown source: {other}")),
     }
 }
@@ -517,6 +520,223 @@ fn save_discogs_token(app: tauri::AppHandle, token: String) -> Result<(), String
     std::fs::write(path, token.trim()).map_err(|e| e.to_string())
 }
 
+// ---- Beatport sign-in (#162) ----------------------------------------------
+//
+// The store has no self-serve developer tier, so the only way in is OAuth
+// against the user's own account, through the public client its documentation
+// page uses. TagRex never sees the password: the sign-in happens in a window
+// pointed at Beatport's own login page, and all that comes back is the
+// authorization code in the redirect URL.
+//
+// What is stored is what a session needs and nothing more: the tokens, when the
+// access one dies, the account name (so settings can say *who* is signed in),
+// and the client id (so a refresh doesn't have to re-read it). It lives in the
+// OS app-config dir next to the Discogs token — never in the repository.
+
+/// The saved sign-in, as it sits on disk.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BeatportSession {
+    #[serde(flatten)]
+    token: tagrex_providers_beatport::auth::BeatportToken,
+    username: String,
+    client_id: String,
+}
+
+/// What the UI shows in the source row and in settings.
+#[derive(serde::Serialize)]
+struct BeatportStatusDto {
+    authorized: bool,
+    username: String,
+}
+
+fn beatport_session_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join("beatport_session.json"))
+}
+
+fn read_beatport_session(app: &tauri::AppHandle) -> Option<BeatportSession> {
+    let path = beatport_session_path(app).ok()?;
+    let json = std::fs::read_to_string(path).ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+fn write_beatport_session(app: &tauri::AppHandle, session: &BeatportSession) -> Result<(), String> {
+    let path = beatport_session_path(app)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let json = serde_json::to_string(session).map_err(|e| e.to_string())?;
+    std::fs::write(path, json).map_err(|e| e.to_string())
+}
+
+/// The proxy every provider request goes through, from settings.
+fn beatport_proxy(app: &tauri::AppHandle) -> Option<String> {
+    let proxy = read_settings(app).proxy.trim().to_string();
+    (!proxy.is_empty()).then_some(proxy)
+}
+
+#[tauri::command]
+fn beatport_status(app: tauri::AppHandle) -> BeatportStatusDto {
+    match read_beatport_session(&app) {
+        Some(session) => BeatportStatusDto {
+            authorized: true,
+            username: session.username,
+        },
+        None => BeatportStatusDto {
+            authorized: false,
+            username: String::new(),
+        },
+    }
+}
+
+#[tauri::command]
+fn beatport_logout(app: tauri::AppHandle) -> Result<(), String> {
+    let path = beatport_session_path(&app)?;
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        // Signing out of a session that isn't there is a no-op, not a failure.
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err.to_string()),
+    }
+}
+
+/// Sign in: read the public client id, open Beatport's login page in its own
+/// window, wait for the redirect that carries the authorization code, trade it
+/// for tokens. Returns the account name.
+///
+/// `async` for the same reason the provider commands are (#95): every step here
+/// blocks on the network or on the user, and a synchronous command would freeze
+/// the whole webview while it did.
+#[tauri::command]
+async fn beatport_login(app: tauri::AppHandle) -> Result<String, String> {
+    use tagrex_providers_beatport::auth;
+
+    let proxy = beatport_proxy(&app);
+    let agent = auth::agent(proxy.as_deref()).map_err(|e| e.to_string())?;
+
+    let scraper = agent.clone();
+    let client_id = tauri::async_runtime::spawn_blocking(move || auth::fetch_client_id(&scraper))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    // The window reports back either a code or, if the user gives up and closes
+    // it, nothing — hence a channel rather than a return value.
+    let (tx, rx) = std::sync::mpsc::channel::<Option<String>>();
+    let on_close = tx.clone();
+    let url = auth::authorize_url(&client_id)
+        .parse()
+        .map_err(|_| "could not build the Beatport sign-in URL".to_string())?;
+    let window = tauri::WebviewWindowBuilder::new(
+        &app,
+        BEATPORT_LOGIN_WINDOW,
+        tauri::WebviewUrl::External(url),
+    )
+    .title("Sign in to Beatport")
+    .inner_size(520.0, 760.0)
+    .on_navigation(move |url| {
+        if let Some(code) = auth::code_from_redirect(url.as_str()) {
+            let _ = tx.send(Some(code));
+        }
+        true
+    })
+    .build()
+    .map_err(|e| e.to_string())?;
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+            let _ = on_close.send(None);
+        }
+    });
+
+    let received = tauri::async_runtime::spawn_blocking(move || {
+        rx.recv_timeout(std::time::Duration::from_secs(BEATPORT_LOGIN_TIMEOUT_SECS))
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    // The window has done its job either way; leaving it open would strand a
+    // second window with no owner.
+    let _ = window.close();
+
+    let code = match received {
+        Ok(Some(code)) => code,
+        Ok(None) => return Err("Sign-in cancelled".to_string()),
+        Err(_) => return Err("Sign-in timed out".to_string()),
+    };
+
+    let exchange_id = client_id.clone();
+    let token = tauri::async_runtime::spawn_blocking(move || {
+        auth::exchange_code(&agent, &exchange_id, &code)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+
+    let username = beatport_account_name(&proxy, &token.access_token).await;
+    write_beatport_session(
+        &app,
+        &BeatportSession {
+            token,
+            username: username.clone(),
+            client_id,
+        },
+    )?;
+    Ok(username)
+}
+
+/// A valid access token for the provider commands, renewed first if the stored
+/// one has expired. The frontend passes what this returns straight into
+/// `provider_search` and friends, exactly as it passes the Discogs token.
+#[tauri::command]
+async fn beatport_token(app: tauri::AppHandle) -> Result<String, String> {
+    use tagrex_providers_beatport::auth;
+
+    let mut session = read_beatport_session(&app).ok_or("Not signed in to Beatport")?;
+    if !session.token.is_expired() {
+        return Ok(session.token.access_token);
+    }
+
+    let proxy = beatport_proxy(&app);
+    let agent = auth::agent(proxy.as_deref()).map_err(|e| e.to_string())?;
+    let client_id = session.client_id.clone();
+    let refresh_token = session.token.refresh_token.clone();
+    let token = tauri::async_runtime::spawn_blocking(move || {
+        auth::refresh(&agent, &client_id, &refresh_token)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    // A refresh token can be revoked from the account page, and then the
+    // only way back is a fresh sign-in — say so rather than reporting a
+    // bare HTTP status.
+    .map_err(|err| format!("{err} — sign in to Beatport again"))?;
+
+    let access_token = token.access_token.clone();
+    session.token = token;
+    write_beatport_session(&app, &session)?;
+    Ok(access_token)
+}
+
+/// The account name behind a token. A failure here is not worth failing the
+/// whole sign-in over — the token is what matters, the name is a label — so it
+/// degrades to an empty string.
+async fn beatport_account_name(proxy: &Option<String>, access_token: &str) -> String {
+    use tagrex_providers_beatport::auth;
+
+    let Ok(agent) = auth::agent(proxy.as_deref()) else {
+        return String::new();
+    };
+    let token = access_token.to_string();
+    tauri::async_runtime::spawn_blocking(move || auth::account_username(&agent, &token))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default()
+}
+
+/// Label of the sign-in window, so a second Sign in click can't open a duplicate.
+const BEATPORT_LOGIN_WINDOW: &str = "beatport-login";
+/// How long the sign-in window waits for the user before giving up.
+const BEATPORT_LOGIN_TIMEOUT_SECS: u64 = 300;
+
 /// Path to the persisted settings JSON (#79), in the OS app-config dir.
 fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
@@ -663,6 +883,10 @@ fn main() {
             auto_align,
             saved_discogs_token,
             save_discogs_token,
+            beatport_status,
+            beatport_login,
+            beatport_logout,
+            beatport_token,
             load_settings,
             save_settings,
             player_play,
@@ -698,11 +922,19 @@ mod tests {
             release_url("musicbrainz", "1a2b3c4d-0000-0000-0000-000000000000").unwrap(),
             "https://musicbrainz.org/release/1a2b3c4d-0000-0000-0000-000000000000"
         );
+        // The store's own URLs carry a slug, but it is cosmetic (#162) — a
+        // placeholder keeps anything user-supplied out of the path.
+        assert_eq!(
+            release_url("beatport", "4321").unwrap(),
+            "https://www.beatport.com/release/-/4321"
+        );
     }
 
     #[test]
     fn rejects_unknown_source_and_unsafe_ids() {
-        assert!(release_url("beatport", "5606").is_err());
+        assert!(release_url("bandcamp", "5606").is_err());
+        assert!(release_url("beatport", "").is_err());
+        assert!(release_url("beatport", "4321/evil").is_err());
         assert!(release_url("discogs", "").is_err());
         // A path-traversal / injection attempt in the id must never build a URL.
         assert!(release_url("discogs", "5606/../../evil").is_err());

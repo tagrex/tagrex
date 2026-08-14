@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Beatport as a third metadata source.** On digital electronic releases the
+  general-purpose databases are thin: the mix name is often missing, sub-genres
+  are coarse, and label-only digital catalogue was frequently never entered at
+  all. TAGGER › ONLINE › Source now offers Beatport alongside Discogs and
+  MusicBrainz, with the same search, release cards, cover browser and import.
+  It carries what the others cannot: the mix name (kept in the track title, as
+  the store spells it), the tempo, the musical key — normalized to the compact
+  spelling, so the existing key-notation transform converts it to Camelot — the
+  sub-genre, the label and catalogue number, and 1400px artwork.
+
+  Beatport issues API credentials to partners only, so signing in uses the
+  public client from its own documentation page, under **your** account:
+  Settings › Beatport › Sign in opens Beatport's login page in a separate
+  window, and TagRex only ever sees the authorization code that comes back —
+  never a password. The access token is renewed automatically and stored with
+  the app's configuration, never in the repository. Unofficial access can stop
+  working without notice, which is why the source lives in its own crate: if it
+  breaks, nothing else does. (#162)
+
+- Tempo and key are now part of a release the app fetches, so an online import
+  can write them. Both are per track and silent when the source doesn't state
+  them, and both are individually switchable in Settings › Import fields.
+  (#162)
+
 ### Changed
 
 - Reworded the provider-boundary module comment so it makes its point about

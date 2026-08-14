@@ -1,0 +1,15 @@
+[package]
+name = "tagrex-providers-beatport"
+description = "Beatport metadata provider for TagRex (OAuth under the user's own account)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1.0.150"
+tagrex-core.workspace = true
+ureq = "3.2.1"

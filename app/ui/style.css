@@ -3721,6 +3721,17 @@ td[data-field="year"],
   font-size: var(--text-xs);
   color: var(--muted);
 }
+/* Beatport account (#162): the status line and its buttons share the value
+   column of a settings row, wrapping rather than clipping on a narrow sheet. */
+.bp-auth {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+.bp-auth .settings-hint {
+  margin: 0;
+}
 .settings-row input[type="text"],
 .settings-row input[type="password"],
 .settings-row input[type="number"] {
