@@ -105,8 +105,9 @@ pub trait PlanSource {
 /// renamed, the plan's path no longer points at it, so keeping the move last
 /// means every tag write uses the original path and a failure mid-move leaves
 /// the file at its old path with new tags — a recoverable state. Tag writing
-/// and renaming are still separate *user* operations (like TagScanner's
-/// separate tabs); a plan can carry either or both.
+/// and renaming are still separate *user* operations, each with its own tab in
+/// the UI as taggers conventionally present them; a plan can carry either or
+/// both.
 pub struct Executor;
 
 impl Executor {

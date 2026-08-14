@@ -855,9 +855,9 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         ItemKey::DiscNumber => TagField::DiscNumber,
         ItemKey::DiscTotal => TagField::DiscTotal,
         // `Year` (ID3v2.3 TYER) is legacy; real-world taggers (verified
-        // against TagScanner-tagged files) overwhelmingly write the year
-        // into `RecordingDate` (ID3v2.4 TDRC) instead. Writing still targets
-        // `Year` alone — see `tag_field_to_item_key`.
+        // against files tagged by the common Windows ones) overwhelmingly
+        // write the year into `RecordingDate` (ID3v2.4 TDRC) instead. Writing
+        // still targets `Year` alone — see `tag_field_to_item_key`.
         ItemKey::Year | ItemKey::RecordingDate => TagField::Year,
         ItemKey::Genre => TagField::Genre,
         ItemKey::Comment => TagField::Comment,

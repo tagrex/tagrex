@@ -8,9 +8,10 @@ thing a contributor should read.
 
 Every operation in a tag editor — renaming from a mask, parsing tags out of a
 filename, importing a Discogs release, running a regex replace — is the same
-thing: a **plan of changes** applied to a set of files. TagScanner's defining
-quality, the one this project exists to reproduce, is that the user always sees
-the plan rendered as a "current → new" preview *before* anything touches disk.
+thing: a **plan of changes** applied to a set of files. The defining quality of
+the batch taggers this project exists to replace — the one thing they all get
+right — is that the user always sees the plan rendered as a "current → new"
+preview *before* anything touches disk.
 
 Therefore the heart of TagRex is a single transactional pipeline:
 
@@ -50,8 +51,9 @@ trait MetadataProvider {
 }
 ```
 
-Why this boundary matters: metadata sources die. Beatport closed its public
-API and TagScanner had to remove the feature entirely. With providers as
+Why this boundary matters: metadata sources die. Music stores have closed their
+public APIs, and a tagger with the integration wired into its core loses the
+feature outright. With providers as
 isolated crates, a dead API kills one crate — the core is untouched, and the
 community can add or fix sources through ordinary pull requests independent of
 the core release cycle.
@@ -66,11 +68,12 @@ Planned plugin families:
 
 ### Deferred (deliberately out of scope for now)
 
-- **Audio fingerprinting (AcoustID).** That is Picard's territory; the first
-  versions prioritize manual control over automagic. Also drags in a
-  Chromaprint dependency.
+- **Audio fingerprinting (AcoustID).** That is the territory of the
+  automation-first taggers; the first versions prioritize manual control over
+  automagic. Also drags in a Chromaprint dependency.
 - **ReplayGain.** Audio analysis, not metadata editing. Different world.
-- **Scripting / actions** (Mp3tag-style). Deferred, but not ignored: the
+- **Scripting / actions**, as the established taggers offer them. Deferred, but
+  not ignored: the
   transform pipeline is designed as a composable chain precisely so that
   scripting later becomes *serialization of chains into saved presets*, not a
   new subsystem.
@@ -102,8 +105,8 @@ editor fails.
 ## Implementation order
 
 1. Core without any network: scanner → table → masks → preview → apply →
-   undo. Formats: MP3, FLAC, M4A. This alone is already "TagScanner without
-   the internet" and a usable tool.
+   undo. Formats: MP3, FLAC, M4A. This alone is already a usable tool — a
+   full-featured batch tagger minus the online lookups.
 2. `MetadataProvider` trait + Discogs provider (personal token).
 3. MusicBrainz provider.
 4. Covers and exporters.
@@ -111,11 +114,20 @@ editor fails.
 
 ## Prior art and positioning
 
-- **TagScanner, Mp3tag** — the reference UX; Windows-only (Mp3tag's macOS port
-  is paid, no Linux for either).
-- **Kid3** — cross-platform and capable, but the interface shows its age.
-- **MusicBrainz Picard** — superb at fingerprint-driven auto-tagging, weak at
-  manual batch surgery.
-- **puddletag** — the Mp3tag clone for Linux; Linux-only.
-- **One Tagger** — open source, cross-platform, Rust: the automation
-  counterpart. TagRex is the manual precision counterpart, not a competitor.
+Described as classes of tool rather than by name, because the point is the gap
+between them, not a comparison against any one product.
+
+- **The established Windows batch taggers** — the reference UX for masks,
+  preview and bulk edits, and the standard TagRex is held to. Their limitation
+  is the platform: no macOS or Linux build, or a paid and partial port.
+- **The long-lived cross-platform desktop taggers** — capable and portable, but
+  built on ageing toolkits, and the interface shows it.
+- **The automation-first, fingerprint-driven taggers** — excellent at
+  identifying a file with no usable tags at all, weak at manual batch surgery
+  on files whose tags are merely wrong.
+- **The Linux-native clones of the Windows tools** — the right model, one
+  platform.
+
+TagRex's position is the intersection nothing occupies: the manual precision of
+the first class, on every desktop platform, with a modern interface. It is not
+an automation tool, and it does not try to be one.

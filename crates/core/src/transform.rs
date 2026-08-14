@@ -1,9 +1,9 @@
 //! Composable text transforms.
 //!
 //! Used by masks, manual edits and provider post-processing. Deliberately a
-//! chain of steps: Mp3tag-style "actions"/scripting later becomes
-//! *serialization of chains into saved presets*, not a new subsystem
-//! (architecture.md, "Deferred").
+//! chain of steps: the "actions"/scripting a tagger is expected to offer
+//! later becomes *serialization of chains into saved presets*, not a new
+//! subsystem (architecture.md, "Deferred").
 //!
 //! Every step is a pure `&str -> String`, so a chain is testable without
 //! touching a file and can be previewed before anything is written.

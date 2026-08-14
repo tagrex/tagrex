@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Reworded the provider-boundary module comment so it makes its point about
   crate isolation without naming a third-party application. (#163)
+- Swept the rest of the committed text for the same slip: four code comments,
+  the architecture document (including its prior-art section, now written as
+  classes of tool rather than a list of products) and three older changelog
+  entries no longer name comparable applications. (#164)
 
 ## [0.4.0] - 2026-08-13
 
@@ -1495,7 +1499,8 @@ usable cross-platform state; subsequent entries will accrue under _Unreleased_.
 - Discogs release import in the GUI (#10): a Discogs panel (token + search →
   candidate list → release tracklist) imports metadata onto the selected
   files, previewed and applied through the same journaled/undoable path.
-  Following the TagScanner model, the user resolves the mapping explicitly:
+  Following the established batch-tagger model, the user resolves the mapping
+  explicitly:
   each release track has a checkbox (with Enable/Disable all), and files can
   be drag-reordered in the main table so they line up. Enabled tracks map onto
   the selected files in order; the track number comes from the release track's
@@ -1549,7 +1554,8 @@ usable cross-platform state; subsequent entries will accrue under _Unreleased_.
   Applied batches are recorded so `undo` can restore each field's previous
   value. `VecJournal`, an in-memory `UndoJournal`, backs the pipeline until
   the persistent SQLite journal (#5) lands. Tag writing and renaming are
-  separate operations (like TagScanner's separate tabs); this increment does
+  separate operations, each with its own tab as taggers conventionally present
+  them; this increment does
   tag writes only, rename tracked separately.
 - Persistent SQLite journal (#5): `SqliteJournal` (via `rusqlite`, bundled
   SQLite) durably records batches across three normalized tables so an
@@ -1601,7 +1607,7 @@ usable cross-platform state; subsequent entries will accrue under _Unreleased_.
 ### Fixed
 
 - `TagEngine::read` now also recognizes `RecordingDate` (ID3v2.4 `TDRC`) as
-  `TagField::Year`, not just the legacy `Year` (`TYER`). Verified against
-  TagScanner-tagged files, which write the year exclusively through
+  `TagField::Year`, not just the legacy `Year` (`TYER`). Verified against files
+  tagged by the common Windows taggers, which write the year exclusively through
   `RecordingDate` — without this, `Year` was silently empty for most
   real-world files.

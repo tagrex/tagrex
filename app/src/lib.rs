@@ -2494,10 +2494,10 @@ impl App {
     }
 
     /// Preview importing a user-resolved release selection onto `paths`,
-    /// without writing. The frontend decides the mapping (TagScanner-style):
-    /// the user toggles which release tracks participate and orders the files
-    /// to match, so here the i-th enabled track simply maps onto the i-th
-    /// file. Album-level fields go to every file; per-track fields
+    /// without writing. The frontend decides the mapping, the way a manual
+    /// tagger does: the user toggles which release tracks participate and
+    /// orders the files to match, so here the i-th enabled track simply maps
+    /// onto the i-th file. Album-level fields go to every file; per-track fields
     /// (title/artist/track number) to files that line up with a selected
     /// track. The track number comes from the release track's own position,
     /// not the selection index, so an aligned file keeps its real number.
