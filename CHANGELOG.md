@@ -50,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- A Beatport search now cleans the query before sending it. The store takes one
+  free-text box and matches it loosely, so the `-` between artist and album, and
+  disc markers like `CD1` that a folder name carries, were matching as content
+  and burying the release actually being looked for. Punctuation becomes spaces
+  (apostrophes are dropped, so `90's` stays one word) and disc markers are
+  removed. Only this source is affected — the other two take structured fields.
+  (#168)
+
 - Reworded the provider-boundary module comment so it makes its point about
   crate isolation without naming a third-party application. (#163)
 - Swept the rest of the committed text for the same slip: four code comments,

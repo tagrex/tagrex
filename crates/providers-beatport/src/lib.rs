@@ -149,7 +149,7 @@ impl MetadataProvider for BeatportProvider {
     /// here is digital, so filtering by Vinyl or CD could only ever return
     /// nothing.
     fn search(&self, query: &SearchQuery) -> Result<Vec<ReleaseCandidate>, ProviderError> {
-        let q = [
+        let joined = [
             query.artist.as_deref(),
             query.album.as_deref(),
             query.title.as_deref(),
@@ -161,6 +161,7 @@ impl MetadataProvider for BeatportProvider {
         .filter(|part| !part.is_empty())
         .collect::<Vec<_>>()
         .join(" ");
+        let q = sanitize_query(&joined);
 
         let mut params: Vec<(&str, &str)> = vec![("q", &q), ("type", "releases")];
         let (page, per_page);
@@ -186,6 +187,57 @@ impl MetadataProvider for BeatportProvider {
         )?;
         parse_release(&release, &tracks)
     }
+}
+
+/// Clean a query before it goes into the store's single free-text box (#168).
+///
+/// The search is loose, so punctuation and physical-medium markers act as
+/// content and pull in releases that merely share a word or two: `La Bush -
+/// Music From The Temple Of House` came back with *Temple Of The Dog* twice in
+/// the top five. The app's own re-scoring can't undo that, since it compares
+/// against the same string.
+///
+/// So: non-alphanumeric characters become spaces, apostrophes are dropped
+/// instead (`90's` is one word, not `90 s`), and `CD1` / `disc 2` — which a
+/// folder name often carries and a digital store has no concept of — are
+/// removed. Only this provider does it; the other two take structured fields
+/// and are perfectly happy with punctuation.
+fn sanitize_query(query: &str) -> String {
+    let flattened: String = query
+        .chars()
+        .filter(|c| !matches!(c, '\'' | '\u{2019}'))
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect();
+
+    let words: Vec<&str> = flattened.split_whitespace().collect();
+    let mut out: Vec<&str> = Vec::with_capacity(words.len());
+    let mut index = 0;
+    while index < words.len() {
+        let word = words[index];
+        let lower = word.to_lowercase();
+        // `CD1` / `DISC2`: a medium marker with its number attached.
+        let split_marker = lower
+            .strip_prefix("cd")
+            .or_else(|| lower.strip_prefix("disc"))
+            .is_some_and(|rest| !rest.is_empty() && rest.bytes().all(|b| b.is_ascii_digit()));
+        if split_marker {
+            index += 1;
+            continue;
+        }
+        // `CD 1` / `disc 2`: the same, spelled apart. Only a following number
+        // makes it one — a release actually called "Disc" keeps its word.
+        if matches!(lower.as_str(), "cd" | "disc")
+            && words
+                .get(index + 1)
+                .is_some_and(|next| next.bytes().all(|b| b.is_ascii_digit()))
+        {
+            index += 2;
+            continue;
+        }
+        out.push(word);
+        index += 1;
+    }
+    out.join(" ")
 }
 
 pub(crate) fn status_to_error(status: u16, retry_after: Option<&str>) -> ProviderError {
@@ -494,6 +546,32 @@ mod tests {
         }
       ]
     }"#;
+
+    #[test]
+    fn a_query_loses_its_punctuation_and_medium_markers() {
+        // The one that started #168: the separator was matching as content.
+        assert_eq!(
+            sanitize_query("La Bush - Music From The Temple Of House"),
+            "La Bush Music From The Temple Of House"
+        );
+        assert_eq!(
+            sanitize_query("Artist – Title [Remixes]"),
+            "Artist Title Remixes"
+        );
+        // A disc marker names something a digital store doesn't have, in either
+        // spelling.
+        assert_eq!(sanitize_query("Some Album CD1"), "Some Album");
+        assert_eq!(sanitize_query("Some Album (disc 2)"), "Some Album");
+        // But a word that merely starts like one is a word.
+        assert_eq!(sanitize_query("Disc Jockey"), "Disc Jockey");
+        assert_eq!(sanitize_query("CDX Machine"), "CDX Machine");
+        // An apostrophe joins rather than splits, so this stays two tokens.
+        assert_eq!(sanitize_query("90's Rave"), "90s Rave");
+        // Non-Latin text is words too, and a query of pure punctuation is empty
+        // rather than a string of spaces.
+        assert_eq!(sanitize_query("Кристалл — Мечта"), "Кристалл Мечта");
+        assert_eq!(sanitize_query("  ---  "), "");
+    }
 
     #[test]
     fn maps_a_search_hit() {
