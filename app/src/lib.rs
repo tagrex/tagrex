@@ -4835,18 +4835,18 @@ mod tests {
         assert!(!second.contains_key("key"));
 
         // A planned change is not proof the file keeps it, so apply and read
-        // back. The key does survive here. The tempo does NOT, on this FLAC:
-        // it is written through ID3v2's TBPM item, which Vorbis Comments have no
-        // mapping for, so it is dropped on save (#165 — a pre-existing bug in
-        // the write path, not in the import). On an ID3v2 format it round-trips.
-        // When #165 lands, this assertion becomes `Some("128")`.
+        // back — the tempo in particular is written under a different item per
+        // tag type, and used to be dropped on this very FLAC (#165).
         app.apply(&plan).unwrap();
         let written = TagEngine::read(&stated).unwrap();
         assert_eq!(
             written.tags.get(&TagField::InitialKey).map(String::as_str),
             Some("Am")
         );
-        assert_eq!(written.tags.get(&TagField::Bpm), None);
+        assert_eq!(
+            written.tags.get(&TagField::Bpm).map(String::as_str),
+            Some("128")
+        );
     }
 
     #[test]

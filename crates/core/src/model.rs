@@ -749,14 +749,19 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
         .cloned()
         .unwrap_or_else(|| Tag::new(file.format.primary_tag_type()));
 
-    let desired: HashSet<ItemKey> = file.tags.keys().map(tag_field_to_item_key).collect();
+    let tag_type = tag.tag_type();
+    let desired: HashSet<ItemKey> = file
+        .tags
+        .keys()
+        .map(|field| item_key_for(field, tag_type))
+        .collect();
     tag.retain(|item| item.value().text().is_none() || desired.contains(item.key()));
 
     for (field, value) in &file.tags {
         // Clear first rather than append, so repeated writes can't accumulate
         // duplicate entries for the same field — then push what the model says,
         // which for a multi-value field is more than one item (#46).
-        tag.remove_key(&tag_field_to_item_key(field));
+        tag.remove_key(&item_key_for(field, tag_type));
         push_field_items(&mut tag, field, value);
     }
     tag.save_to_path(&file.path, WriteOptions::default())?;
@@ -784,7 +789,7 @@ fn load_or_new_tag(path: &Path) -> Result<Tag, TagIoError> {
 /// half is unchanged and still needed: the checked calls silently drop
 /// `ItemKey::Unknown` (`Custom` fields), which have no mapping to verify.
 fn push_field_items(tag: &mut Tag, field: &TagField, value: &str) {
-    let key = tag_field_to_item_key(field);
+    let key = item_key_for(field, tag.tag_type());
     if !field.is_multi_value() {
         tag.push_unchecked(TagItem::new(key, item_value_for(field, value)));
         return;
@@ -801,6 +806,44 @@ fn item_value_for(field: &TagField, value: &str) -> ItemValue {
     match field {
         TagField::Url => ItemValue::Locator(value.to_string()),
         _ => ItemValue::Text(value.to_string()),
+    }
+}
+
+/// The item key a field is *written* under, for the tag type receiving it
+/// (#165).
+///
+/// Almost every field maps the same way everywhere, and for those this is
+/// exactly [`tag_field_to_item_key`]. BPM is the exception, and the reason this
+/// function exists: an `ItemKey` the target tag type has no mapping for is
+/// **silently discarded when the tag is saved** — the same trap the `Year`
+/// mapping documents above — and `IntegerBpm` (ID3v2's `TBPM`, MP4's `tmpo`) has
+/// no Vorbis Comments mapping, so every tempo written to a FLAC or an Ogg
+/// vanished. Vorbis spells it plain `BPM`, which is `ItemKey::Bpm`, and read
+/// folds both back into [`TagField::Bpm`], so the value round-trips either way.
+///
+/// Auditing the whole table against lofty's maps (the test below) turned up two
+/// more of the same, so they are fixed here too rather than left to be
+/// discovered one field at a time:
+///
+/// - **the label on MP4** — `Publisher` maps only on ID3v2 and Vorbis, so a
+///   label written to an M4A was dropped. `Label` is the key that maps
+///   everywhere, and both read back as [`TagField::Publisher`], so it is used
+///   where `Publisher` doesn't reach.
+/// - **the year on APE** — APE spells it `Year`, and has no `RecordingDate`.
+///
+/// What remains unwritable is BPM and the musical key on APE tags, which map
+/// neither spelling. That is lofty's mapping rather than a choice made here, and
+/// Musepack / Monkey's Audio / WavPack are the exotic tail;
+/// `every_written_field_maps_onto_every_tag_type` pins those two as the known
+/// holes so nothing else can join them unnoticed.
+fn item_key_for(field: &TagField, tag_type: TagType) -> ItemKey {
+    match field {
+        TagField::Bpm if tag_type == TagType::VorbisComments => ItemKey::Bpm,
+        TagField::Publisher if matches!(tag_type, TagType::Mp4Ilst | TagType::Ape) => {
+            ItemKey::Label
+        }
+        TagField::Year if tag_type == TagType::Ape => ItemKey::Year,
+        other => tag_field_to_item_key(other),
     }
 }
 
@@ -824,7 +867,9 @@ fn tag_field_to_item_key(field: &TagField) -> ItemKey {
         TagField::Composer => ItemKey::Composer,
         TagField::Publisher => ItemKey::Publisher,
         // `IntegerBpm` is ID3v2's TBPM, which is what DJ software reads;
-        // `ItemKey::Bpm` would land in a TXXX frame instead.
+        // `ItemKey::Bpm` would land in a TXXX frame instead. Not every tag type
+        // can hold it though — see [`item_key_for`], which is what the write
+        // path actually calls.
         TagField::Bpm => ItemKey::IntegerBpm,
         TagField::Isrc => ItemKey::Isrc,
         TagField::InitialKey => ItemKey::InitialKey,
@@ -868,7 +913,8 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         // `Custom("Label")` field (and dropping out of the Publisher column).
         ItemKey::Publisher | ItemKey::Label => TagField::Publisher,
         // Accept either BPM spelling on read, the same way Year accepts both
-        // the legacy and modern frame; writing always picks `IntegerBpm`.
+        // the legacy and modern frame; which one a write uses depends on what
+        // the tag type can hold (#165, `item_key_for`).
         ItemKey::Bpm | ItemKey::IntegerBpm => TagField::Bpm,
         ItemKey::Isrc => TagField::Isrc,
         ItemKey::InitialKey => TagField::InitialKey,
@@ -975,6 +1021,97 @@ mod tests {
             TagField::CatalogNumber,
             TagField::MediaType,
         ]
+    }
+
+    /// The class of bug behind #165: a tag saves without complaint while
+    /// dropping any item whose key has no mapping for that tag type, so the
+    /// field is simply missing afterwards. `Year` hit it once (ID3v2.4 has no
+    /// plain year frame) and BPM hit it again (Vorbis has no `TBPM`), both
+    /// silently. This asks lofty directly, for every field and every tag type
+    /// the app writes, whether the key it is about to use can be stored at all.
+    #[test]
+    fn every_written_field_maps_onto_every_tag_type() {
+        let tag_types = [
+            TagType::Id3v2,
+            TagType::VorbisComments,
+            TagType::Mp4Ilst,
+            TagType::Ape,
+        ];
+        let mut holes = Vec::new();
+        for tag_type in tag_types {
+            for field in known_fields() {
+                let key = item_key_for(&field, tag_type);
+                if key.map_key(tag_type, false).is_none() {
+                    holes.push(format!("{field:?} on {tag_type:?}"));
+                }
+            }
+        }
+        // The known holes: APE tags map neither a BPM nor a musical-key field
+        // in lofty. Musepack / Monkey's Audio / WavPack are the exotic tail, and
+        // inventing a spelling for them is a separate decision — but nothing
+        // else may join this list without being noticed.
+        assert_eq!(
+            holes,
+            vec!["Bpm on Ape".to_string(), "InitialKey on Ape".to_string()],
+            "silently unwritable"
+        );
+    }
+
+    #[test]
+    fn the_tempo_is_written_under_the_key_each_tag_type_can_hold() {
+        // ID3v2 and MP4 keep an integer BPM (`TBPM` / `tmpo`); Vorbis spells it
+        // plain `BPM`, which is a different `ItemKey` — using the first there
+        // was #165.
+        assert_eq!(
+            item_key_for(&TagField::Bpm, TagType::Id3v2),
+            ItemKey::IntegerBpm
+        );
+        assert_eq!(
+            item_key_for(&TagField::Bpm, TagType::Mp4Ilst),
+            ItemKey::IntegerBpm
+        );
+        assert_eq!(
+            item_key_for(&TagField::Bpm, TagType::VorbisComments),
+            ItemKey::Bpm
+        );
+        // Both spellings read back as the same field, so the value round-trips
+        // whichever one the file carries.
+        assert_eq!(item_key_to_tag_field(&ItemKey::Bpm), TagField::Bpm);
+        assert_eq!(item_key_to_tag_field(&ItemKey::IntegerBpm), TagField::Bpm);
+        // Every other field on Vorbis is untouched by the tag type.
+        for field in known_fields().into_iter().filter(|f| *f != TagField::Bpm) {
+            assert_eq!(
+                item_key_for(&field, TagType::VorbisComments),
+                tag_field_to_item_key(&field)
+            );
+        }
+    }
+
+    #[test]
+    fn the_label_and_the_year_use_the_spelling_the_tag_type_knows() {
+        // `Publisher` has no MP4 mapping, so an M4A silently lost its label
+        // (#165); `Label` maps there and reads back as the same field.
+        assert_eq!(
+            item_key_for(&TagField::Publisher, TagType::Mp4Ilst),
+            ItemKey::Label
+        );
+        assert_eq!(item_key_to_tag_field(&ItemKey::Label), TagField::Publisher);
+        // Where `Publisher` does map, it is left alone — changing the Vorbis
+        // spelling would move the value to a different comment name.
+        assert_eq!(
+            item_key_for(&TagField::Publisher, TagType::VorbisComments),
+            ItemKey::Publisher
+        );
+        assert_eq!(
+            item_key_for(&TagField::Publisher, TagType::Id3v2),
+            ItemKey::Publisher
+        );
+        // APE spells the year plainly and has no recording date.
+        assert_eq!(item_key_for(&TagField::Year, TagType::Ape), ItemKey::Year);
+        assert_eq!(
+            item_key_for(&TagField::Year, TagType::Id3v2),
+            ItemKey::RecordingDate
+        );
     }
 
     #[test]

@@ -93,6 +93,103 @@ fn write_then_read_round_trips_known_and_custom_fields() {
     );
 }
 
+/// #165: the tempo used to be written under ID3v2's integer-BPM item on every
+/// format. Vorbis Comments have no mapping for it, so the item was dropped when
+/// the tag was saved and the value simply was not in the file afterwards — no
+/// error anywhere. The DJ fields are the whole point of the online sources that
+/// state them, so both spellings get a real round trip here, on the two tag
+/// types that can hold them.
+#[test]
+fn the_dj_fields_survive_a_round_trip_on_a_vorbis_file() {
+    let path = temp_flac_path("dj-fields");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Bpm, "128".to_string());
+    tags.insert(TagField::InitialKey, "Am".to_string());
+    // The label went the same way on MP4 and is fixed with it; on Vorbis it
+    // always worked, and must keep working.
+    tags.insert(TagField::Publisher, "Test Records".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags,
+    })
+    .expect("write tags");
+
+    let read_back = TagEngine::read(&path).expect("read tags");
+    std::fs::remove_file(&path).ok();
+    assert_eq!(
+        read_back.tags.get(&TagField::Bpm).map(String::as_str),
+        Some("128")
+    );
+    assert_eq!(
+        read_back
+            .tags
+            .get(&TagField::InitialKey)
+            .map(String::as_str),
+        Some("Am")
+    );
+    assert_eq!(
+        read_back.tags.get(&TagField::Publisher).map(String::as_str),
+        Some("Test Records")
+    );
+}
+
+/// The same fields on an ID3v2 container, which is where they always worked —
+/// the fix must not move them off `TBPM`, the frame DJ software actually reads.
+#[test]
+fn the_dj_fields_survive_a_round_trip_on_an_id3v2_file() {
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-dj-fields-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Bpm, "128".to_string());
+    tags.insert(TagField::InitialKey, "Am".to_string());
+    tags.insert(TagField::Publisher, "Test Records".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags,
+    })
+    .expect("write tags");
+
+    let read_back = TagEngine::read(&path).expect("read tags");
+    // The tempo must be in TBPM specifically, not a TXXX text frame.
+    let has_tbpm = {
+        use lofty::config::ParseOptions;
+        use lofty::file::AudioFile;
+        use lofty::mpeg::MpegFile;
+        let mut file = std::fs::File::open(&path).unwrap();
+        MpegFile::read_from(&mut file, ParseOptions::new())
+            .unwrap()
+            .id3v2()
+            .map(|tag| tag.into_iter().any(|frame| frame.id().as_str() == "TBPM"))
+            .unwrap_or(false)
+    };
+    std::fs::remove_file(&path).ok();
+
+    assert_eq!(
+        read_back.tags.get(&TagField::Bpm).map(String::as_str),
+        Some("128")
+    );
+    assert_eq!(
+        read_back
+            .tags
+            .get(&TagField::InitialKey)
+            .map(String::as_str),
+        Some("Am")
+    );
+    assert_eq!(
+        read_back.tags.get(&TagField::Publisher).map(String::as_str),
+        Some("Test Records")
+    );
+    assert!(has_tbpm, "the tempo left TBPM, which is what DJ tools read");
+}
+
 #[test]
 fn cover_embed_read_remove_and_survives_a_tag_write() {
     let path = temp_flac_path("cover");

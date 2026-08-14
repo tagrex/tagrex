@@ -33,6 +33,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   them, and both are individually switchable in Settings › Import fields.
   (#162)
 
+### Fixed
+
+- **The tempo never reached a FLAC or an Ogg file, and the label never reached
+  an M4A.** Both were written under a tag item that only ID3v2 (and, for the
+  tempo, MP4) can hold, and a tag save silently discards an item the format has
+  no field for — so the value was simply absent afterwards, with no error
+  anywhere. The write path now picks the item each tag type actually knows:
+  `TBPM`/`tmpo` for the tempo where they exist and plain `BPM` on Vorbis, the
+  label under the key MP4 maps, and the year under APE's own. Files already
+  written this way are unaffected; re-saving them fills the missing values in.
+  A new test asks the tag backend directly, for every field and every tag type,
+  whether the value can be stored at all, so this class of silent loss cannot
+  return unnoticed. The tempo and the musical key remain unwritable on APE tags
+  (Musepack, Monkey's Audio, WavPack), which map neither. (#165)
+
 ### Changed
 
 - Reworded the provider-boundary module comment so it makes its point about
