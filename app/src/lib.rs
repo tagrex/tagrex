@@ -28,7 +28,7 @@ use tagrex_core::mask::{FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{is_writable_value, CoverArt, CoverKind, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
-use tagrex_core::provider::{MetadataProvider, ReleaseId, SearchQuery};
+use tagrex_core::provider::{FetchedImage, MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
 use tagrex_core::transform::{
     CaseStyle, ChangeCase, KeyNotation, KeyStyle, RemoveDiacritics, Replace, ReplaceOptions,
@@ -694,6 +694,248 @@ fn common_ancestor(paths: &[PathBuf]) -> Option<PathBuf> {
     Some(prefix.iter().map(|c| c.as_os_str()).collect())
 }
 
+/// The network side of the app: which proxy provider requests go through, how
+/// far apart they are spaced, and the provider calls themselves.
+///
+/// Deliberately **not** part of [`App`] (#166). None of it has anything to do
+/// with an open library — looking a release up is something the user does
+/// *before* choosing files — and hanging it off `App` meant a search failed with
+/// "no library open" until a folder had been picked. It also outlives any one
+/// library: the request spacing has to be one shared cadence per source, not a
+/// fresh one each time a folder is opened, or reopening one would burst straight
+/// past a provider's rate limit.
+///
+/// The shell keeps exactly one of these for the whole process and hands it to
+/// the four commands that talk to a provider.
+#[derive(Default)]
+pub struct ProviderHub {
+    /// Live proxy URL (None = direct), from settings.
+    proxy: RefCell<Option<String>>,
+    /// Minimum spacing between requests (None = no throttle), from the
+    /// rate-limit setting.
+    min_interval: Cell<Option<Duration>>,
+    /// When the last Discogs request went out, for the throttle. Interior
+    /// mutability so the read-only command path can update it.
+    last_discogs_request: Cell<Option<Instant>>,
+    /// When the last MusicBrainz request went out (#33). MusicBrainz asks
+    /// clients to stay under ~1 req/s regardless of any user rate-limit setting,
+    /// so it gets its own timestamp and a hard 1s floor in
+    /// [`throttle_musicbrainz`](ProviderHub::throttle_musicbrainz).
+    last_musicbrainz_request: Cell<Option<Instant>>,
+    /// When the last Beatport request went out (#162). Beatport documents no
+    /// rate limit at all, which is not a promise there isn't one, so it gets a
+    /// modest floor of its own in
+    /// [`throttle_beatport`](ProviderHub::throttle_beatport).
+    last_beatport_request: Cell<Option<Instant>>,
+}
+
+impl ProviderHub {
+    /// Take the network half of the saved settings (#79): the proxy and the
+    /// rate limit. Called at startup and whenever settings are saved — never
+    /// on opening a library, which is what keeps the request cadence continuous
+    /// across libraries (#166).
+    pub fn apply_settings(&self, settings: &SettingsDto) {
+        let proxy = settings.proxy.trim();
+        *self.proxy.borrow_mut() = (!proxy.is_empty()).then(|| proxy.to_string());
+        self.min_interval.set(
+            (settings.rate_limit_per_min > 0)
+                .then(|| Duration::from_secs_f64(60.0 / settings.rate_limit_per_min as f64)),
+        );
+    }
+
+    /// Build a Discogs provider using the current proxy setting.
+    fn discogs_provider(&self, token: &str) -> Result<DiscogsProvider, AppError> {
+        Ok(DiscogsProvider::with_proxy(
+            token,
+            self.proxy.borrow().as_deref(),
+        )?)
+    }
+
+    /// Build a MusicBrainz provider using the current proxy setting (#33). No
+    /// token — MusicBrainz is unauthenticated. Reuses the same network proxy the
+    /// Discogs provider uses.
+    fn musicbrainz_provider(&self) -> Result<MusicBrainzProvider, AppError> {
+        Ok(MusicBrainzProvider::with_proxy(
+            self.proxy.borrow().as_deref(),
+        )?)
+    }
+
+    /// Build a Beatport provider (#162). The "token" is the OAuth access token
+    /// the shell keeps fresh, so this looks like the Discogs case even though
+    /// the credential behind it is a different animal. Reuses the same network
+    /// proxy as the other two.
+    fn beatport_provider(&self, access_token: &str) -> Result<BeatportProvider, AppError> {
+        Ok(BeatportProvider::with_proxy(
+            access_token,
+            self.proxy.borrow().as_deref(),
+        )?)
+    }
+
+    /// Throttle the next provider request for `source`.
+    fn throttle(&self, source: &str) {
+        match source {
+            "musicbrainz" => self.throttle_musicbrainz(),
+            "beatport" => self.throttle_beatport(),
+            _ => self.throttle_discogs(),
+        }
+    }
+
+    /// Sleep just enough to honor the rate-limit setting before a Discogs
+    /// request. Discogs calls are already serialized by the app lock, so a
+    /// single shared timestamp is enough to space them out.
+    fn throttle_discogs(&self) {
+        let Some(min) = self.min_interval.get() else {
+            return;
+        };
+        if let Some(last) = self.last_discogs_request.get() {
+            let elapsed = last.elapsed();
+            if elapsed < min {
+                std::thread::sleep(min - elapsed);
+            }
+        }
+        self.last_discogs_request.set(Some(Instant::now()));
+    }
+
+    /// Space MusicBrainz requests out (#33). MusicBrainz etiquette is ~1 req/s
+    /// for anonymous clients, and honoring it is not optional, so the interval
+    /// is the *stricter* of a hard 1s floor and any user rate-limit setting.
+    fn throttle_musicbrainz(&self) {
+        let one_sec = Duration::from_secs(1);
+        let min = self
+            .min_interval
+            .get()
+            .map_or(one_sec, |user| user.max(one_sec));
+        if let Some(last) = self.last_musicbrainz_request.get() {
+            let elapsed = last.elapsed();
+            if elapsed < min {
+                std::thread::sleep(min - elapsed);
+            }
+        }
+        self.last_musicbrainz_request.set(Some(Instant::now()));
+    }
+
+    /// Space Beatport requests out (#162). Nothing is documented, so this is a
+    /// politeness floor rather than an enforced limit: half a second, or the
+    /// user's own rate-limit setting when that is stricter. The release picker
+    /// prefetches one request per candidate, which is exactly the burst worth
+    /// smoothing.
+    fn throttle_beatport(&self) {
+        let floor = Duration::from_millis(500);
+        let min = self
+            .min_interval
+            .get()
+            .map_or(floor, |user| user.max(floor));
+        if let Some(last) = self.last_beatport_request.get() {
+            let elapsed = last.elapsed();
+            if elapsed < min {
+                std::thread::sleep(min - elapsed);
+            }
+        }
+        self.last_beatport_request.set(Some(Instant::now()));
+    }
+
+    /// Search a metadata provider (`source` = "discogs" | "musicbrainz" |
+    /// "beatport") with the given token: the personal token for Discogs, the
+    /// OAuth access token for Beatport, ignored by token-less MusicBrainz.
+    ///
+    /// Results are re-scored against the query text and re-sorted: the provider
+    /// score is only "the API returned this one first", which is not evidence of
+    /// a better match (#53).
+    pub fn provider_search(
+        &self,
+        source: &str,
+        token: &str,
+        query: &SearchQueryDto,
+    ) -> Result<Vec<CandidateDto>, AppError> {
+        self.throttle(source);
+        let search = query.to_search_query();
+        let candidates = match source {
+            "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
+            "beatport" => self.beatport_provider(token)?.search(&search)?,
+            _ => self.discogs_provider(token)?.search(&search)?,
+        };
+        let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
+
+        let wanted = [
+            query.artist.as_deref(),
+            query.album.as_deref(),
+            query.title.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ");
+        if !wanted.trim().is_empty() {
+            for candidate in &mut results {
+                let label = format!("{} {}", candidate.artist, candidate.title);
+                candidate.score = matching::text_similarity(&wanted, &label);
+            }
+            results.sort_by(|a, b| b.score.total_cmp(&a.score));
+        }
+        Ok(results)
+    }
+
+    /// Fetch a full release from a provider (`source` selects it).
+    pub fn provider_fetch_release(
+        &self,
+        source: &str,
+        token: &str,
+        id: &str,
+    ) -> Result<ReleaseDto, AppError> {
+        self.throttle(source);
+        let rid = ReleaseId(id.to_string());
+        let release = match source {
+            "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
+            "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
+            _ => self.discogs_provider(token)?.fetch_release(&rid)?,
+        };
+        Ok(ReleaseDto::from(&release))
+    }
+
+    /// Download a provider image (e.g. a release's cover) and return it as a
+    /// cover DTO, ready to feed straight into [`App::preview_cover_embed`] — the
+    /// same shape a locally chosen file produces, so the fetched art flows
+    /// through the identical preview/apply/undo path. `source` selects the
+    /// provider so its image fetch uses the right host/headers (Discogs' CDN
+    /// needs the token + User-Agent; the Cover Art Archive needs neither).
+    pub fn provider_fetch_image(
+        &self,
+        source: &str,
+        token: &str,
+        url: &str,
+    ) -> Result<CoverArtDto, AppError> {
+        self.throttle(source);
+        let image = match source {
+            "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
+            "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
+            _ => self.discogs_provider(token)?.fetch_image(url)?,
+        };
+        Ok(CoverArtDto {
+            mime: image.mime,
+            data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),
+            ..CoverArtDto::default()
+        })
+    }
+
+    /// Download a provider image as raw bytes. The DTO-returning
+    /// [`provider_fetch_image`](Self::provider_fetch_image) is what the cover
+    /// well uses; this is for [`App::save_release_images`], which writes the
+    /// bytes straight to disk.
+    pub fn fetch_image_bytes(
+        &self,
+        source: &str,
+        token: &str,
+        url: &str,
+    ) -> Result<FetchedImage, AppError> {
+        self.throttle(source);
+        Ok(match source {
+            "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
+            "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
+            _ => self.discogs_provider(token)?.fetch_image(url)?,
+        })
+    }
+}
+
 /// A tagging session rooted at one library directory. The root doubles as the
 /// [`Executor`] `allowed_root`, so every write is confined to the opened
 /// library.
@@ -706,23 +948,6 @@ pub struct App {
     /// operated on. `None` = an ordinary library rooted at `library_root`.
     file_filter: Option<Vec<PathBuf>>,
     journal: SqliteJournal,
-    /// Live Discogs proxy URL (None = direct), from settings.
-    discogs_proxy: RefCell<Option<String>>,
-    /// Minimum spacing between Discogs requests (None = no throttle), from the
-    /// rate-limit setting. Enforced in [`throttle_discogs`](App::throttle_discogs).
-    discogs_min_interval: Cell<Option<Duration>>,
-    /// When the last Discogs request went out, for the throttle. Interior
-    /// mutability so the read-only command path can update it.
-    last_discogs_request: Cell<Option<Instant>>,
-    /// When the last MusicBrainz request went out (#33). MusicBrainz asks
-    /// clients to stay under ~1 req/s regardless of any user rate-limit setting,
-    /// so it gets its own timestamp and a hard 1s floor in
-    /// [`throttle_musicbrainz`](App::throttle_musicbrainz).
-    last_musicbrainz_request: Cell<Option<Instant>>,
-    /// When the last Beatport request went out (#162). Beatport documents no
-    /// rate limit at all, which is not a promise there isn't one, so it gets a
-    /// modest floor of its own in [`throttle_beatport`](App::throttle_beatport).
-    last_beatport_request: Cell<Option<Instant>>,
     /// Max cover dimension before embedding, 0 = off (#41), from settings.
     cover_max_px: Cell<u32>,
     /// JPEG quality for a resized cover (#41), from settings.
@@ -754,11 +979,6 @@ impl App {
             library_root: library_root.into(),
             file_filter: None,
             journal: SqliteJournal::open(journal_path)?,
-            discogs_proxy: RefCell::new(None),
-            discogs_min_interval: Cell::new(None),
-            last_discogs_request: Cell::new(None),
-            last_musicbrainz_request: Cell::new(None),
-            last_beatport_request: Cell::new(None),
             cover_max_px: Cell::new(0),
             cover_quality: Cell::new(85),
             carry_sidecars: Cell::new(default_carry_sidecars()),
@@ -830,16 +1050,12 @@ impl App {
         }
     }
 
-    /// Apply saved settings (#79): the Discogs proxy + rate-limit throttle, the
-    /// app-wide ID3v2 write version, and the tag-read priority (#84). Called on
-    /// open and whenever settings are saved.
+    /// Apply saved settings (#79): the app-wide ID3v2 write version, the
+    /// tag-read priority (#84) and the cover/sidecar/import preferences. Called
+    /// on open and whenever settings are saved. The network settings are not
+    /// here — they belong to [`ProviderHub`], which outlives any open library
+    /// (#166).
     pub fn apply_settings(&self, settings: &SettingsDto) {
-        let proxy = settings.proxy.trim();
-        *self.discogs_proxy.borrow_mut() = (!proxy.is_empty()).then(|| proxy.to_string());
-        self.discogs_min_interval.set(
-            (settings.rate_limit_per_min > 0)
-                .then(|| Duration::from_secs_f64(60.0 / settings.rate_limit_per_min as f64)),
-        );
         tagrex_core::model::set_write_id3v23(settings.id3_v23);
         tagrex_core::model::set_read_priority(&settings.read_priority);
         tagrex_core::model::set_multi_value_separator(&settings.multi_value_separator);
@@ -850,97 +1066,6 @@ impl App {
         *self.sidecar_extensions.borrow_mut() = settings.sidecar_extensions.clone();
         *self.import_skip_fields.borrow_mut() =
             settings.import_skip_fields.iter().cloned().collect();
-    }
-
-    /// Build a Discogs provider using the current proxy setting.
-    fn discogs_provider(&self, token: &str) -> Result<DiscogsProvider, AppError> {
-        Ok(DiscogsProvider::with_proxy(
-            token,
-            self.discogs_proxy.borrow().as_deref(),
-        )?)
-    }
-
-    /// Build a MusicBrainz provider using the current proxy setting (#33). No
-    /// token — MusicBrainz is unauthenticated. Reuses the same network proxy the
-    /// Discogs provider uses.
-    fn musicbrainz_provider(&self) -> Result<MusicBrainzProvider, AppError> {
-        Ok(MusicBrainzProvider::with_proxy(
-            self.discogs_proxy.borrow().as_deref(),
-        )?)
-    }
-
-    /// Build a Beatport provider (#162). The "token" is the OAuth access token
-    /// the shell keeps fresh, so this looks like the Discogs case even though
-    /// the credential behind it is a different animal. Reuses the same network
-    /// proxy as the other two.
-    fn beatport_provider(&self, access_token: &str) -> Result<BeatportProvider, AppError> {
-        Ok(BeatportProvider::with_proxy(
-            access_token,
-            self.discogs_proxy.borrow().as_deref(),
-        )?)
-    }
-
-    /// Throttle the next provider request for `source`.
-    fn throttle(&self, source: &str) {
-        match source {
-            "musicbrainz" => self.throttle_musicbrainz(),
-            "beatport" => self.throttle_beatport(),
-            _ => self.throttle_discogs(),
-        }
-    }
-
-    /// Sleep just enough to honor the rate-limit setting before a Discogs
-    /// request. Discogs calls are already serialized by the app lock, so a
-    /// single shared timestamp is enough to space them out.
-    fn throttle_discogs(&self) {
-        let Some(min) = self.discogs_min_interval.get() else {
-            return;
-        };
-        if let Some(last) = self.last_discogs_request.get() {
-            let elapsed = last.elapsed();
-            if elapsed < min {
-                std::thread::sleep(min - elapsed);
-            }
-        }
-        self.last_discogs_request.set(Some(Instant::now()));
-    }
-
-    /// Space MusicBrainz requests out (#33). MusicBrainz etiquette is ~1 req/s
-    /// for anonymous clients, and honoring it is not optional, so the interval
-    /// is the *stricter* of a hard 1s floor and any user rate-limit setting.
-    fn throttle_musicbrainz(&self) {
-        let one_sec = Duration::from_secs(1);
-        let min = self
-            .discogs_min_interval
-            .get()
-            .map_or(one_sec, |user| user.max(one_sec));
-        if let Some(last) = self.last_musicbrainz_request.get() {
-            let elapsed = last.elapsed();
-            if elapsed < min {
-                std::thread::sleep(min - elapsed);
-            }
-        }
-        self.last_musicbrainz_request.set(Some(Instant::now()));
-    }
-
-    /// Space Beatport requests out (#162). Nothing is documented, so this is a
-    /// politeness floor rather than an enforced limit: half a second, or the
-    /// user's own rate-limit setting when that is stricter. The release picker
-    /// prefetches one request per candidate, which is exactly the burst worth
-    /// smoothing.
-    fn throttle_beatport(&self) {
-        let floor = Duration::from_millis(500);
-        let min = self
-            .discogs_min_interval
-            .get()
-            .map_or(floor, |user| user.max(floor));
-        if let Some(last) = self.last_beatport_request.get() {
-            let elapsed = last.elapsed();
-            if elapsed < min {
-                std::thread::sleep(min - elapsed);
-            }
-        }
-        self.last_beatport_request.set(Some(Instant::now()));
     }
 
     /// Scan the library and read each file's tags. A file whose tags can't be
@@ -2282,89 +2407,6 @@ impl App {
             .collect())
     }
 
-    /// Search a metadata provider (`source` = "discogs" | "musicbrainz" |
-    /// "beatport") with the given token: the personal token for Discogs, the
-    /// OAuth access token for Beatport, ignored by token-less MusicBrainz.
-    ///
-    /// Results are re-scored against the query text and re-sorted: the provider
-    /// score is only "the API returned this one first", which is not evidence of
-    /// a better match (#53).
-    pub fn provider_search(
-        &self,
-        source: &str,
-        token: &str,
-        query: &SearchQueryDto,
-    ) -> Result<Vec<CandidateDto>, AppError> {
-        self.throttle(source);
-        let search = query.to_search_query();
-        let candidates = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
-            "beatport" => self.beatport_provider(token)?.search(&search)?,
-            _ => self.discogs_provider(token)?.search(&search)?,
-        };
-        let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
-
-        let wanted = [
-            query.artist.as_deref(),
-            query.album.as_deref(),
-            query.title.as_deref(),
-        ]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>()
-        .join(" ");
-        if !wanted.trim().is_empty() {
-            for candidate in &mut results {
-                let label = format!("{} {}", candidate.artist, candidate.title);
-                candidate.score = matching::text_similarity(&wanted, &label);
-            }
-            results.sort_by(|a, b| b.score.total_cmp(&a.score));
-        }
-        Ok(results)
-    }
-
-    /// Fetch a full release from a provider (`source` selects it).
-    pub fn provider_fetch_release(
-        &self,
-        source: &str,
-        token: &str,
-        id: &str,
-    ) -> Result<ReleaseDto, AppError> {
-        self.throttle(source);
-        let rid = ReleaseId(id.to_string());
-        let release = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
-            "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
-            _ => self.discogs_provider(token)?.fetch_release(&rid)?,
-        };
-        Ok(ReleaseDto::from(&release))
-    }
-
-    /// Download a provider image (e.g. a release's cover) and return it as a
-    /// cover DTO, ready to feed straight into [`App::preview_cover_embed`] — the
-    /// same shape a locally chosen file produces, so the fetched art flows
-    /// through the identical preview/apply/undo path. `source` selects the
-    /// provider so its image fetch uses the right host/headers (Discogs' CDN
-    /// needs the token + User-Agent; the Cover Art Archive needs neither).
-    pub fn provider_fetch_image(
-        &self,
-        source: &str,
-        token: &str,
-        url: &str,
-    ) -> Result<CoverArtDto, AppError> {
-        self.throttle(source);
-        let image = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
-            "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
-            _ => self.discogs_provider(token)?.fetch_image(url)?,
-        };
-        Ok(CoverArtDto {
-            mime: image.mime,
-            data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),
-            ..CoverArtDto::default()
-        })
-    }
-
     /// Save a release's images to disk next to the selected tracks (#102).
     ///
     /// Names them positionally, as the user chose: the primary -> `folder.<ext>`,
@@ -2373,8 +2415,12 @@ impl App {
     /// every image first (so extensions are known), then, if any target already
     /// exists and `overwrite` is false, writes NOTHING and returns those names so
     /// the UI can confirm — otherwise writes them all.
+    /// The images are fetched through the [`ProviderHub`], which owns the
+    /// network settings and the request spacing (#166); the library half —
+    /// where the files may be written — stays here.
     pub fn save_release_images(
         &self,
+        providers: &ProviderHub,
         source: &str,
         token: &str,
         track: &Path,
@@ -2389,12 +2435,7 @@ impl App {
         }
         let mut planned: Vec<(PathBuf, Vec<u8>)> = Vec::new();
         for (index, url) in urls.iter().enumerate() {
-            self.throttle(source);
-            let image = match source {
-                "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
-                "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
-                _ => self.discogs_provider(token)?.fetch_image(url)?,
-            };
+            let image = providers.fetch_image_bytes(source, token, url)?;
             let ext = extension_for_mime(&image.mime);
             let name = format!("{}.{ext}", image_basename(index));
             planned.push((canonical_dir.join(name), image.data));
@@ -4098,18 +4139,52 @@ mod tests {
         });
         assert_eq!(app.cover_max_px.get(), 500);
         assert_eq!(app.cover_quality.get(), 90);
-        assert_eq!(
-            app.discogs_proxy.borrow().as_deref(),
-            Some("http://host:3128")
-        );
-        assert_eq!(
-            app.discogs_min_interval.get(),
-            Some(Duration::from_secs_f64(0.5))
-        );
-        // An empty proxy clears it back to a direct connection.
-        app.apply_settings(&SettingsDto::default());
-        assert!(app.discogs_proxy.borrow().is_none());
-        assert!(app.discogs_min_interval.get().is_none());
+    }
+
+    #[test]
+    fn the_provider_hub_takes_the_network_settings_without_a_library() {
+        // #166: none of this needs an open library, which is the whole point —
+        // the hub is built and configured before the user picks a folder.
+        let hub = ProviderHub::default();
+        hub.apply_settings(&SettingsDto {
+            proxy: "http://host:3128".into(),
+            rate_limit_per_min: 120,
+            ..SettingsDto::default()
+        });
+        assert_eq!(hub.proxy.borrow().as_deref(), Some("http://host:3128"));
+        assert_eq!(hub.min_interval.get(), Some(Duration::from_secs_f64(0.5)));
+        // An empty proxy clears it back to a direct connection, and no rate
+        // limit means no spacing at all.
+        hub.apply_settings(&SettingsDto::default());
+        assert!(hub.proxy.borrow().is_none());
+        assert!(hub.min_interval.get().is_none());
+    }
+
+    #[test]
+    fn the_hub_spaces_requests_out_per_source() {
+        // Each source keeps its own timestamp, so a Discogs request does not
+        // make the next MusicBrainz one wait — and MusicBrainz keeps its 1s
+        // floor even with no user rate limit (#33).
+        let hub = ProviderHub::default();
+        // A rate limit has to be set for the Discogs cadence to be recorded at
+        // all: with none configured there is nothing to space out. 6000/min is
+        // 10ms, so the test doesn't actually wait.
+        hub.apply_settings(&SettingsDto {
+            rate_limit_per_min: 6000,
+            ..SettingsDto::default()
+        });
+        assert!(hub.last_discogs_request.get().is_none());
+        hub.throttle("discogs");
+        assert!(hub.last_discogs_request.get().is_some());
+        assert!(hub.last_musicbrainz_request.get().is_none());
+        assert!(hub.last_beatport_request.get().is_none());
+        hub.throttle("beatport");
+        assert!(hub.last_beatport_request.get().is_some());
+        // An unknown source falls back to the Discogs cadence rather than
+        // running unthrottled.
+        let before = hub.last_discogs_request.get();
+        hub.throttle("something-else");
+        assert!(hub.last_discogs_request.get() > before);
     }
 
     #[test]

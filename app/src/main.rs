@@ -17,13 +17,19 @@ use player::{Player, PlayerStatus};
 use tagrex::{
     ActionGroupDto, AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto,
     CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportFieldDto, ImportSelectionDto,
-    ImportTrackDto, NameProbeDto, PlaceholderDto, PlanDto, ReleaseDto, SaveImagesDto,
+    ImportTrackDto, NameProbeDto, PlaceholderDto, PlanDto, ProviderHub, ReleaseDto, SaveImagesDto,
     SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
 /// the non-`Sync` journal usable as shared Tauri state.
 type AppState = Mutex<Option<App>>;
+
+/// The provider side (#166): one per process, alive whether or not a library is
+/// open. `Mutex` for the same reason as `AppState` — its interior mutability is
+/// not `Sync` — and it doubles as what serializes provider requests, which is
+/// what makes the throttle a single cadence per source.
+type ProviderState = Mutex<ProviderHub>;
 
 fn with_app<T>(
     state: &State<AppState>,
@@ -32,6 +38,13 @@ fn with_app<T>(
     let guard = state.lock().unwrap();
     let app = guard.as_ref().ok_or("no library open")?;
     f(app)
+}
+
+fn with_providers<T>(
+    state: &State<ProviderState>,
+    f: impl FnOnce(&ProviderHub) -> Result<T, String>,
+) -> Result<T, String> {
+    f(&state.lock().unwrap())
 }
 
 fn with_app_mut<T>(
@@ -410,43 +423,48 @@ fn history(state: State<AppState>) -> Result<Vec<BatchDto>, String> {
 // thread: their bodies do blocking HTTP (ureq), and a synchronous command would
 // freeze the webview for the whole request — very visible when the picker
 // prefetches a release per candidate. No `.await` inside, so no MutexGuard
-// crosses one. `source` selects the provider ("discogs" | "musicbrainz"); the
-// token is ignored by token-less providers.
+// crosses one. `source` selects the provider ("discogs" | "musicbrainz" |
+// "beatport"); the token is ignored by token-less providers.
+//
+// They take the provider state, NOT the library (#166): looking a release up is
+// something the user does before choosing files, so requiring an open folder
+// only produced a "no library open" refusal for a search that needs no folder
+// at all.
 #[tauri::command]
 async fn provider_search(
-    state: State<'_, AppState>,
+    providers: State<'_, ProviderState>,
     source: String,
     token: String,
     query: SearchQueryDto,
 ) -> Result<Vec<CandidateDto>, String> {
-    with_app(&state, |app| {
-        app.provider_search(&source, &token, &query)
+    with_providers(&providers, |hub| {
+        hub.provider_search(&source, &token, &query)
             .map_err(|e| e.to_string())
     })
 }
 
 #[tauri::command]
 async fn provider_fetch_release(
-    state: State<'_, AppState>,
+    providers: State<'_, ProviderState>,
     source: String,
     token: String,
     release_id: String,
 ) -> Result<ReleaseDto, String> {
-    with_app(&state, |app| {
-        app.provider_fetch_release(&source, &token, &release_id)
+    with_providers(&providers, |hub| {
+        hub.provider_fetch_release(&source, &token, &release_id)
             .map_err(|e| e.to_string())
     })
 }
 
 #[tauri::command]
 async fn provider_fetch_image(
-    state: State<'_, AppState>,
+    providers: State<'_, ProviderState>,
     source: String,
     token: String,
     url: String,
 ) -> Result<CoverArtDto, String> {
-    with_app(&state, |app| {
-        app.provider_fetch_image(&source, &token, &url)
+    with_providers(&providers, |hub| {
+        hub.provider_fetch_image(&source, &token, &url)
             .map_err(|e| e.to_string())
     })
 }
@@ -456,6 +474,7 @@ async fn provider_fetch_image(
 #[tauri::command]
 async fn save_release_images(
     state: State<'_, AppState>,
+    providers: State<'_, ProviderState>,
     source: String,
     token: String,
     path: String,
@@ -463,8 +482,11 @@ async fn save_release_images(
     overwrite: bool,
 ) -> Result<SaveImagesDto, String> {
     let path = PathBuf::from(path);
+    // This one does need the library: it writes the images next to the tracks,
+    // inside the opened root.
+    let hub = providers.lock().unwrap();
     with_app(&state, |app| {
-        app.save_release_images(&source, &token, &path, &urls, overwrite)
+        app.save_release_images(&hub, &source, &token, &path, &urls, overwrite)
             .map_err(|e| e.to_string())
     })
 }
@@ -825,6 +847,7 @@ fn preview_transform_over_plan(
 fn save_settings(
     app: tauri::AppHandle,
     state: State<AppState>,
+    providers: State<ProviderState>,
     settings: SettingsDto,
 ) -> Result<(), String> {
     let path = settings_path(&app)?;
@@ -833,8 +856,10 @@ fn save_settings(
     }
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
     std::fs::write(path, json).map_err(|e| e.to_string())?;
-    // Apply immediately if a library is open, so the change takes effect without
-    // reopening.
+    // Apply immediately: the network half always (the hub is always there), the
+    // library half only when a library is open — so a change takes effect
+    // without reopening either way.
+    providers.lock().unwrap().apply_settings(&settings);
     if let Some(app) = state.lock().unwrap().as_ref() {
         app.apply_settings(&settings);
     }
@@ -846,6 +871,18 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::default())
+        .manage(ProviderState::default())
+        .setup(|app| {
+            // The provider hub exists from startup, before any library is
+            // opened (#166), so it takes the saved network settings here rather
+            // than waiting for a library or a trip through Settings › Save.
+            let settings = read_settings(&app.handle().clone());
+            app.state::<ProviderState>()
+                .lock()
+                .unwrap()
+                .apply_settings(&settings);
+            Ok(())
+        })
         .manage(Player::new())
         .invoke_handler(tauri::generate_handler![
             open_library,

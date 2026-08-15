@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Searching a metadata source no longer needs a folder open.** Looking a
+  release up is something you do *before* choosing files, but the search, the
+  release fetch and the cover fetch all went through the open library and
+  refused with "no library open" until a folder had been picked. They now run on
+  their own. Saving the images next to your tracks still needs a library, for
+  the obvious reason. The request spacing is now one cadence per source for the
+  whole session rather than being reset every time a folder is opened, so
+  reopening one can no longer burst past a provider's rate limit. (#166)
+
 ## [0.5.1] - 2026-08-15
 
 ### Fixed
