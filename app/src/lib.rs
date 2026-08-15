@@ -50,6 +50,11 @@ pub struct TrackDto {
     /// silently vanishes from the library. `#[serde(default)]` = false.
     #[serde(default)]
     pub unreadable: bool,
+    /// Playing time in seconds, for the Length column (#172). A technical
+    /// property rather than a tag, read from the same probe as the tags, so it
+    /// costs nothing extra. `None` when the file couldn't be read.
+    #[serde(default)]
+    pub duration_secs: Option<u64>,
 }
 
 impl TrackDto {
@@ -66,6 +71,7 @@ impl TrackDto {
             format,
             tags: std::collections::BTreeMap::new(),
             unreadable: true,
+            duration_secs: None,
         }
     }
 }
@@ -1080,8 +1086,13 @@ impl App {
         let mut tracks: Vec<TrackDto> = self
             .source_paths()
             .into_iter()
-            .map(|path| match TagEngine::read(&path) {
-                Ok(track) => TrackDto::from(track),
+            .map(|path| match TagEngine::read_with_props(&path) {
+                // One probe gives the tags and the playing time (#172); the
+                // Length column is free as long as it is taken from here.
+                Ok((track, props)) => TrackDto {
+                    duration_secs: Some(props.duration_secs),
+                    ..TrackDto::from(track)
+                },
                 Err(_) => TrackDto::unreadable(&path),
             })
             .collect();
@@ -3373,6 +3384,9 @@ impl From<tagrex_core::model::TrackFile> for TrackDto {
                 .map(|(field, value)| (field.to_storage_key(), value))
                 .collect(),
             unreadable: false,
+            // Filled by the caller that read the properties too (#172); a
+            // conversion from tags alone has no playing time to state.
+            duration_secs: None,
         }
     }
 }
@@ -4864,6 +4878,32 @@ mod tests {
         assert_eq!(second.get("artist").map(String::as_str), Some("Guest"));
         // Position 5, not selection index 2.
         assert_eq!(second.get("track").map(String::as_str), Some("5"));
+    }
+
+    #[test]
+    fn the_listing_states_a_playing_time_for_every_readable_file() {
+        // #172: the Length column reads this, and it comes from the same probe
+        // that read the tags — a file that can be read always states one, even
+        // when the fixture is zero seconds long, and an unreadable one states
+        // nothing rather than lying about being empty.
+        let dir = TempDir::new("listing-length");
+        let readable = dir.tagged_flac("a.flac", "Artist", "Title");
+        let broken = dir.0.join("broken.flac");
+        std::fs::write(&broken, b"not a flac at all").unwrap();
+        let app = open_app(&dir);
+
+        let tracks = app.list_tracks();
+        let by_name = |name: &str| {
+            tracks
+                .iter()
+                .find(|t| t.path.ends_with(name))
+                .unwrap_or_else(|| panic!("{name} not listed"))
+        };
+        assert_eq!(by_name("a.flac").duration_secs, Some(0));
+        assert!(!by_name("a.flac").unreadable);
+        assert_eq!(by_name("broken.flac").duration_secs, None);
+        assert!(by_name("broken.flac").unreadable);
+        let _ = readable;
     }
 
     #[test]

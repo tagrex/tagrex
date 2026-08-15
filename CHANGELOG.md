@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A Length column.** How long a track runs is the one thing about it the table
+  could not show, and it is what separates an edit from an original or a
+  truncated rip from a good one. Tick **Length** in Columns ▾: it reads `m:ss`,
+  sorts on the actual seconds rather than on the text (so 9:59 comes before
+  10:01), filters like any other column, and is read-only — a playing time is a
+  property of the audio, not a tag. It costs nothing to open a library with it:
+  the value comes from the same read that already collects the tags. (#172)
+
 - **Drag a column header sideways to reorder the columns.** Until now that meant
   opening Columns ▾ and dragging the grips there; the direct gesture works in
   the table itself, with an accent rule showing which edge the column will land

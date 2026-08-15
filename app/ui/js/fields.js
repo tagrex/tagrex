@@ -53,7 +53,13 @@ const KNOWN_CUSTOM_LABELS = {
 
 // Virtual (derived, read-only) columns that aren't tag fields (#106). "position"
 // reconstructs the vinyl side notation (A1/B2) from media + disc + track.
-const VIRTUAL_COLUMNS = [["position", "Position"]];
+// Read-only columns derived from something other than a tag: the vinyl side
+// notation (#106) and the playing time (#172). They live here rather than in
+// EXTENDED_FIELDS because nothing writes them.
+const VIRTUAL_COLUMNS = [
+  ["position", "Position"],
+  ["length", "Length"],
+];
 
 // Group key for a track that belongs to no dropped folder (a loose dropped
 // file, #127). Not a valid absolute path, so it can't collide with a folder key.

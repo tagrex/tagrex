@@ -131,7 +131,19 @@ const statusSel = el("status-sel");
 // Renders the table, overlaying any pending edits on top of the on-disk
 // values (edited cells shown and marked dirty). Does NOT clear `edits` — call
 // `resetEdits()` for that when loading fresh disk state.
+// The text of a read-only derived column — the vinyl position (#106) or the
+// playing time (#172) — or null when the column is an ordinary tag. One place,
+// so the row renderer, the diff renderer, sorting and filtering cannot drift on
+// what a derived cell says.
+function virtualCellText(track, key, pending) {
+  if (key === "position") return vinylPositionOf(track, pending);
+  if (key === "length") return track.duration_secs == null ? "" : fmtTime(track.duration_secs);
+  return null;
+}
+
 function sortValue(track, key) {
+  // Length sorts on the seconds, not on "9:59" vs "10:01" as text.
+  if (key === "length") return String(track.duration_secs ?? -1).padStart(9, "0");
   // Position sorts by (disc, track) numerically, so A1, A2, … B1 order holds
   // (and plain CD tracks sort numerically too) instead of by the display string.
   if (key === "position") {
@@ -148,7 +160,8 @@ function sortValue(track, key) {
 // sort use, so a field-scoped filter (`position:B1`) sees what the eye sees.
 function fieldValue(track, key) {
   if (key === "file") return fileName(track.path);
-  if (key === "position") return vinylPositionOf(track, edits.get(track.path));
+  const derived = virtualCellText(track, key, edits.get(track.path));
+  if (derived !== null) return derived;
   if (customColumnOf(key)) return customColumnValue(key, track.path);
   return track.tags[key] || "";
 }
@@ -403,12 +416,13 @@ function appendTrackRow(track, groupKey) {
       tr.appendChild(td);
       continue;
     }
-    // Position (#106): a derived, read-only view of the vinyl side notation —
-    // not a tag, so it isn't editable and carries no dirty state.
-    if (field === "position") {
+    // A derived column (#106 Position, #172 Length): read-only, so it isn't
+    // editable and carries no dirty state.
+    const derived = virtualCellText(track, field, pending);
+    if (derived !== null) {
       const td = document.createElement("td");
       td.className = "position-cell";
-      td.textContent = vinylPositionOf(track, pending);
+      td.textContent = derived;
       tr.appendChild(td);
       continue;
     }
@@ -449,9 +463,10 @@ function fillDiffRow(tr, track) {
     for (const field of visibleColumns) {
       if (field === "file") continue;
       const td = document.createElement("td");
-      if (field === "position") {
+      const derived = virtualCellText(track, field, pending);
+      if (derived !== null) {
         td.className = "position-cell";
-        td.textContent = vinylPositionOf(track, pending);
+        td.textContent = derived;
       } else {
         td.textContent = tag(track, field);
       }
@@ -466,10 +481,11 @@ function fillDiffRow(tr, track) {
     diffFileCellHtml(change, track);
   for (const field of visibleColumns) {
     if (field === "file") continue;
-    if (field === "position") {
+    const derived = virtualCellText(track, field, pending);
+    if (derived !== null) {
       const td = document.createElement("td");
       td.className = "position-cell";
-      td.textContent = vinylPositionOf(track, pending);
+      td.textContent = derived;
       tr.appendChild(td);
       continue;
     }

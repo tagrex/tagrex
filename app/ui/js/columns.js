@@ -123,7 +123,7 @@ function setGroupBy(value, { persist = true, rerender = true } = {}) {
 // name is the widest; short numeric/code fields start narrow.
 function defaultColumnWidth(key) {
   if (key === "file") return 240;
-  if (["year", "track", "tracktotal", "disc", "bpm", "key"].includes(key)) return 70;
+  if (["year", "track", "tracktotal", "disc", "bpm", "key", "length"].includes(key)) return 70;
   if (["artist", "title", "album", "albumartist", "composer"].includes(key)) return 160;
   return 130;
 }
@@ -446,7 +446,11 @@ function renderTableHead() {
         custom.name === custom.pattern ? custom.pattern : `${custom.name} · ${custom.pattern}`;
       th.classList.add(`align-${custom.align}`);
     } else {
-      const token = placeholderToken(key);
+      // The Length column is addressed by a file placeholder rather than a tag
+      // one, and it is spelled with the leading underscore the technical
+      // placeholders use (#147) — so the header still answers "what do I write
+      // for this?" (#172).
+      const token = placeholderToken(key === "length" ? "_length" : key);
       th.title = token ? `${columnLabel(key)} · ${token}` : columnLabel(key);
     }
     // A drag grip on the right edge resizes the column; a label span keeps the

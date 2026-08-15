@@ -460,8 +460,25 @@ pub struct TagEngine;
 impl TagEngine {
     /// Read tags from a file on disk.
     pub fn read(path: &Path) -> Result<TrackFile, TagIoError> {
+        Ok(Self::read_with_props(path)?.0)
+    }
+
+    /// Read the tags **and** the technical properties from one probe (#172).
+    ///
+    /// The file listing needs both — the tags for the columns, the duration for
+    /// the Length column — and parsing it twice would double the cost of opening
+    /// a library of thousands of files for a value the first parse already had.
+    /// [`read`](Self::read) is this without the second half.
+    pub fn read_with_props(path: &Path) -> Result<(TrackFile, AudioProps), TagIoError> {
         let tagged_file = Probe::open(path)?.guess_file_type()?.read()?;
         let format = AudioFormat::from_lofty(tagged_file.file_type())?;
+        let properties = tagged_file.properties();
+        let props = AudioProps {
+            duration_secs: properties.duration().as_secs(),
+            bitrate_kbps: properties.audio_bitrate(),
+            sample_rate_hz: properties.sample_rate(),
+            channels: properties.channels(),
+        };
 
         // Honor the user's read priority (#84) when the file carries more than
         // one tag block: pick the first prioritized block that is present, then
@@ -525,11 +542,14 @@ impl TagEngine {
             }
         }
 
-        Ok(TrackFile {
-            path: path.to_path_buf(),
-            format,
-            tags,
-        })
+        Ok((
+            TrackFile {
+                path: path.to_path_buf(),
+                format,
+                tags,
+            },
+            props,
+        ))
     }
 
     /// Write the tags of `file` back to disk.

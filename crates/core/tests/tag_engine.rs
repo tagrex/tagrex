@@ -299,6 +299,41 @@ fn a_legacy_user_text_field_folds_into_the_standard_one() {
     }
 }
 
+/// #172: the file listing needs the playing time next to the tags, and parsing
+/// every file twice to get it would double the cost of opening a library. One
+/// probe answers both, and `read` is that call minus the properties — so the two
+/// must agree about the tags.
+#[test]
+fn one_probe_returns_both_the_tags_and_the_properties() {
+    let path = temp_flac_path("with-props");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Test Artist".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags,
+    })
+    .expect("write tags");
+
+    let (track, props) = TagEngine::read_with_props(&path).expect("read");
+    let plain = TagEngine::read(&path).expect("read");
+    std::fs::remove_file(&path).ok();
+
+    assert_eq!(track.tags, plain.tags);
+    assert_eq!(track.format, AudioFormat::Flac);
+    assert_eq!(
+        track.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Test Artist")
+    );
+    // The fixture's STREAMINFO states the stream, so the properties are real
+    // values rather than a default-constructed blank.
+    assert_eq!(props.sample_rate_hz, Some(44100));
+    assert_eq!(props.channels, Some(2));
+    // It carries no audio frames, so it is genuinely zero seconds long.
+    assert_eq!(props.duration_secs, 0);
+}
+
 #[test]
 fn cover_embed_read_remove_and_survives_a_tag_write() {
     let path = temp_flac_path("cover");

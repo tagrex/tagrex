@@ -237,9 +237,9 @@ function mockKeyNotation(value, style) {
 function mockInvoke(cmd, args) {
   mockInvoke.state = mockInvoke.state || {
     tracks: [
-      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
-      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
-      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996" } },
+      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
+      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
+      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996" } },
     ],
     history: [],
   };
