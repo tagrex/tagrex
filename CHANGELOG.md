@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Drag a column header sideways to reorder the columns.** Until now that meant
+  opening Columns ▾ and dragging the grips there; the direct gesture works in
+  the table itself, with an accent rule showing which edge the column will land
+  against. File stays first and is neither dragged nor dropped onto. The two
+  header gestures it shares space with are untouched: a click still sorts, the
+  right-edge grip still resizes, and a header that was dragged does not also
+  sort. (#89)
+
 ### Fixed
 
 - **Searching a metadata source no longer needs a folder open.** Looking a

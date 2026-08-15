@@ -454,6 +454,13 @@ function renderTableHead() {
     th.innerHTML =
       `<span class="th-label">${escapeHtml(columnLabel(key))}<span class="sort-ind"></span></span>` +
       `<span class="col-resize" data-key="${escapeHtml(key)}"></span>`;
+    // Drag the header itself to reorder (#89) — the direct version of the
+    // Columns popover's grips, over the same order model. File is structural and
+    // stays first, so it is not a handle and not a target.
+    th.dataset.key = key;
+    if (key !== "file") {
+      enablePointerReorder(th, th, row, "th.sortable", moveColumn, { axis: "x" });
+    }
     row.appendChild(th);
   }
   hooks.updateSortIndicators();
@@ -522,6 +529,24 @@ function loadColumns() {
 }
 
 // Apply a new column set: persist, rebuild the header, repaint rows.
+// Move one column to where it was dropped, for both gestures that reorder them
+// (#43 in the popover, #89 on the header itself): `past` means the drop landed
+// on the far half of the target, so the dragged column goes after it.
+//
+// File is structural — always shown, always first — so it is neither dragged nor
+// dropped onto, and the order worked on here leaves it out entirely;
+// `applyColumns` puts it back in front.
+function moveColumn(dragged, target, past) {
+  if (target === "file" || !visibleColumns.includes(target)) return;
+  const order = visibleColumns.filter((k) => k !== "file");
+  order.splice(order.indexOf(dragged), 1);
+  let to = order.indexOf(target);
+  if (past) to += 1;
+  order.splice(to, 0, dragged);
+  applyColumns(order);
+  renderColumnsMenu();
+}
+
 function applyColumns(cols) {
   const deduped = [...new Set(cols)].filter((k) => k !== "file");
   setVisibleColumns(["file", ...deduped]);
@@ -630,16 +655,7 @@ function colMenuRow(key, visible) {
   grip.innerHTML = ico("grip");
   if (visible && !isFile) {
     grip.title = "Drag to reorder";
-    enablePointerReorder(grip, row, el("columns-menu"), ".col-menu-row", (dragged, target, below) => {
-      if (target === "file" || !visibleColumns.includes(target)) return;
-      const order = visibleColumns.filter((k) => k !== "file");
-      order.splice(order.indexOf(dragged), 1);
-      let to = order.indexOf(target);
-      if (below) to += 1;
-      order.splice(to, 0, dragged);
-      applyColumns(order);
-      renderColumnsMenu();
-    });
+    enablePointerReorder(grip, row, el("columns-menu"), ".col-menu-row", moveColumn);
   } else {
     grip.style.visibility = "hidden";
   }

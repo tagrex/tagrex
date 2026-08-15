@@ -3903,6 +3903,20 @@ td[data-field="year"],
   box-shadow: 0 0 0 1px var(--accent);
 }
 
+/* Reordering a column by dragging its header (#89). The same marks as the
+   popover, turned on their side: the accent rule sits on the edge the dragged
+   column would land against. The header keeps its resize cursor over the grip —
+   that is a different gesture — so only the body of the header grabs. */
+#tracks thead th.sortable.dragging {
+  opacity: 0.6;
+}
+#tracks thead th.sortable.drop-before {
+  box-shadow: inset 3px 0 0 0 var(--accent);
+}
+#tracks thead th.sortable.drop-after {
+  box-shadow: inset -3px 0 0 0 var(--accent);
+}
+
 /* Drop-position markers for the pointer-based reorder (Columns + Read priority):
    an accent rule on the edge the dragged item would land against. */
 .col-menu-row.drop-above,
