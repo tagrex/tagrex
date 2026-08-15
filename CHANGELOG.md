@@ -45,6 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   editor, the renamer, the exporter, the deduplicator and the online import.
   (#169)
 
+- The browser-development mock counts its cover images the same way, so a plan
+  description read there matches what the real backend produces. (#170)
+
 - **The tempo never reached a FLAC or an Ogg file, and the label never reached
   an M4A.** Both were written under a tag item that only ID3v2 (and, for the
   tempo, MP4) can hold, and a tag save silently discards an item the format has

@@ -9,7 +9,7 @@
 //
 // It reaches for two things the real UI owns — a file-name helper and the
 // vinyl-position parser — because it fakes what the backend derives from them.
-import { fileName } from "./dom.js";
+import { fileName, plural } from "./dom.js";
 import { parseVinylPosition } from "./vinyl.js";
 
 // Browser-only fake of the native player: a wall-clock timer advances position,
@@ -583,7 +583,9 @@ function mockInvoke(cmd, args) {
         })
         .filter(Boolean);
       return Promise.resolve({
-        description: args.covers.length ? `Set ${args.covers.length} cover image(s)` : "Remove cover art",
+        description: args.covers.length
+          ? `Set ${plural(args.covers.length, "cover image", "cover images")}`
+          : "Remove cover art",
         changes,
       });
     }
