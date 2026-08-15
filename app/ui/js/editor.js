@@ -4,7 +4,7 @@
 // in `tracks[].tags` — this exposes the rest, including custom ones. Edits are
 // staged into the shared buffer and previewed with everything else, so nothing
 // here writes.
-import { el, escapeHtml, ico, toast } from "./dom.js";
+import { el, escapeHtml, ico, plural, toast } from "./dom.js";
 import { edits, selection, selectedPaths, tracks } from "./state.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS } from "./fields.js";
 import { hooks } from "./hooks.js";
@@ -28,7 +28,7 @@ function currentFieldValue(path, key) {
 function refreshFieldEditor() {
   const paths = selectedPaths();
   stagedFields = new Map();
-  el("fields-count").textContent = paths.length ? `— ${paths.length} file(s)` : "";
+  el("fields-count").textContent = paths.length ? `— ${plural(paths.length, "file", "files")}` : "";
   closeAddField(); // collapse the add-field row back to its idle affordance
   populateKnownFields();
   renderFieldEditor(paths);
@@ -402,7 +402,7 @@ async function applyFieldEditor() {
   await hooks.previewEdits();
   toast(
     changed
-      ? `Staged ${stagedFields.size} field(s) across ${paths.length} file(s)`
+      ? `Staged ${plural(stagedFields.size, "field", "fields")} across ${plural(paths.length, "file", "files")}`
       : "Nothing changed"
   );
 }

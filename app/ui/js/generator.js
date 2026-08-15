@@ -10,7 +10,7 @@
 // chain reads the files. With a plan staged it reads THE PLAN — the values it
 // proposes — and gives back a revised plan, so producing values and cleaning
 // them up stay one Apply and one undo entry instead of two.
-import { el, placeFloating, toast } from "./dom.js";
+import { el, placeFloating, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { createGroupsMenu, createRuleChain, ruleForGroup } from "./chain.js";
@@ -54,9 +54,9 @@ function refreshGenerator() {
   const count = selectedPaths().length;
   const staged = overStagedPlan();
   el("transform-count").textContent = staged
-    ? `— ${previewPlan.changes.length} staged file(s)`
+    ? `— ${plural(previewPlan.changes.length, "staged file", "staged files")}`
     : count
-      ? `— ${count} file(s)`
+      ? `— ${plural(count, "file", "files")}`
       : "";
   el("transform-over-plan").hidden = !staged;
   el("transform-preview").textContent = staged ? "Clean up staged" : "Preview changes";
@@ -168,7 +168,7 @@ async function numberTracks() {
   }
   hooks.renderTracks();
   await hooks.previewEdits();
-  toast(`Numbered ${assigned.length} track(s)${perGroup ? " (restarted per group)" : ""}`);
+  toast(`Numbered ${plural(assigned.length, "track", "tracks")}${perGroup ? " (restarted per group)" : ""}`);
 }
 
 
@@ -199,7 +199,7 @@ async function splitVinylSides() {
   }
   hooks.renderTracks();
   await hooks.previewEdits();
-  toast(`Split ${changed} vinyl position(s) into track + disc`);
+  toast(`Split ${plural(changed, "vinyl position", "vinyl positions")} into track + disc`);
 }
 
 async function previewTransform() {
@@ -225,7 +225,7 @@ async function previewTransform() {
     stageRun(plan, [transformChain.getScope()], wasStaged);
     toast(
       plan.changes.length
-        ? `Previewing ${plan.changes.length} file(s) — click Apply`
+        ? `Previewing ${plural(plan.changes.length, "file", "files")} — click Apply`
         : nothingChanged(wasStaged, "These rules"),
       plan.changes.length === 0
     );
@@ -259,7 +259,7 @@ async function runTickedGroups(groups) {
     stageRun(plan, groups.map((g) => g.scope), wasStaged);
     toast(
       plan.changes.length
-        ? `Previewing ${plan.changes.length} file(s) — click Apply`
+        ? `Previewing ${plural(plan.changes.length, "file", "files")} — click Apply`
         : nothingChanged(wasStaged, "These groups"),
       plan.changes.length === 0
     );

@@ -1,7 +1,7 @@
 "use strict";
 
 import { TAURI, invoke } from "./js/invoke.js";
-import { el, toast, fileName, escapeHtml, ico, confirmDialog } from "./js/dom.js";
+import { el, toast, fileName, escapeHtml, ico, confirmDialog, plural } from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
 import { hooks } from "./js/hooks.js";
@@ -891,7 +891,7 @@ async function apply() {
   const appliedPaths = new Set(appliedPlan.changes.map((c) => c.path));
   try {
     await invoke("apply_plan", { plan: appliedPlan });
-    toast(`Applied changes to ${appliedPlan.changes.length} file(s)`);
+    toast(`Applied changes to ${plural(appliedPlan.changes.length, "file", "files")}`);
     if (wasRename) {
       remapEditsAfterRename(appliedPlan); // keep pending tag edits, new paths
     } else if (wasEdits) {
@@ -1346,10 +1346,10 @@ function syncSelectionUI() {
 // DOM even while hidden); the full panel refresh still happens on mode entry.
 function updatePanelCounts() {
   const count = selectedPaths().length;
-  el("transform-count").textContent = count ? `— ${count} file(s)` : "";
+  el("transform-count").textContent = count ? `— ${plural(count, "file", "files")}` : "";
   el("autonum-count").textContent = count ? `— ${count} selected` : "";
   el("vinyl-count").textContent = count ? `— ${count} selected` : "";
-  el("export-count").textContent = count ? `— ${count} track(s)` : "";
+  el("export-count").textContent = count ? `— ${plural(count, "track", "tracks")}` : "";
 }
 
 function selectRow(tr, e) {

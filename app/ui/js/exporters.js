@@ -3,7 +3,7 @@
 // Playlist, CSV, HTML, XML and the mask report. All read-only: they build a
 // file in the opened library and deliberately bypass the change pipeline, since
 // nothing about the tracks themselves is touched.
-import { el, fileName, toast } from "./dom.js";
+import { el, fileName, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { selectedPaths } from "./state.js";
 
@@ -32,7 +32,7 @@ let exportKind = "playlist";
 // so a name the user typed survives a mode switch.
 function refreshExporter() {
   const count = selectedPaths().length;
-  el("export-count").textContent = count ? `— ${count} track(s)` : "";
+  el("export-count").textContent = count ? `— ${plural(count, "track", "tracks")}` : "";
   reflectExportKind();
   if (!el("export-name").value) el("export-name").value = EXPORT_DEFAULTS[exportKind];
 }
@@ -81,7 +81,7 @@ async function runExport() {
         fileName: outName,
       });
     }
-    toast(`Exported ${paths.length} track(s) to ${fileName(written)}`);
+    toast(`Exported ${plural(paths.length, "track", "tracks")} to ${fileName(written)}`);
   } catch (e) {
     toast(String(e), true);
   }

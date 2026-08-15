@@ -744,7 +744,7 @@ async function autoMatchToRelease(card) {
     const isrcNote = byIsrc ? ` (${byIsrc} exact by ISRC)` : "";
     toast(
       matched
-        ? `Matched ${matched}/${paths.length} file(s)${isrcNote} — reordered to line up`
+        ? `Matched ${matched}/${plural(paths.length, "file", "files")}${isrcNote} — reordered to line up`
         : "No confident matches — leaving the order alone",
       matched === 0,
     );
@@ -770,7 +770,7 @@ async function embedCoverFrom(card) {
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing cover on ${previewPlan.changes.length} file(s) — click Apply`
+        ? `Previewing cover on ${plural(previewPlan.changes.length, "file", "files")} — click Apply`
         : "Selected files already have this cover",
     );
   } catch (e) {
@@ -808,7 +808,7 @@ async function saveReleaseImages(card, all) {
       if (!ok) return;
       res = await invoke("save_release_images", { ...args, overwrite: true });
     }
-    toast(`Saved ${res.written.length} image(s) next to the tracks`);
+    toast(`Saved ${plural(res.written.length, "image", "images")} next to the tracks`);
   } catch (e) {
     toast(String(e), true);
   }
@@ -874,7 +874,7 @@ async function importRelease(card) {
     await hooks.previewEdits();
     toast(
       merged
-        ? `Merged ${merged} field change(s) from Discogs into pending edits`
+        ? `Merged ${plural(merged, "field change", "field changes")} from Discogs into pending edits`
         : "Nothing new to import from this release",
     );
   } catch (e) {

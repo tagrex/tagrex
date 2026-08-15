@@ -10,7 +10,7 @@
 // What a panel supplies is its element ids and how the chain is run; what it
 // gets back is an object it renders and reads. Nothing here knows about a
 // preview, a plan or a panel.
-import { el, ico, placeFloating, toast } from "./dom.js";
+import { el, ico, placeFloating, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
 import {
@@ -99,7 +99,7 @@ function groupSummary(group) {
   const on = (group.rules || []).filter((r) => r.enabled !== false).length;
   const total = (group.rules || []).length;
   const scope = SCOPE_LABELS[group.scope] || group.scope || "all tags";
-  return `${on}/${total} step(s) · ${scope}`;
+  return `${on}/${plural(total, "step", "steps")} · ${scope}`;
 }
 
 // ---- the rule chain (#34) ----

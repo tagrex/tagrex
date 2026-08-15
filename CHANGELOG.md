@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   one hit read "Found 1 entries". Both now agree with the number. Easy to meet
   on a store's catalogue, where single-track releases are the norm. (#167)
 
+- The rest of the counted messages stopped hedging with `(s)`: previews, toasts
+  and the count next to each panel's title now read "1 file" or "3 files",
+  "1 track" or "12 tracks", across the cover well, the generator, the field
+  editor, the renamer, the exporter, the deduplicator and the online import.
+  (#169)
+
 - **The tempo never reached a FLAC or an Ogg file, and the label never reached
   an M4A.** Both were written under a tag item that only ID3v2 (and, for the
   tempo, MP4) can hold, and a tag save silently discards an item the format has

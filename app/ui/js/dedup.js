@@ -3,7 +3,7 @@
 // A read-only scan: it groups the library by the chosen criterion and shows
 // what it found behind a lock banner. Nothing here changes a file — deleting a
 // duplicate is deliberately not offered.
-import { el, escapeHtml, fileName, toast } from "./dom.js";
+import { el, escapeHtml, fileName, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { selectedPaths } from "./state.js";
 
@@ -52,7 +52,7 @@ function renderDuplicates(groups) {
   const results = el("dup-results");
   const fileCount = groups.reduce((n, g) => n + g.files.length, 0);
   el("dup-summary").textContent = groups.length
-    ? `${groups.length} set(s) · ${fileCount} files`
+    ? `${plural(groups.length, "set", "sets")} · ${plural(fileCount, "file", "files")}`
     : "No duplicates found";
   if (!groups.length) {
     results.innerHTML = `<p class="empty inert-panel">Nothing matched — the library looks clean by this criterion.</p>`;
