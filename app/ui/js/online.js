@@ -5,7 +5,7 @@
 // browser, the query presets that build a search string from the selection, and
 // the import that merges a release onto the selected files. Everything it
 // stages goes through the ordinary preview/apply/undo path.
-import { confirmDialog, el, escapeHtml, fileName, ico, toast } from "./dom.js";
+import { confirmDialog, el, escapeHtml, fileName, ico, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { fmtTime } from "./player.js";
@@ -218,7 +218,8 @@ function countLabel(id) {
   const release = releaseCache.get(id);
   if (!release) return "— tracks";
   const discs = discCount(release);
-  return discs > 1 ? `${release.tracks.length} tracks · ${discs} discs` : `${release.tracks.length} tracks`;
+  const tracks = plural(release.tracks.length, "track", "tracks");
+  return discs > 1 ? `${tracks} · ${plural(discs, "disc", "discs")}` : tracks;
 }
 
 // Highest disc number across track positions ("2-1" -> disc 2); 1 if unmarked.
@@ -285,7 +286,9 @@ function renderReleaseList() {
   const list = releaseList();
   list.innerHTML = "";
   el("release-toolbar").hidden = releaseCandidates.length === 0;
-  el("release-count").textContent = String(releaseCandidates.length);
+  // The whole phrase, not just the number: "Found 1 entries" was the same
+  // disagreement as the card counts (#167).
+  el("release-found").textContent = `Found ${plural(releaseCandidates.length, "entry", "entries")}`;
   el("discogs-empty").hidden = releaseCandidates.length > 0;
   if (releaseCandidates.length === 0) {
     el("discogs-empty").textContent = "No releases found.";

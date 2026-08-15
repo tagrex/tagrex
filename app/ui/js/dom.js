@@ -15,6 +15,12 @@ export function toast(message, isError) {
   toast._timer = setTimeout(() => (t.hidden = true), 3200);
 }
 
+// "1 track" / "2 tracks" (#167). A count and its noun, agreeing — writing the
+// noun inline is what produced "1 tracks" on every single-track release.
+export function plural(count, one, many) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
 export function fileName(path) {
   const parts = path.split(/[\\/]/);
   return parts[parts.length - 1];

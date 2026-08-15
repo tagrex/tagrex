@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A release with one track read **"1 tracks"** on its card, and a search with
+  one hit read "Found 1 entries". Both now agree with the number. Easy to meet
+  on a store's catalogue, where single-track releases are the norm. (#167)
+
 - **The tempo never reached a FLAC or an Ogg file, and the label never reached
   an M4A.** Both were written under a tag item that only ID3v2 (and, for the
   tempo, MP4) can hold, and a tag save silently discards an item the format has
