@@ -190,6 +190,115 @@ fn the_dj_fields_survive_a_round_trip_on_an_id3v2_file() {
     assert!(has_tbpm, "the tempo left TBPM, which is what DJ tools read");
 }
 
+/// #171: another tagger's user-text spellings of fields that have a standard
+/// frame. A file can carry both — its `TXXX:Label` beside the `TPUB` an import
+/// wrote — and used to show them as two contradictory fields.
+#[test]
+fn a_legacy_user_text_field_folds_into_the_standard_one() {
+    use lofty::config::WriteOptions;
+    use lofty::id3::v2::{ExtendedTextFrame, Frame, FrameId, Id3v2Tag, TextInformationFrame};
+    use lofty::prelude::TagExt;
+    use lofty::TextEncoding;
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-legacy-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    // Both spellings, as a real file has them: the standard frame with the
+    // current value, the legacy user-text one with a stale value.
+    let mut seeded = Id3v2Tag::new();
+    seeded.insert(Frame::Text(TextInformationFrame::new(
+        FrameId::Valid("TPUB".into()),
+        TextEncoding::UTF8,
+        "New Label".to_string(),
+    )));
+    seeded.insert(Frame::UserText(ExtendedTextFrame::new(
+        TextEncoding::UTF8,
+        "Label".to_string(),
+        "Stale Label".to_string(),
+    )));
+    seeded.insert(Frame::Text(TextInformationFrame::new(
+        FrameId::Valid("TMED".into()),
+        TextEncoding::UTF8,
+        "Digital".to_string(),
+    )));
+    seeded.insert(Frame::UserText(ExtendedTextFrame::new(
+        TextEncoding::UTF8,
+        "OriginalMediaType".to_string(),
+        "Cd".to_string(),
+    )));
+    // Only the old spelling: its value carries into the standard field.
+    seeded.insert(Frame::UserText(ExtendedTextFrame::new(
+        TextEncoding::UTF8,
+        "COUNTRY".to_string(),
+        "Belgium".to_string(),
+    )));
+    // And something we don't understand, which must keep round-tripping.
+    seeded.insert(Frame::UserText(ExtendedTextFrame::new(
+        TextEncoding::UTF8,
+        "TAGREX_CUSTOM_TEST".to_string(),
+        "Energetic".to_string(),
+    )));
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+
+    let read_back = TagEngine::read(&path).expect("read tags");
+    // The standard frame wins over the stale twin.
+    assert_eq!(
+        read_back.tags.get(&TagField::Publisher).map(String::as_str),
+        Some("New Label")
+    );
+    assert_eq!(
+        read_back.tags.get(&TagField::MediaType).map(String::as_str),
+        Some("Digital")
+    );
+    // The old spelling is gone as a field of its own.
+    for stale in ["Label", "OriginalMediaType", "COUNTRY"] {
+        assert_eq!(
+            read_back.tags.get(&TagField::Custom(stale.to_string())),
+            None,
+            "{stale} still shows as a field of its own"
+        );
+    }
+    // A lone legacy value carries into the field it means.
+    assert_eq!(
+        read_back
+            .tags
+            .get(&TagField::Custom("RELEASECOUNTRY".to_string()))
+            .map(String::as_str),
+        Some("Belgium")
+    );
+    // An unrecognized user-text field is untouched.
+    assert_eq!(
+        read_back
+            .tags
+            .get(&TagField::Custom("TAGREX_CUSTOM_TEST".to_string()))
+            .map(String::as_str),
+        Some("Energetic")
+    );
+
+    // Writing consolidates: the stale frames are not carried over, so the file
+    // stops contradicting itself.
+    TagEngine::write(&read_back).expect("write tags");
+    let after = TagEngine::read(&path).expect("read tags");
+    std::fs::remove_file(&path).ok();
+    assert_eq!(
+        after.tags.get(&TagField::Publisher).map(String::as_str),
+        Some("New Label")
+    );
+    assert_eq!(
+        after
+            .tags
+            .get(&TagField::Custom("RELEASECOUNTRY".to_string()))
+            .map(String::as_str),
+        Some("Belgium")
+    );
+    for stale in ["Label", "OriginalMediaType", "COUNTRY"] {
+        assert_eq!(after.tags.get(&TagField::Custom(stale.to_string())), None);
+    }
+}
+
 #[test]
 fn cover_embed_read_remove_and_survives_a_tag_write() {
     let path = temp_flac_path("cover");

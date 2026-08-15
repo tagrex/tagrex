@@ -492,7 +492,14 @@ impl TagEngine {
                     _ => None,
                 };
                 if let Some(value) = value {
-                    let field = item_key_to_tag_field(item.key());
+                    let (field, from_alias) = field_for_item_key(item.key());
+                    // A legacy spelling never overrides the standard frame
+                    // (#171). Both can be in one file — another tagger's
+                    // `TXXX:Label` next to the `TPUB` an import just wrote — and
+                    // the standard one is the current value.
+                    if from_alias && tags.contains_key(&field) {
+                        continue;
+                    }
                     // A file really can carry several artists or genres, as
                     // separate Vorbis comments or as one multi-value ID3v2.4
                     // frame — lofty surfaces both as repeated items here. Joining
@@ -809,6 +816,37 @@ fn item_value_for(field: &TagField, value: &str) -> ItemValue {
     }
 }
 
+/// The field an item belongs to, and whether it got there through a legacy
+/// spelling rather than the standard one (#171) — which decides who wins when a
+/// file carries both.
+fn field_for_item_key(key: &ItemKey) -> (TagField, bool) {
+    if let ItemKey::Unknown(name) = key {
+        if let Some(field) = legacy_alias_field(name) {
+            return (field, true);
+        }
+    }
+    (item_key_to_tag_field(key), false)
+}
+
+/// User-text (`TXXX`) names other taggers use for fields that have a standard
+/// frame of their own (#171). Folding them in means a file stops stating two
+/// labels or two media types, and — because a `TXXX` that is not in the model is
+/// not carried over — the stale one goes away the next time the file is written.
+///
+/// Deliberately small, and only for names that mean one unambiguous thing. `KEY`
+/// and `BPM` are **not** here on purpose: DJ tools write those in notations that
+/// differ from the standard frames (Camelot against musical, decimal against
+/// integer), so folding them would silently pick one and drop the other.
+/// Anything not listed keeps round-tripping as a `Custom` field.
+fn legacy_alias_field(name: &str) -> Option<TagField> {
+    match name.trim().to_ascii_uppercase().as_str() {
+        "LABEL" | "ORGANIZATION" => Some(TagField::Publisher),
+        "COUNTRY" => Some(TagField::Custom("RELEASECOUNTRY".to_string())),
+        "ORIGINALMEDIATYPE" | "MEDIA" | "MEDIATYPE" => Some(TagField::MediaType),
+        _ => None,
+    }
+}
+
 /// The item key a field is *written* under, for the tag type receiving it
 /// (#165).
 ///
@@ -1085,6 +1123,39 @@ mod tests {
                 tag_field_to_item_key(&field)
             );
         }
+    }
+
+    #[test]
+    fn legacy_user_text_names_fold_into_the_field_they_mean() {
+        let alias = |name: &str| field_for_item_key(&ItemKey::Unknown(name.to_string()));
+        assert_eq!(alias("Label"), (TagField::Publisher, true));
+        assert_eq!(alias("ORGANIZATION"), (TagField::Publisher, true));
+        assert_eq!(alias("OriginalMediaType"), (TagField::MediaType, true));
+        assert_eq!(alias("media"), (TagField::MediaType, true));
+        assert_eq!(
+            alias("COUNTRY"),
+            (TagField::Custom("RELEASECOUNTRY".to_string()), true)
+        );
+        // The field we already write keeps its own name, and is not an alias.
+        assert_eq!(
+            alias("RELEASECOUNTRY"),
+            (TagField::Custom("RELEASECOUNTRY".to_string()), false)
+        );
+        // Anything else is still an ordinary custom field.
+        assert_eq!(
+            alias("TAGREX_CUSTOM_TEST"),
+            (TagField::Custom("TAGREX_CUSTOM_TEST".to_string()), false)
+        );
+        // Notation-dependent fields stay out of the table on purpose: a DJ tool's
+        // TXXX:KEY may be Camelot where TKEY is musical, and folding them would
+        // drop one of the two.
+        assert_eq!(alias("KEY"), (TagField::Custom("KEY".to_string()), false));
+        assert_eq!(alias("BPM"), (TagField::Custom("BPM".to_string()), false));
+        // A standard key is untouched by any of this.
+        assert_eq!(
+            field_for_item_key(&ItemKey::Publisher),
+            (TagField::Publisher, false)
+        );
     }
 
     #[test]

@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.5.0] - 2026-08-15
+### Fixed
+
+- **A file no longer states the same thing twice in two spellings.** Some
+  taggers write the label, the release country and the media type into user-text
+  fields of their own (`Label`, `COUNTRY`, `OriginalMediaType`) rather than the
+  standard places TagRex uses (`TPUB`, `RELEASECOUNTRY`, `TMED`). Those were
+  carried over as unrelated custom fields, so after an online import a file
+  claimed two labels and two media types with different values, and the editor
+  showed both. They are now recognized as the field they mean: the standard one
+  wins where a file has both, a lone old-style value carries into it, and saving
+  the file drops the leftover. Notation-dependent fields are deliberately left
+  alone — a DJ tool's `KEY` may be Camelot where the standard frame is musical,
+  so folding those would silently discard one of the two. Any other custom field
+  round-trips exactly as before. (#171)
 
 ### Added
 
