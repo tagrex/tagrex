@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-15
+
 ### Fixed
 
 - **A file no longer states the same thing twice in two spellings.** Some
