@@ -332,6 +332,11 @@ function measureColumns(keys) {
   const headers = [...table.querySelectorAll("thead th.sortable")];
   const saved = headers.map((th) => th.style.width);
   for (const th of headers) th.style.width = "";
+  // The table only holds the rows the window shows (#189), so the widest value
+  // in a column usually has no row to be measured. The renderer lends us one for
+  // the duration of the read — the browser still does the measuring, which is
+  // what makes this honest about badges, two-line cells and the value font.
+  const unmountMeasureRows = hooks.mountMeasureRows(keys);
   table.classList.add("measuring");
   const natural = new Map();
   for (const th of headers) {
@@ -340,6 +345,7 @@ function measureColumns(keys) {
     }
   }
   table.classList.remove("measuring");
+  unmountMeasureRows();
   headers.forEach((th, index) => (th.style.width = saved[index]));
   return natural;
 }

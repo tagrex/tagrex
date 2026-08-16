@@ -42,7 +42,7 @@ export function setPreviewSource(value) {
 }
 
 // While a plan is staged the file table enters a DIFF-STATE in place (#117):
-// `diffByPath` maps each changed path to its change so appendTrackRow can render
+// `diffByPath` maps each changed path to its change so the row renderer can show
 // the diff, and `applySelection` is the subset of those paths ticked to apply
 // (the sel column's meaning switches from row-selection to apply-scope while
 // diffing). Both are null/empty when not diffing.

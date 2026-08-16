@@ -44,6 +44,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   path doesn't turn it back into Browse just in time to open a folder dialog
   instead. (#177)
 
+### Changed
+
+- **The file table builds only the rows the window shows.** It used to keep one
+  DOM row per file, so a library of a few thousand paid for rows nobody could
+  see — and every operation was priced against the library rather than against
+  the window. What the table shows is now a model, of which only the visible
+  slice exists as rows, held in place by spacers so the scrollbar still means
+  what it says. Selection, select-all, Shift-ranges, folder selection, keyboard
+  navigation and the player's running order read that model, so a file the
+  window doesn't hold is still in scope for everything it was in scope for
+  before, and fitting a column to its content still measures the whole list —
+  the widest values are lent to the table for the measurement. Measured on a
+  library of 3799 files, with the DOM down from 4117 rows to about 46: opening
+  it 2874 ms → 566 ms, sorting a column 5149 ms → 79 ms, expanding every folder
+  2684 ms → 24 ms, deselecting everything 582 ms → 8 ms, a keystroke in the
+  filter 56 ms → 2 ms, leaving a staged change 220 ms → 83 ms. (#189)
+
 ### Fixed
 
 - **Staging a change no longer rebuilds every row of the library.** Bringing a

@@ -5,6 +5,7 @@
 // repeat, volume, the seek drag — is its own business. The rest of the UI only
 // asks it to start a track or show the bar.
 import { el, fileName, ico } from "./dom.js";
+import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { tracks, selection, activeRowPath } from "./state.js";
 
@@ -135,23 +136,15 @@ function playerIdle() {
 }
 
 // The path of the next visible row after `path` in the current table order
-// (respecting sort/filter/manual reorder — the DOM is the source of truth), or
-// null if `path` is the last visible row.
-// Rows the player can actually move through. Scoped to `tr[data-path]` so group
-// headers don't count (they carry no path), and collapsed rows are skipped —
-// previously this walked every `tr`, so auto-advance silently stopped dead at a
-// group boundary because the next row was a header with no path.
-function playableRows() {
-  return [...tracksBody.querySelectorAll("tr[data-path]")].filter(
-    (r) => !r.classList.contains("hidden-row"),
-  );
-}
+// (respecting sort/filter/manual reorder), or null if `path` is the last one.
+// The table is windowed (#189), so the rows are no longer the list — the
+// renderer's model is, and it already excludes group headers (which carry no
+// path) and the files inside a collapsed folder.
 function stepVisiblePath(path, delta) {
-  const rows = playableRows();
-  const i = rows.findIndex((r) => r.dataset.path === path);
+  const paths = hooks.navigablePaths();
+  const i = paths.indexOf(path);
   if (i < 0) return null;
-  const target = rows[i + delta];
-  return target ? target.dataset.path : null;
+  return paths[i + delta] ?? null;
 }
 function nextVisiblePath(path) {
   return stepVisiblePath(path, 1);
@@ -160,8 +153,7 @@ function prevVisiblePath(path) {
   return stepVisiblePath(path, -1);
 }
 function firstVisiblePath() {
-  const first = playableRows()[0];
-  return first ? first.dataset.path : null;
+  return hooks.navigablePaths()[0] ?? null;
 }
 
 // Repeat: off / all (wrap at the end of the list) / one (loop this track). It
@@ -294,18 +286,10 @@ async function pollPlayerStatus() {
 // list — then the backend auto-advances down the list to the end (#99 redesign,
 // the per-row play button was removed).
 function currentPlayTarget() {
-  const rows = [...tracksBody.querySelectorAll("tr")].filter(
-    (r) =>
-      r.dataset.path &&
-      !r.classList.contains("hidden-row") &&
-      !r.classList.contains("unreadable"),
-  );
-  if (!rows.length) return null;
-  if (activeRowPath && rows.some((r) => r.dataset.path === activeRowPath)) {
-    return activeRowPath;
-  }
-  const sel = rows.find((r) => selection.has(r.dataset.path));
-  return sel ? sel.dataset.path : rows[0].dataset.path;
+  const paths = hooks.navigablePaths();
+  if (!paths.length) return null;
+  if (activeRowPath && paths.includes(activeRowPath)) return activeRowPath;
+  return paths.find((path) => selection.has(path)) ?? paths[0];
 }
 
 function playPauseFromBar() {
@@ -333,13 +317,12 @@ plSeek.addEventListener("input", () => {
   const target = (Number(plSeek.value) / 1000) * plDuration;
   plTime.textContent = `${fmtTime(target)} / ${fmtTime(plDuration)}`;
 });
-// Prev/Next step through the same playable rows the gapless queue uses. At an
+// Prev/Next step through the same playable files the gapless queue uses. At an
 // end they wrap only when Repeat all is on, matching what auto-advance does.
 el("pl-prev").addEventListener("click", () => {
   if (!playingPath) return;
   const target =
-    prevVisiblePath(playingPath) ||
-    (repeatMode === "all" ? playableRows().slice(-1)[0]?.dataset.path : null);
+    prevVisiblePath(playingPath) || (repeatMode === "all" ? hooks.navigablePaths().at(-1) ?? null : null);
   if (target) playTrack(target);
 });
 el("pl-next").addEventListener("click", () => {

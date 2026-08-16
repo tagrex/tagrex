@@ -64,6 +64,8 @@ Object.assign(hooks, {
   refreshCoverWell,
   openDrop,
   updateSortIndicators,
+  mountMeasureRows,
+  navigablePaths: () => navPaths,
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
 import {
@@ -116,6 +118,7 @@ import {
 
 // ---- elements ----
 const rootInput = el("root");
+const tableWrap = el("files-view");
 const tracksBody = el("tracks-body");
 const tracksEmpty = el("tracks-empty");
 const applyBtn = el("diff-apply");
@@ -366,23 +369,15 @@ function presetSummary(p) {
   return bits.length ? bits.join(" · ") : "empty view";
 }
 
-// Append one built row to the body — the render loop's step.
-function appendTrackRow(track, groupKey) {
-  tracksBody.appendChild(buildTrackRow(track, groupKey));
-}
-
-// Build one track row. `groupKey` (when grouping) tags the row so its group
-// header can collapse it. Returned rather than appended so a single row can
-// also be rebuilt in place, which is how staging patches the table (#186)
-// instead of repainting every row of the library.
+// Build one track row. `groupKey` (when grouping) tags the row so a click on it
+// can tell which folder it belongs to. Returned rather than appended: the window
+// renderer (#189) decides which rows exist at all, and a single row is also
+// rebuilt in place when only its own contents changed (#186).
 function buildTrackRow(track, groupKey) {
   const pending = edits.get(track.path);
   const tr = document.createElement("tr");
   tr.dataset.path = track.path;
-  if (groupKey !== null) {
-    tr.dataset.group = groupKey;
-    if (collapsedGroups.has(groupKey)) tr.classList.add("hidden-row");
-  }
+  if (groupKey !== null) tr.dataset.group = groupKey;
   // An unreadable file (tags failed to parse) is shown but inert: it can't be
   // selected, played, or edited, and every mode's preview already skips it. It's
   // listed only so it never looks like the file vanished (#83).
@@ -539,7 +534,7 @@ function diffFileCellHtml(change, track) {
 }
 
 // A collapsible group header row spanning the table width.
-function appendGroupHeader(key, count) {
+function buildGroupHeader(key, count) {
   const collapsed = collapsedGroups.has(key);
   const tr = document.createElement("tr");
   tr.className = "group-head" + (collapsed ? " collapsed" : "");
@@ -549,22 +544,107 @@ function appendGroupHeader(key, count) {
       <span class="group-label">${escapeHtml(groupLabel(key))}</span>
       <span class="group-count muted">· ${count} ${count === 1 ? "file" : "files"}</span>
     </td>`;
-  tracksBody.appendChild(tr);
+  return tr;
 }
 
-function renderTracks() {
-  tracksBody.innerHTML = "";
-  // The rows are gone, so nothing is painted any more (#184).
-  paintedSelection = new Set();
-  updateSortIndicators();
+// ---- the windowed table (#189) ----
+// The table used to keep one DOM row per file, so a library of a few thousand
+// paid for rows nobody could see: every render, every restyle, and every walk
+// over the rows was priced against the library rather than against the window.
+//
+// What the table shows is now a MODEL — an ordered list of group headers and
+// tracks — of which only the slice the viewport covers is built as rows, held in
+// place by a spacer row above and below. Everything that used to read the rows
+// (select-all, ranges, group selection, keyboard navigation, the group toggle)
+// reads the model; everything that paints rows works on the rendered slice.
+//
+// The rule to keep: the DOM is a view of the model, never the source of truth
+// for what the table contains. `selection` was already a set for exactly this
+// reason (#20) — this extends the same discipline to order, grouping and counts.
 
+// The rendered list: group headers plus the tracks of expanded groups, in order.
+let viewItems = [];
+// Selectable paths in visual order, INCLUDING files inside collapsed groups —
+// collapsing a folder hides its rows, it doesn't take its files out of scope
+// (select-all and Shift-ranges covered them when they were hidden rows too).
+let viewPaths = [];
+let viewPathIndex = new Map(); // path -> index in viewPaths
+// The paths the keyboard walks: what is actually on screen, so ↑/↓ skip a
+// collapsed folder rather than stepping through it invisibly.
+let navPaths = [];
+let navPathIndex = new Map();
+let groupPaths = new Map(); // group key -> its paths, in order
+let viewGroups = []; // group keys in order
+let itemIndexByPath = new Map(); // path -> index in viewItems (rendered items only)
+// Per-item height in px once measured; null until then, when the per-kind
+// estimate stands in. Rows are uniform in practice, but a staged rename is two
+// lines tall, so heights are learned rather than assumed.
+let itemHeights = [];
+let itemTops = []; // prefix sums, itemTops[i] = top of item i (length n + 1)
+let rowHeightEstimate = 18;
+let groupHeightEstimate = 22;
+// The sticky header's height, re-read once per model rebuild: it sits inside the
+// scroller, so the furthest the list can be scrolled counts it too.
+let headHeight = 0;
+// The rows currently in the DOM, by path — the replacement for querying the
+// table, and the set every painter iterates.
+let renderedRows = new Map();
+let renderedFirst = 0;
+let renderedLast = -1;
+// Rows built above and below the viewport, so a small scroll shows real rows
+// rather than a gap waiting to be filled.
+const OVERSCAN_ROWS = 10;
+
+function itemHeightAt(i) {
+  const measured = itemHeights[i];
+  if (measured != null) return measured;
+  return viewItems[i].kind === "group" ? groupHeightEstimate : rowHeightEstimate;
+}
+
+function recomputeItemTops() {
+  itemTops = new Array(viewItems.length + 1);
+  let top = 0;
+  for (let i = 0; i < viewItems.length; i++) {
+    itemTops[i] = top;
+    top += itemHeightAt(i);
+  }
+  itemTops[viewItems.length] = top;
+}
+
+// First item at or after `offset` px, by binary search over the prefix sums.
+function itemIndexAt(offset) {
+  let lo = 0;
+  let hi = viewItems.length - 1;
+  let found = viewItems.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (itemTops[mid + 1] > offset) {
+      found = mid;
+      hi = mid - 1;
+    } else {
+      lo = mid + 1;
+    }
+  }
+  return Math.max(0, found);
+}
+
+// Rebuild the model from the track list, the filter, the grouping and the staged
+// plan. No DOM work at all — the window render is what touches the table.
+function buildViewModel() {
   // A staged change always stays visible so the whole plan can be reviewed and
   // scoped, even if the current filter would otherwise hide it (#117).
-  const visible = tracks.filter(
-    (t) => (diffByPath && diffByPath.has(t.path)) || matchesFilter(t),
-  );
-  tracksEmpty.hidden = tracks.length > 0;
-
+  const visible = tracks.filter((t) => (diffByPath && diffByPath.has(t.path)) || matchesFilter(t));
+  viewItems = [];
+  viewPaths = [];
+  navPaths = [];
+  groupPaths = new Map();
+  viewGroups = [];
+  const pushTrack = (track, groupKey, shown) => {
+    if (shown) viewItems.push({ kind: "track", track, groupKey });
+    if (track.unreadable) return; // inert: never selectable, never navigable
+    viewPaths.push(track.path);
+    if (shown) navPaths.push(track.path);
+  };
   if (groupBy) {
     // Groups in first-appearance order over the (mapping-ordered) track list,
     // so grouping never reorders the underlying files.
@@ -579,12 +659,224 @@ function renderTracks() {
       byKey.get(key).push(track);
     }
     for (const key of order) {
-      appendGroupHeader(key, byKey.get(key).length);
-      for (const track of byKey.get(key)) appendTrackRow(track, key);
+      viewGroups.push(key);
+      viewItems.push({ kind: "group", key, count: byKey.get(key).length });
+      const shown = !collapsedGroups.has(key);
+      const paths = [];
+      for (const track of byKey.get(key)) {
+        pushTrack(track, key, shown);
+        if (!track.unreadable) paths.push(track.path);
+      }
+      groupPaths.set(key, paths);
     }
   } else {
-    for (const track of visible) appendTrackRow(track, null);
+    for (const track of visible) pushTrack(track, null, true);
   }
+  viewPathIndex = new Map(viewPaths.map((p, i) => [p, i]));
+  navPathIndex = new Map(navPaths.map((p, i) => [p, i]));
+  itemIndexByPath = new Map();
+  viewItems.forEach((item, i) => {
+    if (item.kind === "track") itemIndexByPath.set(item.track.path, i);
+  });
+  itemHeights = new Array(viewItems.length).fill(null);
+  recomputeItemTops();
+}
+
+// A spacer stands in for the rows outside the window, so the table is as tall as
+// the whole list and the scrollbar means what it says.
+function spacerRow(height) {
+  const tr = document.createElement("tr");
+  tr.className = "spacer";
+  tr.setAttribute("aria-hidden", "true");
+  const td = document.createElement("td");
+  td.colSpan = 2 + visibleColumns.length;
+  td.style.height = `${Math.max(0, Math.round(height))}px`;
+  tr.appendChild(td);
+  return tr;
+}
+
+function setSpacerHeights() {
+  const top = tracksBody.firstElementChild;
+  const bottom = tracksBody.lastElementChild;
+  if (top && top.classList.contains("spacer")) {
+    top.firstElementChild.style.height = `${Math.max(0, Math.round(itemTops[renderedFirst] || 0))}px`;
+  }
+  if (bottom && bottom.classList.contains("spacer")) {
+    const below = itemTops[viewItems.length] - itemTops[Math.min(renderedLast + 1, viewItems.length)];
+    bottom.firstElementChild.style.height = `${Math.max(0, Math.round(below))}px`;
+  }
+}
+
+// Learn the real heights of the rows just built. A row that turns out taller
+// than its estimate (a staged rename is two lines) moves everything below it, so
+// the scroll offset is corrected by however much the rows ABOVE the window
+// changed — the first rendered row then stays exactly where the eye left it.
+function measureRenderedRows() {
+  // Reading a height forces the browser to lay the table out, so ask only when
+  // the window holds a row whose height is still a guess. Scrolling back over
+  // ground already covered costs nothing.
+  let unmeasured = false;
+  for (let i = renderedFirst; i <= renderedLast; i++) {
+    if (itemHeights[i] == null) {
+      unmeasured = true;
+      break;
+    }
+  }
+  if (!unmeasured) return;
+  let changed = false;
+  let index = renderedFirst;
+  for (const tr of tracksBody.children) {
+    if (tr.classList.contains("spacer")) continue;
+    const height = tr.offsetHeight;
+    if (!height) continue;
+    const item = viewItems[index];
+    if (item) {
+      if (item.kind === "group") groupHeightEstimate = height;
+      else rowHeightEstimate = height;
+      if (itemHeights[index] !== height) {
+        itemHeights[index] = height;
+        changed = true;
+      }
+    }
+    index += 1;
+  }
+  if (!changed) return;
+  const before = itemTops[renderedFirst];
+  recomputeItemTops();
+  const shift = itemTops[renderedFirst] - before;
+  if (shift) tableWrap.scrollTop += shift;
+  setSpacerHeights();
+}
+
+// One row of the model, ready to insert.
+function buildItemRow(i) {
+  const item = viewItems[i];
+  if (item.kind === "group") return buildGroupHeader(item.key, item.count);
+  const tr = buildTrackRow(item.track, item.groupKey);
+  tr.tabIndex = item.track.path === activeRowPath ? 0 : -1;
+  renderedRows.set(item.track.path, tr);
+  return tr;
+}
+
+function dropRow(tr) {
+  if (tr.dataset.path) renderedRows.delete(tr.dataset.path);
+  tr.remove();
+}
+
+// Build the rows the viewport covers (plus the overscan). Cheap enough to run on
+// every scroll event: it is bounded by the window, not by the library — and a
+// scroll that moves the window by a row or two only builds those rows, because
+// an overlapping window is trimmed and extended rather than rebuilt.
+function renderWindow({ force = false } = {}) {
+  // Before the table is shown for the first time it has no height yet; a nominal
+  // one keeps the first render from being a single row.
+  const viewportHeight = tableWrap.clientHeight || 600;
+  // A rebuilt model can leave the scroller past the end of what is now a much
+  // shorter list — a filter narrowing to a handful, a collapse-all. The browser
+  // will clamp the offset when it next lays the table out, so clamp it here
+  // first: cutting the window for a position that is about to be corrected
+  // leaves the rows built somewhere the eye isn't.
+  const maxTop = Math.max(0, headHeight + itemTops[viewItems.length] - viewportHeight);
+  if (tableWrap.scrollTop > maxTop) tableWrap.scrollTop = maxTop;
+  const viewportTop = tableWrap.scrollTop;
+  const first = Math.max(0, itemIndexAt(viewportTop) - OVERSCAN_ROWS);
+  const last = Math.min(viewItems.length - 1, itemIndexAt(viewportTop + viewportHeight) + OVERSCAN_ROWS);
+  if (!force && first === renderedFirst && last === renderedLast) return;
+  const rowCount = renderedLast - renderedFirst + 1;
+  const intact = rowCount > 0 && tracksBody.children.length === rowCount + 2;
+  const overlaps = intact && first <= renderedLast && last >= renderedFirst;
+  if (!force && overlaps) {
+    const topSpacer = tracksBody.firstElementChild;
+    const bottomSpacer = tracksBody.lastElementChild;
+    while (renderedFirst < first) {
+      dropRow(topSpacer.nextElementSibling);
+      renderedFirst += 1;
+    }
+    while (renderedLast > last) {
+      dropRow(bottomSpacer.previousElementSibling);
+      renderedLast -= 1;
+    }
+    while (renderedFirst > first) {
+      renderedFirst -= 1;
+      topSpacer.after(buildItemRow(renderedFirst));
+    }
+    while (renderedLast < last) {
+      renderedLast += 1;
+      bottomSpacer.before(buildItemRow(renderedLast));
+    }
+    setSpacerHeights();
+    measureRenderedRows();
+    return;
+  }
+  renderedFirst = first;
+  renderedLast = last;
+  renderedRows = new Map();
+  const frag = document.createDocumentFragment();
+  frag.appendChild(spacerRow(itemTops[first] || 0));
+  for (let i = first; i <= last; i++) frag.appendChild(buildItemRow(i));
+  frag.appendChild(spacerRow(itemTops[viewItems.length] - itemTops[Math.min(last + 1, viewItems.length)]));
+  tracksBody.replaceChildren(frag);
+  // The rows were built from the current selection, so that is what the DOM
+  // shows (#184: the painter only touches rows whose state moved).
+  paintedSelection = new Set(selection);
+  measureRenderedRows();
+}
+
+// The row for a path, when it is on screen. Off-window paths have no row — that
+// is the point — so every caller has to tolerate `undefined`.
+function renderedRow(path) {
+  return renderedRows.get(path);
+}
+
+// Fit-to-content (#151) against a windowed table. Measuring what is rendered
+// would fit a column to whatever happens to be on screen, and the widest value
+// is usually elsewhere — so the measurer borrows a few real rows per column,
+// the longest values in the list, and the browser lays those out for real.
+// Collapsed folders are excluded for the same reason they were when their rows
+// were `display: none`: a hidden value never set a column's width.
+const MEASURE_CANDIDATES = 3;
+
+function mountMeasureRows(keys) {
+  const wanted = new Map();
+  for (const key of keys) {
+    // Longest first, by character count — a stand-in for width good enough to
+    // pick the handful of candidates the browser then measures properly.
+    const best = [];
+    for (const item of viewItems) {
+      if (item.kind !== "track") continue;
+      const length = fieldValue(item.track, key).length;
+      if (best.length < MEASURE_CANDIDATES) {
+        best.push({ length, item });
+        best.sort((a, b) => a.length - b.length);
+      } else if (length > best[0].length) {
+        best[0] = { length, item };
+        best.sort((a, b) => a.length - b.length);
+      }
+    }
+    for (const { item } of best) wanted.set(item.track.path, item);
+  }
+  const borrowed = [];
+  for (const [path, item] of wanted) {
+    if (renderedRows.has(path)) continue; // already in the table, already measured
+    const tr = buildTrackRow(item.track, item.groupKey);
+    tracksBody.appendChild(tr);
+    borrowed.push(tr);
+  }
+  return () => borrowed.forEach((tr) => tr.remove());
+}
+
+tableWrap.addEventListener("scroll", () => renderWindow(), { passive: true });
+// The window is a function of the viewport, so anything that resizes it — the
+// OS window, the mode-panel splitter, showing the table for the first time —
+// has to re-cut it.
+new ResizeObserver(() => renderWindow({ force: true })).observe(tableWrap);
+
+function renderTracks() {
+  updateSortIndicators();
+  tracksEmpty.hidden = tracks.length > 0;
+  headHeight = el("tracks").tHead?.offsetHeight || headHeight;
+  buildViewModel();
+  renderWindow({ force: true });
 
   // The group toggle only makes sense while grouped (#32).
   el("toggle-groups").hidden = !groupBy;
@@ -687,12 +979,8 @@ function discardPreview() {
   // values; other previews just drop the plan. exitDiffState() repaints the
   // table back to its normal (non-diff) state either way.
   const wasEdits = previewSource === "edits";
-  // An edit that changed nothing on disk is in the buffer but not in the plan,
-  // so leaving the diff-state doesn't cover its row (#186) — note them first.
-  const edited = wasEdits ? [...edits.keys()] : [];
   if (wasEdits) resetEdits();
   exitDiffState();
-  repaintRows(edited);
 }
 
 // Path -> track lookup, so the diff can show the current value of a file's
@@ -710,94 +998,24 @@ function renderPreview(plan) {
   enterDiffState();
 }
 
-// ---- patching the table into and out of the diff-state (#186) ----
-// Staging three changes used to rebuild every row of the library: the whole
-// table is re-rendered so that a handful of rows can show a plan, and on a few
-// thousand files that is seconds of work — much of it spent building the rows
-// that are not changing.
-//
-// Only the rows the plan touches actually differ. Everything else recedes by a
-// rule hanging off the body-level `diffing` class, which costs nothing per row.
-// So entering and leaving the diff-state patches the rows that care, and the
-// full renderer stays for the cases patching can't express.
-
-// The rows whose contents depend on the diff-state: the ones the plan stages
-// (they show the change), the ones it staged a moment ago (they go back to
-// showing the file), and any row with a pending edit — a plain row shows the
-// pending value, a receded diff row shows what is on disk.
-function diffAffectedPaths(previouslyStaged) {
-  const paths = new Set(previouslyStaged);
-  if (diffByPath) for (const path of diffByPath.keys()) paths.add(path);
-  for (const path of edits.keys()) paths.add(path);
-  return paths;
-}
-
-// Rebuild the given rows in place, leaving every other row of the table alone.
-function repaintRows(paths) {
-  const wanted = paths instanceof Set ? paths : new Set(paths);
-  if (wanted.size === 0) return;
-  for (const tr of [...tracksBody.querySelectorAll("tr[data-path]")]) {
-    if (!wanted.has(tr.dataset.path)) continue;
-    const track = trackAt(tr.dataset.path);
-    if (!track) continue;
-    const fresh = buildTrackRow(track, tr.dataset.group ?? null);
-    if (tr.tabIndex === 0) fresh.tabIndex = 0; // keep the keyboard anchor
-    tr.replaceWith(fresh);
-  }
-}
-
-// Patch the rows the diff-state concerns. Returns false when the table can't be
-// patched into the state being asked for, and the caller must fall back to a
-// full render: a staged file the filter hides has no row to patch, and on the
-// way out such a row has to leave the table again.
-function patchDiffRows(previouslyStaged) {
-  const shown = new Set([...tracksBody.querySelectorAll("tr[data-path]")].map((tr) => tr.dataset.path));
-  if (diffByPath) {
-    for (const path of diffByPath.keys()) if (!shown.has(path)) return false;
-  } else {
-    for (const path of previouslyStaged) {
-      const track = trackAt(path);
-      // A file no longer in the list at all (an applied rename), or one the
-      // filter only tolerated because it was staged, needs the renderer.
-      if (!track || !matchesFilter(track)) return false;
-    }
-  }
-  repaintRows(diffAffectedPaths(previouslyStaged));
-  return true;
-}
-
-// While diffing, the sel column means "apply this row", so the selection's own
-// ticks must not sit in it. Walks the selected rows rather than the table, and
-// tells the selection painter it owns none of them any more, so leaving the
-// diff-state paints them back.
-function clearSelectionTicks() {
-  for (const tr of tracksBody.querySelectorAll("tr.selected")) {
-    const cb = rowCheckbox(tr);
-    if (cb) cb.checked = false;
-  }
-  paintedSelection = new Set();
-}
+// Entering and leaving the diff-state is a re-render of the WINDOW (#189), not
+// of the library: the staged rows the viewport holds are rebuilt, everything
+// else recedes by a rule hanging off the body-level `diffing` class, and a
+// staged file the filter would otherwise hide is in the model because the model
+// builder keeps it (#117). This is what #186 was reaching for by patching rows
+// one at a time; with the table windowed, the plain renderer is already that
+// cheap and the patching layer went away with it.
 
 // Enter the in-table diff-state: build the path->change map, tick every changed
 // file for apply by default, show the change in the table, and float the bar.
 function enterDiffState() {
-  const previouslyStaged = diffByPath ? [...diffByPath.keys()] : [];
   setDiffByPath(new Map(previewPlan.changes.map((c) => [c.path, c])));
   setApplySelection(new Set(diffByPath.keys()));
-  // Rows first, then the class. Reading the table (which patching does) makes
-  // the browser settle the styles it owes, and `diffing` restyles every row —
-  // so touching the class first would buy that pass twice.
-  const patched = patchDiffRows(previouslyStaged);
-  if (patched) clearSelectionTicks();
   document.body.classList.add("diffing");
   el("diff-show-old").checked = false;
   el("tracks").classList.remove("show-old");
   showView("files"); // never diff over the dedup view
-  if (patched) {
-    maybeAutofit(); // the diff reveals old values, so the fit can move (#151)
-  } else {
-    renderTracks();
-  }
+  renderTracks();
   el("ab-plan").textContent = previewPlan.description ? ` · ${previewPlan.description}` : "";
   el("diff-actionbar").hidden = false;
   updateDiffBar();
@@ -807,22 +1025,15 @@ function enterDiffState() {
 }
 
 // Leave the diff-state: drop the plan + apply scope and put the plain rows back.
-// `rebuild` forces the full renderer — an apply/undo has just replaced the track
-// list, so paths, values and the grouping they feed can all have moved.
-function exitDiffState({ rebuild = false } = {}) {
-  const previouslyStaged = diffByPath ? [...diffByPath.keys()] : [];
+function exitDiffState() {
   setPreviewPlan(null);
   setPreviewSource(null);
   setDiffByPath(null);
   setApplySelection(new Set());
-  // Rows first, class last, for the reason enterDiffState gives.
-  const patched = !rebuild && patchDiffRows(previouslyStaged);
-  if (patched) syncSelectionUI();
   document.body.classList.remove("diffing");
   el("tracks").classList.remove("show-old");
   el("diff-actionbar").hidden = true;
-  if (patched) maybeAutofit();
-  else renderTracks();
+  renderTracks();
   refreshGenerator();
 }
 
@@ -1226,9 +1437,8 @@ async function apply() {
     // Mask columns render from disk, and an apply is exactly when what is on
     // disk changed under unchanged paths (#150).
     invalidateCustomColumns();
-    // The applied files just came back from disk with new values (and possibly
-    // new paths), so the table is rebuilt rather than patched.
-    exitDiffState({ rebuild: true });
+    // exitDiffState() drops the plan + apply scope and repaints the table.
+    exitDiffState();
     refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
@@ -1245,9 +1455,8 @@ async function undo() {
     resetEdits();
     setTracks(await invoke("list_tracks", {}));
     invalidateCustomColumns();
-    // exitDiffState() also clears previewPlan/previewSource; an undo moved the
-    // files back, so the table is rebuilt rather than patched.
-    exitDiffState({ rebuild: true });
+    // exitDiffState() also clears previewPlan/previewSource and repaints.
+    exitDiffState();
     refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
@@ -1622,9 +1831,12 @@ selectAll.addEventListener("change", () => {
     updateDiffBar();
     return;
   }
-  for (const tr of dataRows()) {
-    if (on) selection.add(tr.dataset.path);
-    else selection.delete(tr.dataset.path);
+  // Every file the table lists, not just the rows on screen (#189) — including
+  // the ones inside a collapsed folder, which select-all covered when they were
+  // hidden rows too.
+  for (const path of viewPaths) {
+    if (on) selection.add(path);
+    else selection.delete(path);
   }
   syncSelectionUI();
 });
@@ -1659,18 +1871,6 @@ function rowCheckbox(tr) {
   return tr.querySelector(".sel input[type=checkbox]");
 }
 
-// Data rows in DOM (visual) order — group headers and unreadable (inert)
-// rows excluded, so selection/select-all never touches a file that can't be
-// operated on.
-function dataRows() {
-  return [...tracksBody.querySelectorAll("tr")].filter(
-    (tr) =>
-      tr.dataset.path &&
-      !tr.classList.contains("group-head") &&
-      !tr.classList.contains("unreadable"),
-  );
-}
-
 // Push the `selection` set onto the checkboxes + row highlight, set the
 // select-all tri-state, and refresh the status count. Called after any change.
 // What the DOM was last told about the selection, so a change can be applied to
@@ -1679,22 +1879,22 @@ function dataRows() {
 let paintedSelection = new Set();
 
 function syncSelectionUI() {
-  const rows = dataRows();
-  let checked = 0;
-  for (const tr of rows) {
-    const path = tr.dataset.path;
+  // Only the rows on screen can be painted; the ones off it are built from the
+  // selection when they scroll in (#189). The tri-state still speaks for the
+  // whole table, so its count comes from the model.
+  for (const [path, tr] of renderedRows) {
     const on = selection.has(path);
-    // The count still needs every row, but the DOM only needs the ones whose
-    // state moved.
     if (on !== paintedSelection.has(path)) {
-      rowCheckbox(tr).checked = on;
+      const cb = rowCheckbox(tr);
+      if (cb) cb.checked = on;
       tr.classList.toggle("selected", on);
     }
-    if (on) checked += 1;
   }
   paintedSelection = new Set(selection);
-  selectAll.checked = checked > 0 && checked === rows.length;
-  selectAll.indeterminate = checked > 0 && checked < rows.length;
+  let checked = 0;
+  for (const path of viewPaths) if (selection.has(path)) checked += 1;
+  selectAll.checked = checked > 0 && checked === viewPaths.length;
+  selectAll.indeterminate = checked > 0 && checked < viewPaths.length;
   updateStatus();
   // Mode-panel headings show a selection count ("— N selected"); they otherwise
   // only refresh on mode entry, so keep them live as the selection changes.
@@ -1724,16 +1924,16 @@ function updatePanelCounts() {
 
 function selectRow(tr, e) {
   if (tr.classList.contains("unreadable")) return; // inert — can't be selected
-  const rows = dataRows();
   const path = tr.dataset.path;
   if (e.shiftKey && selAnchor) {
-    const paths = rows.map((r) => r.dataset.path);
-    let a = paths.indexOf(selAnchor);
-    let b = paths.indexOf(path);
+    // The range runs over the model's order, so it spans files whose rows are
+    // off screen or inside a collapsed folder (#189).
+    let a = viewPathIndex.has(selAnchor) ? viewPathIndex.get(selAnchor) : -1;
+    let b = viewPathIndex.get(path);
     if (a < 0) a = b;
     if (a > b) [a, b] = [b, a];
     selection.clear();
-    for (let i = a; i <= b; i++) selection.add(paths[i]);
+    for (let i = a; i <= b; i++) selection.add(viewPaths[i]);
   } else if (e.metaKey || e.ctrlKey) {
     if (selection.has(path)) selection.delete(path);
     else selection.add(path);
@@ -1765,33 +1965,28 @@ function groupSelectMode(e) {
 // while range keeps the existing anchor (as a range extension should).
 function selectGroup(key, mode) {
   if (collapsedGroups.has(key)) toggleGroup(key); // reveal what's being selected
-  const rows = dataRows();
-  const paths = rows.map((r) => r.dataset.path);
-  const idx = [];
-  rows.forEach((r, i) => {
-    if (r.dataset.group === key) idx.push(i);
-  });
-  if (idx.length === 0) return;
-  const gStart = idx[0];
-  const gEnd = idx[idx.length - 1];
+  const paths = groupPaths.get(key) || [];
+  if (paths.length === 0) return;
+  const gStart = viewPathIndex.get(paths[0]);
+  const gEnd = viewPathIndex.get(paths[paths.length - 1]);
   if (mode === "range") {
-    let a = selAnchor ? paths.indexOf(selAnchor) : -1;
+    let a = selAnchor && viewPathIndex.has(selAnchor) ? viewPathIndex.get(selAnchor) : -1;
     if (a < 0) a = gStart;
     const lo = Math.min(a, gStart);
     const hi = Math.max(a, gEnd);
     selection.clear();
-    for (let i = lo; i <= hi; i++) selection.add(paths[i]);
+    for (let i = lo; i <= hi; i++) selection.add(viewPaths[i]);
   } else if (mode === "add") {
-    const allSelected = idx.every((i) => selection.has(paths[i]));
-    for (const i of idx) {
-      if (allSelected) selection.delete(paths[i]);
-      else selection.add(paths[i]);
+    const allSelected = paths.every((p) => selection.has(p));
+    for (const p of paths) {
+      if (allSelected) selection.delete(p);
+      else selection.add(p);
     }
-    selAnchor = paths[gStart];
+    selAnchor = paths[0];
   } else {
     selection.clear();
-    for (const i of idx) selection.add(paths[i]);
-    selAnchor = paths[gStart];
+    for (const p of paths) selection.add(p);
+    selAnchor = paths[0];
   }
   syncSelectionUI();
 }
@@ -1927,26 +2122,45 @@ window.addEventListener("scroll", hideCellTip, true);
 // rows and Space toggles the focused row's selection. This makes the row focus
 // ring (states.css) reachable for a keyboard-heavy tool.
 
-// Visible data rows (group headers and collapsed rows excluded).
-function navRows() {
-  return dataRows().filter((tr) => !tr.classList.contains("hidden-row"));
-}
-
-// Keep exactly one row tabbable; called after every render.
+// Keep exactly one row tabbable; called after every render. The anchor is a
+// PATH, not a row (#189): the row it names may be scrolled out of the window,
+// and it has to survive that.
 function refreshRoving() {
-  const rows = navRows();
-  if (rows.length === 0) {
+  if (navPaths.length === 0) {
     setActiveRowPath(null);
     return;
   }
-  if (!rows.some((r) => r.dataset.path === activeRowPath)) setActiveRowPath(rows[0].dataset.path);
-  for (const r of dataRows()) r.tabIndex = r.dataset.path === activeRowPath ? 0 : -1;
+  if (!navPathIndex.has(activeRowPath)) setActiveRowPath(navPaths[0]);
+  for (const [path, tr] of renderedRows) tr.tabIndex = path === activeRowPath ? 0 : -1;
+}
+
+// Scroll `path` into view when it is outside the window, so a row reached by
+// keyboard exists to be focused. The sticky header sits over the top of the
+// scroller, so a row arriving from above is placed below it rather than under it.
+function scrollPathIntoView(path) {
+  const index = itemIndexByPath.get(path);
+  if (index === undefined) return;
+  const headHeight = el("tracks").querySelector("thead")?.offsetHeight || 0;
+  const top = itemTops[index];
+  const bottom = top + itemHeightAt(index);
+  const viewTop = tableWrap.scrollTop + headHeight;
+  const viewBottom = tableWrap.scrollTop + tableWrap.clientHeight;
+  if (top < viewTop) tableWrap.scrollTop = Math.max(0, top - headHeight);
+  else if (bottom > viewBottom) tableWrap.scrollTop += bottom - viewBottom;
+  renderWindow();
+}
+
+// Make `path` the keyboard anchor, and focus its row when asked — bringing it on
+// screen first if the window doesn't hold it.
+function setActiveRowByPath(path, focus) {
+  setActiveRowPath(path);
+  if (focus && path) scrollPathIntoView(path);
+  for (const [p, tr] of renderedRows) tr.tabIndex = p === activeRowPath ? 0 : -1;
+  if (focus && path) renderedRow(path)?.focus();
 }
 
 function setActiveRow(tr, focus) {
-  setActiveRowPath(tr ? tr.dataset.path : null);
-  for (const r of dataRows()) r.tabIndex = r.dataset.path === activeRowPath ? 0 : -1;
-  if (tr && focus) tr.focus();
+  setActiveRowByPath(tr ? tr.dataset.path : null, focus);
 }
 
 tracksBody.addEventListener("keydown", (e) => {
@@ -1956,10 +2170,9 @@ tracksBody.addEventListener("keydown", (e) => {
   if (!tr || !tr.dataset.path) return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();
-    const rows = navRows();
-    const i = rows.indexOf(tr);
-    const next = rows[e.key === "ArrowDown" ? i + 1 : i - 1];
-    if (next) setActiveRow(next, true);
+    const i = navPathIndex.get(tr.dataset.path);
+    const next = i === undefined ? undefined : navPaths[e.key === "ArrowDown" ? i + 1 : i - 1];
+    if (next) setActiveRowByPath(next, true);
   } else if (e.key === " ") {
     e.preventDefault(); // Space would otherwise scroll
     const path = tr.dataset.path;
@@ -2042,22 +2255,16 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") el("group-menu").hidden = true;
 });
 
-// Collapse/expand a group by clicking its header (no re-render, so selection
-// and in-progress edits are preserved).
+// Collapse/expand a group by clicking its header. Which rows exist is a model
+// question now (#189): a collapsed folder's tracks leave the rendered list
+// entirely rather than being rows with `display: none`. The selection is a set,
+// so it survives the rebuild untouched.
 function toggleGroup(key) {
   const collapse = !collapsedGroups.has(key);
   if (collapse) collapsedGroups.add(key);
   else collapsedGroups.delete(key);
-  tracksBody.querySelectorAll("tr").forEach((tr) => {
-    if (tr.dataset.group !== key) return;
-    if (tr.classList.contains("group-head")) {
-      tr.classList.toggle("collapsed", collapse);
-      const caret = tr.querySelector(".group-caret");
-      if (caret) caret.innerHTML = ico(collapse ? "chevron-right" : "caret-down");
-    } else {
-      tr.classList.toggle("hidden-row", collapse);
-    }
-  });
+  buildViewModel();
+  renderWindow({ force: true });
   syncGroupToggle();
 }
 // Collapse/expand only via the caret at the start of the header, so a click on
@@ -2069,35 +2276,22 @@ tracksBody.addEventListener("click", (e) => {
   if (head) toggleGroup(head.dataset.group);
 });
 
-// Expand/collapse every group at once (#32), reusing the same in-place update
-// as individual headers so selection and in-progress edits survive.
+// Expand/collapse every group at once (#32), through the same model rebuild as
+// an individual header.
 function setAllGroupsCollapsed(collapse) {
   collapsedGroups.clear();
-  if (collapse) {
-    tracksBody
-      .querySelectorAll("tr.group-head")
-      .forEach((head) => collapsedGroups.add(head.dataset.group));
-  }
-  tracksBody.querySelectorAll("tr").forEach((tr) => {
-    if (tr.dataset.group === undefined) return;
-    if (tr.classList.contains("group-head")) {
-      tr.classList.toggle("collapsed", collapse);
-      const caret = tr.querySelector(".group-caret");
-      if (caret) caret.innerHTML = ico(collapse ? "chevron-right" : "caret-down");
-    } else {
-      tr.classList.toggle("hidden-row", collapse);
-    }
-  });
+  if (collapse) for (const key of viewGroups) collapsedGroups.add(key);
+  buildViewModel();
+  renderWindow({ force: true });
 }
 // The two Expand all / Collapse all buttons collapsed into one state toggle:
 // while any group is still open it offers "collapse", and once everything is
-// shut it flips to "expand". Icon + tooltip are re-derived from the DOM rather
+// shut it flips to "expand". Icon + tooltip are re-derived from the model rather
 // than a remembered flag, so per-group clicks keep it honest.
 function syncGroupToggle() {
   const btn = el("toggle-groups");
   if (!btn || btn.hidden) return;
-  const heads = [...tracksBody.querySelectorAll("tr.group-head")];
-  const anyOpen = heads.some((h) => !h.classList.contains("collapsed"));
+  const anyOpen = viewGroups.some((key) => !collapsedGroups.has(key));
   const label = anyOpen ? "Collapse every group" : "Expand every group";
   btn.innerHTML = ico(anyOpen ? "collapse-all" : "expand-all");
   btn.title = label;

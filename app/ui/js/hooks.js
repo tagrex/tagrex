@@ -17,4 +17,11 @@ export const hooks = {
   refreshCoverWell: () => {},
   openDrop: async () => {},
   updateSortIndicators: () => {},
+  // Lend the column measurer real rows for values the window doesn't hold
+  // (#189); returns the function that takes them away again.
+  mountMeasureRows: () => () => {},
+  // The files the table shows, in visual order, skipping the ones a collapsed
+  // folder hides — what the rows themselves answered before the table was
+  // windowed (#189).
+  navigablePaths: () => [],
 };

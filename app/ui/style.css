@@ -836,6 +836,17 @@ td.dirty:focus {
   min-height: 0;
 }
 
+/* Spacer rows (#189): the table is windowed, and these two carry the height of
+   everything above and below it — so the table is as tall as the whole list and
+   the scrollbar means what it says. They are structure, never content: no
+   padding, no border, no row states. */
+#tracks tbody tr.spacer td,
+#tracks tbody tr.spacer:hover td {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 /* ---- in-table diff-state (#117, design A5/A6) -----------------------------
    The Preview view is gone: while a change plan is staged the #tracks table
    shows the diff IN PLACE. Affected rows carry an accent left-bar on the sel
@@ -858,10 +869,10 @@ body.diffing #tracks tbody td.sel {
    a change costs nothing per untouched row (#186): the rows carry no diff-state
    class of their own, and the body-level `diffing` class does the work. Group
    headers and unreadable placeholders are not part of a plan either way. */
-body.diffing #tracks tbody tr:not(.staged):not(.group-head):not(.unreadable) td {
+body.diffing #tracks tbody tr:not(.staged):not(.group-head):not(.unreadable):not(.spacer) td {
   color: var(--muted);
 }
-body.diffing #tracks tbody tr:not(.staged):not(.group-head):not(.unreadable) td:not(.sel) {
+body.diffing #tracks tbody tr:not(.staged):not(.group-head):not(.unreadable):not(.spacer) td:not(.sel) {
   opacity: 0.55;
 }
 
@@ -1823,10 +1834,6 @@ td.group-cell {
 .group-count {
   margin-left: 8px;
   font-weight: 400;
-}
-
-tr.hidden-row {
-  display: none;
 }
 
 /* Unreadable file (#83): on disk but its tags couldn't be parsed. Listed so it
