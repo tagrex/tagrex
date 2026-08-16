@@ -68,9 +68,13 @@
              input underneath, which is what a pasted path goes into. The button
              is one slot: Browse… normally, Open while the field says something
              other than what is already open. -->
-        <button id="root-display" class="path" type="button" title="Choose a folder to open">
-          <span class="path-parent"></span><span class="path-name">No folder open</span>
-        </button>
+        <div id="root-box" class="path">
+          <button id="root-display" class="path-open" type="button" title="Choose a folder to open">
+            <span class="path-parent"></span><span class="path-name">No folder open</span>
+          </button>
+          <button id="root-recent" class="path-recent" type="button" title="Recently opened folders" aria-label="Recently opened folders" hidden><svg class="ico"><use href="#i-caret-down"/></svg></button>
+          <div id="root-recent-menu" class="col-menu" hidden></div>
+        </div>
         <input id="root" type="text" placeholder="/path/to/music/library" spellcheck="false" hidden />
         <button id="lib-action" class="io" title="Choose a folder to open"><svg class="ico"><use href="#i-folder"/></svg><span id="lib-action-label">Browse…</span></button>
       </div>

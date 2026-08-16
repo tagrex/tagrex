@@ -250,7 +250,14 @@ function mockInvoke(cmd, args) {
       // The backend refuses a path that is not a folder (#179); the mock has no
       // disk, so it refuses the shapes that can't be one — which is enough to
       // exercise the error path in a browser.
-      if (!args.root || args.root !== args.root.trim() || /^['"]|['"]$/.test(args.root)) {
+      // `does-not-exist` anywhere in the path is the mock's way to reach the
+      // failure branch from a browser — there is no disk here to be missing.
+      if (
+        !args.root ||
+        args.root !== args.root.trim() ||
+        /^['"]|['"]$/.test(args.root) ||
+        args.root.includes("does-not-exist")
+      ) {
         return Promise.reject(`no such folder: ${args.root}`);
       }
       return Promise.resolve();

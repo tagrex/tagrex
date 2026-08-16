@@ -328,24 +328,64 @@ body {
    trimmed to the folder above it in JS rather than by `text-overflow`, which
    can only cut the end and would leave `/Users/oleg…` — the half that says
    nothing. The whole thing is a button: clicking it reveals the input. */
+/* The indicator is a box holding two hit areas: the path itself, which opens the
+   field, and a caret that drops the recently opened folders (#180). Two buttons
+   rather than one with regions — a button inside a button is not a thing. */
 .lib .path {
+  position: relative;
   flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: var(--text-sm);
+}
+.lib .path:hover {
+  border-color: var(--border-strong, var(--border));
+}
+.lib .path-open {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  padding: 6px 9px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: text;
+}
+.lib .path-recent {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.lib .path-recent:hover {
+  color: var(--text);
+}
+/* The menu hangs off the whole box, and its rows read like the indicator. */
+#root-recent-menu {
+  min-width: 260px;
+  max-width: 520px;
+}
+#root-recent-menu .recent-row {
   display: flex;
   align-items: baseline;
   gap: 0;
   min-width: 0;
-  padding: 6px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
   font-size: var(--text-sm);
-  text-align: left;
-  cursor: text;
 }
-.lib .path:hover {
-  border-color: var(--border-strong, var(--border));
+#root-recent-menu .path-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .lib .path-parent {
   flex: 0 0 auto;

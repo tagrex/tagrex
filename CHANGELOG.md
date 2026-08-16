@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The last eight folders you opened are one click away.** A caret at the right
+  of the library indicator drops the list; picking one opens it. Each row reads
+  like the indicator — folder name, parent dimmed in front, whole path in the
+  tooltip — most recent first, and reopening a folder moves it up rather than
+  adding a second row. A folder that has since moved or been unmounted leaves
+  the list when opening it fails, with a word saying so. Loose files dropped on
+  the window aren't a folder anyone chose, so they aren't remembered. (#180)
+
 ### Changed
 
 - **The top bar names the open folder instead of half-showing its path.** The

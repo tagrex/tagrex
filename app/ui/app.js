@@ -1,7 +1,7 @@
 "use strict";
 
 import { TAURI, invoke } from "./js/invoke.js";
-import { el, toast, fileName, escapeHtml, ico, confirmDialog, plural } from "./js/dom.js";
+import { el, toast, fileName, escapeHtml, ico, confirmDialog, placeFloating, plural } from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
 import { hooks } from "./js/hooks.js";
@@ -814,6 +814,82 @@ function cleanPastedPath(raw) {
   return path.replace(/\\(.)/g, "$1").trim();
 }
 
+
+// ---- recently opened libraries (#180) ----
+//
+// A display preference like the column set, so localStorage rather than
+// settings.json. Most recent first, no duplicates, and only real libraries: a
+// drop of loose files opens a session rooted at their common ancestor, which is
+// not a folder anyone chose to open.
+const RECENT_ROOTS_KEY = "tagrex.recentRoots";
+const RECENT_ROOTS_MAX = 8;
+
+function recentRoots() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RECENT_ROOTS_KEY) || "[]");
+    return Array.isArray(saved) ? saved.filter((p) => typeof p === "string" && p) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function writeRecentRoots(list) {
+  try {
+    localStorage.setItem(RECENT_ROOTS_KEY, JSON.stringify(list.slice(0, RECENT_ROOTS_MAX)));
+  } catch (e) {
+    /* storage unavailable — the list just won't persist */
+  }
+  el("root-recent").hidden = list.length === 0;
+}
+
+// Reopening a folder moves it up rather than adding a second row.
+function rememberRoot(path) {
+  if (!path) return;
+  writeRecentRoots([path, ...recentRoots().filter((p) => p !== path)]);
+}
+
+// A folder that has since moved or been unmounted stops being offered.
+function forgetRoot(path) {
+  writeRecentRoots(recentRoots().filter((p) => p !== path));
+}
+
+function closeRecentMenu() {
+  el("root-recent-menu").hidden = true;
+}
+
+function toggleRecentMenu() {
+  const menu = el("root-recent-menu");
+  if (!menu.hidden) {
+    closeRecentMenu();
+    return;
+  }
+  const list = recentRoots();
+  menu.innerHTML = "";
+  for (const path of list) {
+    const parts = path.split(/[\\/]/).filter(Boolean);
+    const name = parts.pop() || path;
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "col-menu-row tk-menu-item recent-row";
+    // The tail is what tells two of these apart; the head is the tooltip's job.
+    row.innerHTML =
+      `<span class="path-parent">${escapeHtml(parts.length ? `${parts.length > 1 ? "…/" : "/"}${parts[parts.length - 1]}/` : "")}</span>` +
+      `<span class="path-name">${escapeHtml(name)}</span>`;
+    row.title = path;
+    row.addEventListener("click", () => {
+      closeRecentMenu();
+      rootInput.value = path;
+      openLibrary();
+    });
+    menu.appendChild(row);
+  }
+  menu.hidden = false;
+  // `floating` is what neutralizes .col-menu's own absolute placement so the
+  // inline offsets from placeFloating are the ones that count (#160).
+  menu.classList.add("floating");
+  placeFloating(menu, el("root-box"), { align: "left" });
+}
+
 // ---- the library indicator and its one button (#177) ----
 //
 // `openedRoot` is what is actually open; the input is what the user is saying.
@@ -899,8 +975,16 @@ async function openLibrary() {
   try {
     await invoke("open_library", { root });
     setDropFolders(null); // a typed/browsed open is a plain library, not a drop
+    rememberRoot(root);
     await afterOpen(root);
   } catch (e) {
+    // A recent folder that no longer opens stops being offered (#180): a list
+    // that keeps suggesting something unopenable is worse than a short one.
+    if (recentRoots().includes(root)) {
+      forgetRoot(root);
+      toast(`${root} is no longer there — removed from recent folders`, true);
+      return;
+    }
     toast(String(e), true);
   }
 }
@@ -959,6 +1043,9 @@ async function openDrop(paths) {
     const result = await invoke("open_drop", { paths });
     setDropFolders(result.mode === "files" ? result.folders || [] : null);
     rootInput.value = result.root;
+    // A dropped FOLDER is a library and worth remembering (#180); a drop of
+    // loose files is rooted at their common ancestor, which nobody chose.
+    if (result.mode !== "files") rememberRoot(result.root);
     await afterOpen(result.root);
   } catch (e) {
     toast(String(e), true);
@@ -1229,6 +1316,14 @@ el("lib-action").addEventListener("click", () =>
   libraryIsDirty() ? openLibrary() : browseForFolder()
 );
 el("root-display").addEventListener("click", editRootPath);
+el("root-recent").addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleRecentMenu();
+});
+document.addEventListener("click", (e) => {
+  const menu = el("root-recent-menu");
+  if (!menu.hidden && !menu.contains(e.target)) closeRecentMenu();
+});
 
 previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
@@ -1388,6 +1483,7 @@ rootInput.addEventListener("keydown", (e) => {
 rootInput.addEventListener("blur", leaveRootEdit);
 renderRootDisplay();
 updateLibAction();
+el("root-recent").hidden = recentRoots().length === 0;
 selectAll.addEventListener("change", () => {
   const on = selectAll.checked;
   // While diffing the header box toggles the whole apply scope, not selection.
