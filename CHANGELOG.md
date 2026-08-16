@@ -46,7 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Clicking the library indicator opened the path field *beside* it instead of in
   its place, so both shared the row and each was cut in half, and the bar shifted
   while the field was focused. The field now takes the indicator's place in a
-  slot that keeps its size, so nothing moves. (#178)
+  slot that keeps its size, so nothing moves. (#178, #181)
 
 - The release badge quietens its track count. The catalogue number keeps the
   bundled monospace — it is an identifier, the slashed zero tells `0` from `8`,

@@ -944,7 +944,11 @@ function updateLibAction() {
 // Show the input over the indicator, with the current path selected so a paste
 // replaces it outright.
 function editRootPath() {
-  el("root-display").hidden = true;
+  // The BOX, not the button inside it (#181): the border and the recent-folders
+  // caret belong to the indicator and have to leave with it, and the inner
+  // button carries a `display` of its own that would outrank `hidden` anyway.
+  closeRecentMenu();
+  el("root-box").hidden = true;
   rootInput.hidden = false;
   rootInput.value = openedRoot;
   rootInput.focus();
@@ -958,7 +962,7 @@ function editRootPath() {
 function leaveRootEdit() {
   if (libraryIsDirty()) return;
   rootInput.hidden = true;
-  el("root-display").hidden = false;
+  el("root-box").hidden = false;
   renderRootDisplay();
   updateLibAction();
 }
