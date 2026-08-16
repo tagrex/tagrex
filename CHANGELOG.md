@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-08-16
+
 ### Added
 
 - **A reorganize carries the rest of the folder with it.** Filing an album out
