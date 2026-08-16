@@ -802,6 +802,8 @@ function mockInvoke(cmd, args) {
           cover_quality: 85,
           import_skip_fields: [],
           multi_value_separator: "",
+          carry_sidecars: true,
+          carry_folder_extras: true,
         }
       );
     case "save_settings":

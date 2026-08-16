@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A reorganize carries the rest of the folder with it.** Filing an album out
+  of an unsorted folder used to take the tracks and their sidecars and strand
+  everything else — the rip log, loose artwork under a name no sidecar rule
+  matches, a `Scans/` subfolder — in a folder that could then never be tidied
+  away, because it was never empty. Those files now travel to the same
+  destination, subfolders included, and the emptied folder is pruned.
+
+  Deliberately narrow, since this moves files you did not select: it happens
+  only when **every** track under the folder is leaving in the same operation,
+  and only when they all land in the **same** destination folder. A folder
+  holding another album's music, or tracks fanning out to several destinations,
+  is left exactly as it was. The preview says how many extra files it will take,
+  undo puts all of them back, and Settings › Files › **Carry folder leftovers**
+  turns it off. (#161)
+
 ## [0.5.2] - 2026-08-16
 
 ### Added

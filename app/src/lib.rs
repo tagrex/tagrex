@@ -293,6 +293,12 @@ pub struct SettingsDto {
     /// carry (#58). Case-insensitive. Defaults to a lyrics/cue/text/image set.
     #[serde(default = "default_sidecar_extensions")]
     pub sidecar_extensions: Vec<String>,
+    /// Whether a reorganize also carries what is left in the source folder
+    /// (#161): the rip log, the loose scans, `folder.jpg` under another name.
+    /// Only ever acts on a folder whose every track is leaving, and only when
+    /// they all land together — see [`App::attach_folder_extras`].
+    #[serde(default = "default_carry_folder_extras")]
+    pub carry_folder_extras: bool,
     /// Storage keys an online import must NOT write (#152), e.g. `"genre"` or
     /// `"custom:RELEASECOUNTRY"`.
     ///
@@ -318,6 +324,10 @@ fn default_carry_sidecars() -> bool {
 
 /// The default sidecar extension set (#58): lyrics, cue sheets, text notes, and
 /// per-track cover images.
+fn default_carry_folder_extras() -> bool {
+    true
+}
+
 fn default_sidecar_extensions() -> Vec<String> {
     ["lrc", "cue", "txt", "jpg", "jpeg", "png"]
         .iter()
@@ -340,6 +350,7 @@ impl Default for SettingsDto {
             action_groups: Vec::new(),
             carry_sidecars: default_carry_sidecars(),
             sidecar_extensions: default_sidecar_extensions(),
+            carry_folder_extras: default_carry_folder_extras(),
             import_skip_fields: Vec::new(),
             multi_value_separator: String::new(),
         }
@@ -960,6 +971,9 @@ pub struct App {
     cover_quality: Cell<u8>,
     /// Whether a rename/move carries matching sidecar files (#58), from settings.
     carry_sidecars: Cell<bool>,
+    /// Whether a reorganize carries the rest of the source folder (#161), from
+    /// settings.
+    carry_folder_extras: Cell<bool>,
     /// Sidecar extensions to carry (#58), from settings.
     sidecar_extensions: RefCell<Vec<String>>,
     /// Storage keys an online import must not write (#152), from settings.
@@ -988,6 +1002,7 @@ impl App {
             cover_max_px: Cell::new(0),
             cover_quality: Cell::new(85),
             carry_sidecars: Cell::new(default_carry_sidecars()),
+            carry_folder_extras: Cell::new(default_carry_folder_extras()),
             sidecar_extensions: RefCell::new(default_sidecar_extensions()),
             import_skip_fields: RefCell::new(HashSet::new()),
             extra_roots: RefCell::new(Vec::new()),
@@ -1069,6 +1084,7 @@ impl App {
         self.cover_quality
             .set(effective_cover_quality(settings.cover_quality));
         self.carry_sidecars.set(settings.carry_sidecars);
+        self.carry_folder_extras.set(settings.carry_folder_extras);
         *self.sidecar_extensions.borrow_mut() = settings.sidecar_extensions.clone();
         *self.import_skip_fields.borrow_mut() =
             settings.import_skip_fields.iter().cloned().collect();
@@ -1192,6 +1208,105 @@ impl App {
     /// The mask renders each file's new stem; the original extension is kept.
     /// Files whose tags can't satisfy the mask, or whose name wouldn't change,
     /// are left out of the plan.
+    /// Carry what is left in a source folder along with the tracks leaving it
+    /// (#161): the rip log, the playlist, `folder.jpg` under a name no sidecar
+    /// rule matches, a `Scans/` subfolder. Sidecars (#58) already travel with
+    /// the track that shares their stem; this is everything else, and without it
+    /// filing an album out of an unsorted folder strands the things that belong
+    /// with it — and leaves a folder that can never be pruned, because it is
+    /// never empty.
+    ///
+    /// Deliberately narrow, because this moves files the user did not select.
+    /// A folder is carried only when
+    ///
+    /// - **every** audio file under it is leaving in this same plan — so a
+    ///   folder holding two albums, or a `CD2` that wasn't selected, is left
+    ///   alone rather than having one album's scans dragged after the other, and
+    /// - the tracks from it all land in the **same** destination folder — with
+    ///   the album fanned out across several, there is no answer to where the
+    ///   leftovers go.
+    ///
+    /// The extras ride on one of the folder's own changes as ordinary sidecar
+    /// pairs, so they are validated, moved, journaled and undone by exactly the
+    /// machinery that already carries sidecars — including honoring `copy`.
+    /// Deeper folders are processed first, so a nested source folder claims its
+    /// own files before its parent can. Returns how many files were attached, so
+    /// the preview can say so.
+    fn attach_folder_extras(&self, changes: &mut [FileChangeDto]) -> usize {
+        if !self.carry_folder_extras.get() {
+            return 0;
+        }
+        // Every file the plan already accounts for: the tracks themselves and
+        // the sidecars travelling with them.
+        let mut claimed: std::collections::BTreeSet<PathBuf> = std::collections::BTreeSet::new();
+        for change in changes.iter() {
+            claimed.insert(PathBuf::from(&change.path));
+            for (from, _) in &change.sidecar_renames {
+                claimed.insert(PathBuf::from(from));
+            }
+        }
+        let moving: std::collections::BTreeSet<PathBuf> = changes
+            .iter()
+            .filter(|change| change.rename_to.is_some())
+            .map(|change| PathBuf::from(&change.path))
+            .collect();
+
+        // Source folder -> the indices of the changes coming out of it.
+        let mut by_folder: std::collections::BTreeMap<PathBuf, Vec<usize>> =
+            std::collections::BTreeMap::new();
+        for (index, change) in changes.iter().enumerate() {
+            if change.rename_to.is_none() {
+                continue;
+            }
+            if let Some(parent) = Path::new(&change.path).parent() {
+                by_folder
+                    .entry(parent.to_path_buf())
+                    .or_default()
+                    .push(index);
+            }
+        }
+        // Deepest first, so a nested folder's own extras go where its tracks go.
+        let mut folders: Vec<PathBuf> = by_folder.keys().cloned().collect();
+        folders.sort_by_key(|folder| std::cmp::Reverse(folder.components().count()));
+
+        let mut carried = 0;
+        for folder in folders {
+            let indices = &by_folder[&folder];
+            // One destination, or none of this is answerable.
+            let mut destinations = indices.iter().filter_map(|index| {
+                changes[*index]
+                    .rename_to
+                    .as_deref()
+                    .map(Path::new)
+                    .and_then(Path::parent)
+                    .map(Path::to_path_buf)
+            });
+            let Some(destination) = destinations.next() else {
+                continue;
+            };
+            if destinations.any(|other| other != destination) {
+                continue;
+            }
+            // Everything audible under the folder has to be leaving with them.
+            let mut extras = Vec::new();
+            if !collect_folder_extras(&folder, &folder, &moving, &claimed, &mut extras) {
+                continue;
+            }
+            let Some(first) = indices.first().copied() else {
+                continue;
+            };
+            for (source, relative) in extras {
+                claimed.insert(source.clone());
+                changes[first].sidecar_renames.push((
+                    source.to_string_lossy().into_owned(),
+                    destination.join(relative).to_string_lossy().into_owned(),
+                ));
+                carried += 1;
+            }
+        }
+        carried
+    }
+
     /// Detect sidecar files that should travel with `change`'s rename/move (#58)
     /// and record them on it. A sidecar is a file in the source directory whose
     /// stem matches the audio file's and whose extension is in the configured
@@ -1878,9 +1993,17 @@ impl App {
             self.attach_sidecars(&mut change);
             changes.push(change);
         }
+        // Whatever else lives in a folder every track is leaving (#161). Said in
+        // the description because the extras ride on another file's change, so
+        // the diff has no row of their own to show.
+        let carried = self.attach_folder_extras(&mut changes);
+        let carried_note = match carried {
+            0 => String::new(),
+            n => format!(" · carrying {}", plural_files(n)),
+        };
         Ok(PlanDto {
             description: format!(
-                "{} by mask: {mask_pattern}",
+                "{} by mask: {mask_pattern}{carried_note}",
                 if copy { "Copy" } else { "Reorganize" }
             ),
             changes,
@@ -2806,6 +2929,54 @@ fn cleaned_up_description(description: &str) -> String {
         return description.to_string();
     }
     format!("{description}{SUFFIX}")
+}
+
+/// "1 extra file" / "3 extra files", for the plan description.
+fn plural_files(count: usize) -> String {
+    match count {
+        1 => "1 extra file".to_string(),
+        n => format!("{n} extra files"),
+    }
+}
+
+/// Walk `folder` for files to carry with the tracks leaving it (#161).
+///
+/// Returns `false` — carry nothing — as soon as it meets an audio file that is
+/// not part of the move: that folder holds something else's music, and its
+/// leftovers may well belong to that instead. Otherwise `extras` collects every
+/// file that no change already accounts for, each with its path relative to
+/// `root` so a `Scans/` subfolder lands as a `Scans/` subfolder.
+fn collect_folder_extras(
+    root: &Path,
+    folder: &Path,
+    moving: &std::collections::BTreeSet<PathBuf>,
+    claimed: &std::collections::BTreeSet<PathBuf>,
+    extras: &mut Vec<(PathBuf, PathBuf)>,
+) -> bool {
+    let Ok(entries) = std::fs::read_dir(folder) else {
+        // An unreadable folder is not evidence that carrying is safe.
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if !collect_folder_extras(root, &path, moving, claimed, extras) {
+                return false;
+            }
+            continue;
+        }
+        if scanner::is_supported_audio(&path) && !moving.contains(&path) {
+            return false;
+        }
+        if claimed.contains(&path) || moving.contains(&path) {
+            continue;
+        }
+        let Ok(relative) = path.strip_prefix(root) else {
+            continue;
+        };
+        extras.push((path.clone(), relative.to_path_buf()));
+    }
+    true
 }
 
 /// The tag field a release id is stored under, by provider source (#20).
@@ -4000,6 +4171,13 @@ mod tests {
         let track = dir.tagged_flac_at("incoming/dump/x.flac", "Autechre", "Gantz Graf");
         std::fs::write(library.join("dump/notes.txt"), "keep me").unwrap();
         let mut app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+        // This is about pruning, not about carrying: with #161 on, the note
+        // would travel with the track and the folder would then be empty and
+        // pruned, which is that feature's own test.
+        app.apply_settings(&SettingsDto {
+            carry_folder_extras: false,
+            ..SettingsDto::default()
+        });
 
         let plan = app
             .preview_move(
@@ -4148,6 +4326,7 @@ mod tests {
             action_groups: Vec::new(),
             carry_sidecars: true,
             sidecar_extensions: Vec::new(),
+            carry_folder_extras: true,
             import_skip_fields: Vec::new(),
             multi_value_separator: String::new(),
         });
@@ -4537,6 +4716,106 @@ mod tests {
     // #58: a rename detects same-stem sidecars in the configured set, retargets
     // them to the new stem, and moves/restores them with the track — while
     // leaving wrong-extension and wrong-stem neighbours alone.
+    #[test]
+    fn a_reorganize_carries_the_rest_of_the_folder() {
+        // #161: the album leaves, and the rip log, the loose art and the scans
+        // subfolder go with it instead of being stranded in a folder that can
+        // then never be pruned.
+        let dir = TempDir::new("carry-extras");
+        let track = dir.tagged_flac_at("unsorted/a.flac", "Artist", "Title");
+        std::fs::write(dir.0.join("unsorted/rip.log"), b"log").unwrap();
+        std::fs::write(dir.0.join("unsorted/cover art.jpg"), b"art").unwrap();
+        std::fs::create_dir_all(dir.0.join("unsorted/Scans")).unwrap();
+        std::fs::write(dir.0.join("unsorted/Scans/back.png"), b"scan").unwrap();
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_move("%artist%/%title%", &[track], None, false, true)
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        assert!(
+            plan.description.contains("carrying 3 extra files"),
+            "the preview must say what it carries: {}",
+            plan.description
+        );
+        app.apply(&plan).unwrap();
+
+        assert!(dir.0.join("Artist/Title.flac").exists());
+        assert!(dir.0.join("Artist/rip.log").exists());
+        assert!(dir.0.join("Artist/cover art.jpg").exists());
+        // A subfolder lands as a subfolder.
+        assert!(dir.0.join("Artist/Scans/back.png").exists());
+        // And the emptied folder is pruned, which is the point of carrying.
+        assert!(!dir.0.join("unsorted").exists());
+
+        // Undo puts all of it back — the carried files ride as sidecars, so they
+        // are journaled and restored by the machinery that already does that,
+        // and the folders come back before anything moves into them.
+        let batch = app.history().unwrap().first().unwrap().id;
+        app.undo(batch).unwrap();
+        assert!(dir.0.join("unsorted/a.flac").exists());
+        assert!(dir.0.join("unsorted/rip.log").exists());
+        assert!(dir.0.join("unsorted/cover art.jpg").exists());
+        assert!(dir.0.join("unsorted/Scans/back.png").exists());
+        assert!(!dir.0.join("Artist/rip.log").exists());
+    }
+
+    #[test]
+    fn a_folder_holding_someone_elses_music_is_left_alone() {
+        // The rule that keeps one album's scans from following another out:
+        // carry only when every track under the folder is leaving.
+        let dir = TempDir::new("carry-shared");
+        let mine = dir.tagged_flac_at("shared/mine.flac", "Artist", "Title");
+        let _theirs = dir.tagged_flac_at("shared/theirs.flac", "Other", "Song");
+        std::fs::write(dir.0.join("shared/notes.txt"), b"notes").unwrap();
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_move("%artist%/%title%", &[mine], None, false, true)
+            .unwrap();
+        assert!(
+            !plan.description.contains("carrying"),
+            "{}",
+            plan.description
+        );
+        app.apply(&plan).unwrap();
+        assert!(dir.0.join("shared/notes.txt").exists());
+        assert!(dir.0.join("shared/theirs.flac").exists());
+    }
+
+    #[test]
+    fn extras_are_left_where_the_tracks_scatter_or_the_setting_is_off() {
+        let dir = TempDir::new("carry-scatter");
+        let one = dir.tagged_flac_at("box/one.flac", "A", "One");
+        let two = dir.tagged_flac_at("box/two.flac", "B", "Two");
+        std::fs::write(dir.0.join("box/notes.txt"), b"notes").unwrap();
+        let app = open_app(&dir);
+
+        // Two destinations, so there is no answer to where the leftovers go.
+        let plan = app
+            .preview_move("%artist%/%title%", &[one.clone(), two], None, false, true)
+            .unwrap();
+        assert!(
+            !plan.description.contains("carrying"),
+            "{}",
+            plan.description
+        );
+
+        // And the setting turns it off outright.
+        app.apply_settings(&SettingsDto {
+            carry_folder_extras: false,
+            ..SettingsDto::default()
+        });
+        let plan = app
+            .preview_move("%album%/%title%", &[one], None, false, true)
+            .unwrap();
+        assert!(
+            !plan.description.contains("carrying"),
+            "{}",
+            plan.description
+        );
+    }
+
     #[test]
     fn rename_carries_sidecar_files() {
         let dir = TempDir::new("sidecar-app");

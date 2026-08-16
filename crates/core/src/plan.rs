@@ -401,20 +401,31 @@ fn prune_emptied_dirs(plan: &ChangePlan, roots: &[PathBuf], created: &[PathBuf])
         if change.copy || effective_rename(change).is_none() {
             continue;
         }
-        let mut dir = change.path.parent();
-        while let Some(current) = dir {
-            let owned = current.to_path_buf();
-            // A root is the boundary, not something to remove.
-            if roots.contains(&owned) {
-                break;
+        // The file's own folder, and every folder a file travelling with it came
+        // out of (#161): carrying a `Scans/` subfolder away empties it, and an
+        // empty subfolder left behind would keep its parent from being pruned.
+        let sources = std::iter::once(change.path.as_path()).chain(
+            change
+                .sidecar_renames
+                .iter()
+                .map(|(from, _)| from.as_path()),
+        );
+        for source in sources {
+            let mut dir = source.parent();
+            while let Some(current) = dir {
+                let owned = current.to_path_buf();
+                // A root is the boundary, not something to remove.
+                if roots.contains(&owned) {
+                    break;
+                }
+                if ensure_within_roots(current, roots).is_err() {
+                    break;
+                }
+                if !candidates.contains(&owned) {
+                    candidates.push(owned);
+                }
+                dir = current.parent();
             }
-            if ensure_within_roots(current, roots).is_err() {
-                break;
-            }
-            if !candidates.contains(&owned) {
-                candidates.push(owned);
-            }
-            dir = current.parent();
         }
     }
     // Deepest first, so a parent is only considered once its child is gone.

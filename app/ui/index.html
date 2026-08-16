@@ -821,6 +821,11 @@
               <input id="set-carry-sidecars" type="checkbox" />
             </div>
             <p class="settings-hint">When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.</p>
+            <div class="settings-row">
+              <label for="set-carry-extras">Carry folder leftovers</label>
+              <input id="set-carry-extras" type="checkbox" />
+            </div>
+            <p class="settings-hint">When a reorganize takes every track out of a folder, whatever is left in it — a rip log, loose artwork, a Scans subfolder — travels to the same destination, so nothing is stranded and the folder can be tidied away. A folder that still holds other music, or tracks that scatter to several destinations, are left alone.</p>
             <div class="settings-row col">
               <label for="set-sidecar-exts">Extensions</label>
               <input id="set-sidecar-exts" type="text" class="mono" placeholder="lrc cue txt jpg jpeg png" spellcheck="false" />
