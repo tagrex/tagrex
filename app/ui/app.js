@@ -1058,7 +1058,7 @@ async function afterOpen(label) {
   showView("files");
   showPlayerBar();
   await refreshHistory();
-  toast(`Opened ${label} — ${tracks.length} tracks`);
+  toast(`Opened ${label} — ${plural(tracks.length, "track", "tracks")}`);
 }
 
 // Open a drag-and-drop of `paths` (#127). The backend resolves a lone folder to

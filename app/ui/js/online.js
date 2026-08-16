@@ -877,7 +877,9 @@ async function importRelease(card) {
       }
       if (fields.size === 0) edits.delete(change.path);
     }
-    hooks.renderTracks();
+    // No plain render here: `previewEdits` stages the plan and repaints the
+    // table as a diff a moment later, so rendering first only builds a few
+    // thousand rows to throw them away (#186).
     refreshFieldEditor();
     await hooks.previewEdits();
     toast(

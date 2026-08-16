@@ -34,6 +34,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Staging an import no longer repaints the file table twice. Bringing a release
+  into three files of a few thousand rendered every row, then rendered every row
+  again to show the diff — the first one only to throw it away. The same applied
+  to the field editor's Apply. The remaining cost, repainting untouched rows to
+  stage a handful, is #186. (#186)
+
+- The toast after opening a library counted in the plural whatever the number.
+  (#187)
+
 - **Auto-match no longer throws its answer away when the folder holds fewer
   files than the release has tracks.** Three files of a five-track EP matched
   correctly and were then silently demoted to filler, because a match to track 4

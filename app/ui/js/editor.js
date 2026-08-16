@@ -401,7 +401,8 @@ async function applyFieldEditor() {
     }
     if (fields.size === 0) edits.delete(path);
   }
-  hooks.renderTracks();
+  // Same as the import path (#186): the diff render that `previewEdits` triggers
+  // replaces this one outright.
   refreshFieldEditor();
   await hooks.previewEdits();
   toast(
