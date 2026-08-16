@@ -20,6 +20,7 @@ import {
   setSortKey,
   setTracks,
   tag,
+  trackAt,
   trackByPath,
   tracks,
 } from "./state.js";
@@ -560,6 +561,116 @@ async function toggleCard(card) {
   }
 }
 
+// ---- length match against the selection (#188) ----
+// A release card says what each track should run to; the table already knows
+// what the selected files really run to. The difference between the two is what
+// tells a CD rip filed under a vinyl catalogue number from the vinyl itself —
+// and it has to be readable BEFORE an import, because after one the wrong
+// lengths are already written as tags.
+//
+// Both sides are in memory (the release carries its durations, every row of the
+// table carries the file's), so this is arithmetic, not I/O, and it can follow
+// the selection as it changes.
+
+// Within this many seconds two lengths are the same recording; up to `NEAR` a
+// plausible other master or fade-out; past that a different recording. Nothing
+// is paired at all beyond `PAIR_LIMIT` — a number that far out invites reading
+// meaning into a coincidence.
+const MATCH_SECS = 2;
+const NEAR_SECS = 10;
+const PAIR_LIMIT_SECS = 120;
+
+// Pair each release track with the selected file closest to it in length, one
+// file to one track, closest pairs claimed first. Deliberately NOT the import's
+// positional pairing: three files of a five-track release line up against
+// tracks 1-3 there, which is exactly the case this is meant to see through.
+// Returns the map track index -> { delta (file minus track), path, secs }, and
+// how many selected files could take part at all — an empty map means "nothing
+// to compare" or "nothing close enough", and the tally says different things
+// about the two.
+function durationPairs(release) {
+  const files = [];
+  for (const path of selectedPaths()) {
+    const t = trackAt(path);
+    if (t && t.duration_secs) files.push({ path, secs: t.duration_secs });
+  }
+  const byTrack = new Map();
+  if (files.length === 0) return { pairs: byTrack, files: 0 };
+  const pairs = [];
+  release.tracks.forEach((t, i) => {
+    if (!t.duration_secs) return;
+    files.forEach((f, j) => {
+      const delta = f.secs - t.duration_secs;
+      if (Math.abs(delta) <= PAIR_LIMIT_SECS) pairs.push({ i, j, delta });
+    });
+  });
+  pairs.sort((a, b) => Math.abs(a.delta) - Math.abs(b.delta));
+  const takenFiles = new Set();
+  for (const p of pairs) {
+    if (byTrack.has(p.i) || takenFiles.has(p.j)) continue;
+    byTrack.set(p.i, { delta: p.delta, path: files[p.j].path, secs: files[p.j].secs });
+    takenFiles.add(p.j);
+  }
+  return { pairs: byTrack, files: files.length };
+}
+
+function deltaBand(delta) {
+  const d = Math.abs(delta);
+  if (d <= MATCH_SECS) return "match";
+  if (d <= NEAR_SECS) return "near";
+  return "off";
+}
+
+// "+2s" / "-1:14" — seconds while they read as seconds, m:ss beyond a minute.
+function deltaLabel(delta) {
+  const d = Math.abs(delta);
+  const sign = delta > 0 ? "+" : delta < 0 ? "-" : "";
+  return `${sign}${d < 60 ? `${d}s` : fmtTime(d)}`;
+}
+
+// The duration cell of one track row: the release's own time, plus the
+// difference to the file paired with it when there is one.
+function durationCell(track, pair) {
+  const base = track.duration_secs ? fmtTime(track.duration_secs) : "—";
+  if (!pair) return base;
+  const title = `${fileName(pair.path)} runs ${fmtTime(pair.secs)}`;
+  return `${base}<span class="tk-delta ${deltaBand(pair.delta)}" title="${escapeHtml(title)}">${deltaLabel(
+    pair.delta,
+  )}</span>`;
+}
+
+// Re-derive the pairing for one rendered tracklist and write it into the rows.
+// Rows are rendered in `release.tracks` order, so the index is the row.
+function applyDurationDeltas(card, release) {
+  const { pairs, files } = durationPairs(release);
+  card.querySelectorAll(".release-tracklist tbody td.tk-dur").forEach((cell, i) => {
+    cell.innerHTML = durationCell(release.tracks[i], pairs.get(i));
+  });
+  const fit = card.querySelector(".tk-fit");
+  if (!fit) return;
+  // The tally answers the question the rows only imply — is this the edition? —
+  // and says nothing at all when there was nothing to compare, rather than
+  // reporting a miss the user never asked for.
+  const stated = release.tracks.filter((t) => t.duration_secs).length;
+  const hits = [...pairs.values()].filter((p) => deltaBand(p.delta) === "match").length;
+  const comparable = files > 0 && stated > 0;
+  fit.textContent = !comparable ? "" : hits ? `${hits} of ${stated} lengths match` : "no lengths match";
+  fit.classList.toggle("hit", comparable && hits > 0);
+  fit.classList.toggle("miss", comparable && hits === 0);
+}
+
+// Follow the selection: the deltas are about the files the user has picked, so
+// they go stale the moment that changes (app.js calls this from paintSelection).
+function refreshReleaseMatches() {
+  for (const id of expandedIds) {
+    const card = cardEl(id);
+    const release = releaseCache.get(id);
+    if (card && release && card.querySelector(".release-tracklist")?.dataset.loaded === "1") {
+      applyDurationDeltas(card, release);
+    }
+  }
+}
+
 function renderTracklist(card, release) {
   const rows = release.tracks
     .map((t, i) => {
@@ -632,18 +743,22 @@ function renderTracklist(card, release) {
     <div class="tracklist-scroll"><table>
       <thead><tr class="tk-head">
         <th class="tk-lead"><label class="tk-selall" title="Select all tracks / none"><input type="checkbox" class="tk-selall-box" aria-label="Select all tracks" /></label></th>
-        <th class="tk-selcount muted" colspan="2"></th>
+        <th class="tk-selcount muted" colspan="2"><span class="tk-fit" title="How many of this release's lengths the selected files account for"></span><span class="tk-tally"></span></th>
       </tr></thead>
       <tbody>${rows}</tbody></table></div>`;
   // The import action moved to a header icon button (shown once loaded + expanded).
   card.classList.add("tracklist-loaded");
   updateTracklistCount(card);
+  // The rows above carry the release's own durations; the difference to the
+  // selected files is written in afterwards, by the one path that also keeps it
+  // current as the selection changes (#188).
+  applyDurationDeltas(card, release);
 }
 
 function updateTracklistCount(card) {
   const boxes = [...card.querySelectorAll(".release-tracklist tbody .tk-lead input")];
   const on = boxes.filter((b) => b.checked).length;
-  const label = card.querySelector(".tk-selcount");
+  const label = card.querySelector(".tk-tally");
   if (label) label.textContent = `${on} / ${boxes.length} selected`;
   // Mirror the tally onto the master checkbox that replaced the Enable/Disable
   // all pair — same tri-state contract as the file table's #select-all, so the
@@ -1001,4 +1116,4 @@ document.addEventListener("click", (e) => {
   });
 });
 
-export { loadSavedToken, searchBusy, searchPerPage, stopLoading };
+export { loadSavedToken, refreshReleaseMatches, searchBusy, searchPerPage, stopLoading };

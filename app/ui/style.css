@@ -3329,6 +3329,41 @@ button.tk-art-btn > .ico:last-child {
   box-shadow: -1px 0 0 0 var(--border);
 }
 
+/* How far the paired file's length is from this track's (#188). Sits inside the
+   pinned duration cell, after a middot, so the release's own time stays the
+   number you read first. Three bands: the same recording, a plausible other
+   master, and something else entirely. */
+.tk-delta {
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.tk-delta::before {
+  content: "·";
+  margin: 0 4px;
+  color: var(--muted);
+}
+.tk-delta.match {
+  color: var(--add);
+}
+.tk-delta.near {
+  color: var(--muted);
+}
+.tk-delta.off {
+  color: var(--del);
+}
+
+/* The tally of matching lengths, left of the "N / M selected" readout in the
+   tracklist header — floated because that cell is right-aligned text. */
+.tk-fit {
+  float: left;
+}
+.tk-fit.hit {
+  color: var(--add);
+}
+.tk-fit.miss {
+  color: var(--del);
+}
+
 .tracklist-apply {
   display: flex;
   padding: var(--space-3);

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A release card says how far each track's length is from your file's.** An
+  expanded tracklist now reads `8:04 · +2s`, coloured by how far off it is:
+  within a couple of seconds is the same recording, up to ten a different master
+  or fade, beyond that something else. Each track takes the selected file
+  closest to it in length — one file to one track, closest pairs first — rather
+  than the position the import would use, so three files of a five-track release
+  still line up with the three tracks they really are. A tally in the tracklist
+  header ("3 of 5 lengths match") answers the question the rows imply, and both
+  follow the selection as it changes. That is enough to tell a rip of one
+  edition filed under another's catalogue number apart before anything is
+  written. (#188)
+
 - **The last eight folders you opened are one click away.** A caret at the right
   of the library indicator drops the list; picking one opens it. Each row reads
   like the indicator — folder name, parent dimmed in front, whole path in the

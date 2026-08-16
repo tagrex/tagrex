@@ -40,7 +40,7 @@ import {
   setGroupBy,
 } from "./js/columns.js";
 import { dropGroupKey, folderGroupLabel, groupKeyOf, groupLabel } from "./js/grouping.js";
-import { loadSavedToken, searchBusy, searchPerPage, stopLoading } from "./js/online.js";
+import { loadSavedToken, refreshReleaseMatches, searchBusy, searchPerPage, stopLoading } from "./js/online.js";
 import { closeTransformPopover, refreshGenerator } from "./js/generator.js";
 import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
@@ -1606,6 +1606,9 @@ function syncSelectionUI() {
   if (currentMode === "tagger") {
     refreshFieldEditor();
     scheduleNameProbe();
+    // An expanded release card compares its listed lengths against the selected
+    // files (#188), so the deltas go stale the moment the selection moves.
+    refreshReleaseMatches();
   }
 }
 
