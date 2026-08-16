@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The top bar names the open folder instead of half-showing its path.** The
+  text box that answered "which library is open?" with
+  `/Users/me/Music/Temp mus…` is now an indicator: the folder in full, the
+  folder above it dimmed in front, the whole path in the tooltip. Click it and
+  it becomes the field again, with the path selected so a pasted one replaces
+  it; Escape leaves without changing anything.
+
+  Browse… and Open are one button. It offers **Browse…** until the field says
+  something other than what is open, and **Open** from then on — decided by that
+  difference rather than by focus, so reaching for the button after pasting a
+  path doesn't turn it back into Browse just in time to open a folder dialog
+  instead. (#177)
+
 - The release badge quietens its track count. The catalogue number keeps the
   bundled monospace — it is an identifier, the slashed zero tells `0` from `8`,
   and the tabular digits line the chips up down a list of results — and the

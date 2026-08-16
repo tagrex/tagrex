@@ -797,6 +797,80 @@ async function refreshHistory() {
   }
 }
 
+
+// ---- the library indicator and its one button (#177) ----
+//
+// `openedRoot` is what is actually open; the input is what the user is saying.
+// The button's role follows the difference between them, NOT focus: pasting a
+// path and reaching for the button blurs the field, and a focus-driven toggle
+// would turn Open back into Browse just in time for the click to open a folder
+// dialog instead of the pasted path.
+let openedRoot = "";
+
+function libraryIsDirty() {
+  const typed = rootInput.value.trim();
+  return typed !== "" && typed !== openedRoot;
+}
+
+// Name the open folder: the folder itself in full, its parent path dimmed and
+// elided from the left (the tail is the half that answers "which one?"), the
+// whole path in the tooltip.
+function renderRootDisplay() {
+  const display = el("root-display");
+  const parent = display.querySelector(".path-parent");
+  const name = display.querySelector(".path-name");
+  if (!openedRoot) {
+    parent.textContent = "";
+    name.textContent = "No folder open";
+    display.classList.add("empty");
+    display.title = "Choose a folder to open";
+    return;
+  }
+  const parts = openedRoot.split(/[\\/]/).filter(Boolean);
+  name.textContent = parts.pop() || openedRoot;
+  // Only the folder it sits in, with a leading ellipsis for everything above:
+  // "…/Temp music/" says where you are, "/Users/oleg…" says nothing, and that
+  // is what a plain end-elided path gives you. The whole path is the tooltip.
+  parent.textContent = parts.length
+    ? `${parts.length > 1 ? "…/" : "/"}${parts[parts.length - 1]}/`
+    : "";
+  display.classList.remove("empty");
+  display.title = openedRoot;
+}
+
+// Browse… normally, Open while the field says something else. Label, tooltip and
+// accessible name move together, as the search/stop button's do (#111).
+function updateLibAction() {
+  const dirty = libraryIsDirty();
+  const btn = el("lib-action");
+  el("lib-action-label").textContent = dirty ? "Open" : "Browse…";
+  btn.classList.toggle("opening", dirty);
+  btn.title = dirty ? "Open the path you typed" : "Choose a folder to open";
+  btn.setAttribute("aria-label", btn.title);
+}
+
+// Show the input over the indicator, with the current path selected so a paste
+// replaces it outright.
+function editRootPath() {
+  el("root-display").hidden = true;
+  rootInput.hidden = false;
+  rootInput.value = openedRoot;
+  rootInput.focus();
+  rootInput.select();
+  updateLibAction();
+}
+
+// Back to the indicator. Only when the field agrees with what is open — while it
+// says something else, it has to stay visible, or the Open button would be
+// offering to open something the user can no longer see.
+function leaveRootEdit() {
+  if (libraryIsDirty()) return;
+  rootInput.hidden = true;
+  el("root-display").hidden = false;
+  renderRootDisplay();
+  updateLibAction();
+}
+
 // ---- actions ----
 async function openLibrary() {
   const root = rootInput.value.trim();
@@ -819,6 +893,11 @@ async function openLibrary() {
 // table defaults to drop-origin grouping; otherwise the saved group pref.
 async function afterOpen(label) {
   setSessionRoot(label); // the opened/dropped root — folder group labels hang off it
+  // What is open is now what the field says, so the button falls back to
+  // Browse… and the indicator takes over from the input (#177).
+  openedRoot = label;
+  rootInput.value = label;
+  leaveRootEdit();
   setTracks(await invoke("list_tracks", {}));
   // Only the first readable track is selected on open (#128), so an operation
   // never silently hits the whole library — the user picks what to work on
@@ -1127,8 +1206,11 @@ el("diff-show-old").addEventListener("change", (e) => {
 });
 
 // ---- wire up ----
-el("open").addEventListener("click", openLibrary);
-el("browse").addEventListener("click", browseForFolder);
+// One button, two roles (#177): what it does is what its label says.
+el("lib-action").addEventListener("click", () =>
+  libraryIsDirty() ? openLibrary() : browseForFolder()
+);
+el("root-display").addEventListener("click", editRootPath);
 
 previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
@@ -1194,8 +1276,10 @@ document.addEventListener("keydown", (e) => {
 async function browseForFolder() {
   const dialog = window.__TAURI__ && window.__TAURI__.dialog;
   if (!dialog) {
+    // Browser development has no native chooser: open the field instead, which
+    // is the only way in there.
     toast("Type a library path, then press Open");
-    rootInput.focus();
+    editRootPath();
     return;
   }
   try {
@@ -1272,7 +1356,20 @@ function onDragUp() {
   setSortKey(null); // manual order supersedes any column sort
   renderTracks();
 }
-rootInput.addEventListener("keydown", (e) => e.key === "Enter" && openLibrary());
+rootInput.addEventListener("input", updateLibAction);
+rootInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") openLibrary();
+  // Escape abandons the edit: back to what is open, and out of the field.
+  if (e.key === "Escape") {
+    rootInput.value = openedRoot;
+    leaveRootEdit();
+  }
+});
+// Leaving the field returns the indicator, unless what was typed is still
+// unopened — that has to stay visible while the button offers to open it.
+rootInput.addEventListener("blur", leaveRootEdit);
+renderRootDisplay();
+updateLibAction();
 selectAll.addEventListener("change", () => {
   const on = selectAll.checked;
   // While diffing the header box toggles the whole apply scope, not selection.

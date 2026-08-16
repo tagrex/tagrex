@@ -63,9 +63,16 @@
     <header class="topbar">
       <div class="brand">/tagrex/</div>
       <div class="lib">
-        <input id="root" type="text" placeholder="/path/to/music/library" spellcheck="false" />
-        <button id="browse" class="io" title="Choose a folder to open"><svg class="ico"><use href="#i-folder"/></svg>Browse…</button>
-        <button id="open">Open</button>
+        <!-- The open library, and the one way in (#177). The indicator names the
+             folder and hides the parent path's head; clicking it reveals the
+             input underneath, which is what a pasted path goes into. The button
+             is one slot: Browse… normally, Open while the field says something
+             other than what is already open. -->
+        <button id="root-display" class="path" type="button" title="Choose a folder to open">
+          <span class="path-parent"></span><span class="path-name">No folder open</span>
+        </button>
+        <input id="root" type="text" placeholder="/path/to/music/library" spellcheck="false" hidden />
+        <button id="lib-action" class="io" title="Choose a folder to open"><svg class="ico"><use href="#i-folder"/></svg><span id="lib-action-label">Browse…</span></button>
       </div>
       <div class="spacer"></div>
       <!-- Layout control, kept a hair apart from the two app actions beside it:

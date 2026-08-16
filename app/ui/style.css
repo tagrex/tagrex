@@ -307,6 +307,47 @@ body {
   flex: 1;
 }
 
+/* The open library, named rather than typed (#177). The folder itself is the
+   answer to "which one?", so it takes the room and elides last; the parent is
+   trimmed to the folder above it in JS rather than by `text-overflow`, which
+   can only cut the end and would leave `/Users/oleg…` — the half that says
+   nothing. The whole thing is a button: clicking it reveals the input. */
+.lib .path {
+  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: text;
+}
+.lib .path:hover {
+  border-color: var(--border-strong, var(--border));
+}
+.lib .path-parent {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.lib .path-name {
+  flex: 0 0 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.lib .path.empty .path-name {
+  color: var(--muted);
+  font-weight: 400;
+}
+
 input[type="text"],
 input[type="password"] {
   padding: 6px 9px;
