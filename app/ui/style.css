@@ -299,12 +299,28 @@ body {
 .lib {
   display: flex;
   gap: 6px;
-  flex: 1;
+  /* A stated basis, not `flex: 1` alone (#178): the row shares the top bar with
+     a spacer, so with the basis left to the content the whole thing resized
+     every time the indicator swapped for the field — the layout visibly shifted
+     on a click. At a fixed basis the swap happens inside a box that doesn't
+     move; a narrow window still shrinks it. */
+  flex: 1 1 620px;
   max-width: 620px;
 }
 
 .lib input {
   flex: 1;
+  /* Without this the field refuses to shrink below its content width and pushes
+     the row over its bounds instead (#178). */
+  min-width: 0;
+}
+
+/* `hidden` is `display: none` from the UA stylesheet, and the `display: flex`
+   below is a stronger author rule — so the indicator stayed on screen with the
+   attribute set, sharing the row with the field it was supposed to be replaced
+   by (#178). Anything given an author `display` needs this guard. */
+.lib .path[hidden] {
+  display: none;
 }
 
 /* The open library, named rather than typed (#177). The folder itself is the
