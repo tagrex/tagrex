@@ -928,6 +928,27 @@ function renderRootDisplay() {
     : "";
   display.classList.remove("empty");
   display.title = openedRoot;
+  fitRootDisplay();
+}
+
+// The parent segment is worth showing whole or not at all (#182): shaved down to
+// `…/Temp m…` it is noise, and a second ellipsis in a line this short reads as
+// damage. CSS can only shave, so the choice is made here — measure, and drop the
+// segment when the line overflows, leaving the name the whole width.
+function fitRootDisplay() {
+  const display = el("root-display");
+  const parent = display.querySelector(".path-parent");
+  const name = display.querySelector(".path-name");
+  if (!parent.textContent) return;
+  parent.hidden = false;
+  // Not `scrollWidth > clientWidth` on the button: the name clamps itself with
+  // an ellipsis, so the content always "fits" and the overflow never shows up
+  // there. What matters is the width the name WANTS — its own scrollWidth —
+  // next to the parent it would have to share with.
+  const style = getComputedStyle(display);
+  const inner =
+    display.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  if (parent.offsetWidth + name.scrollWidth > inner) parent.hidden = true;
 }
 
 // Browse… normally, Open while the field says something else. Label, tooltip and
@@ -1487,6 +1508,8 @@ rootInput.addEventListener("keydown", (e) => {
 rootInput.addEventListener("blur", leaveRootEdit);
 renderRootDisplay();
 updateLibAction();
+// The bar narrows with the window, so what fits changes with it (#182).
+window.addEventListener("resize", fitRootDisplay);
 el("root-recent").hidden = recentRoots().length === 0;
 selectAll.addEventListener("change", () => {
   const on = selectAll.checked;

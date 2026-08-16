@@ -390,15 +390,13 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Both halves can shrink, the parent three times as readily (#182): it is
-   already abbreviated to one folder, while the name is what answers "which
-   one?" and should be the last to give ground. */
+/* The parent is shown whole or not at all (#182). Shrinking it produces
+   `…/Temp m…`, which is noise rather than context, and a second ellipsis in a
+   line this short reads as damage — so `renderRootDisplay` measures and drops
+   the segment outright when the line doesn't fit. */
 .lib .path-parent {
-  flex: 0 3 auto;
-  min-width: 0;
-  overflow: hidden;
+  flex: 0 0 auto;
   white-space: nowrap;
-  text-overflow: ellipsis;
   color: var(--muted);
 }
 .lib .path-name {
