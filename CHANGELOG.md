@@ -89,6 +89,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A match by name no longer sounds sure when the lengths disagree.** Auto-match
+  decides on titles and never looked at how long anything runs, so a folder
+  whose names line up perfectly against running times that say otherwise was
+  reported as a clean match. It now weighs the result against the lengths and
+  says so: how many disagree and by how much, in the warning colour rather than
+  the ordinary one. When a different assignment of the same files would fit the
+  lengths markedly better — the crossed case — it points at the second press
+  that would do it. Ordinary rounding and fades stay quiet: it takes more than
+  ten seconds to be worth a word. (#192)
+
 - **The seek bar seeks.** Dragging it moved the time and the thumb while the
   audio carried on where it was — on FLAC, ALAC, AIFF and WAV; MP3 was fine.
   The audio backend decoded those formats through a decoder with no seek support

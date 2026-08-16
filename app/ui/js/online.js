@@ -931,6 +931,65 @@ function disarmLengthMatch() {
   armedByLength.clear();
 }
 
+// ---- what the lengths say about a match by name (#192) ----
+// A title that matches wins outright, and that is usually right: lengths differ
+// for innocent reasons — a fade, a different master, a listing rounded by hand.
+// A minute of disagreement is not innocent, though, and reporting it with the
+// same confidence as a clean match is how a whole folder gets tagged one title
+// out of step. This much apart is worth saying out loud.
+const NAME_MATCH_TOLERANCE_SECS = 10;
+
+function gapLabel(secs) {
+  return secs < 60 ? `${secs}s` : fmtTime(secs);
+}
+
+// The total the pairing is out by, over the pairs where both sides know their
+// length, plus the worst single one.
+function lengthDisagreement(release, pairsByTrack) {
+  let total = 0;
+  let worst = 0;
+  let off = 0;
+  for (const [track, path] of pairsByTrack) {
+    const file = trackAt(path)?.duration_secs;
+    const listed = release.tracks[track]?.duration_secs;
+    if (!file || !listed) continue;
+    const gap = Math.abs(file - listed);
+    total += gap;
+    if (gap > worst) worst = gap;
+    if (gap > NAME_MATCH_TOLERANCE_SECS) off += 1;
+  }
+  return { total, worst, off };
+}
+
+// What the names produced, weighed against what the lengths would have. When
+// the lengths put different files against the same tracks AND fit markedly
+// better, that is the crossed case — the one worth pointing at, because the
+// second press (#191) is exactly the fix.
+function lengthVerdict(release, matchedPairs) {
+  const byName = new Map(matchedPairs.map((p) => [p.track, p.path]));
+  const mine = lengthDisagreement(release, byName);
+  const { pairs } = durationPairs(release);
+  // Compare on the tracks both rules claimed, so the totals are about the same
+  // question.
+  const shared = [...pairs.entries()].filter(([track]) => byName.has(track));
+  const differs = shared.some(([track, pair]) => pair.path !== byName.get(track));
+  const theirs = lengthDisagreement(
+    release,
+    new Map(shared.map(([track, pair]) => [track, pair.path])),
+  );
+  const mineShared = lengthDisagreement(
+    release,
+    new Map(shared.map(([track]) => [track, byName.get(track)])),
+  );
+  return {
+    off: mine.off,
+    worst: mine.worst,
+    // A wide margin, so an ordinary second of rounding never reads as a
+    // different order being better.
+    suggestsOther: differs && mineShared.total - theirs.total > NAME_MATCH_TOLERANCE_SECS * 2,
+  };
+}
+
 // Order the files by the lengths the release lists rather than by their names.
 // This is the same pairing the card's deltas already show — one file to one
 // track, closest pairs claimed first — and it may CROSS, which is the case
@@ -1030,11 +1089,17 @@ async function autoMatchToRelease(card) {
     // that just went off are not a surprise.
     const dropped = release.tracks.length - matched;
     const droppedNote = matched && dropped > 0 ? `, ${plural(dropped, "release track", "release tracks")} left out` : "";
+    // The names decided; the lengths still get to say whether they agree (#192).
+    const verdict = matched ? lengthVerdict(release, matchedPairs) : { off: 0, suggestsOther: false };
+    const lengthNote = verdict.off
+      ? `. ${plural(verdict.off, "length disagrees", "lengths disagree")} by up to ${gapLabel(verdict.worst)}` +
+        (verdict.suggestsOther ? " — press again to match by length" : "")
+      : "";
     toast(
       matched
-        ? `Matched ${matched}/${plural(paths.length, "file", "files")}${isrcNote} — reordered to line up${droppedNote}`
+        ? `Matched ${matched}/${plural(paths.length, "file", "files")}${isrcNote} — reordered to line up${droppedNote}${lengthNote}`
         : "No confident matches — leaving the order alone",
-      matched === 0,
+      matched === 0 || verdict.off > 0,
     );
   } catch (e) {
     toast(String(e), true);
