@@ -5,7 +5,7 @@
 // staged into the shared buffer and previewed with everything else, so nothing
 // here writes.
 import { el, escapeHtml, ico, plural, toast } from "./dom.js";
-import { edits, selection, selectedPaths, tracks } from "./state.js";
+import { edits, selection, selectedPaths, trackAt, tracks } from "./state.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS } from "./fields.js";
 import { hooks } from "./hooks.js";
 
@@ -17,7 +17,7 @@ let stagedFields = new Map();
 function currentFieldValue(path, key) {
   const pending = edits.get(path);
   if (pending && pending.has(key)) return pending.get(key);
-  const track = tracks.find((t) => t.path === path);
+  const track = trackAt(path);
   return (track && track.tags[key]) || "";
 }
 
@@ -39,10 +39,14 @@ function refreshFieldEditor() {
 // "known but not-yet-shown" fields — so common ones don't have to be retyped
 // (#114). Feeds the ADD FIELD name input's datalist.
 function populateKnownFields() {
+  // Over the selection, not over the library (#184): this runs on every
+  // selection change, and walking a few thousand files to read a handful of
+  // them is most of what made a row click expensive.
   const names = new Set();
-  for (const t of tracks) {
-    if (!selection.has(t.path) || !t.tags) continue;
-    for (const key of Object.keys(t.tags)) {
+  for (const path of selection) {
+    const track = trackAt(path);
+    if (!track || !track.tags) continue;
+    for (const key of Object.keys(track.tags)) {
       if (key.startsWith("custom:")) names.add(key.slice(7));
     }
   }
@@ -121,7 +125,7 @@ function renderFieldEditor(paths) {
   // is still listed when the dialog is reopened.
   const customs = new Set();
   for (const path of paths) {
-    const track = tracks.find((t) => t.path === path);
+    const track = trackAt(path);
     if (track) {
       for (const key of Object.keys(track.tags)) {
         if (key.startsWith("custom:")) customs.add(key);
@@ -389,7 +393,7 @@ async function applyFieldEditor() {
     const fields = edits.get(path);
     for (const [key, value] of stagedFields) {
       // Skip no-ops so the preview stays honest.
-      const track = tracks.find((t) => t.path === path);
+      const track = trackAt(path);
       const onDisk = (track && track.tags[key]) || "";
       if (value === onDisk && !fields.has(key)) continue;
       fields.set(key, value);

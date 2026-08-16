@@ -11,10 +11,22 @@
 // than `tracks = ...`. Values that are only ever mutated in place (the
 // selection set, the edit buffer) need no setter and are plain exports.
 
-// The open library's tracks, in mapping order (never reordered by grouping).
+// The open library's tracks, in mapping order (never reordered by grouping),
+// with a path index kept beside them (#184). Nothing should scan the array to
+// find one file: on a library of a few thousand, the tag-field grid did exactly
+// that once per selected path and again per field, and a single row click cost a
+// quarter of a second.
 export let tracks = [];
+let trackIndex = new Map();
 export function setTracks(value) {
   tracks = value;
+  reindexTracks();
+}
+
+// Rebuild the index after the list is reordered in place (the drag reorder does
+// that) — the entries are the same, but their order is what the table shows.
+export function reindexTracks() {
+  trackIndex = new Map(tracks.map((t) => [t.path, t]));
 }
 
 // The staged ChangePlan, and what produced it — apply() uses the source to
@@ -58,6 +70,10 @@ export const selection = new Set();
 // file order even when the view is grouped (#20). Reads the `selection` set, so
 // it survives re-renders.
 export function selectedPaths() {
+  // In mapping order, which is what every operation downstream assumes — so
+  // this walks the list rather than the selection. Cheap next to what it used
+  // to sit in front of (#184), and skipped outright when nothing is selected.
+  if (selection.size === 0) return [];
   return tracks.filter((t) => selection.has(t.path)).map((t) => t.path);
 }
 
@@ -175,9 +191,14 @@ export function tag(track, key) {
   return track.tags[key] || "";
 }
 
-// The open library indexed by path, built on demand. Callers that touch many
-// tracks at once (import, auto-match, the diff) build it once instead of
-// scanning the array per lookup.
+// The open library indexed by path. Held rather than built per call (#184):
+// every caller wanting one file used to pay for a whole `Map` — or, worse, a
+// linear scan — and those calls sit inside loops over the selection.
 export function trackByPath() {
-  return new Map(tracks.map((t) => [t.path, t]));
+  return trackIndex;
+}
+
+/// One file by path, or undefined.
+export function trackAt(path) {
+  return trackIndex.get(path);
 }

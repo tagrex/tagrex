@@ -90,7 +90,7 @@ import {
   isPlayingPath,
 } from "./js/player.js";
 import {
-  tracks, setTracks,
+  tracks, setTracks, reindexTracks,
   previewPlan, setPreviewPlan,
   previewSource, setPreviewSource,
   diffByPath, setDiffByPath,
@@ -549,6 +549,8 @@ function appendGroupHeader(key, count) {
 
 function renderTracks() {
   tracksBody.innerHTML = "";
+  // The rows are gone, so nothing is painted any more (#184).
+  paintedSelection = new Set();
   updateSortIndicators();
 
   // A staged change always stays visible so the whole plan can be reviewed and
@@ -1491,6 +1493,7 @@ function onDragUp() {
     return;
   }
   tracks.splice(drop.below ? targetIndex + 1 : targetIndex, 0, moved);
+  reindexTracks(); // the list is the same files in a new order (#184)
   setSortKey(null); // manual order supersedes any column sort
   renderTracks();
 }
@@ -1571,15 +1574,26 @@ function dataRows() {
 
 // Push the `selection` set onto the checkboxes + row highlight, set the
 // select-all tri-state, and refresh the status count. Called after any change.
+// What the DOM was last told about the selection, so a change can be applied to
+// the rows it actually concerns (#184). Walking every row to toggle a class is
+// most of what a row click cost on a library of a few thousand.
+let paintedSelection = new Set();
+
 function syncSelectionUI() {
   const rows = dataRows();
   let checked = 0;
   for (const tr of rows) {
-    const on = selection.has(tr.dataset.path);
-    rowCheckbox(tr).checked = on;
-    tr.classList.toggle("selected", on);
+    const path = tr.dataset.path;
+    const on = selection.has(path);
+    // The count still needs every row, but the DOM only needs the ones whose
+    // state moved.
+    if (on !== paintedSelection.has(path)) {
+      rowCheckbox(tr).checked = on;
+      tr.classList.toggle("selected", on);
+    }
     if (on) checked += 1;
   }
+  paintedSelection = new Set(selection);
   selectAll.checked = checked > 0 && checked === rows.length;
   selectAll.indeterminate = checked > 0 && checked < rows.length;
   updateStatus();
@@ -1993,12 +2007,17 @@ el("toggle-groups").addEventListener("click", () => {
   syncGroupToggle();
 });
 
+// Typing re-renders the whole table, which on a large library is far slower
+// than the typing (#184) — so the render waits for a pause. The controls follow
+// the keystroke, so the box itself never feels laggy.
+let filterTimer = null;
 el("filter").addEventListener("input", (e) => {
   // Keep the raw text — case matters in regex/case-sensitive mode; lowercasing
   // for a plain match happens in matchesFilter.
   setFilterText(e.target.value.trim());
   syncFilterControls();
-  renderTracks();
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(renderTracks, 120);
 });
 // Regex / case toggles (#44): flip the flag, persist, recompile, repaint.
 el("filter-regex").addEventListener("click", () => {

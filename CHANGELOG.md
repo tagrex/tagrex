@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A large library stops making every click expensive.** With a few thousand
+  files open, selecting a row took a quarter of a second, select-all took a
+  second, and the filter lagged a word behind the typing — the tag-field grid
+  looked each selected file up by scanning the whole library, once per file and
+  again per field, while the table repainted in full for anything at all.
+
+  Files are indexed by path now, only the rows whose selection actually changed
+  are repainted, and the filter renders once you pause instead of once per
+  character. Measured on 3799 files: a row click **238 ms → 12 ms**, select-all
+  **1063 ms → 93 ms**, and six keystrokes in the filter **~900 ms → 1 ms** of
+  blocked typing. (#184)
+
 - **One bad year no longer hides a whole file.** A handful of tracks in a large
   library listed as *"couldn't read tags — file left untouched"*, with nothing
   else about them visible. They were not damaged: each carried a malformed year,
