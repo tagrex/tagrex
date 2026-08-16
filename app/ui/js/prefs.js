@@ -159,8 +159,10 @@ function badgeFont() {
 }
 function applyBadgeFont(mode) {
   const m = BADGE_FONTS.includes(mode) ? mode : "mono";
-  // The badge carries a catalogue number — an identifier — so mono is the
-  // default; --badge-font lets LAB try the UI face instead.
+  // The badge's catalogue segment is an identifier, so mono is the default;
+  // --badge-font lets LAB try the UI face instead. It governs that segment
+  // alone — the track count beside it is a label and stays on the UI face
+  // whatever this says (#175).
   document.documentElement.style.setProperty(
     "--badge-font",
     m === "sans" ? "var(--font-ui)" : "var(--font-mono-bundled)",
