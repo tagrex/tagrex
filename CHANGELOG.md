@@ -48,6 +48,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   while the field was focused. The field now takes the indicator's place in a
   slot that keeps its size, so nothing moves. (#178, #181)
 
+- A folder name too long for the bar ran under the recent-folders caret. It
+  gives up its tail to an ellipsis now, and the parent path yields first. (#182)
+
 - The release badge quietens its track count. The catalogue number keeps the
   bundled monospace — it is an identifier, the slashed zero tells `0` from `8`,
   and the tabular digits line the chips up down a list of results — and the

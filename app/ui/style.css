@@ -350,6 +350,9 @@ body {
   display: flex;
   align-items: baseline;
   min-width: 0;
+  /* Clip whatever is inside: without this a name too long for the button spills
+     out of it and carries on underneath the caret beside it (#182). */
+  overflow: hidden;
   padding: 6px 9px;
   border: none;
   background: none;
@@ -387,13 +390,20 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Both halves can shrink, the parent three times as readily (#182): it is
+   already abbreviated to one folder, while the name is what answers "which
+   one?" and should be the last to give ground. */
 .lib .path-parent {
-  flex: 0 0 auto;
+  flex: 0 3 auto;
+  min-width: 0;
+  overflow: hidden;
   white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--muted);
 }
 .lib .path-name {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
