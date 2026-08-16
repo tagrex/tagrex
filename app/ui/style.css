@@ -854,11 +854,32 @@ body.diffing #tracks tbody td.sel {
   display: table-cell;
 }
 
-body.diffing #tracks tbody tr.untouched td {
+/* Rows the plan doesn't touch recede. Selected by what they are NOT, so staging
+   a change costs nothing per untouched row (#186): the rows carry no diff-state
+   class of their own, and the body-level `diffing` class does the work. Group
+   headers and unreadable placeholders are not part of a plan either way. */
+body.diffing #tracks tbody tr:not(.staged):not(.group-head):not(.unreadable) td {
   color: var(--muted);
 }
-body.diffing #tracks tbody tr.untouched td:not(.sel) {
+body.diffing #tracks tbody tr:not(.staged):not(.group-head):not(.unreadable) td:not(.sel) {
   opacity: 0.55;
+}
+
+/* The sel column belongs to the plan while diffing, so a row outside it offers
+   no tick — the box is inert and its own selection state is not shown there
+   (the selection is painted back on the way out). */
+body.diffing #tracks tbody tr:not(.staged) td.sel input {
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+/* Selection has no meaning in the sel column while a plan is staged, and the
+   row tint would compete with the diff's own colours. */
+body.diffing #tracks tbody tr.selected td:not(.dirty):not(.error) {
+  background: var(--bg);
+}
+body.diffing #tracks tbody tr.selected:hover td:not(.dirty):not(.error) {
+  background: var(--row-hover);
 }
 
 /* Affected-row marker: an accent left-bar on the sel cell (batch plans). */

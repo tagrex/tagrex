@@ -95,7 +95,7 @@ import {
   previewSource, setPreviewSource,
   diffByPath, setDiffByPath,
   applySelection, setApplySelection,
-  edits, selection, selectedPaths, tag, trackByPath,
+  edits, selection, selectedPaths, tag, trackAt, trackByPath,
   DEFAULT_COLUMNS, visibleColumns, setVisibleColumns,
   columnWidths, setColumnWidths,
   sortKey, setSortKey, sortDir, setSortDir,
@@ -366,9 +366,16 @@ function presetSummary(p) {
   return bits.length ? bits.join(" · ") : "empty view";
 }
 
-// Build one track row and append it to the body. `groupKey` (when grouping)
-// tags the row so its group header can collapse it.
+// Append one built row to the body — the render loop's step.
 function appendTrackRow(track, groupKey) {
+  tracksBody.appendChild(buildTrackRow(track, groupKey));
+}
+
+// Build one track row. `groupKey` (when grouping) tags the row so its group
+// header can collapse it. Returned rather than appended so a single row can
+// also be rebuilt in place, which is how staging patches the table (#186)
+// instead of repainting every row of the library.
+function buildTrackRow(track, groupKey) {
   const pending = edits.get(track.path);
   const tr = document.createElement("tr");
   tr.dataset.path = track.path;
@@ -385,16 +392,14 @@ function appendTrackRow(track, groupKey) {
       <td class="sel"><input type="checkbox" disabled title="This file's tags couldn't be read" /></td>
       <td class="file" title="${escapeHtml(track.path)} — tags couldn't be read">${escapeHtml(fileName(track.path))}</td>
       <td class="unreadable-note" colspan="${visibleColumns.length - 1}">couldn't read tags — file left untouched</td>`;
-    tracksBody.appendChild(tr);
-    return;
+    return tr;
   }
   // Diff-state (#117): a staged plan renders its change into this same table in
   // place — no separate Preview view. Staged rows show the new values (dirty)
   // and the sel column becomes the per-row apply scope; other rows recede.
   if (diffByPath) {
     fillDiffRow(tr, track);
-    tracksBody.appendChild(tr);
-    return;
+    return tr;
   }
   if (isPlayingPath(track.path)) tr.classList.add("playing");
   // Checkbox + row highlight both reflect the `selection` set (source of truth),
@@ -444,7 +449,7 @@ function appendTrackRow(track, groupKey) {
     if (edited && value !== original) td.classList.add("dirty");
     tr.appendChild(td);
   }
-  tracksBody.appendChild(tr);
+  return tr;
 }
 
 // One row of the in-table diff (#117). A staged row shows the plan's new values
@@ -682,8 +687,12 @@ function discardPreview() {
   // values; other previews just drop the plan. exitDiffState() repaints the
   // table back to its normal (non-diff) state either way.
   const wasEdits = previewSource === "edits";
+  // An edit that changed nothing on disk is in the buffer but not in the plan,
+  // so leaving the diff-state doesn't cover its row (#186) — note them first.
+  const edited = wasEdits ? [...edits.keys()] : [];
   if (wasEdits) resetEdits();
   exitDiffState();
+  repaintRows(edited);
 }
 
 // Path -> track lookup, so the diff can show the current value of a file's
@@ -701,16 +710,94 @@ function renderPreview(plan) {
   enterDiffState();
 }
 
+// ---- patching the table into and out of the diff-state (#186) ----
+// Staging three changes used to rebuild every row of the library: the whole
+// table is re-rendered so that a handful of rows can show a plan, and on a few
+// thousand files that is seconds of work — much of it spent building the rows
+// that are not changing.
+//
+// Only the rows the plan touches actually differ. Everything else recedes by a
+// rule hanging off the body-level `diffing` class, which costs nothing per row.
+// So entering and leaving the diff-state patches the rows that care, and the
+// full renderer stays for the cases patching can't express.
+
+// The rows whose contents depend on the diff-state: the ones the plan stages
+// (they show the change), the ones it staged a moment ago (they go back to
+// showing the file), and any row with a pending edit — a plain row shows the
+// pending value, a receded diff row shows what is on disk.
+function diffAffectedPaths(previouslyStaged) {
+  const paths = new Set(previouslyStaged);
+  if (diffByPath) for (const path of diffByPath.keys()) paths.add(path);
+  for (const path of edits.keys()) paths.add(path);
+  return paths;
+}
+
+// Rebuild the given rows in place, leaving every other row of the table alone.
+function repaintRows(paths) {
+  const wanted = paths instanceof Set ? paths : new Set(paths);
+  if (wanted.size === 0) return;
+  for (const tr of [...tracksBody.querySelectorAll("tr[data-path]")]) {
+    if (!wanted.has(tr.dataset.path)) continue;
+    const track = trackAt(tr.dataset.path);
+    if (!track) continue;
+    const fresh = buildTrackRow(track, tr.dataset.group ?? null);
+    if (tr.tabIndex === 0) fresh.tabIndex = 0; // keep the keyboard anchor
+    tr.replaceWith(fresh);
+  }
+}
+
+// Patch the rows the diff-state concerns. Returns false when the table can't be
+// patched into the state being asked for, and the caller must fall back to a
+// full render: a staged file the filter hides has no row to patch, and on the
+// way out such a row has to leave the table again.
+function patchDiffRows(previouslyStaged) {
+  const shown = new Set([...tracksBody.querySelectorAll("tr[data-path]")].map((tr) => tr.dataset.path));
+  if (diffByPath) {
+    for (const path of diffByPath.keys()) if (!shown.has(path)) return false;
+  } else {
+    for (const path of previouslyStaged) {
+      const track = trackAt(path);
+      // A file no longer in the list at all (an applied rename), or one the
+      // filter only tolerated because it was staged, needs the renderer.
+      if (!track || !matchesFilter(track)) return false;
+    }
+  }
+  repaintRows(diffAffectedPaths(previouslyStaged));
+  return true;
+}
+
+// While diffing, the sel column means "apply this row", so the selection's own
+// ticks must not sit in it. Walks the selected rows rather than the table, and
+// tells the selection painter it owns none of them any more, so leaving the
+// diff-state paints them back.
+function clearSelectionTicks() {
+  for (const tr of tracksBody.querySelectorAll("tr.selected")) {
+    const cb = rowCheckbox(tr);
+    if (cb) cb.checked = false;
+  }
+  paintedSelection = new Set();
+}
+
 // Enter the in-table diff-state: build the path->change map, tick every changed
-// file for apply by default, repaint the table as a diff, and float the bar.
+// file for apply by default, show the change in the table, and float the bar.
 function enterDiffState() {
+  const previouslyStaged = diffByPath ? [...diffByPath.keys()] : [];
   setDiffByPath(new Map(previewPlan.changes.map((c) => [c.path, c])));
   setApplySelection(new Set(diffByPath.keys()));
+  // Rows first, then the class. Reading the table (which patching does) makes
+  // the browser settle the styles it owes, and `diffing` restyles every row —
+  // so touching the class first would buy that pass twice.
+  const patched = patchDiffRows(previouslyStaged);
+  if (patched) clearSelectionTicks();
   document.body.classList.add("diffing");
   el("diff-show-old").checked = false;
   el("tracks").classList.remove("show-old");
   showView("files"); // never diff over the dedup view
-  renderTracks();
+  if (patched) {
+    maybeAutofit(); // the diff reveals old values, so the fit can move (#151)
+  } else {
+    renderTracks();
+  }
   el("ab-plan").textContent = previewPlan.description ? ` · ${previewPlan.description}` : "";
   el("diff-actionbar").hidden = false;
   updateDiffBar();
@@ -719,16 +806,23 @@ function enterDiffState() {
   refreshGenerator();
 }
 
-// Leave the diff-state: drop the plan + apply scope and repaint the plain table.
-function exitDiffState() {
+// Leave the diff-state: drop the plan + apply scope and put the plain rows back.
+// `rebuild` forces the full renderer — an apply/undo has just replaced the track
+// list, so paths, values and the grouping they feed can all have moved.
+function exitDiffState({ rebuild = false } = {}) {
+  const previouslyStaged = diffByPath ? [...diffByPath.keys()] : [];
   setPreviewPlan(null);
   setPreviewSource(null);
   setDiffByPath(null);
   setApplySelection(new Set());
+  // Rows first, class last, for the reason enterDiffState gives.
+  const patched = !rebuild && patchDiffRows(previouslyStaged);
+  if (patched) syncSelectionUI();
   document.body.classList.remove("diffing");
   el("tracks").classList.remove("show-old");
   el("diff-actionbar").hidden = true;
-  renderTracks();
+  if (patched) maybeAutofit();
+  else renderTracks();
   refreshGenerator();
 }
 
@@ -1132,8 +1226,9 @@ async function apply() {
     // Mask columns render from disk, and an apply is exactly when what is on
     // disk changed under unchanged paths (#150).
     invalidateCustomColumns();
-    // exitDiffState() drops the plan + apply scope and repaints the plain table.
-    exitDiffState();
+    // The applied files just came back from disk with new values (and possibly
+    // new paths), so the table is rebuilt rather than patched.
+    exitDiffState({ rebuild: true });
     refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
@@ -1150,8 +1245,9 @@ async function undo() {
     resetEdits();
     setTracks(await invoke("list_tracks", {}));
     invalidateCustomColumns();
-    // exitDiffState() also clears previewPlan/previewSource and repaints.
-    exitDiffState();
+    // exitDiffState() also clears previewPlan/previewSource; an undo moved the
+    // files back, so the table is rebuilt rather than patched.
+    exitDiffState({ rebuild: true });
     refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
@@ -1538,6 +1634,9 @@ tracksBody.addEventListener("change", (e) => {
   const cb = e.target.closest(".sel input[type=checkbox]");
   if (!cb) return;
   if (diffByPath) {
+    // Only a staged row has an apply tick. A row outside the plan keeps its own
+    // (inert) selection box while diffing (#186), so ignore it here.
+    if (!diffByPath.has(cb.dataset.path)) return;
     if (cb.checked) applySelection.add(cb.dataset.path);
     else applySelection.delete(cb.dataset.path);
     updateDiffBar();

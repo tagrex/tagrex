@@ -46,6 +46,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Staging a change no longer rebuilds every row of the library.** Bringing a
+  release into three files of a few thousand rebuilt all of them so that three
+  could show a diff, and undoing that on discard cost the same again. Only the
+  rows a plan touches differ now; the rest recede by a rule that costs nothing
+  per row, so the table is patched where it changes instead of thrown away.
+  Measured on a library of 3799 files: staging three changes went from 4.3 s to
+  0.26 s, leaving the staged state from 159 ms to 11 ms. A staged file the
+  filter would hide still needs the full renderer, and still gets it. (#186)
+
 - Staging an import no longer repaints the file table twice. Bringing a release
   into three files of a few thousand rendered every row, then rendered every row
   again to show the diff — the first one only to throw it away. The same applied
