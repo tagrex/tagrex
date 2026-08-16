@@ -2927,6 +2927,20 @@ button.release-import {
   border-top: 1px solid var(--border);
 }
 
+/* Everything in the Columns menu that is not a column (#174). The popover
+   scrolls at 60vh, so with a dozen columns picked this block used to sit below
+   the fold with nothing to say it was there. Sticky keeps it in view without
+   pushing the list — what the menu is for — off the top, and seeing rows run
+   underneath it is what says the list scrolls. The negative offsets cancel the
+   popover's own padding so it sits flush against the bottom edge. */
+.col-menu-actions {
+  position: sticky;
+  bottom: calc(-1 * var(--space-2));
+  margin-bottom: calc(-1 * var(--space-2));
+  padding-bottom: var(--space-2);
+  background: var(--bg);
+}
+
 .release-tracklist {
   border-top: 1px solid var(--border);
   background: var(--bg);

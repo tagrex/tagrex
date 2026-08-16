@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   property of the audio, not a tag. It costs nothing to open a library with it:
   the value comes from the same read that already collects the tags. (#172)
 
+- **The Columns menu keeps its actions in view.** Add column…, Fit to content,
+  Autofit and Reset to default sit under the column list, and with a dozen
+  columns picked the list scrolled past them — nothing on screen said they were
+  there. That block now stays pinned to the bottom of the popover while the list
+  scrolls behind it, which also makes it obvious that the list *is* scrolling.
+  (#174)
+
 - Length is one of the columns a table starts with, next to artist, title, album
   and year. A set you have already arranged is remembered and still wins, so
   this only shows up on a fresh library or after Reset to default. (#173)

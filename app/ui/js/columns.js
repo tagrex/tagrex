@@ -588,6 +588,12 @@ function renderColumnsMenu() {
     menu.appendChild(sep);
     for (const key of hidden) menu.appendChild(colMenuRow(key, false));
   }
+  // Everything that is not a column goes into one block that stays put while
+  // the list scrolls above it (#174). With a dozen columns picked, these used to
+  // sit below the fold with nothing to say they were there.
+  const actions = document.createElement("div");
+  actions.className = "col-menu-actions";
+
   // Defining a new mask column (#150) belongs with the list of columns, since
   // that is where someone goes looking for one that isn't there.
   const addFoot = document.createElement("div");
@@ -602,7 +608,7 @@ function renderColumnsMenu() {
     openColumnEditor(null);
   });
   addFoot.appendChild(add);
-  menu.appendChild(addFoot);
+  actions.appendChild(addFoot);
 
   // Fit-to-content (#151), above the reset row: it acts on the widths, which is
   // what the rows above configure, while Reset throws the whole set away.
@@ -633,7 +639,7 @@ function renderColumnsMenu() {
   autoRow.title = "Keep columns sized to their content as the table changes";
   autoRow.append(autoBox, autoLabel);
   fitFoot.appendChild(autoRow);
-  menu.appendChild(fitFoot);
+  actions.appendChild(fitFoot);
 
   // Reset-to-default footer (#91): default set, order, visibility, and widths.
   const foot = document.createElement("div");
@@ -645,7 +651,8 @@ function renderColumnsMenu() {
   reset.title = "File · Artist · Title · Album · Year · Length, default widths";
   reset.addEventListener("click", resetColumns);
   foot.appendChild(reset);
-  menu.appendChild(foot);
+  actions.appendChild(foot);
+  menu.appendChild(actions);
 }
 
 function colMenuRow(key, visible) {
