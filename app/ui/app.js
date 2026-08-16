@@ -798,6 +798,22 @@ async function refreshHistory() {
 }
 
 
+
+// A path as a file manager hands it over (#179). Finder's "Copy as Pathname"
+// wraps anything containing a space in single quotes, a shell copy uses double
+// ones, and a path dragged into a terminal comes back with its spaces escaped.
+// Pasted verbatim, none of those name a folder — and what followed was an empty
+// table rather than a word about why.
+function cleanPastedPath(raw) {
+  let path = (raw || "").trim();
+  // A matching pair only: a quote on one side alone is part of the name.
+  const quote = path[0];
+  if ((quote === "'" || quote === '"') && path.endsWith(quote) && path.length > 1) {
+    path = path.slice(1, -1);
+  }
+  return path.replace(/\\(.)/g, "$1").trim();
+}
+
 // ---- the library indicator and its one button (#177) ----
 //
 // `openedRoot` is what is actually open; the input is what the user is saying.
@@ -873,11 +889,13 @@ function leaveRootEdit() {
 
 // ---- actions ----
 async function openLibrary() {
-  const root = rootInput.value.trim();
+  const root = cleanPastedPath(rootInput.value);
   if (!root) {
     toast("Enter a library path first", true);
     return;
   }
+  // Show what is actually about to be opened, not what was pasted.
+  rootInput.value = root;
   try {
     await invoke("open_library", { root });
     setDropFolders(null); // a typed/browsed open is a plain library, not a drop

@@ -995,8 +995,17 @@ impl App {
     /// `journal_path` (typically inside the app's config dir). Settings default
     /// until [`apply_settings`](App::apply_settings) is called.
     pub fn open(library_root: impl Into<PathBuf>, journal_path: &Path) -> Result<Self, AppError> {
+        let library_root = library_root.into();
+        // A path that isn't a folder has to fail here (#179). Opening it
+        // "succeeded" and then listed nothing, so a typo — or a path pasted with
+        // the quotes Finder wraps it in — looked exactly like an empty library.
+        if !library_root.is_dir() {
+            return Err(AppError::MissingLibrary(
+                library_root.to_string_lossy().into_owned(),
+            ));
+        }
         Ok(Self {
-            library_root: library_root.into(),
+            library_root,
             file_filter: None,
             journal: SqliteJournal::open(journal_path)?,
             cover_max_px: Cell::new(0),
@@ -3716,6 +3725,8 @@ pub enum AppError {
     NotAnImage(String),
     #[error("the destination folder does not exist: {0}")]
     MissingDestination(String),
+    #[error("no such folder: {0}")]
+    MissingLibrary(String),
     #[error(transparent)]
     Transform(#[from] tagrex_core::transform::TransformError),
     #[error("I/O error: {0}")]

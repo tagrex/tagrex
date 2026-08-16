@@ -247,6 +247,12 @@ function mockInvoke(cmd, args) {
   const findTrack = (p) => s.tracks.find((x) => x.path === p);
   switch (cmd) {
     case "open_library":
+      // The backend refuses a path that is not a folder (#179); the mock has no
+      // disk, so it refuses the shapes that can't be one — which is enough to
+      // exercise the error path in a browser.
+      if (!args.root || args.root !== args.root.trim() || /^['"]|['"]$/.test(args.root)) {
+        return Promise.reject(`no such folder: ${args.root}`);
+      }
       return Promise.resolve();
     case "read_cover_image":
       // Browser-dev stand-in: echo a tiny 1x1 PNG as the "read" cover so the

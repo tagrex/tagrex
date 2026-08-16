@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A path pasted from the file manager opens the folder now, and says so when
+  it can't.** Finder wraps a path containing spaces in single quotes, so pasting
+  one opened nothing and left an empty table that looked exactly like a folder
+  with no music in it. A pasted path is cleaned up first — surrounding quotes of
+  either kind, stray whitespace, and the backslash-escaped spaces a path dragged
+  into a terminal carries — and the cleaned path is what the field then shows.
+  Opening something that is not a folder is now an error with a message instead
+  of an empty listing. (#179)
+
 - Clicking the library indicator opened the path field *beside* it instead of in
   its place, so both shared the row and each was cut in half, and the bar shifted
   while the field was focused. The field now takes the indicator's place in a
