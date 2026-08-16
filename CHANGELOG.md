@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-08-16
+
 ### Added
 
 - **A Length column.** How long a track runs is the one thing about it the table

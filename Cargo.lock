@@ -3666,7 +3666,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "base64 0.22.1",
  "open",
@@ -3686,7 +3686,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-core"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "image",
  "lofty",
@@ -3698,7 +3698,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-providers-beatport"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -3708,7 +3708,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-providers-discogs"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "serde_json",
  "tagrex-core",
@@ -3717,7 +3717,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-providers-musicbrainz"
-version = "0.5.1"
+version = "0.5.2"
 dependencies = [
  "serde_json",
  "tagrex-core",
