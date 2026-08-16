@@ -63,7 +63,9 @@ export function selectedPaths() {
 
 // The file table's columns are user-configurable (#43): "file" (always first,
 // structural) followed by any modeled tag field, in a persisted order.
-export const DEFAULT_COLUMNS = ["file", "artist", "title", "album", "year"];
+// The columns a fresh library starts with (#173). A chosen set is persisted and
+// wins over this, so changing it never rearranges anyone's table.
+export const DEFAULT_COLUMNS = ["file", "artist", "title", "album", "year", "length"];
 export let visibleColumns = DEFAULT_COLUMNS.slice();
 export function setVisibleColumns(value) {
   visibleColumns = value;

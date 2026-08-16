@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   property of the audio, not a tag. It costs nothing to open a library with it:
   the value comes from the same read that already collects the tags. (#172)
 
+- Length is one of the columns a table starts with, next to artist, title, album
+  and year. A set you have already arranged is remembered and still wins, so
+  this only shows up on a fresh library or after Reset to default. (#173)
+
 - **Drag a column header sideways to reorder the columns.** Until now that meant
   opening Columns ▾ and dragging the grips there; the direct gesture works in
   the table itself, with an accent rule showing which edge the column will land

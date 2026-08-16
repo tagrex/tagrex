@@ -642,7 +642,7 @@ function renderColumnsMenu() {
   reset.type = "button";
   reset.className = "text-btn";
   reset.textContent = "Reset to default";
-  reset.title = "File · Artist · Title · Album · Year, default widths";
+  reset.title = "File · Artist · Title · Album · Year · Length, default widths";
   reset.addEventListener("click", resetColumns);
   foot.appendChild(reset);
   menu.appendChild(foot);
