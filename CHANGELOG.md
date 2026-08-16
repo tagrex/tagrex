@@ -63,6 +63,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The seek bar seeks.** Dragging it moved the time and the thumb while the
+  audio carried on where it was — on FLAC, ALAC, AIFF and WAV; MP3 was fine.
+  The audio backend decoded those formats through a decoder with no seek support
+  at all, and the player moved its clock without looking at whether the seek had
+  been accepted, so the readout told a story nothing was playing. Every format
+  now decodes through Symphonia, which knows how to seek, and the clock only
+  moves when the audio did — if a decoder ever refuses, the bar goes back to
+  where the sound really is and says so instead of pretending. Verified by
+  seeking to three seconds before the end of a real file in each format and
+  watching playback actually end. (#190)
+
 - **Staging a change no longer rebuilds every row of the library.** Bringing a
   release into three files of a few thousand rebuilt all of them so that three
   could show a diff, and undoing that on discard cost the same again. Only the

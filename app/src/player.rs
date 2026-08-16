@@ -16,13 +16,16 @@
 
 use std::collections::VecDeque;
 use std::fs::File;
-use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rodio::{Decoder, OutputStream, Sink};
+use rodio::stream::{DeviceSinkBuilder, MixerDeviceSink};
+// rodio 0.22 renamed its `Sink` to `Player`, which is also the name of the
+// handle in this module — keep the old name for the queue on the device so the
+// two never read as the same thing.
+use rodio::{Decoder, Player as Sink};
 use serde::Serialize;
 use tagrex_core::model::TagEngine;
 
@@ -37,6 +40,11 @@ pub struct PlayerStatus {
     /// True when a track is playing but no next track is queued yet, so the UI
     /// should feed the next one to keep playback gapless.
     pub wants_next: bool,
+    /// The last seek on this track was refused by the decoder (#190). The clock
+    /// does NOT move in that case, so the bar has to go back to where the audio
+    /// really is — and say so, rather than showing a position nothing is playing
+    /// from. Cleared when a track starts or playback stops.
+    pub seek_refused: bool,
 }
 
 enum Cmd {
@@ -108,15 +116,18 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
     // If no audio device is available (e.g. a headless box), give up quietly:
     // commands are dropped and the status stays idle. The rest of the app is
     // unaffected.
-    let (_stream, handle) = match OutputStream::try_default() {
-        Ok(pair) => pair,
+    let mut device = match DeviceSinkBuilder::open_default_sink() {
+        Ok(device) => device,
         Err(err) => {
             eprintln!("audio: no output device, preview disabled: {err}");
             return;
         }
     };
+    // The device sink lives as long as this thread; its parting message on drop
+    // is noise in a terminal-launched build.
+    device.log_on_drop(false);
 
-    let mut sink = Sink::try_new(&handle).expect("sink on a valid output stream");
+    let mut sink = new_sink(&device);
     let mut queue: VecDeque<Track> = VecDeque::new();
     let mut clock = PlayClock::default();
     let mut paused = false;
@@ -124,6 +135,8 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
     // volume — so the level has to live out here and be re-applied to every new
     // sink, or turning the volume down would silently reset on the next track.
     let mut volume: f32 = 1.0;
+    // Whether the decoder refused the last seek on the current track (#190).
+    let mut seek_refused = false;
     sink.set_volume(volume);
 
     loop {
@@ -136,10 +149,11 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
                     // Sink guarantees a clean, re-appendable queue regardless of
                     // rodio's drop-vs-stop semantics.
                     sink.stop();
-                    sink = Sink::try_new(&handle).expect("sink on a valid output stream");
+                    sink = new_sink(&device);
                     sink.set_volume(volume);
                     queue.clear();
                     paused = false;
+                    seek_refused = false;
                     if enqueue(&sink, &mut queue, path) {
                         clock.start();
                     } else {
@@ -169,11 +183,12 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
                 }
                 Cmd::Stop => {
                     sink.stop();
-                    sink = Sink::try_new(&handle).expect("sink on a valid output stream");
+                    sink = new_sink(&device);
                     sink.set_volume(volume);
                     queue.clear();
                     clock.stop();
                     paused = false;
+                    seek_refused = false;
                 }
                 Cmd::SetVolume(level) => {
                     volume = level.clamp(0.0, 1.0);
@@ -181,8 +196,20 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
                 }
                 Cmd::Seek(secs) => {
                     if !queue.is_empty() {
-                        let _ = sink.try_seek(Duration::from_secs_f64(secs.max(0.0)));
-                        clock.seek(Duration::from_secs_f64(secs.max(0.0)));
+                        // The clock is what the UI shows, so it may only move
+                        // when the audio did (#190). A decoder that refuses is
+                        // reported instead of being papered over.
+                        let target = Duration::from_secs_f64(secs.max(0.0));
+                        match sink.try_seek(target) {
+                            Ok(()) => {
+                                clock.seek(target);
+                                seek_refused = false;
+                            }
+                            Err(err) => {
+                                eprintln!("audio: seek refused: {err}");
+                                seek_refused = true;
+                            }
+                        }
                     }
                 }
             },
@@ -196,14 +223,23 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
         while queue.len() > sink.len() && !queue.is_empty() {
             queue.pop_front();
             clock.start();
+            seek_refused = false; // a new track, and a new answer on seeking
         }
         if queue.is_empty() {
             clock.stop();
             paused = false;
+            seek_refused = false;
         }
 
-        write_status(&status, &queue, &clock, paused);
+        write_status(&status, &queue, &clock, paused, seek_refused);
     }
+}
+
+/// A fresh queue on the output device. Play and Stop each start one, because a
+/// new sink guarantees a clean, re-appendable queue regardless of rodio's
+/// drop-vs-stop semantics.
+fn new_sink(device: &MixerDeviceSink) -> Sink {
+    Sink::connect_new(device.mixer())
 }
 
 /// Decode `path` and append it to the sink, recording it in `queue`. Returns
@@ -216,7 +252,10 @@ fn enqueue(sink: &Sink, queue: &mut VecDeque<Track>, path: PathBuf) -> bool {
             return false;
         }
     };
-    let decoder = match Decoder::new(BufReader::new(file)) {
+    // From the `File`, not a plain reader: that is what tells the decoder how
+    // long the file is, and without the length Symphonia calls a FLAC
+    // unseekable (#190).
+    let decoder = match Decoder::try_from(file) {
         Ok(decoder) => decoder,
         Err(err) => {
             eprintln!("audio: can't decode {}: {err}", path.display());
@@ -243,6 +282,7 @@ fn write_status(
     queue: &VecDeque<Track>,
     clock: &PlayClock,
     paused: bool,
+    seek_refused: bool,
 ) {
     let mut guard = status.lock().unwrap();
     match queue.front() {
@@ -264,6 +304,7 @@ fn write_status(
                 position_secs: position,
                 duration_secs: duration,
                 wants_next: queue.len() == 1 && near_end,
+                seek_refused,
             };
         }
         None => *guard = PlayerStatus::default(),

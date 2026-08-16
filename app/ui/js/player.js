@@ -4,7 +4,7 @@
 // backend's status, and everything about the transport — the queued next track,
 // repeat, volume, the seek drag — is its own business. The rest of the UI only
 // asks it to start a track or show the bar.
-import { el, fileName, ico } from "./dom.js";
+import { el, fileName, ico, toast } from "./dom.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { tracks, selection, activeRowPath } from "./state.js";
@@ -26,6 +26,9 @@ let plDuration = 0;
 // True while the user is dragging the seek slider, so status polls don't fight
 // the drag.
 let plSeeking = false;
+// The track a refused seek was already reported for (#190), so the message is
+// shown once rather than on every poll.
+let seekRefusedFor = null;
 // Poll timer handle (one interval once a library is open).
 let plPollTimer = null;
 
@@ -270,6 +273,15 @@ async function pollPlayerStatus() {
   if (st.wants_next) {
     const next = queuedAfter(st.path);
     if (next) invoke("player_set_next", { path: next });
+  }
+  // A decoder that refuses to seek leaves the clock where the audio actually is
+  // (#190), so the bar snaps back on the next poll by itself — all that is
+  // missing is why, said once per track rather than on every poll.
+  if (st.seek_refused && seekRefusedFor !== st.path) {
+    seekRefusedFor = st.path;
+    toast("This file can't be seeked", true);
+  } else if (!st.seek_refused && seekRefusedFor === st.path) {
+    seekRefusedFor = null;
   }
   plDuration = st.duration_secs || 0;
   if (!plSeeking) {
