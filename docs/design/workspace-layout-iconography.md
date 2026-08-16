@@ -105,7 +105,8 @@ CDNs** — inline SVG or bundled assets only.
   table face (`docs/design/table-condensed-font.md`). The bundled mono is the
   cross-platform model.
 - **Native form chrome** — `<select>` (`#group-by`, `#online-source`,
-  `#search-format`, `#query-preset`, and the dedup criterion), the
+  `#search-format`, and the dedup criterion; the query presets are a caret menu
+  on the field since #193), the
   `input[type=search]` clear affordance, scrollbars, and focus outlines look
   different per engine. Recommend a normalization pass and flag what must be
   verified on each engine.

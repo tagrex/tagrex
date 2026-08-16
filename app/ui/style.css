@@ -1473,6 +1473,67 @@ body:not(.show-checkbox) #tracks td.sel {
   font-family: var(--font-ui);
 }
 
+/* Query field + the queries the selection can build, as ONE control (#193) —
+   the same shape as the library indicator and its recent-folders caret (#180).
+   The field keeps its own border and the caret closes the box on the right. */
+.query {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+}
+.query input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  border-right: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.query-presets {
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+.query-presets:hover {
+  color: var(--text);
+}
+/* The menu hangs off the whole box, and a row leads with the query itself —
+   the source is the hint, not the heading. */
+#query-preset-menu {
+  min-width: 240px;
+  max-width: 460px;
+}
+.query-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+.query-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.query-source {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+.query-empty {
+  color: var(--muted);
+  cursor: default;
+}
+
 .hint {
   padding: 0;
   font-size: var(--text-xs);

@@ -5,7 +5,7 @@
 // browser, the query presets that build a search string from the selection, and
 // the import that merges a release onto the selected files. Everything it
 // stages goes through the ordinary preview/apply/undo path.
-import { confirmDialog, el, escapeHtml, fileName, ico, plural, toast } from "./dom.js";
+import { confirmDialog, el, escapeHtml, fileName, ico, placeFloating, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { fmtTime } from "./player.js";
@@ -367,18 +367,71 @@ function queryFromPreset(kind) {
   }
 }
 
-// Apply the chosen preset: fill the box (leaving "manual" alone) and, if we have
-// something to search for, run the search straight away.
-function applyQueryPreset() {
-  const kind = el("query-preset").value;
-  if (kind === "manual") return;
-  const text = queryFromPreset(kind);
-  if (!text) {
-    toast("Nothing selected to build the query from", true);
+// The queries the current selection can build (#193). They hang off a caret on
+// the field rather than off a dropdown beside it: a source is not a mode the box
+// is in, it is one more query on offer — so each row shows the TEXT it would
+// search for, with where it came from as a hint, and "manual" stops being a
+// thing to choose (an empty field is already that).
+const QUERY_SOURCES = [
+  { kind: "folder", label: "Folder name" },
+  { kind: "filename", label: "File name" },
+  { kind: "album", label: "Album" },
+  { kind: "artist-title", label: "Artist + Title" },
+];
+
+function closeQueryPresets() {
+  el("query-preset-menu").hidden = true;
+}
+
+// What the menu offers: every source with something to say, and one row per
+// distinct query — two sources that produce the same text (a folder named after
+// the album) are one offer wearing both labels, not two identical rows.
+function queryOffers() {
+  const byText = new Map();
+  for (const source of QUERY_SOURCES) {
+    const text = queryFromPreset(source.kind);
+    if (!text) continue;
+    const seen = byText.get(text);
+    if (seen) seen.labels.push(source.label);
+    else byText.set(text, { text, labels: [source.label] });
+  }
+  return [...byText.values()];
+}
+
+function toggleQueryPresets() {
+  const menu = el("query-preset-menu");
+  if (!menu.hidden) {
+    closeQueryPresets();
     return;
   }
-  el("discogs-query").value = text;
-  discogsSearch();
+  menu.innerHTML = "";
+  const offers = queryOffers();
+  if (offers.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "col-menu-row muted query-empty";
+    empty.textContent = "Select a track to build a query from";
+    menu.appendChild(empty);
+  }
+  for (const offer of offers) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "col-menu-row tk-menu-item query-row";
+    row.innerHTML =
+      `<span class="query-text">${escapeHtml(offer.text)}</span>` +
+      `<span class="query-source">${escapeHtml(offer.labels.join(" · "))}</span>`;
+    row.title = offer.text;
+    row.addEventListener("click", () => {
+      closeQueryPresets();
+      el("discogs-query").value = offer.text;
+      discogsSearch();
+    });
+    menu.appendChild(row);
+  }
+  menu.hidden = false;
+  // `floating` neutralizes .col-menu's own absolute placement so the inline
+  // offsets from placeFloating are the ones that count (#160).
+  menu.classList.add("floating");
+  placeFloating(menu, el("query-box"), { align: "left" });
 }
 
 // The catalogue-number + track-count match key as one segmented badge (#124):
@@ -1015,11 +1068,17 @@ el("discogs-search").addEventListener("click", () => {
   else discogsSearch();
 });
 el("discogs-query").addEventListener("keydown", (e) => e.key === "Enter" && discogsSearch());
-// Typing switches the preset back to manual so a stale label doesn't mislead.
-el("discogs-query").addEventListener("input", () => {
-  el("query-preset").value = "manual";
+el("query-presets").addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleQueryPresets();
 });
-el("query-preset").addEventListener("change", applyQueryPreset);
+document.addEventListener("click", (e) => {
+  const menu = el("query-preset-menu");
+  if (!menu.hidden && !menu.contains(e.target)) closeQueryPresets();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeQueryPresets();
+});
 el("load-more").addEventListener("click", loadMoreResults);
 el("search-per-page").addEventListener("change", (e) => {
   const v = parseInt(e.target.value, 10);

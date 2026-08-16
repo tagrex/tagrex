@@ -302,14 +302,16 @@
                 </select>
               </div>
               <div class="mask-row">
-                <select id="query-preset" title="Build the query from…">
-                  <option value="manual">Manual</option>
-                  <option value="folder">Folder name</option>
-                  <option value="filename">File name</option>
-                  <option value="album">Album</option>
-                  <option value="artist-title">Artist + Title</option>
-                </select>
-                <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
+                <!-- The field and the queries the selection can build are ONE
+                     control (#193), the same indicator+caret shape as the
+                     library box (#180): each row in the caret's menu shows the
+                     text it would search for, so picking one is picking a
+                     query, not a mode. -->
+                <div id="query-box" class="query">
+                  <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
+                  <button id="query-presets" class="query-presets" type="button" title="Queries this selection can build" aria-label="Queries this selection can build"><svg class="ico"><use href="#i-caret-down"/></svg></button>
+                  <div id="query-preset-menu" class="col-menu" hidden></div>
+                </div>
                 <!-- One toggling button (#111): a magnifier that searches, and
                      while a search is working becomes a Stop square. -->
                 <button id="discogs-search" class="icon search-toggle" title="Search" aria-label="Search">

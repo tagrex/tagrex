@@ -46,6 +46,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The queries a selection can build hang off the search field itself.** The
+  dropdown that named where a query could come from — Manual, Folder name, File
+  name, Album, Artist + Title — is gone; a caret at the end of the field opens
+  the same sources showing the **text** each would search for, with its name as
+  a hint. So you pick a query rather than a mode, and see what it is before
+  committing to it. A source with nothing to offer doesn't appear, two sources
+  producing the same text are one row wearing both labels, and with nothing
+  selected the menu says so. Typing no longer resets a label that was only ever
+  a claim about the box. Same shape as the library indicator and its recent
+  folders, one control instead of two, and a wider field in a narrow panel.
+  (#193)
+
 - **The file table builds only the rows the window shows.** It used to keep one
   DOM row per file, so a library of a few thousand paid for rows nobody could
   see — and every operation was priced against the library rather than against
