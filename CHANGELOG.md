@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Auto-match no longer throws its answer away when the folder holds fewer
+  files than the release has tracks.** Three files of a five-track EP matched
+  correctly and were then silently demoted to filler, because a match to track 4
+  or 5 had nowhere to go while all five tracks were still ticked — the import
+  pairs the i-th enabled track with the i-th file. What reached the import was
+  the original order against tracks 1–3, which would have tagged *Affairs Of The
+  Heart* as *Delicious (Radio Edit)*.
+
+  Matching now sets the ticks to agree with itself: exactly the matched tracks
+  stay enabled, the files line up in their order, and the toast says how many of
+  the release's tracks were left out. (#185)
+
 - **A large library stops making every click expensive.** With a few thousand
   files open, selecting a row took a quarter of a second, select-all took a
   second, and the filter lagged a word behind the typing — the tag-field grid

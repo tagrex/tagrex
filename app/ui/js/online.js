@@ -710,41 +710,49 @@ async function autoMatchToRelease(card) {
   try {
     // Each entry is { track, by_isrc } or null (#54).
     const aligned = await invoke("auto_align", { paths, tracks: releaseTracks });
-    // Place each matched file at the position of the release track it matched,
-    // so import's position mapping (file[i] <-> track[i]) lines up. A file that
-    // didn't match must NOT shift the matched ones: packing matches densely
-    // turns any gap (an unmatched file) into an off-by-one that mis-assigns tags
-    // on import. Unmatched files (and any match beyond the file count) fill the
-    // remaining slots in their original order.
-    const n = paths.length;
-    const slots = new Array(n).fill(null);
-    const leftovers = [];
+    // The import pairs the i-th ENABLED track with the i-th file, so a match is
+    // only usable if the ticks agree with it (#185). Tick exactly the tracks
+    // that matched, untick the rest, and put the files in the order of the
+    // tracks they matched — then the dense pairing is right by construction,
+    // including when the folder holds fewer files than the release has tracks.
+    // Without this, a file matching track 5 of 5 in a folder of three had
+    // nowhere to go and was silently demoted to filler.
+    const matchedPairs = [];
+    const unmatched = [];
     paths.forEach((path, i) => {
       const k = aligned[i] ? aligned[i].track : null;
-      if (k !== null && k !== undefined && k < n && slots[k] === null) {
-        slots[k] = path;
-      } else {
-        leftovers.push(path);
-      }
+      if (k === null || k === undefined) unmatched.push(path);
+      else matchedPairs.push({ path, track: k });
     });
-    let li = 0;
-    for (let s = 0; s < n; s++) {
-      if (slots[s] === null) slots[s] = leftovers[li++];
-    }
-    const byPath = new Map(tracks.map((t) => [t.path, t]));
-    const selected = new Set(paths);
-    let next = 0;
-    setTracks(tracks.map((t) => (selected.has(t.path) ? byPath.get(slots[next++]) : t)));
-    setSortKey(null);
-    hooks.renderTracks();
     const hits = aligned.filter((m) => m);
     const matched = hits.length;
+    if (matched) {
+      matchedPairs.sort((a, b) => a.track - b.track);
+      const wanted = new Set(matchedPairs.map((p) => p.track));
+      card
+        .querySelectorAll(".release-tracklist tbody .tk-lead input")
+        .forEach((box) => (box.checked = wanted.has(Number(box.dataset.i))));
+      updateTracklistCount(card);
+      // Matched files first, in release order; anything unmatched keeps its own
+      // order after them, where the untouched tail of the tracklist is.
+      const order = [...matchedPairs.map((p) => p.path), ...unmatched];
+      const byPath = new Map(tracks.map((t) => [t.path, t]));
+      const selected = new Set(paths);
+      let next = 0;
+      setTracks(tracks.map((t) => (selected.has(t.path) ? byPath.get(order[next++]) : t)));
+      setSortKey(null);
+      hooks.renderTracks();
+    }
     const byIsrc = hits.filter((m) => m.by_isrc).length;
     // Surface *why* — an ISRC match is exact, worth calling out (#54).
     const isrcNote = byIsrc ? ` (${byIsrc} exact by ISRC)` : "";
+    // Say when the release carries tracks this folder doesn't, so the ticks
+    // that just went off are not a surprise.
+    const dropped = release.tracks.length - matched;
+    const droppedNote = matched && dropped > 0 ? `, ${plural(dropped, "release track", "release tracks")} left out` : "";
     toast(
       matched
-        ? `Matched ${matched}/${plural(paths.length, "file", "files")}${isrcNote} — reordered to line up`
+        ? `Matched ${matched}/${plural(paths.length, "file", "files")}${isrcNote} — reordered to line up${droppedNote}`
         : "No confident matches — leaving the order alone",
       matched === 0,
     );
