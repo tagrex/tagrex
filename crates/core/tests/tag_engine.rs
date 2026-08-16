@@ -334,6 +334,85 @@ fn one_probe_returns_both_the_tags_and_the_properties() {
     assert_eq!(props.duration_secs, 0);
 }
 
+/// An ID3v2.4 tag carrying a three-digit year, built by hand because the backend
+/// refuses to write one — which is the whole point of #183: files like this
+/// exist, other software reads them, and ours used to refuse the entire file
+/// over that one frame. `TDRC` holds "199"; `TIT2` and `TPE1` are what has to
+/// survive the frame that cannot be parsed.
+fn mp3_with_a_broken_year() -> Vec<u8> {
+    fn frame(id: &str, text: &str) -> Vec<u8> {
+        let mut body = vec![0x03]; // UTF-8 encoding byte
+        body.extend_from_slice(text.as_bytes());
+        let mut out = id.as_bytes().to_vec();
+        // ID3v2.4 sizes are syncsafe: 7 bits per byte.
+        let size = body.len() as u32;
+        out.extend_from_slice(&[
+            ((size >> 21) & 0x7f) as u8,
+            ((size >> 14) & 0x7f) as u8,
+            ((size >> 7) & 0x7f) as u8,
+            (size & 0x7f) as u8,
+        ]);
+        out.extend_from_slice(&[0x00, 0x00]); // frame flags
+        out.extend_from_slice(&body);
+        out
+    }
+
+    let mut frames = Vec::new();
+    frames.extend(frame("TIT2", "Drinking Chardonnay"));
+    frames.extend(frame("TPE1", "DJ Lapell"));
+    frames.extend(frame("TDRC", "199"));
+
+    let mut tag = b"ID3".to_vec();
+    tag.extend_from_slice(&[0x04, 0x00, 0x00]); // v2.4, no flags
+    let size = frames.len() as u32;
+    tag.extend_from_slice(&[
+        ((size >> 21) & 0x7f) as u8,
+        ((size >> 14) & 0x7f) as u8,
+        ((size >> 7) & 0x7f) as u8,
+        (size & 0x7f) as u8,
+    ]);
+    tag.extend_from_slice(&frames);
+    tag.extend_from_slice(&minimal_mp3());
+    tag
+}
+
+#[test]
+fn a_file_with_an_unreadable_year_still_opens() {
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-bad-year-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, mp3_with_a_broken_year()).expect("write fixture");
+
+    let track = TagEngine::read(&path).expect("a bad year must not hide the file");
+    assert_eq!(
+        track.tags.get(&TagField::Title).map(String::as_str),
+        Some("Drinking Chardonnay")
+    );
+    assert_eq!(
+        track.tags.get(&TagField::Artist).map(String::as_str),
+        Some("DJ Lapell")
+    );
+    // The frame that could not be parsed is absent rather than guessed at.
+    assert_eq!(track.tags.get(&TagField::Year), None);
+
+    // And the file is repairable: an ordinary write rebuilds the text frames
+    // from the model, so the broken one is gone afterwards.
+    let mut fixed = track.clone();
+    fixed.tags.insert(TagField::Year, "1996".to_string());
+    TagEngine::write(&fixed).expect("write tags");
+    let after = TagEngine::read(&path).expect("read back");
+    std::fs::remove_file(&path).ok();
+    assert_eq!(
+        after.tags.get(&TagField::Year).map(String::as_str),
+        Some("1996")
+    );
+    assert_eq!(
+        after.tags.get(&TagField::Title).map(String::as_str),
+        Some("Drinking Chardonnay")
+    );
+}
+
 #[test]
 fn cover_embed_read_remove_and_survives_a_tag_write() {
     let path = temp_flac_path("cover");

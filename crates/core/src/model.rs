@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 
 use lofty::aac::AacFile;
-use lofty::config::{ParseOptions, WriteOptions};
+use lofty::config::{ParseOptions, ParsingMode, WriteOptions};
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::id3::v2::{Frame, Id3v2Tag};
 use lofty::iff::aiff::AiffFile;
@@ -452,6 +452,30 @@ pub struct TrackFile {
     pub tags: TagMap,
 }
 
+/// Every read of a file goes through here (#183).
+///
+/// The backend's default parsing mode rejects a whole file over one frame it
+/// cannot make sense of — a year of three digits is enough — and a tag editor
+/// refusing to open exactly the files that need fixing is the wrong way round.
+/// Relaxed mode skips the frame it cannot read and hands over the rest, so the
+/// title, the artist, the key and the tempo are there to see and to repair. The
+/// malformed frame is simply absent from the model, and any ordinary save
+/// rewrites the tag's text frames from the model — which fixes the file.
+///
+/// It has to be ONE place: tags, properties, covers, the concrete ID3v2 tag and
+/// the container check all parse the same file, and if they disagreed a file
+/// would read but then fail to save.
+fn parse_options() -> ParseOptions {
+    ParseOptions::new().parsing_mode(ParsingMode::Relaxed)
+}
+
+fn probe_file(path: &Path) -> Result<lofty::file::TaggedFile, TagIoError> {
+    Ok(Probe::open(path)?
+        .guess_file_type()?
+        .options(parse_options())
+        .read()?)
+}
+
 /// Facade over the tag I/O backend (lofty). The rest of the codebase must
 /// never touch the backend directly — this is the only place format-specific
 /// knowledge is allowed to live.
@@ -470,7 +494,7 @@ impl TagEngine {
     /// a library of thousands of files for a value the first parse already had.
     /// [`read`](Self::read) is this without the second half.
     pub fn read_with_props(path: &Path) -> Result<(TrackFile, AudioProps), TagIoError> {
-        let tagged_file = Probe::open(path)?.guess_file_type()?.read()?;
+        let tagged_file = probe_file(path)?;
         let format = AudioFormat::from_lofty(tagged_file.file_type())?;
         let properties = tagged_file.properties();
         let props = AudioProps {
@@ -592,7 +616,7 @@ impl TagEngine {
     /// `Duration::ZERO` when the backend can't determine it. Used by the preview
     /// player for the seek bar / total time.
     pub fn read_duration(path: &Path) -> Result<std::time::Duration, TagIoError> {
-        let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+        let tagged = probe_file(path)?;
         Ok(tagged.properties().duration())
     }
 
@@ -602,7 +626,7 @@ impl TagEngine {
     /// placeholders (#147). One probe, so a mask asking for several of them
     /// costs no more than asking for one.
     pub fn read_audio_props(path: &Path) -> Result<AudioProps, TagIoError> {
-        let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+        let tagged = probe_file(path)?;
         let props = tagged.properties();
         Ok(AudioProps {
             duration_secs: props.duration().as_secs(),
@@ -614,7 +638,7 @@ impl TagEngine {
 
     /// Every image the file carries (#56), in the order the tag holds them.
     pub fn read_covers(path: &Path) -> Result<Vec<CoverArt>, TagIoError> {
-        let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+        let tagged = probe_file(path)?;
         let covers = tagged
             .primary_tag()
             .or_else(|| tagged.first_tag())
@@ -739,14 +763,16 @@ fn is_model_text_frame(frame: &Frame<'_>) -> bool {
 /// it works for every ID3v2-carrying format (MP3, AAC, AIFF, WAV), reading the
 /// concrete tag lofty's generic representation can't fully reproduce.
 fn read_id3v2(path: &Path) -> Result<Option<Id3v2Tag>, TagIoError> {
-    let file_type = Probe::open(path)?.guess_file_type()?.file_type();
+    let file_type = probe_file(path)?.file_type();
     let mut file = std::fs::File::open(path)?;
-    let options = ParseOptions::new();
+    let options = parse_options();
+    // `probe_file` resolves the type, so these are the concrete kinds rather
+    // than an `Option` of them.
     let tag = match file_type {
-        Some(FileType::Mpeg) => MpegFile::read_from(&mut file, options)?.id3v2().cloned(),
-        Some(FileType::Aac) => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
-        Some(FileType::Aiff) => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
-        Some(FileType::Wav) => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
+        FileType::Mpeg => MpegFile::read_from(&mut file, options)?.id3v2().cloned(),
+        FileType::Aac => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
+        FileType::Aiff => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
+        FileType::Wav => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
         _ => None,
     };
     Ok(tag)
@@ -758,8 +784,8 @@ fn read_id3v2(path: &Path) -> Result<Option<Id3v2Tag>, TagIoError> {
 fn is_id3v2_container(path: &Path) -> bool {
     let probed = || -> Result<bool, TagIoError> {
         Ok(matches!(
-            Probe::open(path)?.guess_file_type()?.file_type(),
-            Some(FileType::Mpeg | FileType::Aac | FileType::Aiff | FileType::Wav)
+            probe_file(path)?.file_type(),
+            FileType::Mpeg | FileType::Aac | FileType::Aiff | FileType::Wav
         ))
     };
     probed().unwrap_or(false)
@@ -769,7 +795,7 @@ fn is_id3v2_container(path: &Path) -> bool {
 /// other than MP3. Starts from the existing tag so non-text items and pictures
 /// survive, and drops only the text items the model no longer carries.
 fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
-    let tagged = Probe::open(&file.path)?.guess_file_type()?.read()?;
+    let tagged = probe_file(&file.path)?;
     let mut tag = tagged
         .primary_tag()
         .or_else(|| tagged.first_tag())
@@ -798,7 +824,7 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
 /// Load the file's primary tag (cloned, owned) or a fresh empty one, so the
 /// caller can modify pictures and save it back without disturbing text tags.
 fn load_or_new_tag(path: &Path) -> Result<Tag, TagIoError> {
-    let tagged = Probe::open(path)?.guess_file_type()?.read()?;
+    let tagged = probe_file(path)?;
     let tag_type = tagged.primary_tag_type();
     Ok(tagged
         .primary_tag()

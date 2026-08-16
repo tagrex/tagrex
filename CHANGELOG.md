@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **One bad year no longer hides a whole file.** A handful of tracks in a large
+  library listed as *"couldn't read tags — file left untouched"*, with nothing
+  else about them visible. They were not damaged: each carried a malformed year,
+  and the tag backend's default strictness rejects the entire file over that one
+  frame. Which is the wrong way round — a file with a broken year is exactly
+  what someone opens a tagger to fix, and every player reads it fine.
+
+  Files are read leniently now: a frame that cannot be parsed is skipped and the
+  rest of the tag comes through, so title, artist, key and tempo are there to
+  see. The unreadable frame is absent rather than guessed at, and saving the
+  file rewrites its text frames from what you see — which repairs it. (#183)
+
 - **A path pasted from the file manager opens the folder now, and says so when
   it can't.** Finder wraps a path containing spaces in single quotes, so pasting
   one opened nothing and left an empty table that looked exactly like a folder
