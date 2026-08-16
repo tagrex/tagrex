@@ -2847,8 +2847,9 @@ button.release-import {
   overflow: hidden;
   /* Family + size are LAB-adjustable (Settings › LAB) so the catalogue badge can
      be tried in other faces; the defaults are the bundled mono at 11px — it's an
-     identifier, so mono is the sane default, and 10px read too small. The family
-     governs the CATALOGUE segment only (#175); the count below opts out. */
+     identifier, so mono is the sane default, and 10px read too small. ONE face
+     for the whole pill: two of them at one size sit at different x-heights and
+     split the badge into mismatched halves (#176). */
   font-family: var(--badge-font, var(--font-mono-bundled));
   font-size: var(--badge-font-size, var(--text-xs));
   font-weight: 600;
@@ -2871,14 +2872,16 @@ button.release-import {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 /* Count segment — neutral, divided from the catalogue by the unified border.
-   In the interface face, not the badge one (#175): "15 tracks" is a label with a
-   number in it, not an identifier, and mono on both halves gave the badge enough
-   weight to pull the eye off the release title, which is what the card is for.
-   The digits stay tabular (`.tk-count`) so the counts still line up. */
+   Same face as the catalogue segment, one weight lighter (#176): the count is
+   the secondary half, and on a card whose point is the release title the badge
+   should not be the first thing the eye lands on. Weight is how to say that
+   without leaving the family — a second face at the same size sits at a
+   different x-height and pulls the pill apart. Digits stay tabular
+   (`.tk-count`), so counts line up down the list. */
 .rb-count {
   color: var(--muted);
   border-left: 1px solid var(--border);
-  font-family: var(--font-ui);
+  font-weight: 400;
 }
 .rb-count:first-child {
   border-left: none;

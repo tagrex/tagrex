@@ -9,13 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- The track count on a release card is back in the interface font. The badge
-  sets the catalogue number in the bundled monospace — it is an identifier, the
-  slashed zero tells `0` from `8`, and the tabular digits line the chips up down
-  a list of results — but the count beside it is a label with a number in it,
-  and setting both in mono gave the badge enough weight to pull the eye off the
-  release title. Settings › LAB now names that switch **Catalogue number font**,
-  which is what it governs. (#175)
+- The release badge quietens its track count. The catalogue number keeps the
+  bundled monospace — it is an identifier, the slashed zero tells `0` from `8`,
+  and the tabular digits line the chips up down a list of results — and the
+  count beside it now sits a weight lighter, so the badge stops competing with
+  the release title. Both halves stay in one face: a second one at the same size
+  sits at a different x-height and pulls the pill apart. (#175, #176)
 
 ## [0.5.3] - 2026-08-16
 
