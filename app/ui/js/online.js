@@ -15,6 +15,7 @@ import {
   edits,
   previewPlan,
   selectedPaths,
+  selection,
   setPreviewPlan,
   setPreviewSource,
   setSortKey,
@@ -285,6 +286,8 @@ function updateMediaBadge(c) {
 
 function renderReleaseList() {
   const list = releaseList();
+  // The buttons about to be rebuilt carry their default label again (#191).
+  armedByLength.clear();
   list.innerHTML = "";
   el("release-toolbar").hidden = releaseCandidates.length === 0;
   // The whole phrase, not just the number: "Found 1 entries" was the same
@@ -715,6 +718,9 @@ function applyDurationDeltas(card, release) {
 // Follow the selection: the deltas are about the files the user has picked, so
 // they go stale the moment that changes (app.js calls this from paintSelection).
 function refreshReleaseMatches() {
+  // The second press answers about the selection it was armed for (#191); a
+  // different selection is a different question.
+  if (armedByLength.size && selectionSignature() !== armedSelection) disarmLengthMatch();
   for (const id of expandedIds) {
     const card = cardEl(id);
     const release = releaseCache.get(id);
@@ -861,6 +867,124 @@ async function loadFullCover(id, url, card) {
   }
 }
 
+// ---- applying a match (#185, shared by both presses of #191) ----
+// A match is only usable if the ticks agree with it: the import pairs the i-th
+// ENABLED track with the i-th file, so tick exactly the tracks that matched,
+// untick the rest, and put the files in the order of the tracks they matched.
+// Then the dense pairing is right by construction, including when the folder
+// holds fewer files than the release has tracks.
+function applyMatchOrder(card, paths, matchedPairs, unmatched) {
+  matchedPairs.sort((a, b) => a.track - b.track);
+  const wanted = new Set(matchedPairs.map((p) => p.track));
+  card
+    .querySelectorAll(".release-tracklist tbody .tk-lead input")
+    .forEach((box) => (box.checked = wanted.has(Number(box.dataset.i))));
+  updateTracklistCount(card);
+  // Matched files first, in release order; anything unmatched keeps its own
+  // order after them, where the untouched tail of the tracklist is.
+  const order = [...matchedPairs.map((p) => p.path), ...unmatched];
+  const byPath = new Map(tracks.map((t) => [t.path, t]));
+  const selected = new Set(paths);
+  let next = 0;
+  setTracks(tracks.map((t) => (selected.has(t.path) ? byPath.get(order[next++]) : t)));
+  setSortKey(null);
+  hooks.renderTracks();
+}
+
+// ---- the second press: match by length (#191) ----
+// Two lengths this close are the same number as far as ordering goes, so a
+// release with two tracks within this many seconds of each other cannot say
+// which file is which — and the honest answer is to leave those alone rather
+// than to pick one.
+const AMBIGUOUS_SECS = 2;
+
+// Which cards currently offer "Match by length" instead of "Auto-match": armed
+// by a match on names, disarmed when the selection or the results change,
+// because the answer it would give is about THIS selection.
+const armedByLength = new Set();
+let armedSelection = "";
+
+function selectionSignature() {
+  return [...selection].sort().join("\n");
+}
+
+function setMatchButton(card, byLength) {
+  const btn = card.querySelector('[data-act="automatch"]');
+  if (!btn) return;
+  btn.textContent = byLength ? "Match by length" : "Auto-match";
+  btn.title = byLength
+    ? "Reorder the selected files by the lengths this release lists, ignoring the names"
+    : "Reorder the selected files to line up with this tracklist";
+}
+
+function armLengthMatch(card) {
+  armedByLength.add(card.dataset.id);
+  armedSelection = selectionSignature();
+  setMatchButton(card, true);
+}
+
+function disarmLengthMatch() {
+  for (const id of armedByLength) {
+    const card = cardEl(id);
+    if (card) setMatchButton(card, false);
+  }
+  armedByLength.clear();
+}
+
+// Order the files by the lengths the release lists rather than by their names.
+// This is the same pairing the card's deltas already show — one file to one
+// track, closest pairs claimed first — and it may CROSS, which is the case
+// names cannot express: two tracks whose names are swapped against their
+// lengths. The core's duration alignment preserves order and would refuse to
+// cross, so it is deliberately not what this uses.
+function matchByLength(card) {
+  const release = releaseCache.get(card.dataset.id);
+  const paths = selectedPaths();
+  if (!release || paths.length === 0) {
+    toast("Select the tracks to match against first", true);
+    return;
+  }
+  const { pairs } = durationPairs(release);
+  // Only claim a pairing the lengths actually support: a delta past the "near"
+  // band is a different recording, not a file out of order.
+  const claimed = [...pairs.entries()].filter(([, pair]) => Math.abs(pair.delta) <= NEAR_SECS);
+  // And drop the ones the lengths can't tell apart. The rival is any OTHER
+  // track of nearly the same length, matched or not: if two tracks run the same
+  // time, saying which of them a file is remains a guess even when only one of
+  // them has a file to claim.
+  const ambiguous = new Set();
+  for (const [i] of claimed) {
+    const mine = release.tracks[i].duration_secs;
+    const rival = release.tracks.some(
+      (t, k) => k !== i && t.duration_secs && Math.abs(t.duration_secs - mine) <= AMBIGUOUS_SECS,
+    );
+    if (rival) ambiguous.add(i);
+  }
+  const matchedPairs = claimed
+    .filter(([i]) => !ambiguous.has(i))
+    .map(([track, pair]) => ({ path: pair.path, track }));
+  if (matchedPairs.length === 0) {
+    toast(
+      ambiguous.size
+        ? "Those tracks are the same length — the order can't be told apart"
+        : "No lengths close enough to order by — leaving the order alone",
+      true,
+    );
+    return;
+  }
+  const taken = new Set(matchedPairs.map((p) => p.path));
+  const unmatched = paths.filter((path) => !taken.has(path));
+  applyMatchOrder(card, paths, matchedPairs, unmatched);
+  const dropped = release.tracks.length - matchedPairs.length;
+  const notes = [];
+  if (ambiguous.size) notes.push(`${plural(ambiguous.size, "track", "tracks")} the same length, left alone`);
+  if (dropped > 0) notes.push(`${plural(dropped, "release track", "release tracks")} left out`);
+  toast(
+    `Matched ${matchedPairs.length}/${plural(paths.length, "file", "files")} by length — reordered to line up` +
+      (notes.length ? ` (${notes.join(", ")})` : ""),
+  );
+}
+
 async function autoMatchToRelease(card) {
   const paths = selectedPaths();
   const release = releaseCache.get(card.dataset.id);
@@ -894,23 +1018,11 @@ async function autoMatchToRelease(card) {
     });
     const hits = aligned.filter((m) => m);
     const matched = hits.length;
-    if (matched) {
-      matchedPairs.sort((a, b) => a.track - b.track);
-      const wanted = new Set(matchedPairs.map((p) => p.track));
-      card
-        .querySelectorAll(".release-tracklist tbody .tk-lead input")
-        .forEach((box) => (box.checked = wanted.has(Number(box.dataset.i))));
-      updateTracklistCount(card);
-      // Matched files first, in release order; anything unmatched keeps its own
-      // order after them, where the untouched tail of the tracklist is.
-      const order = [...matchedPairs.map((p) => p.path), ...unmatched];
-      const byPath = new Map(tracks.map((t) => [t.path, t]));
-      const selected = new Set(paths);
-      let next = 0;
-      setTracks(tracks.map((t) => (selected.has(t.path) ? byPath.get(order[next++]) : t)));
-      setSortKey(null);
-      hooks.renderTracks();
-    }
+    if (matched) applyMatchOrder(card, paths, matchedPairs, unmatched);
+    // Names have had their say, whatever they said; the button now offers the
+    // other rule (#191) — for names that match perfectly while the lengths
+    // disagree, and for names that matched nothing at all.
+    armLengthMatch(card);
     const byIsrc = hits.filter((m) => m.by_isrc).length;
     // Surface *why* — an ISRC match is exact, worth calling out (#54).
     const isrcNote = byIsrc ? ` (${byIsrc} exact by ISRC)` : "";
@@ -1137,7 +1249,10 @@ el("release-list").addEventListener("click", (e) => {
     });
     if (menu) menu.hidden = !menu.hidden;
   } else if (act === "automatch") {
-    autoMatchToRelease(card);
+    // One button, two rules (#191): names first, then lengths. Not a cycle —
+    // pressing it again re-runs the length match rather than going back.
+    if (armedByLength.has(card.dataset.id)) matchByLength(card);
+    else autoMatchToRelease(card);
   } else if (act === "embed") {
     embedCoverFrom(card);
   } else if (act === "save-cover" || act === "save-all") {

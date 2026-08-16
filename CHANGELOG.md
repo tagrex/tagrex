@@ -44,6 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   path doesn't turn it back into Browse just in time to open a folder dialog
   instead. (#177)
 
+### Added
+
+- **A second press on Auto-match orders by length instead of by name.** The
+  button matches on names as before and then offers **Match by length**, which
+  reorders the selected files to the durations the release lists and ignores
+  what they are called. It pairs one file to one track, closest pairs first, and
+  it may cross — which is the case names cannot express: two tracks whose names
+  are swapped against their lengths, each matching its namesake exactly while
+  the running times say otherwise. It claims nothing more than ten seconds out,
+  and where two tracks run within a couple of seconds of each other it says the
+  order can't be told apart rather than guessing. The offer resets when the
+  selection or the search results change; pressing again re-runs the length
+  match rather than going back to names. (#191)
+
 ### Changed
 
 - **The queries a selection can build hang off the search field itself.** The
