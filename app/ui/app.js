@@ -658,6 +658,15 @@ function buildViewModel() {
       }
       byKey.get(key).push(track);
     }
+    // Group order (#196): with a column sort active, first appearance means "the
+    // folder whose first file sorts first", which reads as random. So the
+    // folders take their own order, in the sort's direction. With nothing
+    // sorted, first appearance is the scan order — what opening a folder implies.
+    if (sortKey) {
+      order.sort(
+        (a, b) => groupLabel(a).localeCompare(groupLabel(b), undefined, { numeric: true }) * sortDir,
+      );
+    }
     for (const key of order) {
       viewGroups.push(key);
       viewItems.push({ kind: "group", key, count: byKey.get(key).length });
@@ -1434,6 +1443,7 @@ async function apply() {
     }
     // cover apply leaves the tag-edits buffer untouched (separate change kind)
     setTracks(await invoke("list_tracks", {}));
+    sortTracks(); // the list came back in scan order (#196)
     // Mask columns render from disk, and an apply is exactly when what is on
     // disk changed under unchanged paths (#150).
     invalidateCustomColumns();
@@ -1454,6 +1464,7 @@ async function undo() {
     toast("Undid last batch");
     resetEdits();
     setTracks(await invoke("list_tracks", {}));
+    sortTracks(); // the list came back in scan order (#196)
     invalidateCustomColumns();
     // exitDiffState() also clears previewPlan/previewSource and repaints.
     exitDiffState();
@@ -2206,11 +2217,22 @@ function sortBy(key) {
 function applySort(key, dir) {
   setSortKey(key);
   setSortDir(dir);
+  sortTracks();
+  renderTracks();
+}
+
+// Put `tracks` in the active sort's order. Separate from applySort because a
+// freshly read list has to be sorted again without re-deciding what the sort is
+// (#196): an apply or an undo replaces the list with what is on disk, in scan
+// order, while the header still claims a sort — so everything jumped, the folder
+// being worked on included, and nothing said why.
+function sortTracks() {
+  if (!sortKey) return;
   tracks.sort(
     (a, b) =>
-      sortValue(a, key).localeCompare(sortValue(b, key), undefined, { numeric: true }) * sortDir,
+      sortValue(a, sortKey).localeCompare(sortValue(b, sortKey), undefined, { numeric: true }) *
+      sortDir,
   );
-  renderTracks();
 }
 
 // Sort clicks are delegated on the header so dynamically-built columns (#43)
