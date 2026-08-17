@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **What encoded a file is left alone rather than edited or cleared.** The
+  encoder and its settings, the length in milliseconds and the file-type frame
+  read back as ordinary editable fields, so they filled rows in the tag editor
+  that mean nothing to change — and a clear wiped them along with the metadata.
+  They describe how the file was made, not what is on it, so they now sit with
+  the encoder header and the DJ cue points: never shown, never written over,
+  never claimed as cleared. (#197)
+
 ## [0.6.1] - 2026-08-17
 
 ### Fixed

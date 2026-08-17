@@ -1038,3 +1038,124 @@ fn a_write_does_not_create_an_id3v1_tag() {
         Some("Only In ID3v2")
     );
 }
+
+/// #197: what encoded the file, how long it runs and what kind of file it is
+/// are provenance, not metadata. They used to read back as ordinary editable
+/// custom fields, so a clear listed them as cleared — and every write decided
+/// their fate. Now the model neither shows them nor touches them.
+#[test]
+fn provenance_frames_are_neither_shown_nor_written_over() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::id3::v2::{Frame, FrameId, Id3v2Tag, TextInformationFrame};
+    use lofty::mpeg::MpegFile;
+    use lofty::prelude::{Accessor, TagExt};
+    use lofty::TextEncoding;
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-provenance-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    let mut seeded = Id3v2Tag::new();
+    seeded.set_artist("Original".to_string());
+    for id in ["TSSE", "TENC", "TLEN", "TFLT"] {
+        seeded.insert(Frame::Text(TextInformationFrame::new(
+            FrameId::Valid(id.into()),
+            TextEncoding::UTF8,
+            format!("v-{id}"),
+        )));
+    }
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+
+    let frame_ids = |path: &PathBuf| -> Vec<String> {
+        let mut file = std::fs::File::open(path).unwrap();
+        let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).unwrap();
+        mpeg.id3v2()
+            .map(|tag| {
+                tag.clone()
+                    .into_iter()
+                    .map(|frame| frame.id().as_str().to_string())
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    // Not fields: nothing to show in the table, nothing for a clear to claim.
+    let track = TagEngine::read(&path).expect("read tags");
+    for name in ["EncoderSettings", "EncodedBy", "Length", "FileType"] {
+        assert!(
+            !track.tags.contains_key(&TagField::Custom(name.to_string())),
+            "{name} came back as an editable field"
+        );
+    }
+
+    // And a clear — the emptiest write there is — leaves all four alone.
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags: BTreeMap::new(),
+    })
+    .expect("clear tags");
+
+    let after = frame_ids(&path);
+    std::fs::remove_file(&path).ok();
+    for id in ["TSSE", "TENC", "TLEN", "TFLT"] {
+        assert!(after.contains(&id.to_string()), "the clear destroyed {id}");
+    }
+    assert!(
+        !after.contains(&"TPE1".to_string()),
+        "the clear kept the artist it was supposed to remove"
+    );
+}
+
+/// The same promise on the generic writer, which every non-ID3v2 format uses:
+/// its retain reads "not in the model" as "delete", so provenance needs the
+/// same exemption there (#197).
+#[test]
+fn provenance_survives_the_generic_writer_too() {
+    use lofty::config::WriteOptions;
+    use lofty::prelude::{ItemKey, TagExt};
+    use lofty::tag::{Tag, TagItem, TagType};
+
+    let path = temp_flac_path("provenance");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    let mut seeded = Tag::new(TagType::VorbisComments);
+    seeded.push_unchecked(TagItem::new(
+        ItemKey::TrackArtist,
+        lofty::tag::ItemValue::Text("Original".to_string()),
+    ));
+    seeded.push_unchecked(TagItem::new(
+        ItemKey::EncoderSettings,
+        lofty::tag::ItemValue::Text("Lavf52.78.4".to_string()),
+    ));
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+
+    assert!(
+        !TagEngine::read(&path)
+            .expect("read tags")
+            .tags
+            .contains_key(&TagField::Custom("EncoderSettings".to_string())),
+        "the encoder setting came back as an editable field"
+    );
+
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags: BTreeMap::new(),
+    })
+    .expect("clear tags");
+
+    let kept = {
+        use lofty::file::TaggedFileExt;
+        let tagged = lofty::probe::Probe::open(&path).unwrap().read().unwrap();
+        tagged.primary_tag().and_then(|tag| {
+            tag.get_string(&ItemKey::EncoderSettings)
+                .map(str::to_string)
+        })
+    };
+    std::fs::remove_file(&path).ok();
+    assert_eq!(kept.as_deref(), Some("Lavf52.78.4"));
+}

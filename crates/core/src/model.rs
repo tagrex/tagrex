@@ -522,6 +522,10 @@ impl TagEngine {
             .or_else(|| tagged_file.first_tag())
         {
             for item in tag.items() {
+                // What made the file is not what the file is about (#197).
+                if is_provenance_key(item.key()) {
+                    continue;
+                }
                 // Text items (most fields), plus the release URL — its value is a
                 // URL *locator*, not text. Only the one URL frame the model owns
                 // (WOAF / AudioFileUrl) is read; other URL frames are left alone
@@ -815,9 +819,37 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
     Ok(())
 }
 
+/// Tags that describe how the file was MADE, not what it holds (#197): the
+/// encoder and its settings (`TSSE`/`TENC`), and the two technical statements
+/// about the audio itself (`TLEN` length in milliseconds, `TFLT` file type).
+/// They are provenance, in the same class as the LAME header and the DJ cue
+/// points the write pipeline already leaves alone — so the model neither offers
+/// them for editing nor destroys them: they are skipped on read and carried
+/// over on write, by both writers.
+///
+/// Stated twice because the two sides work on different things: the reader and
+/// the generic writer hold lofty [`ItemKey`]s, the ID3v2 carry loop holds
+/// concrete frames. The four ids are spelled the same in ID3v2.3 and 2.4.
+fn is_provenance_key(key: &ItemKey) -> bool {
+    matches!(
+        key,
+        ItemKey::EncoderSettings | ItemKey::EncodedBy | ItemKey::Length | ItemKey::FileType
+    )
+}
+
+fn is_provenance_frame_id(id: &str) -> bool {
+    matches!(id, "TSSE" | "TENC" | "TLEN" | "TFLT")
+}
+
 /// Whether a frame is one the text-only [`TagMap`] already represents, and so
 /// must come from the model rather than being carried over from the old tag.
 fn is_model_text_frame(frame: &Frame<'_>) -> bool {
+    // Not represented, and not to be dropped either (#197) — the carry loop is
+    // what keeps these, since every other text frame the model doesn't hold is
+    // deliberately left behind.
+    if is_provenance_frame_id(frame.id().as_str()) {
+        return false;
+    }
     // TDRC (recording time) is a `Timestamp` frame, not `Text`, but the model
     // round-trips it as `Year`. Without excluding the original, a file left with
     // a stale/duplicate TDRC (e.g. two TDRC frames from another tagger) leaks the
@@ -877,7 +909,13 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
         .keys()
         .map(|field| item_key_for(field, tag_type))
         .collect();
-    tag.retain(|item| item.value().text().is_none() || desired.contains(item.key()));
+    tag.retain(|item| {
+        item.value().text().is_none()
+            || desired.contains(item.key())
+            // Provenance the model deliberately doesn't carry (#197) — without
+            // this the retain reads "not in the model" as "delete".
+            || is_provenance_key(item.key())
+    });
 
     for (field, value) in &file.tags {
         // Clear first rather than append, so repeated writes can't accumulate
