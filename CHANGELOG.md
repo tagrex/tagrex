@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-17
+
 ### Changed
 
 - **The tag backend is three releases newer.** Moving from 0.22 to 0.25 brings
