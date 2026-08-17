@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-17
+
 ### Added
 
 - **A release card says how far each track's length is from your file's.** An
