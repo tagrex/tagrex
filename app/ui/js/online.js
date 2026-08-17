@@ -16,9 +16,9 @@ import {
   previewPlan,
   selectedPaths,
   selection,
+  setManualOrder,
   setPreviewPlan,
   setPreviewSource,
-  setSortKey,
   setTracks,
   tag,
   trackAt,
@@ -887,7 +887,10 @@ function applyMatchOrder(card, paths, matchedPairs, unmatched) {
   const selected = new Set(paths);
   let next = 0;
   setTracks(tracks.map((t) => (selected.has(t.path) ? byPath.get(order[next++]) : t)));
-  setSortKey(null);
+  // The match orders the files it was given, and says so — it does not cancel
+  // the column sort (#198). Cancelling it also released the folder order, so
+  // lining up three files reshuffled every folder in the library.
+  setManualOrder(true);
   hooks.renderTracks();
 }
 

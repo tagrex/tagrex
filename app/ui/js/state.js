@@ -106,6 +106,16 @@ export function setSortDir(value) {
   sortDir = value;
 }
 
+// Some files were put in an order by hand — a drag, or a match against a release
+// (#198). Kept apart from the sort rather than expressed by dropping it: the
+// sort is also what holds the FOLDERS in place, so clearing it moved every
+// group in the library to release three files. The flag only says the sorted
+// column no longer describes every row, which the header shows.
+export let manualOrder = false;
+export function setManualOrder(value) {
+  manualOrder = value;
+}
+
 // The filter box (#44). `filterQuery` is the compiled form (re-derived by
 // recompileFilter whenever the text or flags change) so the per-row test stays
 // cheap; `filterError` flags a regex that failed to compile.

@@ -1262,6 +1262,12 @@ th.sortable:hover {
   width: 0.9em;
   color: var(--accent-ink);
 }
+/* The sort still holds, but some rows were placed by hand (#198) — a muted
+   indicator, so the column keeps saying what orders the list without claiming
+   every row obeys it. */
+.sort-ind.manual {
+  color: var(--muted);
+}
 
 /* ---- resizable columns (#76) ----
    Fixed layout so a header-cell width governs its column exactly; the header

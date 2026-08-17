@@ -101,6 +101,7 @@ import {
   DEFAULT_COLUMNS, visibleColumns, setVisibleColumns,
   columnWidths, setColumnWidths,
   sortKey, setSortKey, sortDir, setSortDir,
+  manualOrder, setManualOrder,
   filterText, setFilterText,
   filterRegex, setFilterRegex,
   filterCase, setFilterCase,
@@ -216,8 +217,14 @@ function matchesFilter(track) {
 function updateSortIndicators() {
   document.querySelectorAll("th.sortable").forEach((th) => {
     const ind = th.querySelector(".sort-ind");
-    ind.innerHTML =
-      th.dataset.sort === sortKey ? ico(sortDir > 0 ? "tri-up" : "tri-down") : "";
+    const sorted = th.dataset.sort === sortKey;
+    ind.innerHTML = sorted ? ico(sortDir > 0 ? "tri-up" : "tri-down") : "";
+    // A hand-made order (a drag, a match) leaves the sort in force for
+    // everything it didn't touch (#198). The indicator fades rather than
+    // vanishing, so the column still says what orders the list while admitting
+    // that some rows are where they were put.
+    ind.classList.toggle("manual", sorted && manualOrder);
+    ind.title = sorted && manualOrder ? "Some files were reordered by hand" : "";
   });
 }
 
@@ -1360,6 +1367,7 @@ async function afterOpen(label) {
   resetEdits();
   setSortKey(null);
   setSortDir(1);
+  setManualOrder(false);
   setFilterText("");
   el("filter").value = "";
   syncFilterControls(); // clears the parsed query + any regex-error state
@@ -1810,7 +1818,10 @@ function onDragUp() {
   }
   tracks.splice(drop.below ? targetIndex + 1 : targetIndex, 0, moved);
   reindexTracks(); // the list is the same files in a new order (#184)
-  setSortKey(null); // manual order supersedes any column sort
+  // The dragged row supersedes the sort for itself, not for the library (#198):
+  // clearing the sort key also released the folder order, so moving one file
+  // moved every group.
+  setManualOrder(true);
   renderTracks();
 }
 rootInput.addEventListener("input", updateLibAction);
@@ -2228,6 +2239,9 @@ function applySort(key, dir) {
 // being worked on included, and nothing said why.
 function sortTracks() {
   if (!sortKey) return;
+  // Whatever was placed by hand is placed by the sort now (#198) — a re-read
+  // from disk is where a hand-made order ends, and so is a fresh sort.
+  setManualOrder(false);
   tracks.sort(
     (a, b) =>
       sortValue(a, sortKey).localeCompare(sortValue(b, sortKey), undefined, { numeric: true }) *

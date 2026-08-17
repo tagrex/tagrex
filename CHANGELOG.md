@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   under a sort, in its direction, and keep the scan order when nothing is
   sorted; an apply or an undo re-sorts what it re-read. (#196)
 
+- **Lining up files with a release no longer moves every folder in the
+  library.** Matching against a release, or dragging one row to a new place,
+  ended by switching the column sort off — and the sort is what held the folders
+  in place, so ordering three files sent every folder somewhere else, and the
+  next apply moved them again. Both now keep the sort and say what they did: the
+  sorted column's arrow fades to mean "some files were placed by hand", and the
+  next sort, apply or undo puts everything back under the header's rule. (#198)
+
 ## [0.6.0] - 2026-08-17
 
 ### Added
