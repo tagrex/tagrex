@@ -13,8 +13,10 @@ version = "0.6.1"
 edition = "2021"
 license = "GPL-3.0-only"
 repository = "https://github.com/tagrex/tagrex"
-# Verified minimum toolchain. Bumping edition to 2024 requires rust-version >= 1.85.
-rust-version = "1.75"
+# Verified minimum toolchain. Set by the tag backend, which requires 1.89 as of
+# its 0.25 release (#201) — the core crates cannot ask for less than what they
+# are built on. Bumping edition to 2024 requires rust-version >= 1.85.
+rust-version = "1.89"
 
 [workspace.dependencies]
 thiserror = "1"

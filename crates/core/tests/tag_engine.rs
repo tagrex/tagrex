@@ -490,7 +490,7 @@ fn mp3_write_preserves_non_text_frames() {
         let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).unwrap();
         mpeg.id3v2().and_then(|tag| {
             tag.into_iter().find_map(|frame| match frame {
-                lofty::id3::v2::Frame::Private(p) => Some(p.private_data.clone()),
+                lofty::id3::v2::Frame::Private(p) => Some(p.private_data.to_vec()),
                 _ => None,
             })
         })
@@ -583,7 +583,7 @@ fn wav_write_preserves_non_text_frames() {
         let wav = WavFile::read_from(&mut file, ParseOptions::new()).unwrap();
         wav.id3v2().and_then(|tag| {
             tag.into_iter().find_map(|frame| match frame {
-                Frame::Private(p) => Some(p.private_data.clone()),
+                Frame::Private(p) => Some(p.private_data.to_vec()),
                 _ => None,
             })
         })
@@ -751,7 +751,7 @@ fn mp3_multi_value_fields_become_one_frame_with_several_values() {
         .into_iter()
         .filter(|frame| frame.id().as_str() == "TPE1")
         .map(|frame| match frame {
-            lofty::id3::v2::Frame::Text(text) => text.value.clone(),
+            lofty::id3::v2::Frame::Text(text) => text.value.to_string(),
             other => format!("{other:?}"),
         })
         .collect();
@@ -864,7 +864,7 @@ fn mp3_keeps_several_images_and_its_private_frames() {
     let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).unwrap();
     let private = mpeg.id3v2().and_then(|tag| {
         tag.into_iter().find_map(|frame| match frame {
-            Frame::Private(p) => Some(p.private_data.clone()),
+            Frame::Private(p) => Some(p.private_data.to_vec()),
             _ => None,
         })
     });
@@ -1151,11 +1151,185 @@ fn provenance_survives_the_generic_writer_too() {
     let kept = {
         use lofty::file::TaggedFileExt;
         let tagged = lofty::probe::Probe::open(&path).unwrap().read().unwrap();
-        tagged.primary_tag().and_then(|tag| {
-            tag.get_string(&ItemKey::EncoderSettings)
-                .map(str::to_string)
-        })
+        tagged
+            .primary_tag()
+            .and_then(|tag| tag.get_string(ItemKey::EncoderSettings).map(str::to_string))
     };
     std::fs::remove_file(&path).ok();
     assert_eq!(kept.as_deref(), Some("Lavf52.78.4"));
+}
+
+/// #201: the backend stopped representing a format-specific item in its generic
+/// tag, so a custom field has to be put on and taken off the concrete tag. On
+/// ID3v2 that is a `TXXX` frame, and it has to carry the name the field has —
+/// the whole point of a custom field is that the file, not the model, names it.
+///
+/// The second write is the other half: a custom field the model no longer holds
+/// has to go, or an edit would only ever add names to a file.
+#[test]
+fn a_custom_field_is_a_user_text_frame_named_after_the_field() {
+    use lofty::config::ParseOptions;
+    use lofty::file::AudioFile;
+    use lofty::id3::v2::Frame;
+    use lofty::mpeg::MpegFile;
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-custom-id3v2-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    let user_text = |path: &PathBuf| -> Vec<(String, String)> {
+        let mut file = std::fs::File::open(path).unwrap();
+        let mpeg = MpegFile::read_from(&mut file, ParseOptions::new()).unwrap();
+        mpeg.id3v2()
+            .map(|tag| {
+                tag.iter()
+                    .filter_map(|frame| match frame {
+                        Frame::UserText(user) => {
+                            Some((user.description.to_string(), user.content.to_string()))
+                        }
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Artist".to_string());
+    tags.insert(
+        TagField::Custom("TAGREX_CUSTOM_TEST".to_string()),
+        "Energetic".to_string(),
+    );
+    tags.insert(
+        TagField::Custom("RELEASECOUNTRY".to_string()),
+        "DE".to_string(),
+    );
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags: tags.clone(),
+    })
+    .expect("write tags");
+
+    let mut written = user_text(&path);
+    written.sort();
+    assert_eq!(
+        written,
+        vec![
+            ("RELEASECOUNTRY".to_string(), "DE".to_string()),
+            ("TAGREX_CUSTOM_TEST".to_string(), "Energetic".to_string()),
+        ],
+        "the custom fields did not land in TXXX frames of their own names"
+    );
+
+    let read_back = TagEngine::read(&path).expect("read tags");
+    assert_eq!(
+        read_back
+            .tags
+            .get(&TagField::Custom("TAGREX_CUSTOM_TEST".to_string()))
+            .map(String::as_str),
+        Some("Energetic")
+    );
+    assert_eq!(
+        read_back
+            .tags
+            .get(&TagField::Custom("RELEASECOUNTRY".to_string()))
+            .map(String::as_str),
+        Some("DE")
+    );
+
+    // Drop one of them and write again: it has to leave the file.
+    tags.remove(&TagField::Custom("RELEASECOUNTRY".to_string()));
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags,
+    })
+    .expect("write tags again");
+
+    let remaining = user_text(&path);
+    std::fs::remove_file(&path).ok();
+    assert_eq!(
+        remaining,
+        vec![("TAGREX_CUSTOM_TEST".to_string(), "Energetic".to_string())],
+        "a custom field the model dropped stayed in the file"
+    );
+}
+
+/// The same thing on Vorbis Comments, where the danger is the opposite one
+/// (#201): the backend's generic tag does not carry an unknown comment across
+/// the conversion at all, so a save built from it alone would silently *delete*
+/// every custom field the file had — including ones this app never touched.
+#[test]
+fn an_unrelated_edit_leaves_another_taggers_comments_alone() {
+    use lofty::config::WriteOptions;
+    use lofty::ogg::tag::VorbisComments;
+    use lofty::prelude::TagExt;
+
+    let path = temp_flac_path("foreign-comments");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    let mut seeded = VorbisComments::default();
+    seeded.push("ARTIST".to_string(), "Original".to_string());
+    seeded.push("SOMEONE_ELSES_FIELD".to_string(), "keep me".to_string());
+    seeded.push("REPLAYGAIN_TRACK_GAIN".to_string(), "-6.30 dB".to_string());
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+
+    // Both are fields, under the names the file spells them with.
+    let read = TagEngine::read(&path).expect("read tags");
+    assert_eq!(
+        read.tags
+            .get(&TagField::Custom("SOMEONE_ELSES_FIELD".to_string()))
+            .map(String::as_str),
+        Some("keep me")
+    );
+    assert_eq!(
+        read.tags
+            .get(&TagField::Custom("REPLAYGAIN_TRACK_GAIN".to_string()))
+            .map(String::as_str),
+        Some("-6.30 dB"),
+        "a key the backend knows but the model doesn't must keep the file's spelling"
+    );
+
+    // Edit only the artist, the way an ordinary apply would.
+    let mut tags = read.tags.clone();
+    tags.insert(TagField::Artist, "Edited".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags,
+    })
+    .expect("write tags");
+
+    let comments: Vec<(String, String)> = {
+        use lofty::config::ParseOptions;
+        use lofty::file::AudioFile;
+        use lofty::flac::FlacFile;
+        let mut file = std::fs::File::open(&path).unwrap();
+        FlacFile::read_from(&mut file, ParseOptions::new())
+            .unwrap()
+            .vorbis_comments()
+            .map(|tag| {
+                tag.items()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    std::fs::remove_file(&path).ok();
+
+    assert!(
+        comments.contains(&("SOMEONE_ELSES_FIELD".to_string(), "keep me".to_string())),
+        "an unrelated edit destroyed another tagger's comment, got {comments:?}"
+    );
+    assert!(
+        comments.contains(&("REPLAYGAIN_TRACK_GAIN".to_string(), "-6.30 dB".to_string())),
+        "the ReplayGain value was rewritten under a different name, got {comments:?}"
+    );
+    assert!(
+        comments.contains(&("ARTIST".to_string(), "Edited".to_string())),
+        "the edit itself did not land, got {comments:?}"
+    );
 }

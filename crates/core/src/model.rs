@@ -6,16 +6,25 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
 
 use lofty::aac::AacFile;
+use lofty::ape::{ApeFile, ApeItem, ApeTag};
 use lofty::config::{ParseOptions, ParsingMode, WriteOptions};
+use lofty::error::{FileEncodingError, FileParseError};
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
+use lofty::flac::FlacFile;
 use lofty::id3::v1::Id3v1Tag;
-use lofty::id3::v2::{Frame, Id3v2Tag};
+use lofty::id3::v2::{ExtendedTextFrame, Frame, Id3v2Tag};
 use lofty::iff::aiff::AiffFile;
 use lofty::iff::wav::WavFile;
+use lofty::mp4::{Atom, AtomData, AtomIdent, Ilst};
 use lofty::mpeg::MpegFile;
-use lofty::picture::{MimeType, Picture, PictureType};
+use lofty::musepack::MpcFile;
+use lofty::ogg::tag::VorbisComments;
+use lofty::ogg::{OggPictureStorage, OpusFile, SpeexFile, VorbisFile};
+use lofty::picture::{MimeType, Picture, PictureInformation, PictureType};
 use lofty::probe::Probe;
-use lofty::tag::{Accessor, ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
+use lofty::tag::{Accessor, ItemKey, ItemValue, MergeTag, SplitTag, Tag, TagExt, TagItem, TagType};
+use lofty::wavpack::WavPackFile;
+use lofty::TextEncoding;
 use thiserror::Error;
 
 /// Whether ID3v2 tags are written as v2.3 (`true`) or v2.4 (`false`, the
@@ -470,11 +479,226 @@ fn parse_options() -> ParseOptions {
     ParseOptions::new().parsing_mode(ParsingMode::Relaxed)
 }
 
+/// The same parsing rules without scanning the audio for its properties. The
+/// concrete-tag reads below only ever want the tag block, and finding the
+/// bitrate of an MP3 means walking its frames — the expensive half of a parse,
+/// paid for nothing.
+fn tag_only_options() -> ParseOptions {
+    parse_options().read_properties(false)
+}
+
+/// Tag-only, and without the embedded artwork either. The custom-field read
+/// wants nothing but the item names, and decoding a cover it will not look at
+/// is the single most expensive thing a second parse could do — the listing
+/// reads every file in a library, so this is the difference between a second
+/// parse that costs nothing and one that doubles the scan.
+fn custom_item_options() -> ParseOptions {
+    tag_only_options().read_cover_art(false)
+}
+
 fn probe_file(path: &Path) -> Result<lofty::file::TaggedFile, TagIoError> {
     Ok(Probe::open(path)?
         .guess_file_type()?
         .options(parse_options())
         .read()?)
+}
+
+/// The container a path holds, from its header and extension alone — no tag or
+/// property parsing. What the concrete readers dispatch on.
+fn container_of(path: &Path) -> Result<Option<FileType>, TagIoError> {
+    Ok(Probe::open(path)?.guess_file_type()?.file_type())
+}
+
+/// A buffered handle for the concrete readers. Parsing a tag is thousands of
+/// small reads, and handing the backend a bare `File` makes every one of them a
+/// syscall — enough to cost more than the whole first parse, which the probe
+/// buffers for itself.
+fn buffered(path: &Path) -> Result<std::io::BufReader<std::fs::File>, TagIoError> {
+    Ok(std::io::BufReader::new(std::fs::File::open(path)?))
+}
+
+/// The file's concrete Vorbis Comments block, if it has one. Dispatches on the
+/// container the same way [`read_id3v2`] does, for every format that keeps its
+/// tags in Vorbis Comments.
+fn read_vorbis(path: &Path, options: ParseOptions) -> Result<Option<VorbisComments>, TagIoError> {
+    let container = container_of(path)?;
+    let mut file = buffered(path)?;
+    Ok(match container {
+        Some(FileType::Flac) => FlacFile::read_from(&mut file, options)?
+            .vorbis_comments()
+            .cloned(),
+        Some(FileType::Vorbis) => Some(
+            VorbisFile::read_from(&mut file, options)?
+                .vorbis_comments()
+                .clone(),
+        ),
+        Some(FileType::Opus) => Some(
+            OpusFile::read_from(&mut file, options)?
+                .vorbis_comments()
+                .clone(),
+        ),
+        Some(FileType::Speex) => Some(
+            SpeexFile::read_from(&mut file, options)?
+                .vorbis_comments()
+                .clone(),
+        ),
+        _ => None,
+    })
+}
+
+/// The file's concrete APE tag, if it has one.
+fn read_ape(path: &Path, options: ParseOptions) -> Result<Option<ApeTag>, TagIoError> {
+    let container = container_of(path)?;
+    let mut file = buffered(path)?;
+    Ok(match container {
+        Some(FileType::Ape) => ApeFile::read_from(&mut file, options)?.ape().cloned(),
+        Some(FileType::Mpc) => MpcFile::read_from(&mut file, options)?.ape().cloned(),
+        Some(FileType::WavPack) => WavPackFile::read_from(&mut file, options)?.ape().cloned(),
+        _ => None,
+    })
+}
+
+/// One format-specific item: its name as the file spells it (a `TXXX`
+/// description, a Vorbis comment name, an APE item key, an MP4 freeform atom
+/// name) and its value.
+type CustomItem = (String, String);
+
+/// Whether the backend's generic [`Tag`] has a key of its own for this
+/// format-specific name.
+///
+/// It is the dividing line the whole custom-field system now rests on (#201).
+/// An item whose name maps is carried by the generic tag, is read as an ordinary
+/// item, and is written back under the backend's own per-format spelling. One
+/// whose name does not map is invisible to the generic tag, and is the app's
+/// [`TagField::Custom`]: read from and written to the concrete tag by name.
+fn maps_to_item_key(tag_type: TagType, name: &str) -> bool {
+    ItemKey::from_key(tag_type, name).is_some()
+}
+
+/// The reverse-DNS mean an MP4 freeform atom is written under — what every
+/// tagger uses, and what the backend's own MP4 mappings are spelled with.
+const FREEFORM_MEAN: &str = "com.apple.iTunes";
+
+/// The generic key a *field name* has for `tag_type`, if any.
+///
+/// [`maps_to_item_key`] answers the same question about a key as the file
+/// spells it; this one asks it about the name the field carries, and the two
+/// differ on MP4: the file's key is the whole `----:mean:name`, the field is
+/// named after the `name` half alone — because that is what a person sees, and
+/// what every other format would have called it.
+fn item_key_for_custom_name(tag_type: TagType, name: &str) -> Option<ItemKey> {
+    if tag_type == TagType::Mp4Ilst {
+        if let Some(key) = ItemKey::from_key(tag_type, &format!("----:{FREEFORM_MEAN}:{name}")) {
+            return Some(key);
+        }
+    }
+    ItemKey::from_key(tag_type, name)
+}
+
+/// The field name a generic key takes on `tag_type` — the inverse of
+/// [`item_key_for_custom_name`], and the same `name` half on MP4.
+fn custom_name_for_item_key(key: ItemKey, tag_type: TagType) -> Option<&'static str> {
+    let mapped = key.map_key(tag_type)?;
+    if tag_type == TagType::Mp4Ilst {
+        if let Some(name) = mapped.strip_prefix("----:") {
+            return name.split_once(':').map(|(_, name)| name).or(Some(name));
+        }
+    }
+    Some(mapped)
+}
+
+/// A `TXXX` frame the generic tag has no key for, as a custom item.
+fn user_text_item(frame: &Frame<'_>) -> Option<CustomItem> {
+    let Frame::UserText(user) = frame else {
+        return None;
+    };
+    if user.description.is_empty() || maps_to_item_key(TagType::Id3v2, &user.description) {
+        return None;
+    }
+    Some((user.description.to_string(), user.content.to_string()))
+}
+
+/// A freeform MP4 atom the generic tag has no key for, as a custom item.
+fn freeform_item(atom: &Atom<'_>) -> Option<CustomItem> {
+    let AtomIdent::Freeform { mean, name } = atom.ident() else {
+        return None;
+    };
+    if maps_to_item_key(TagType::Mp4Ilst, &format!("----:{mean}:{name}")) {
+        return None;
+    }
+    let value = atom.data().find_map(|data| match data {
+        AtomData::UTF8(text) | AtomData::UTF16(text) => Some(text.clone()),
+        _ => None,
+    })?;
+    Some((name.to_string(), value))
+}
+
+/// Every format-specific item of the file's `tag_type` block — what
+/// [`TagField::Custom`] is made of (#201).
+///
+/// The 0.22 backend handed these over as `ItemKey::Unknown(name)` items of the
+/// generic tag, so one read of that tag saw everything. 0.23 removed that
+/// variant: an item the generic tag has no key for now stays on the concrete
+/// tag, where the generic representation cannot see it at all — and for Vorbis
+/// Comments and APE it is not even carried across the conversion. So the custom
+/// fields are read from the concrete tag, by their own name.
+///
+/// ID3v2 and MP4 are the cheap half: the backend keeps their format-specific
+/// items beside the generic tag, so converting the tag back to its concrete form
+/// recovers them from the parse already done. Vorbis Comments and APE have no
+/// such companion — the conversion drops the items on the floor — so those pay
+/// for a second read of the file. It is a tag-only, artwork-free one
+/// ([`custom_item_options`]), which is the cheapest parse the backend offers.
+fn custom_items(path: &Path, tag: Tag) -> Result<Vec<CustomItem>, TagIoError> {
+    Ok(match tag.tag_type() {
+        TagType::Id3v2 => {
+            let concrete = Id3v2Tag::from(tag);
+            concrete.iter().filter_map(user_text_item).collect()
+        }
+        TagType::Mp4Ilst => Ilst::from(tag)
+            .into_iter()
+            .filter_map(|atom| freeform_item(&atom))
+            .collect(),
+        TagType::VorbisComments => read_vorbis(path, custom_item_options())?
+            .map(|tag| {
+                tag.items()
+                    .filter(|(name, _)| !maps_to_item_key(TagType::VorbisComments, name))
+                    .map(|(name, value)| (name.to_string(), value.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        TagType::Ape => read_ape(path, custom_item_options())?
+            .map(|tag| {
+                tag.into_iter()
+                    .filter(|item| !maps_to_item_key(TagType::Ape, item.key()))
+                    .filter_map(|item| {
+                        // Binary items (APE keeps cover art in one) are not text
+                        // and have no place in the text-only `TagMap`; the write
+                        // path carries them over untouched.
+                        match item.value() {
+                            ItemValue::Text(text) | ItemValue::Locator(text) => {
+                                Some((item.key().to_string(), text.clone()))
+                            }
+                            _ => None,
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        _ => Vec::new(),
+    })
+}
+
+/// The custom fields that have no generic key for `tag_type`, and so have to be
+/// put onto the concrete tag by name. A custom field whose name *does* map is
+/// left to the generic tag, which spells it the way the format wants.
+fn raw_custom_fields(tags: &TagMap, tag_type: TagType) -> impl Iterator<Item = (&str, &str)> {
+    tags.iter().filter_map(move |(field, value)| match field {
+        TagField::Custom(name) if item_key_for_custom_name(tag_type, name).is_none() => {
+            Some((name.as_str(), value.as_str()))
+        }
+        _ => None,
+    })
 }
 
 /// Facade over the tag I/O backend (lofty). The rest of the codebase must
@@ -495,7 +719,7 @@ impl TagEngine {
     /// a library of thousands of files for a value the first parse already had.
     /// [`read`](Self::read) is this without the second half.
     pub fn read_with_props(path: &Path) -> Result<(TrackFile, AudioProps), TagIoError> {
-        let tagged_file = probe_file(path)?;
+        let mut tagged_file = probe_file(path)?;
         let format = AudioFormat::from_lofty(tagged_file.file_type())?;
         let properties = tagged_file.properties();
         let props = AudioProps {
@@ -515,12 +739,19 @@ impl TagEngine {
             .ok()
             .and_then(|order| choose_priority_type(&present, &order));
 
+        // The block is taken out of the file rather than borrowed from it: the
+        // custom fields are read off its *concrete* form, and for ID3v2 and MP4
+        // that conversion recovers them from the parse already done — but it
+        // consumes the tag to do it (#201). The choice itself is unchanged: the
+        // prioritized block, else the primary one, else the first present.
+        let primary = tagged_file.primary_tag_type();
+        let chosen = priority_type
+            .or_else(|| present.contains(&primary).then_some(primary))
+            .or_else(|| present.first().copied());
+
         let mut tags = TagMap::new();
-        if let Some(tag) = priority_type
-            .and_then(|tt| tagged_file.tag(tt))
-            .or_else(|| tagged_file.primary_tag())
-            .or_else(|| tagged_file.first_tag())
-        {
+        if let Some(tag) = chosen.and_then(|tag_type| tagged_file.remove(tag_type)) {
+            let tag_type = tag.tag_type();
             for item in tag.items() {
                 // What made the file is not what the file is about (#197).
                 if is_provenance_key(item.key()) {
@@ -538,36 +769,16 @@ impl TagEngine {
                     _ => None,
                 };
                 if let Some(value) = value {
-                    let (field, from_alias) = field_for_item_key(item.key());
-                    // A legacy spelling never overrides the standard frame
-                    // (#171). Both can be in one file — another tagger's
-                    // `TXXX:Label` next to the `TPUB` an import just wrote — and
-                    // the standard one is the current value.
-                    if from_alias && tags.contains_key(&field) {
-                        continue;
-                    }
-                    // A file really can carry several artists or genres, as
-                    // separate Vorbis comments or as one multi-value ID3v2.4
-                    // frame — lofty surfaces both as repeated items here. Joining
-                    // them is what keeps the extras (#46); overwriting, as this
-                    // did, kept only the last and any edit then wrote that one
-                    // value back over all of them. Fields that are not
-                    // multi-valued keep the old last-wins behaviour.
-                    match tags.entry(field) {
-                        std::collections::btree_map::Entry::Vacant(slot) => {
-                            slot.insert(value);
-                        }
-                        std::collections::btree_map::Entry::Occupied(mut slot) => {
-                            if slot.key().is_multi_value() {
-                                let joined =
-                                    format!("{}{}{}", slot.get(), multi_value_separator(), value);
-                                slot.insert(joined);
-                            } else {
-                                slot.insert(value);
-                            }
-                        }
-                    }
+                    let field = item_key_to_tag_field(item.key(), tag_type);
+                    insert_read_value(&mut tags, field, false, value);
                 }
+            }
+            // The rest of the fields are the format-specific items the generic
+            // tag has no key for, which it therefore cannot hand over at all
+            // (#201) — they come off the concrete tag, under their own names.
+            for (name, value) in custom_items(path, tag)? {
+                let (field, from_alias) = field_for_custom_name(&name);
+                insert_read_value(&mut tags, field, from_alias, value);
             }
         }
 
@@ -676,7 +887,7 @@ impl TagEngine {
         // Same reason as `write`: going through the generic tag would drop an
         // MP3's non-representable frames, so edit the concrete tag instead.
         if is_id3v2_container(path) {
-            let mut tag = read_id3v2(path)?.unwrap_or_default();
+            let mut tag = read_id3v2(path, tag_only_options())?.unwrap_or_default();
             // `remove_picture_type` takes one type at a time and the file may
             // hold types the model maps onto one of ours, so clear by rebuilding
             // from the frames that are not pictures at all.
@@ -712,12 +923,13 @@ fn cover_from_picture(picture: &Picture) -> CoverArt {
 }
 
 fn picture_from_cover(cover: &CoverArt) -> Picture {
-    Picture::new_unchecked(
-        cover.kind.to_picture_type(),
-        Some(MimeType::from_str(&cover.mime)),
-        Some(cover.description.clone()).filter(|d| !d.is_empty()),
-        cover.data.clone(),
-    )
+    let mut builder = Picture::unchecked(cover.data.clone())
+        .pic_type(cover.kind.to_picture_type())
+        .mime_type(MimeType::from_str(&cover.mime));
+    if !cover.description.is_empty() {
+        builder = builder.description(cover.description.clone());
+    }
+    builder.build()
 }
 
 /// Write text tags into an MP3's ID3v2 tag, preserving every frame the model
@@ -768,10 +980,10 @@ fn sync_id3v1(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
         title: tags.get(&TagField::Title).cloned(),
         artist: tags.get(&TagField::Artist).cloned(),
         album: tags.get(&TagField::Album).cloned(),
-        // Four bytes, so a full date (ID3v2.4 allows one) contributes its year.
+        // Four digits, so a full date (ID3v2.4 allows one) contributes its year.
         year: tags
             .get(&TagField::Year)
-            .map(|year| year.chars().take(4).collect()),
+            .and_then(|year| year.get(..4).unwrap_or(year).parse::<u16>().ok()),
         comment: tags.get(&TagField::Comment).cloned(),
         // One byte: a track number that doesn't fit is left out rather than
         // wrapped around.
@@ -787,7 +999,15 @@ fn sync_id3v1(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
         legacy.set_genre(genre.clone());
     }
     if legacy.is_empty() {
-        TagType::Id3v1.remove_from_path(path)?;
+        // Not `remove_from_path`: on the 0.25 backend that opens the file for
+        // reading only and then fails to shorten it, so the stale tag survives a
+        // clear — the very thing #194 was about. Handing it a handle we opened
+        // for writing is the same code path with a file it can actually write.
+        let mut handle = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)?;
+        TagType::Id3v1.remove_from(&mut handle, WriteOptions::default())?;
     } else {
         legacy.save_to_path(path, WriteOptions::default())?;
     }
@@ -805,7 +1025,18 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
     // frames (#46).
     let mut updated = Id3v2Tag::from(generic);
 
-    if let Some(original) = read_id3v2(path)? {
+    // The custom fields ID3v2 has no frame of its own for go on as `TXXX` frames
+    // named the way the file spells them; the ones it does have a frame for went
+    // through the generic tag above, under that frame (#201).
+    for (name, value) in raw_custom_fields(tags, TagType::Id3v2) {
+        updated.insert(Frame::UserText(ExtendedTextFrame::new(
+            TextEncoding::UTF8,
+            name.to_string(),
+            value.to_string(),
+        )));
+    }
+
+    if let Some(original) = read_id3v2(path, tag_only_options())? {
         for frame in &original {
             if !is_model_text_frame(frame) {
                 updated.insert(frame.clone());
@@ -819,6 +1050,11 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
     Ok(())
 }
 
+/// The Vorbis comment that names what encoded the file. Provenance, and the one
+/// the backend's own conversion moves into the vendor string — see
+/// [`save_with_custom_items`].
+const VORBIS_ENCODER: &str = "ENCODER";
+
 /// Tags that describe how the file was MADE, not what it holds (#197): the
 /// encoder and its settings (`TSSE`/`TENC`), and the two technical statements
 /// about the audio itself (`TLEN` length in milliseconds, `TFLT` file type).
@@ -830,10 +1066,16 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
 /// Stated twice because the two sides work on different things: the reader and
 /// the generic writer hold lofty [`ItemKey`]s, the ID3v2 carry loop holds
 /// concrete frames. The four ids are spelled the same in ID3v2.3 and 2.4.
-fn is_provenance_key(key: &ItemKey) -> bool {
+///
+/// `TSSE` reads back as `EncoderSoftware` on the 0.25 backend where it used to
+/// be `EncoderSettings` — the same frame under a second name, so both belong
+/// here. `ItemKey::FileType` is gone with that backend and `TFLT` no longer maps
+/// to any key at all, which leaves it a frame the model never sees; the frame-id
+/// half below is what keeps it (#201).
+fn is_provenance_key(key: ItemKey) -> bool {
     matches!(
         key,
-        ItemKey::EncoderSettings | ItemKey::EncodedBy | ItemKey::Length | ItemKey::FileType
+        ItemKey::EncoderSettings | ItemKey::EncoderSoftware | ItemKey::EncodedBy | ItemKey::Length
     )
 }
 
@@ -863,17 +1105,14 @@ fn is_model_text_frame(frame: &Frame<'_>) -> bool {
 /// The file's concrete ID3v2 tag, if it has one. Dispatches on the container so
 /// it works for every ID3v2-carrying format (MP3, AAC, AIFF, WAV), reading the
 /// concrete tag lofty's generic representation can't fully reproduce.
-fn read_id3v2(path: &Path) -> Result<Option<Id3v2Tag>, TagIoError> {
-    let file_type = probe_file(path)?.file_type();
-    let mut file = std::fs::File::open(path)?;
-    let options = parse_options();
-    // `probe_file` resolves the type, so these are the concrete kinds rather
-    // than an `Option` of them.
-    let tag = match file_type {
-        FileType::Mpeg => MpegFile::read_from(&mut file, options)?.id3v2().cloned(),
-        FileType::Aac => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
-        FileType::Aiff => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
-        FileType::Wav => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
+fn read_id3v2(path: &Path, options: ParseOptions) -> Result<Option<Id3v2Tag>, TagIoError> {
+    let container = container_of(path)?;
+    let mut file = buffered(path)?;
+    let tag = match container {
+        Some(FileType::Mpeg) => MpegFile::read_from(&mut file, options)?.id3v2().cloned(),
+        Some(FileType::Aac) => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
+        Some(FileType::Aiff) => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
+        Some(FileType::Wav) => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
         _ => None,
     };
     Ok(tag)
@@ -907,11 +1146,11 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
     let desired: HashSet<ItemKey> = file
         .tags
         .keys()
-        .map(|field| item_key_for(field, tag_type))
+        .filter_map(|field| item_key_for(field, tag_type))
         .collect();
     tag.retain(|item| {
         item.value().text().is_none()
-            || desired.contains(item.key())
+            || desired.contains(&item.key())
             // Provenance the model deliberately doesn't carry (#197) — without
             // this the retain reads "not in the model" as "delete".
             || is_provenance_key(item.key())
@@ -921,10 +1160,114 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
         // Clear first rather than append, so repeated writes can't accumulate
         // duplicate entries for the same field — then push what the model says,
         // which for a multi-value field is more than one item (#46).
-        tag.remove_key(&item_key_for(field, tag_type));
-        push_field_items(&mut tag, field, value);
+        if let Some(key) = item_key_for(field, tag_type) {
+            tag.remove_key(key);
+            push_field_items(&mut tag, field, value);
+        }
     }
-    tag.save_to_path(&file.path, WriteOptions::default())?;
+    save_with_custom_items(&file.path, tag, &file.tags)
+}
+
+/// Save a generic tag, putting the custom fields it cannot carry onto the
+/// concrete tag on the way out (#201).
+///
+/// The 0.22 backend let a format-specific item ride along in the generic tag as
+/// `ItemKey::Unknown`, so one save wrote everything. It no longer does, and — for
+/// Vorbis Comments and APE — the conversion to the generic tag drops those items
+/// outright, which would make a plain generic save *delete* every custom field
+/// the file had. So the file's own concrete tag is the starting point: the model
+/// supplies the text, the concrete tag keeps everything the model has no room
+/// for, and the stale custom items are replaced by what the model now says.
+fn save_with_custom_items(path: &Path, mut tag: Tag, tags: &TagMap) -> Result<(), TagIoError> {
+    let tag_type = tag.tag_type();
+    match tag_type {
+        TagType::VorbisComments => {
+            let existing = read_vorbis(path, tag_only_options())?.unwrap_or_default();
+            // The conversion below folds an `ENCODER` comment into the vendor
+            // string and drops the comment. That moves what made the file from
+            // one place in it to another, which is exactly what #197 says not to
+            // do — so both are put back the way the file had them.
+            let vendor = existing.vendor().to_string();
+            let encoders: Vec<String> = existing
+                .get_all(VORBIS_ENCODER)
+                .map(str::to_string)
+                .collect();
+            let (remainder, _) = existing.split_tag();
+            // Carried by hand, because the conversion below measures every image
+            // and silently drops one it cannot read — where a plain save wrote it
+            // out with a zeroed description instead. An image the app was asked to
+            // keep is kept whether or not the backend can make sense of its bytes.
+            let pictures: Vec<Picture> = tag.pictures().to_vec();
+            while !tag.pictures().is_empty() {
+                tag.remove_picture(0);
+            }
+            let mut merged = remainder.merge_tag(tag);
+            merged.set_vendor(vendor);
+            merged.remove(VORBIS_ENCODER).for_each(drop);
+            for encoder in encoders {
+                merged.push(VORBIS_ENCODER.to_string(), encoder);
+            }
+            for picture in pictures {
+                let information = PictureInformation::from_picture(&picture).unwrap_or_default();
+                merged.insert_picture(picture, Some(information)).ok();
+            }
+            let stale: Vec<String> = merged
+                .items()
+                .map(|(name, _)| name.to_string())
+                .filter(|name| !maps_to_item_key(tag_type, name))
+                .collect();
+            for name in stale {
+                merged.remove(&name).for_each(drop);
+            }
+            for (name, value) in raw_custom_fields(tags, tag_type) {
+                merged.push(name.to_string(), value.to_string());
+            }
+            merged.save_to_path(path, WriteOptions::default())?;
+        }
+        TagType::Ape => {
+            let (remainder, _) = read_ape(path, tag_only_options())?
+                .unwrap_or_default()
+                .split_tag();
+            let mut merged = remainder.merge_tag(tag);
+            let stale: Vec<String> = (&merged)
+                .into_iter()
+                .filter(|item| {
+                    // Only the text items are the model's to replace; a binary
+                    // one (APE keeps cover art in one) is left where it is.
+                    !maps_to_item_key(tag_type, item.key()) && item.value().text().is_some()
+                })
+                .map(|item| item.key().to_string())
+                .collect();
+            for name in &stale {
+                merged.remove(name);
+            }
+            for (name, value) in raw_custom_fields(tags, tag_type) {
+                if let Ok(item) = ApeItem::new(name.to_string(), ItemValue::Text(value.to_string()))
+                {
+                    merged.insert(item);
+                }
+            }
+            merged.save_to_path(path, WriteOptions::default())?;
+        }
+        TagType::Mp4Ilst => {
+            // The MP4 conversion *does* carry the file's own atoms across, so
+            // here the stale ones have to be taken back off before the model's
+            // go on.
+            let mut merged = Ilst::from(tag);
+            merged.retain(|atom| freeform_item(atom).is_none());
+            for (name, value) in raw_custom_fields(tags, tag_type) {
+                merged.insert(Atom::new(
+                    AtomIdent::Freeform {
+                        mean: FREEFORM_MEAN.into(),
+                        name: name.to_string().into(),
+                    },
+                    AtomData::UTF8(value.to_string()),
+                ));
+            }
+            merged.save_to_path(path, WriteOptions::default())?;
+        }
+        _ => tag.save_to_path(path, WriteOptions::default())?,
+    }
     Ok(())
 }
 
@@ -946,16 +1289,22 @@ fn load_or_new_tag(path: &Path) -> Result<Tag, TagIoError> {
 ///
 /// `push_unchecked` rather than `insert_unchecked`, because inserting *replaces*
 /// every item of the key and would leave only the last value. The `unchecked`
-/// half is unchanged and still needed: the checked calls silently drop
-/// `ItemKey::Unknown` (`Custom` fields), which have no mapping to verify.
+/// half keeps the checked call from quietly deciding what the tag type can hold
+/// — the two known holes are pinned by a test instead.
+///
+/// A field the tag type has no key for writes nothing here: that is a custom
+/// field spelled in the file's own terms, and it goes onto the concrete tag in
+/// [`save_with_custom_items`] (#201).
 fn push_field_items(tag: &mut Tag, field: &TagField, value: &str) {
-    let key = item_key_for(field, tag.tag_type());
+    let Some(key) = item_key_for(field, tag.tag_type()) else {
+        return;
+    };
     if !field.is_multi_value() {
         tag.push_unchecked(TagItem::new(key, item_value_for(field, value)));
         return;
     }
     for part in split_multi_value(value) {
-        tag.push_unchecked(TagItem::new(key.clone(), item_value_for(field, &part)));
+        tag.push_unchecked(TagItem::new(key, item_value_for(field, &part)));
     }
 }
 
@@ -969,16 +1318,44 @@ fn item_value_for(field: &TagField, value: &str) -> ItemValue {
     }
 }
 
-/// The field an item belongs to, and whether it got there through a legacy
-/// spelling rather than the standard one (#171) — which decides who wins when a
-/// file carries both.
-fn field_for_item_key(key: &ItemKey) -> (TagField, bool) {
-    if let ItemKey::Unknown(name) = key {
-        if let Some(field) = legacy_alias_field(name) {
-            return (field, true);
+/// The field a format-specific item name belongs to, and whether it got there
+/// through a legacy spelling rather than the standard one (#171) — which decides
+/// who wins when a file carries both.
+fn field_for_custom_name(name: &str) -> (TagField, bool) {
+    match legacy_alias_field(name) {
+        Some(field) => (field, true),
+        None => (TagField::Custom(name.to_string()), false),
+    }
+}
+
+/// Put one value the read found into the map.
+///
+/// A file really can carry several artists or genres, as separate Vorbis
+/// comments or as one multi-value ID3v2.4 frame — the backend surfaces both as
+/// repeated items. Joining them is what keeps the extras (#46); overwriting, as
+/// this once did, kept only the last and any edit then wrote that one value back
+/// over all of them. Fields that are not multi-valued keep the last-wins
+/// behaviour.
+fn insert_read_value(tags: &mut TagMap, field: TagField, from_alias: bool, value: String) {
+    // A legacy spelling never overrides the standard frame (#171). Both can be
+    // in one file — another tagger's `TXXX:Label` next to the `TPUB` an import
+    // just wrote — and the standard one is the current value.
+    if from_alias && tags.contains_key(&field) {
+        return;
+    }
+    match tags.entry(field) {
+        std::collections::btree_map::Entry::Vacant(slot) => {
+            slot.insert(value);
+        }
+        std::collections::btree_map::Entry::Occupied(mut slot) => {
+            if slot.key().is_multi_value() {
+                let joined = format!("{}{}{}", slot.get(), multi_value_separator(), value);
+                slot.insert(joined);
+            } else {
+                slot.insert(value);
+            }
         }
     }
-    (item_key_to_tag_field(key), false)
 }
 
 /// User-text (`TXXX`) names other taggers use for fields that have a standard
@@ -1027,19 +1404,24 @@ fn legacy_alias_field(name: &str) -> Option<TagField> {
 /// Musepack / Monkey's Audio / WavPack are the exotic tail;
 /// `every_written_field_maps_onto_every_tag_type` pins those two as the known
 /// holes so nothing else can join them unnoticed.
-fn item_key_for(field: &TagField, tag_type: TagType) -> ItemKey {
+/// A custom field is the one case with no answer here: its name is the file's
+/// own, and it has a generic key only if the backend happens to know that name
+/// for this tag type. When it doesn't, the field is written onto the concrete
+/// tag instead — see [`raw_custom_fields`].
+fn item_key_for(field: &TagField, tag_type: TagType) -> Option<ItemKey> {
     match field {
-        TagField::Bpm if tag_type == TagType::VorbisComments => ItemKey::Bpm,
+        TagField::Bpm if tag_type == TagType::VorbisComments => Some(ItemKey::Bpm),
         TagField::Publisher if matches!(tag_type, TagType::Mp4Ilst | TagType::Ape) => {
-            ItemKey::Label
+            Some(ItemKey::Label)
         }
-        TagField::Year if tag_type == TagType::Ape => ItemKey::Year,
+        TagField::Year if tag_type == TagType::Ape => Some(ItemKey::Year),
+        TagField::Custom(name) => item_key_for_custom_name(tag_type, name),
         other => tag_field_to_item_key(other),
     }
 }
 
-fn tag_field_to_item_key(field: &TagField) -> ItemKey {
-    match field {
+fn tag_field_to_item_key(field: &TagField) -> Option<ItemKey> {
+    Some(match field {
         TagField::Artist => ItemKey::TrackArtist,
         TagField::Title => ItemKey::TrackTitle,
         TagField::Album => ItemKey::AlbumTitle,
@@ -1070,17 +1452,22 @@ fn tag_field_to_item_key(field: &TagField) -> ItemKey {
         TagField::Url => ItemKey::AudioFileUrl,
         // Standard media frame: ID3v2 `TMED`, Vorbis `MEDIA`, MP4 `MEDIA`.
         TagField::MediaType => ItemKey::OriginalMediaType,
-        TagField::Custom(key) => ItemKey::Unknown(key.clone()),
-    }
+        // Named by the file, not by the model — resolved against the tag type in
+        // [`item_key_for`], which is what the write path actually calls.
+        TagField::Custom(_) => return None,
+    })
 }
 
-// Only `ItemKey::Unknown` round-trips as the literal string a caller put
-// into `TagField::Custom`. Any other recognized-but-unmapped `ItemKey`
-// variant (e.g. `Composer`, `Mood` — lofty recognizes far more keys than the
-// ten modeled here) falls back to its Rust `Debug` name instead, since we
-// have no per-format key text to recover once lofty has already parsed it
-// into a variant.
-fn item_key_to_tag_field(key: &ItemKey) -> TagField {
+/// A key the model has no field of its own for (e.g. `Mood`, `ReplayGainTrackGain`
+/// — the backend recognizes far more keys than the twenty modeled here) becomes a
+/// custom field named the way the file spells it for this tag type: the same name
+/// [`read_custom_items`] would have produced, so the two halves of a read agree and
+/// the next write puts the value back where it was.
+///
+/// Only a key with no per-format spelling at all falls back to its Rust `Debug`
+/// name; before #201 every one of them did, and a `REPLAYGAIN_TRACK_GAIN` frame
+/// came back as `ReplayGainTrackGain` and was written to a frame of that name.
+fn item_key_to_tag_field(key: ItemKey, tag_type: TagType) -> TagField {
     match key {
         ItemKey::TrackArtist => TagField::Artist,
         ItemKey::TrackTitle => TagField::Title,
@@ -1112,8 +1499,11 @@ fn item_key_to_tag_field(key: &ItemKey) -> TagField {
         ItemKey::CatalogNumber => TagField::CatalogNumber,
         ItemKey::AudioFileUrl => TagField::Url,
         ItemKey::OriginalMediaType => TagField::MediaType,
-        ItemKey::Unknown(key) => TagField::Custom(key.clone()),
-        other => TagField::Custom(format!("{other:?}")),
+        other => TagField::Custom(
+            custom_name_for_item_key(other, tag_type)
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("{other:?}")),
+        ),
     }
 }
 
@@ -1183,8 +1573,12 @@ pub enum TagIoError {
     Malformed(String),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    // The backend split its one error type in two (#201): reading a file and
+    // writing one now fail with different types.
     #[error("tag backend error: {0}")]
-    Backend(#[from] lofty::error::LoftyError),
+    Backend(#[from] FileParseError),
+    #[error("tag backend error: {0}")]
+    BackendWrite(#[from] FileEncodingError),
 }
 
 #[cfg(test)]
@@ -1231,8 +1625,10 @@ mod tests {
         let mut holes = Vec::new();
         for tag_type in tag_types {
             for field in known_fields() {
-                let key = item_key_for(&field, tag_type);
-                if key.map_key(tag_type, false).is_none() {
+                let mapped = item_key_for(&field, tag_type)
+                    .and_then(|key| key.map_key(tag_type))
+                    .is_some();
+                if !mapped {
                     holes.push(format!("{field:?} on {tag_type:?}"));
                 }
             }
@@ -1255,20 +1651,26 @@ mod tests {
         // was #165.
         assert_eq!(
             item_key_for(&TagField::Bpm, TagType::Id3v2),
-            ItemKey::IntegerBpm
+            Some(ItemKey::IntegerBpm)
         );
         assert_eq!(
             item_key_for(&TagField::Bpm, TagType::Mp4Ilst),
-            ItemKey::IntegerBpm
+            Some(ItemKey::IntegerBpm)
         );
         assert_eq!(
             item_key_for(&TagField::Bpm, TagType::VorbisComments),
-            ItemKey::Bpm
+            Some(ItemKey::Bpm)
         );
         // Both spellings read back as the same field, so the value round-trips
         // whichever one the file carries.
-        assert_eq!(item_key_to_tag_field(&ItemKey::Bpm), TagField::Bpm);
-        assert_eq!(item_key_to_tag_field(&ItemKey::IntegerBpm), TagField::Bpm);
+        assert_eq!(
+            item_key_to_tag_field(ItemKey::Bpm, TagType::VorbisComments),
+            TagField::Bpm
+        );
+        assert_eq!(
+            item_key_to_tag_field(ItemKey::IntegerBpm, TagType::Id3v2),
+            TagField::Bpm
+        );
         // Every other field on Vorbis is untouched by the tag type.
         for field in known_fields().into_iter().filter(|f| *f != TagField::Bpm) {
             assert_eq!(
@@ -1280,7 +1682,7 @@ mod tests {
 
     #[test]
     fn legacy_user_text_names_fold_into_the_field_they_mean() {
-        let alias = |name: &str| field_for_item_key(&ItemKey::Unknown(name.to_string()));
+        let alias = field_for_custom_name;
         assert_eq!(alias("Label"), (TagField::Publisher, true));
         assert_eq!(alias("ORGANIZATION"), (TagField::Publisher, true));
         assert_eq!(alias("OriginalMediaType"), (TagField::MediaType, true));
@@ -1304,10 +1706,11 @@ mod tests {
         // drop one of the two.
         assert_eq!(alias("KEY"), (TagField::Custom("KEY".to_string()), false));
         assert_eq!(alias("BPM"), (TagField::Custom("BPM".to_string()), false));
-        // A standard key is untouched by any of this.
+        // A standard key is untouched by any of this — it never reaches the
+        // alias table, because the generic tag carries it as an item of its own.
         assert_eq!(
-            field_for_item_key(&ItemKey::Publisher),
-            (TagField::Publisher, false)
+            item_key_to_tag_field(ItemKey::Publisher, TagType::Id3v2),
+            TagField::Publisher
         );
     }
 
@@ -1317,32 +1720,38 @@ mod tests {
         // (#165); `Label` maps there and reads back as the same field.
         assert_eq!(
             item_key_for(&TagField::Publisher, TagType::Mp4Ilst),
-            ItemKey::Label
+            Some(ItemKey::Label)
         );
-        assert_eq!(item_key_to_tag_field(&ItemKey::Label), TagField::Publisher);
+        assert_eq!(
+            item_key_to_tag_field(ItemKey::Label, TagType::Mp4Ilst),
+            TagField::Publisher
+        );
         // Where `Publisher` does map, it is left alone — changing the Vorbis
         // spelling would move the value to a different comment name.
         assert_eq!(
             item_key_for(&TagField::Publisher, TagType::VorbisComments),
-            ItemKey::Publisher
+            Some(ItemKey::Publisher)
         );
         assert_eq!(
             item_key_for(&TagField::Publisher, TagType::Id3v2),
-            ItemKey::Publisher
+            Some(ItemKey::Publisher)
         );
         // APE spells the year plainly and has no recording date.
-        assert_eq!(item_key_for(&TagField::Year, TagType::Ape), ItemKey::Year);
+        assert_eq!(
+            item_key_for(&TagField::Year, TagType::Ape),
+            Some(ItemKey::Year)
+        );
         assert_eq!(
             item_key_for(&TagField::Year, TagType::Id3v2),
-            ItemKey::RecordingDate
+            Some(ItemKey::RecordingDate)
         );
     }
 
     #[test]
     fn known_fields_round_trip_through_item_key() {
         for field in known_fields() {
-            let key = tag_field_to_item_key(&field);
-            assert_eq!(item_key_to_tag_field(&key), field);
+            let key = tag_field_to_item_key(&field).expect("a known field has a key");
+            assert_eq!(item_key_to_tag_field(key, TagType::Id3v2), field);
         }
     }
 
@@ -1386,12 +1795,35 @@ mod tests {
         assert!(is_writable_value(&TagField::InitialKey, "8A"));
     }
 
+    /// A custom field is named by the file, and the two halves of a read have to
+    /// agree on that name or a write puts the value somewhere else (#201).
+    ///
+    /// A name the backend has no key for is the app's to carry verbatim, onto
+    /// the concrete tag. A name it *does* know is carried by the generic tag —
+    /// and must come back under the same spelling, which is what the fallback in
+    /// [`item_key_to_tag_field`] is for.
     #[test]
-    fn custom_field_round_trips_through_unknown_item_key() {
-        let field = TagField::Custom("MOOD".to_string());
-        let key = tag_field_to_item_key(&field);
-        assert_eq!(key, ItemKey::Unknown("MOOD".to_string()));
-        assert_eq!(item_key_to_tag_field(&key), field);
+    fn a_custom_field_keeps_the_name_the_file_spells_it_with() {
+        // Nothing in the backend's maps is called this, on any tag type.
+        let mine = TagField::Custom("TAGREX_CUSTOM_TEST".to_string());
+        assert_eq!(item_key_for(&mine, TagType::Id3v2), None);
+        assert_eq!(item_key_for(&mine, TagType::VorbisComments), None);
+        assert_eq!(field_for_custom_name("TAGREX_CUSTOM_TEST").0, mine);
+
+        // One it does know goes through the generic tag, and reads back under
+        // the name that tag type spells it with rather than a Rust variant name.
+        let gain = ItemKey::ReplayGainTrackGain;
+        assert_eq!(
+            item_key_to_tag_field(gain, TagType::VorbisComments),
+            TagField::Custom("REPLAYGAIN_TRACK_GAIN".to_string())
+        );
+        assert_eq!(
+            item_key_for(
+                &TagField::Custom("REPLAYGAIN_TRACK_GAIN".to_string()),
+                TagType::VorbisComments
+            ),
+            Some(gain)
+        );
     }
 
     #[test]

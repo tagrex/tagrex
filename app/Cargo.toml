@@ -5,11 +5,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-# The GUI shell needs a newer toolchain than the core crates: Tauri 2 raises
-# the minimum. Core (tagrex-core, providers) stays at the workspace's 1.75 so
-# the library half remains widely compatible; only this desktop shell requires
-# a modern rustc.
-rust-version = "1.82"
+# The GUI shell's own minimum is Tauri 2's 1.82, which the workspace's 1.89 now
+# covers — the tag backend asks for more than the shell does (#201).
+rust-version.workspace = true
 publish = false
 
 [dependencies]

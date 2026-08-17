@@ -7,7 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The tag backend is three releases newer.** Moving from 0.22 to 0.25 brings
+  three releases of parsing fixes and format support, and takes away the one
+  thing the custom fields were built on: the backend's generic tag no longer has
+  any way to hold an item it doesn't recognise. Those items — everything you add
+  by hand, plus the ReplayGain values and release ids a real file carries — are
+  now read from and written to the format's own tag directly: a `TXXX` frame on
+  MP3, AAC, AIFF and WAV, a comment on FLAC and Ogg, a freeform atom on M4A, an
+  item on the APE formats. Verified on real files of every one of those: an
+  edit, a clear and an undo leave DJ cue points, artwork, ReplayGain, the legacy
+  ID3v1 block and everything another tagger wrote exactly where they were. The
+  minimum Rust version rises to 1.89 with it. (#201)
+
 ### Fixed
+
+- **A custom field keeps the name the file spells it with.** A field the backend
+  recognises but the app has no column for — the ReplayGain values, the
+  MusicBrainz ids — was listed under an internal name and, worse, written back
+  under that name: a `REPLAYGAIN_TRACK_GAIN` read as `ReplayGainTrackGain` and
+  the next save put the value in a frame of that name, where nothing else looks
+  for it. The name now comes from the file, both ways. (#201)
 
 - **What encoded a file is left alone rather than edited or cleared.** The
   encoder and its settings, the length in milliseconds and the file-type frame

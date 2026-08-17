@@ -12,7 +12,7 @@ publish = false
 # Cover art resize/recompress (#41). Only the two cover formats we handle, to
 # keep the dependency and build lean.
 image = { version = "0.25.5", default-features = false, features = ["jpeg", "png"] }
-lofty = "0.22.2"
+lofty = "0.25.1"
 regex = "1.13.1"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 thiserror.workspace = true
