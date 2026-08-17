@@ -665,15 +665,22 @@ fn render_segments(
             // into an empty string. Inside a `[…]` it stays as forgiving as
             // everything else there.
             //
+            // The boolean group is the one exception, and it is the point of
+            // that group: `$if2(%albumartist%,%artist%)` exists to cope with one
+            // of them not being there, so a function whose question is "is it
+            // there?" treats absence as its answer rather than as a failure
+            // (#202).
+            //
             // The values arrive already sanitized, because the placeholders
             // inside the arguments sanitized them; the result is not sanitized
             // again, so a separator a *pattern* puts there deliberately still
             // means what it does everywhere else in the mask.
             Segment::Call(function, arguments) => {
+                let tolerant = optional || function.tolerates_missing_tags();
                 let mut values = Vec::with_capacity(arguments.len());
                 for argument in arguments {
                     let mut buffer = String::new();
-                    render_segments(argument, tags, file, optional, &mut buffer)?;
+                    render_segments(argument, tags, file, tolerant, &mut buffer)?;
                     values.push(buffer);
                 }
                 let value = function.apply(&values)?;
@@ -1095,8 +1102,10 @@ pub enum PlaceholderGroup {
     Technical,
     /// `%side%` and `%skip%`, which behave unlike the rest.
     Special,
-    /// A `$name(…)` call rather than a placeholder (#73).
+    /// A `$name(…)` call that reshapes a value (#73).
     Function,
+    /// A `$name(…)` call that asks a question about one (#202).
+    Logic,
 }
 
 impl PlaceholderGroup {
@@ -1107,7 +1116,15 @@ impl PlaceholderGroup {
             Self::Technical => "Technical",
             Self::Special => "Special",
             Self::Function => "Functions",
+            Self::Logic => "Logic",
         }
+    }
+
+    /// Whether entries in this group are written `$name(…)` rather than
+    /// `%name%` — which is what decides the shape of the token the reference
+    /// offers, and what keeps a column header from picking up a function.
+    pub fn is_function(self) -> bool {
+        matches!(self, Self::Function | Self::Logic)
     }
 }
 
@@ -1216,7 +1233,7 @@ pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
             token: function.token(),
             name,
             description,
-            group: PlaceholderGroup::Function,
+            group: function.group(),
             render: true,
             extract: false,
         }
@@ -2007,6 +2024,96 @@ mod tests {
         assert_eq!(mask.render(&tags).unwrap(), "Beatles, The/Come Together");
     }
 
+    // ---- the boolean group (#202) ----
+
+    #[test]
+    fn the_fallback_chain_that_is_the_reason_for_the_group() {
+        // Neither half of this can be written without `$if2`: a bare
+        // `%albumartist%` on a file that has none is an error, and a `[…]`
+        // section can drop a part but cannot put another one in its place.
+        let mask = Mask::parse("$if2(%albumartist%,%artist%) - %title%").unwrap();
+        let compilation = tags(&[
+            (TagField::AlbumArtist, "Various"),
+            (TagField::Artist, "Autechre"),
+            (TagField::Title, "Rain"),
+        ]);
+        assert_eq!(mask.render(&compilation).unwrap(), "Various - Rain");
+        let album = tags(&[(TagField::Artist, "Autechre"), (TagField::Title, "Rain")]);
+        assert_eq!(mask.render(&album).unwrap(), "Autechre - Rain");
+    }
+
+    #[test]
+    fn inside_the_boolean_group_a_missing_tag_is_an_answer_not_a_failure() {
+        // The exception to #73's rule, and the whole point of it: asking
+        // whether something is there cannot fail because it isn't.
+        let mask = Mask::parse("$if(%year%,%year%,no year)").unwrap();
+        assert_eq!(mask.render(&TagMap::new()).unwrap(), "no year");
+
+        // The rule itself is untouched for every other function.
+        let strict = Mask::parse("$upper(%year%)").unwrap();
+        assert!(matches!(
+            strict.render(&TagMap::new()),
+            Err(MaskError::MissingTag(name)) if name == "year"
+        ));
+
+        // And a branch that is *not* taken cannot fail either, which is what
+        // makes eager evaluation safe here.
+        let both = Mask::parse("$if(%title%,%title%,$upper(%artist%))").unwrap();
+        let only_title = tags(&[(TagField::Title, "Rain")]);
+        assert_eq!(both.render(&only_title).unwrap(), "Rain");
+    }
+
+    #[test]
+    fn a_question_composes_because_its_answer_is_just_a_value() {
+        // `$and` reads its arguments with the same "is it empty" rule that
+        // `$equal` answers in, so the two nest without a second notion of truth.
+        let mask =
+            Mask::parse("$if($and($isnumber(%bpm%),$greater(%bpm%,120)),fast,steady)").unwrap();
+        let fast = tags(&[(TagField::Bpm, "128")]);
+        assert_eq!(mask.render(&fast).unwrap(), "fast");
+        let slow = tags(&[(TagField::Bpm, "90")]);
+        assert_eq!(mask.render(&slow).unwrap(), "steady");
+        // No tempo at all: not a number, so not greater than anything.
+        assert_eq!(mask.render(&TagMap::new()).unwrap(), "steady");
+    }
+
+    #[test]
+    fn a_boolean_call_still_decides_whether_a_section_survives() {
+        let mask = Mask::parse("%title%[' ('$if($in(Remix,%title%),remix,)')']").unwrap();
+        let remix = tags(&[(TagField::Title, "Rain (Sasha Remix)")]);
+        assert_eq!(mask.render(&remix).unwrap(), "Rain (Sasha Remix) (remix)");
+        // The call produced nothing, so the section contributes nothing — not
+        // even its brackets.
+        let plain = tags(&[(TagField::Title, "Rain")]);
+        assert_eq!(mask.render(&plain).unwrap(), "Rain");
+    }
+
+    #[test]
+    fn the_boolean_group_is_render_only_like_the_rest() {
+        let mask = Mask::parse("$if2(%albumartist%,%artist%)").unwrap();
+        assert!(matches!(
+            mask.extract("Autechre"),
+            Err(MaskError::RenderOnly)
+        ));
+    }
+
+    #[test]
+    fn the_reference_splits_the_two_kinds_of_call_and_writes_both_the_same_way() {
+        for doc in placeholder_reference() {
+            assert_eq!(
+                doc.group.is_function(),
+                doc.token.starts_with('$'),
+                "{} is grouped against the way it is written",
+                doc.name
+            );
+        }
+        let groups: Vec<&str> = placeholder_reference()
+            .iter()
+            .map(|doc| doc.group.label())
+            .collect();
+        assert!(groups.contains(&"Functions") && groups.contains(&"Logic"));
+    }
+
     // ---- the placeholder reference (#148) ----
 
     #[test]
@@ -2038,6 +2145,24 @@ mod tests {
             let extracts = !matches!(mask.extract("value"), Err(MaskError::RenderOnly));
             assert_eq!(renders, doc.render, "{} renders differently", doc.name);
             assert_eq!(extracts, doc.extract, "{} extracts differently", doc.name);
+        }
+    }
+
+    #[test]
+    fn the_reference_emits_each_group_once() {
+        // The popover groups by *consecutive* runs, so a group whose entries are
+        // not contiguous is drawn twice under the same heading. That is decided
+        // here, in the order this list is built, and nowhere else (#202).
+        let mut seen: Vec<&str> = Vec::new();
+        for doc in placeholder_reference() {
+            let label = doc.group.label();
+            if seen.last() != Some(&label) {
+                assert!(
+                    !seen.contains(&label),
+                    "{label} is split across the list and would be drawn twice"
+                );
+                seen.push(label);
+            }
         }
     }
 

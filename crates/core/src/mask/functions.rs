@@ -21,9 +21,38 @@
 //! Whitespace-sensitive functions are the exception worth naming: `$trim` and
 //! friends work on the Unicode definition of whitespace, so a non-breaking space
 //! copied out of a web page is trimmed like any other.
+//!
+//! # What counts as true (#202)
+//!
+//! **A value is true when it is not empty.** That is the *same* rule a `[…]`
+//! section already follows — it survives when something inside it resolved to
+//! something — and having one notion of truth in the grammar matters more than
+//! any refinement of it. So a `0` is a value and therefore true, and the
+//! functions that answer a question return [`TRUE`] or the empty string, which
+//! is what lets them nest: `$and($equal(…),$isnumber(…))` is just a value being
+//! asked whether it is empty.
+//!
+//! The group carries one exception to the rules above, and it is the point of
+//! the group: **inside these functions a missing tag is empty, not an error.**
+//! Everywhere else a bare `%artist%` on a file with no artist is an
+//! unsatisfiable pattern and says so, and `$upper()` doesn't change that. But
+//! `$if2(%albumartist%,%artist%)` exists precisely to cope with one of them not
+//! being there, and a function whose whole job is to ask "is it there?" cannot
+//! fail because the answer is no. See [`Function::tolerates_missing_tags`].
+//!
+//! Arguments are evaluated before the function runs — including the branch an
+//! `$if` will not take. That is deliberate: with absence turned into emptiness
+//! the untaken branch has nothing to fail on, an argument renders into a buffer
+//! of its own so it cannot make an enclosing section survive, and evaluating a
+//! string twice costs nothing worth a second evaluation strategy.
 
-use super::{pad_numeric, MaskError};
+use super::{pad_numeric, MaskError, PlaceholderGroup};
 use crate::matching::NOISE_ATTRIBUTES;
+
+/// What a function that answers a question returns for yes. Any non-empty value
+/// would do — this is the shortest one that reads as an answer rather than as
+/// data if it ever reaches a filename.
+const TRUE: &str = "1";
 
 /// The default leading words [`Function::StripPrefix`] and
 /// [`Function::SwapPrefix`] remove, when the pattern names none of its own.
@@ -56,6 +85,18 @@ pub(super) enum Function {
     StripPrefix,
     SwapPrefix,
     CutMix,
+    // The boolean group (#202): asking a question rather than reshaping a value.
+    If,
+    If2,
+    Equal,
+    NotEqual,
+    And,
+    Or,
+    Not,
+    Greater,
+    Longer,
+    IsNumber,
+    In,
 }
 
 impl Function {
@@ -90,7 +131,40 @@ impl Function {
             Self::PadLeft | Self::PadRight => (2, Some(3)),
             Self::Substr | Self::Replace | Self::Insert | Self::GetPart => (3, Some(3)),
             Self::StripPrefix | Self::SwapPrefix => (1, None),
+            Self::Not | Self::IsNumber => (1, Some(1)),
+            Self::If2 | Self::Equal | Self::NotEqual | Self::Greater | Self::Longer | Self::In => {
+                (2, Some(2))
+            }
+            Self::If => (2, Some(3)),
+            // Two at the least: `$and` of one thing is the thing, which is
+            // almost certainly a miscounted call rather than an intention.
+            Self::And | Self::Or => (2, None),
         }
+    }
+
+    /// Whether a missing tag inside this function's arguments is emptiness
+    /// rather than an error (#202).
+    ///
+    /// True for the boolean group alone. Everywhere else the rule from #73
+    /// holds — wrapping `%artist%` in `$upper()` must not quietly turn an
+    /// unsatisfiable pattern into an empty string, because `[…]` is what says
+    /// "if it is there". These functions *are* that question in another form,
+    /// so for them absence is an answer.
+    pub(super) fn tolerates_missing_tags(self) -> bool {
+        matches!(
+            self,
+            Self::If
+                | Self::If2
+                | Self::Equal
+                | Self::NotEqual
+                | Self::And
+                | Self::Or
+                | Self::Not
+                | Self::Greater
+                | Self::Longer
+                | Self::IsNumber
+                | Self::In
+        )
     }
 
     /// Apply the function to its already-evaluated arguments.
@@ -145,6 +219,44 @@ impl Function {
                 None => first.to_string(),
             },
             Self::CutMix => cut_mix(first),
+
+            // The boolean group (#202). Everything here rests on one rule: a
+            // value is true when it is not empty.
+            Self::If => {
+                if truthy(first) {
+                    args[1].clone()
+                } else {
+                    args.get(2).cloned().unwrap_or_default()
+                }
+            }
+            // The fallback chain -- "the album artist, or the artist when there
+            // isn't one" -- which is the reason this group is worth having.
+            Self::If2 => {
+                if truthy(first) {
+                    first.to_string()
+                } else {
+                    args[1].clone()
+                }
+            }
+            // Exactly equal, case and all. `$equal($lower(a),$lower(b))` is the
+            // case-insensitive one, and spelling it out beats a second function
+            // with a hidden rule inside it.
+            Self::Equal => flag(first == args[1]),
+            Self::NotEqual => flag(first != args[1]),
+            Self::And => flag(args.iter().all(|value| truthy(value))),
+            Self::Or => flag(args.iter().any(|value| truthy(value))),
+            Self::Not => flag(!truthy(first)),
+            // Numbers, not text: `9` is greater than `10` alphabetically and
+            // that is never what a pattern means. A value that is not a number
+            // is not greater than anything, so the answer is no -- which keeps
+            // `$greater(%bpm%,120)` quiet on a file whose BPM is empty.
+            Self::Greater => flag(match (number(first), number(&args[1])) {
+                (Some(left), Some(right)) => left > right,
+                _ => false,
+            }),
+            Self::Longer => flag(first.chars().count() > args[1].chars().count()),
+            Self::IsNumber => flag(number(first).is_some()),
+            Self::In => flag(!first.is_empty() && args[1].contains(first)),
         })
     }
 
@@ -217,6 +329,31 @@ impl Function {
                 "cutmix",
                 "$cutmix(x) — drop a trailing (Original Mix), (Remastered), …",
             ),
+            Self::If => (
+                "if",
+                "$if(test,then[,else]) — choose by whether test is empty",
+            ),
+            Self::If2 => ("if2", "$if2(x,fallback) — x, or fallback when x is empty"),
+            Self::Equal => ("equal", "$equal(a,b) — exactly the same text"),
+            Self::NotEqual => ("nequal", "$nequal(a,b) — not the same text"),
+            Self::And => ("and", "$and(a,b,…) — true when none of them is empty"),
+            Self::Or => ("or", "$or(a,b,…) — true when any of them is not empty"),
+            Self::Not => ("not", "$not(x) — true when x is empty"),
+            Self::Greater => ("greater", "$greater(a,b) — compares as numbers, not text"),
+            Self::Longer => ("longer", "$longer(a,b) — a has more characters than b"),
+            Self::IsNumber => ("isnumber", "$isnumber(x) — x reads as a number"),
+            Self::In => ("in", "$in(x,text) — text contains x"),
+        }
+    }
+
+    /// Which section of the reference this belongs under (#202): the ones that
+    /// reshape a value, and the ones that ask a question about it. Two shorter
+    /// lists read better than one of thirty-three.
+    pub(super) fn group(self) -> PlaceholderGroup {
+        if self.tolerates_missing_tags() {
+            PlaceholderGroup::Logic
+        } else {
+            PlaceholderGroup::Function
         }
     }
 }
@@ -246,6 +383,17 @@ pub(super) const ALL_FUNCTIONS: &[Function] = &[
     Function::StripPrefix,
     Function::SwapPrefix,
     Function::CutMix,
+    Function::If,
+    Function::If2,
+    Function::Not,
+    Function::And,
+    Function::Or,
+    Function::Equal,
+    Function::NotEqual,
+    Function::Greater,
+    Function::Longer,
+    Function::In,
+    Function::IsNumber,
 ];
 
 /// A function by the name written in the pattern, or `None` — the parser then
@@ -262,6 +410,35 @@ pub(super) fn function_from_name(name: &str) -> Option<Function> {
         .iter()
         .copied()
         .find(|function| function.name() == lowered)
+}
+
+/// Whether a value counts as true: not empty. The whole boolean group rests on
+/// this one line, and it is deliberately the same question `[…]` asks.
+fn truthy(value: &str) -> bool {
+    !value.is_empty()
+}
+
+/// An answer to a question, in the form the rule above can read back.
+fn flag(answer: bool) -> String {
+    if answer {
+        TRUE.to_string()
+    } else {
+        String::new()
+    }
+}
+
+/// A value read as a number, or `None` when it isn't one.
+///
+/// Decimals count: BPM is the field anybody actually compares, and it is
+/// routinely `128.5`. Infinities and NaN do not — they parse, but nothing in a
+/// tag means them, and letting them through would make `$greater` answer
+/// questions nobody asked.
+fn number(value: &str) -> Option<f64> {
+    value
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|parsed| parsed.is_finite())
 }
 
 /// A count argument: a plain non-negative integer.
@@ -578,6 +755,99 @@ mod tests {
         let args = vec!["title".to_string(), "two".to_string()];
         let error = Function::Left.apply(&args).expect_err("refuses");
         assert!(matches!(error, MaskError::BadArgument(_)), "{error:?}");
+    }
+
+    #[test]
+    fn a_value_is_true_when_it_is_not_empty_and_the_group_answers_in_kind() {
+        // One rule, the same one `[…]` follows. A `0` is a value, so it is true;
+        // the functions that answer a question say no with an empty string,
+        // which is what lets them nest inside one another.
+        assert_eq!(call(Function::Not, &[""]), TRUE);
+        assert_eq!(call(Function::Not, &["anything"]), "");
+        assert_eq!(
+            call(Function::Not, &["0"]),
+            "",
+            "0 is a value, so it is true"
+        );
+        assert_eq!(call(Function::And, &["a", "b"]), TRUE);
+        assert_eq!(call(Function::And, &["a", "", "c"]), "");
+        assert_eq!(call(Function::Or, &["", "", "c"]), TRUE);
+        assert_eq!(call(Function::Or, &["", ""]), "");
+    }
+
+    #[test]
+    fn if_chooses_a_branch_and_if2_falls_back() {
+        assert_eq!(call(Function::If, &["yes", "then", "else"]), "then");
+        assert_eq!(call(Function::If, &["", "then", "else"]), "else");
+        // No else branch: nothing.
+        assert_eq!(call(Function::If, &["", "then"]), "");
+        // The reason the group exists: the album artist, or the artist when
+        // there is no album artist.
+        assert_eq!(call(Function::If2, &["Various", "Autechre"]), "Various");
+        assert_eq!(call(Function::If2, &["", "Autechre"]), "Autechre");
+    }
+
+    #[test]
+    fn comparisons_say_what_they_compare() {
+        assert_eq!(call(Function::Equal, &["Rain", "Rain"]), TRUE);
+        // Exact, case and all -- `$equal($lower(a),$lower(b))` is the other one.
+        assert_eq!(call(Function::Equal, &["Rain", "rain"]), "");
+        assert_eq!(call(Function::NotEqual, &["Rain", "rain"]), TRUE);
+        // Numbers, not text: `9` beats `10` alphabetically and that is never
+        // what a pattern means.
+        assert_eq!(call(Function::Greater, &["9", "10"]), "");
+        assert_eq!(call(Function::Greater, &["128.5", "128"]), TRUE);
+        // Not a number, so not greater than anything -- which keeps a file with
+        // an empty BPM quiet instead of failing.
+        assert_eq!(call(Function::Greater, &["", "120"]), "");
+        assert_eq!(call(Function::Greater, &["fast", "120"]), "");
+        assert_eq!(call(Function::Longer, &["Étude", "Rain"]), TRUE);
+        assert_eq!(call(Function::Longer, &["Rain", "Étude"]), "");
+    }
+
+    #[test]
+    fn isnumber_accepts_the_decimals_a_tempo_really_carries() {
+        assert_eq!(call(Function::IsNumber, &["128"]), TRUE);
+        assert_eq!(call(Function::IsNumber, &["128.5"]), TRUE);
+        assert_eq!(call(Function::IsNumber, &["-3"]), TRUE);
+        assert_eq!(call(Function::IsNumber, &["A1"]), "");
+        assert_eq!(call(Function::IsNumber, &[""]), "");
+        // Parseable as a float, but nothing in a tag means them.
+        assert_eq!(call(Function::IsNumber, &["inf"]), "");
+        assert_eq!(call(Function::IsNumber, &["NaN"]), "");
+    }
+
+    #[test]
+    fn in_asks_whether_the_text_contains_the_value() {
+        assert_eq!(
+            call(Function::In, &["Mix", "Desert Rain (Original Mix)"]),
+            TRUE
+        );
+        assert_eq!(
+            call(Function::In, &["Dub", "Desert Rain (Original Mix)"]),
+            ""
+        );
+        // An empty needle is in nothing: "everything contains nothing" is true
+        // but useless, and a pattern asking it has almost certainly lost a
+        // placeholder.
+        assert_eq!(call(Function::In, &["", "anything"]), "");
+    }
+
+    #[test]
+    fn only_the_boolean_group_treats_a_missing_tag_as_an_answer() {
+        // The rule from #73 still holds everywhere else, and this is what the
+        // render arm keys off -- so it is worth pinning which side each function
+        // is on.
+        for function in ALL_FUNCTIONS {
+            assert_eq!(
+                function.tolerates_missing_tags(),
+                function.group() == PlaceholderGroup::Logic,
+                "{} is on one side of the rule and in the other group",
+                function.name()
+            );
+        }
+        assert!(Function::If2.tolerates_missing_tags());
+        assert!(!Function::Upper.tolerates_missing_tags());
     }
 
     #[test]

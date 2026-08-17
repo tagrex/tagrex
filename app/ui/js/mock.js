@@ -729,6 +729,9 @@ function mockInvoke(cmd, args) {
             false,
             "$substr(,,)",
           ],
+          // A group's rows have to stay together: the popover groups by
+          // consecutive runs, so splitting them draws the heading twice (#202).
+          ["if2", "$if2(x,fallback) — x, or fallback when x is empty", "Logic", true, false, "$if2(,)"],
         ].map(([name, description, group, render, extract, token]) => ({
           token: token ?? `%${name}%`,
           name,

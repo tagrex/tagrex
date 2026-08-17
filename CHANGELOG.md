@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A mask can ask a question, not just reshape an answer.** Eleven more
+  functions: `$if`, `$if2`, `$equal`, `$nequal`, `$and`, `$or`, `$not`,
+  `$greater`, `$longer`, `$isnumber` and `$in`, listed under **Logic** in the
+  reference behind every mask box. The one worth reaching for first is
+  `$if2(%albumartist%,%artist%)` — the album artist, or the artist when there
+  isn't one — which no pattern could express before: an optional `[…]` section
+  can drop a part but cannot put another one in its place. There is one rule for
+  what counts as true, and it is the rule `[…]` already followed: **a value is
+  true when it is not empty**. Inside these functions a missing tag is simply
+  empty rather than an error, because asking whether something is there cannot
+  fail on the answer being no. `$greater` compares as numbers rather than as
+  text, so `9` is not greater than `10`. (#202)
+
 ## [0.8.0] - 2026-08-17
 
 ### Added
