@@ -12,7 +12,7 @@ use lofty::error::{FileEncodingError, FileParseError};
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::flac::FlacFile;
 use lofty::id3::v1::Id3v1Tag;
-use lofty::id3::v2::{ExtendedTextFrame, Frame, Id3v2Tag};
+use lofty::id3::v2::{ExtendedTextFrame, Frame, Id3v2Tag, Id3v2Version};
 use lofty::iff::aiff::AiffFile;
 use lofty::iff::wav::WavFile;
 use lofty::mp4::{Atom, AtomData, AtomIdent, Ilst};
@@ -454,6 +454,119 @@ pub struct AudioProps {
     pub channels: Option<u8>,
 }
 
+/// A kind of tag block a file can carry (#47).
+///
+/// The app's own vocabulary, not the backend's: a container is allowed several
+/// of these at once, and which ones a file actually has is the difference
+/// between "the edit didn't take" and "you were reading the other block" — the
+/// confusion behind #194.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TagBlockKind {
+    Id3v1,
+    Id3v2,
+    VorbisComments,
+    Ape,
+    Mp4Ilst,
+    RiffInfo,
+    AiffText,
+}
+
+impl TagBlockKind {
+    /// What the block is called where a person reads it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Id3v1 => "ID3v1",
+            Self::Id3v2 => "ID3v2",
+            Self::VorbisComments => "Vorbis Comments",
+            Self::Ape => "APE",
+            Self::Mp4Ilst => "MP4",
+            Self::RiffInfo => "RIFF INFO",
+            Self::AiffText => "AIFF Text",
+        }
+    }
+
+    fn from_tag_type(tag_type: TagType) -> Option<Self> {
+        Some(match tag_type {
+            TagType::Id3v1 => Self::Id3v1,
+            TagType::Id3v2 => Self::Id3v2,
+            TagType::VorbisComments => Self::VorbisComments,
+            TagType::Ape => Self::Ape,
+            TagType::Mp4Ilst => Self::Mp4Ilst,
+            TagType::RiffInfo => Self::RiffInfo,
+            TagType::AiffText => Self::AiffText,
+            // The backend's list is open-ended; a kind the app has no name for
+            // is left out of the report rather than shown as a guess.
+            _ => return None,
+        })
+    }
+}
+
+/// Which ID3v2 revision a block is written in (#47). The one tag kind whose
+/// version is worth stating: 2.3 and 2.4 differ in ways DJ hardware notices,
+/// and the app already has a preference for which one it writes (#79).
+///
+/// Read on demand, per file, by [`TagEngine::id3v2_revision`] — deliberately not
+/// part of the per-file report. The backend only reveals it on a concrete tag,
+/// and reading one for every file in a library measured at roughly the cost of
+/// the whole listing again. Getting it from the conversion the read already does
+/// looked free and isn't: that conversion keeps the revision only when the tag
+/// has a frame the generic one cannot represent, so a plainly-tagged file would
+/// have reported 2.4 whatever it really was. A value that is right most of the
+/// time is worse than one asked for when it matters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Id3v2Revision {
+    V2,
+    V3,
+    V4,
+}
+
+impl Id3v2Revision {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::V2 => "2.2",
+            Self::V3 => "2.3",
+            Self::V4 => "2.4",
+        }
+    }
+
+    fn from_lofty(version: Id3v2Version) -> Self {
+        match version {
+            Id3v2Version::V2 => Self::V2,
+            Id3v2Version::V3 => Self::V3,
+            _ => Self::V4,
+        }
+    }
+}
+
+/// One tag block a file carries (#47).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TagBlock {
+    pub kind: TagBlockKind,
+    /// Whether this is the block the app reads its values from, and the one a
+    /// write goes to. Decided by the read priority (#84).
+    pub read_from: bool,
+}
+
+impl TagBlock {
+    /// What to show for this block. The kind alone: see [`Id3v2Revision`] for
+    /// why the ID3v2 revision is not part of a per-file report.
+    pub fn label(&self) -> &'static str {
+        self.kind.name()
+    }
+}
+
+/// One read of a file: its tags, its technical properties, and the tag blocks it
+/// carries (#40, #172, #47).
+///
+/// All three from a single probe. The listing needs every one of them per file,
+/// and parsing three times over would triple the cost of opening a library.
+#[derive(Debug, Clone)]
+pub struct TrackRead {
+    pub file: TrackFile,
+    pub props: AudioProps,
+    pub blocks: Vec<TagBlock>,
+}
+
 /// A single audio file as seen by the table model.
 #[derive(Debug, Clone)]
 pub struct TrackFile {
@@ -709,16 +822,18 @@ pub struct TagEngine;
 impl TagEngine {
     /// Read tags from a file on disk.
     pub fn read(path: &Path) -> Result<TrackFile, TagIoError> {
-        Ok(Self::read_with_props(path)?.0)
+        Ok(Self::read_with_props(path)?.file)
     }
 
-    /// Read the tags **and** the technical properties from one probe (#172).
+    /// Read the tags, the technical properties **and** the tag blocks from one
+    /// probe (#172, #47).
     ///
-    /// The file listing needs both — the tags for the columns, the duration for
-    /// the Length column — and parsing it twice would double the cost of opening
-    /// a library of thousands of files for a value the first parse already had.
-    /// [`read`](Self::read) is this without the second half.
-    pub fn read_with_props(path: &Path) -> Result<(TrackFile, AudioProps), TagIoError> {
+    /// The file listing needs all three — the tags for the columns, the duration
+    /// for the Length column, the blocks for the Tags column — and parsing the
+    /// file once per answer would multiply the cost of opening a library of
+    /// thousands of files by the number of questions asked of it.
+    /// [`read`](Self::read) is this keeping only the first.
+    pub fn read_with_props(path: &Path) -> Result<TrackRead, TagIoError> {
         let mut tagged_file = probe_file(path)?;
         let format = AudioFormat::from_lofty(tagged_file.file_type())?;
         let properties = tagged_file.properties();
@@ -782,14 +897,26 @@ impl TagEngine {
             }
         }
 
-        Ok((
-            TrackFile {
+        // Which blocks the file carries, in the order it carries them, with the
+        // one being read marked (#47).
+        let blocks = present
+            .iter()
+            .filter_map(|tag_type| {
+                let kind = TagBlockKind::from_tag_type(*tag_type)?;
+                let read_from = chosen == Some(*tag_type);
+                Some(TagBlock { kind, read_from })
+            })
+            .collect();
+
+        Ok(TrackRead {
+            file: TrackFile {
                 path: path.to_path_buf(),
                 format,
                 tags,
             },
             props,
-        ))
+            blocks,
+        })
     }
 
     /// Write the tags of `file` back to disk.
@@ -850,6 +977,18 @@ impl TagEngine {
             sample_rate_hz: props.sample_rate(),
             channels: props.channels(),
         })
+    }
+
+    /// Which ID3v2 revision this file's ID3v2 block is written in (#47), or
+    /// `None` when it has no ID3v2 block.
+    ///
+    /// A deliberate second read of one file, not part of the listing: see
+    /// [`Id3v2Revision`] for the measurement that put it here. Ask for it where
+    /// it is actionable — a file in front of you, a conversion about to run —
+    /// never per row of a library.
+    pub fn id3v2_revision(path: &Path) -> Result<Option<Id3v2Revision>, TagIoError> {
+        Ok(read_id3v2(path, custom_item_options())?
+            .map(|tag| Id3v2Revision::from_lofty(tag.original_version())))
     }
 
     /// Every image the file carries (#56), in the order the tag holds them.

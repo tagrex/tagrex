@@ -8,7 +8,9 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use tagrex_core::model::{AudioFormat, CoverArt, TagEngine, TagField, TrackFile};
+use tagrex_core::model::{
+    AudioFormat, CoverArt, Id3v2Revision, TagBlockKind, TagEngine, TagField, TrackFile,
+};
 
 /// `fLaC` + a non-last STREAMINFO block (34 bytes, all zeroed out except a
 /// plausible sample rate/channels/bit depth) + a trailing PADDING block.
@@ -316,7 +318,8 @@ fn one_probe_returns_both_the_tags_and_the_properties() {
     })
     .expect("write tags");
 
-    let (track, props) = TagEngine::read_with_props(&path).expect("read");
+    let read = TagEngine::read_with_props(&path).expect("read");
+    let (track, props, blocks) = (read.file, read.props, read.blocks);
     let plain = TagEngine::read(&path).expect("read");
     std::fs::remove_file(&path).ok();
 
@@ -332,6 +335,11 @@ fn one_probe_returns_both_the_tags_and_the_properties() {
     assert_eq!(props.channels, Some(2));
     // It carries no audio frames, so it is genuinely zero seconds long.
     assert_eq!(props.duration_secs, 0);
+    // And the same probe says which tag block it all came out of (#47).
+    assert_eq!(blocks.len(), 1);
+    assert_eq!(blocks[0].kind, TagBlockKind::VorbisComments);
+    assert!(blocks[0].read_from);
+    assert_eq!(blocks[0].label(), "Vorbis Comments");
 }
 
 /// An ID3v2.4 tag carrying a three-digit year, built by hand because the backend
@@ -1331,5 +1339,74 @@ fn an_unrelated_edit_leaves_another_taggers_comments_alone() {
     assert!(
         comments.contains(&("ARTIST".to_string(), "Edited".to_string())),
         "the edit itself did not land, got {comments:?}"
+    );
+}
+
+/// #47: a file can carry more than one tag block, and which one the app reads is
+/// the difference between "the edit didn't take" and "you are looking at the
+/// other answer" — the confusion behind #194. The report says so per file, off
+/// the probe the listing already does.
+#[test]
+fn the_report_names_every_block_and_marks_the_one_being_read() {
+    use lofty::config::WriteOptions;
+    use lofty::id3::v1::Id3v1Tag;
+    use lofty::prelude::{Accessor, TagExt};
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-blocks-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    // One block to start with, written as ID3v2.3 so the revision is not the
+    // default and a wrong answer would show.
+    let mut modern = lofty::id3::v2::Id3v2Tag::new();
+    modern.set_artist("Current".to_string());
+    modern
+        .save_to_path(&path, WriteOptions::default().use_id3v23(true))
+        .expect("seed id3v2");
+
+    let read = TagEngine::read_with_props(&path).expect("read");
+    assert_eq!(read.blocks.len(), 1);
+    assert_eq!(read.blocks[0].kind, TagBlockKind::Id3v2);
+    assert_eq!(read.blocks[0].label(), "ID3v2");
+    assert!(read.blocks[0].read_from);
+    // The revision is asked for separately, and only then is it exact — the
+    // listing does not pay for it (#47).
+    assert_eq!(
+        TagEngine::id3v2_revision(&path).expect("revision"),
+        Some(Id3v2Revision::V3)
+    );
+
+    // Now give it a legacy block beside the modern one.
+    let legacy = Id3v1Tag {
+        artist: Some("Stale".to_string()),
+        ..Default::default()
+    };
+    legacy
+        .save_to_path(&path, WriteOptions::default())
+        .expect("seed id3v1");
+
+    let read = TagEngine::read_with_props(&path).expect("read");
+    std::fs::remove_file(&path).ok();
+
+    let labels: Vec<&str> = read.blocks.iter().map(|b| b.label()).collect();
+    assert!(
+        labels.contains(&"ID3v2") && labels.contains(&"ID3v1"),
+        "both blocks should be reported, got {labels:?}"
+    );
+    // Exactly one is the one being read, and it is the modern one — which is
+    // also where a write goes, so the report and the writer agree.
+    let read_from: Vec<&str> = read
+        .blocks
+        .iter()
+        .filter(|b| b.read_from)
+        .map(|b| b.kind.name())
+        .collect();
+    assert_eq!(read_from, vec!["ID3v2"]);
+    // And the values on show came from it, not from the legacy block.
+    assert_eq!(
+        read.file.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Current")
     );
 }

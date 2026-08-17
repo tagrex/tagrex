@@ -360,6 +360,9 @@
                   Only fields you change are written; a field whose value differs across the selection
                   shows <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
                 </p>
+                <!-- Which tag block the values come from, for the selection
+                     (#47). Silent unless there is something to say. -->
+                <p id="fields-blocks" class="hint muted" style="padding: 0" hidden></p>
                 <!-- Grouped core/extended field rows are built by renderFieldEditor. -->
                 <div id="fields-body" class="fe"></div>
                 <!-- ADD FIELD (#114): an unobtrusive affordance — a "+ Add field"

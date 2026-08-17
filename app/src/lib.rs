@@ -26,7 +26,7 @@ use tagrex_core::export::{self, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::{FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
-use tagrex_core::model::{is_writable_value, CoverArt, CoverKind, TagEngine, TagField};
+use tagrex_core::model::{is_writable_value, CoverArt, CoverKind, TagBlock, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, CoverChange, Executor, FieldChange, FileChange};
 use tagrex_core::provider::{FetchedImage, MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
@@ -55,6 +55,30 @@ pub struct TrackDto {
     /// costs nothing extra. `None` when the file couldn't be read.
     #[serde(default)]
     pub duration_secs: Option<u64>,
+    /// Which tag blocks the file carries, in the order it carries them (#47).
+    /// From the same probe again. Empty for an unreadable file, and for a file
+    /// that genuinely has no tags at all — which is itself worth seeing.
+    #[serde(default)]
+    pub tag_blocks: Vec<TagBlockDto>,
+}
+
+/// One tag block a file carries (#47).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TagBlockDto {
+    /// Ready to show — `ID3v2.3`, `ID3v1`, `Vorbis Comments`.
+    pub label: String,
+    /// Whether this is the block the app reads from and writes to. With more
+    /// than one block present, this is the answer to "why is it showing that?".
+    pub read_from: bool,
+}
+
+impl From<&TagBlock> for TagBlockDto {
+    fn from(block: &TagBlock) -> Self {
+        Self {
+            label: block.label().to_string(),
+            read_from: block.read_from,
+        }
+    }
 }
 
 impl TrackDto {
@@ -72,6 +96,7 @@ impl TrackDto {
             tags: std::collections::BTreeMap::new(),
             unreadable: true,
             duration_secs: None,
+            tag_blocks: Vec::new(),
         }
     }
 }
@@ -1112,11 +1137,13 @@ impl App {
             .source_paths()
             .into_iter()
             .map(|path| match TagEngine::read_with_props(&path) {
-                // One probe gives the tags and the playing time (#172); the
-                // Length column is free as long as it is taken from here.
-                Ok((track, props)) => TrackDto {
-                    duration_secs: Some(props.duration_secs),
-                    ..TrackDto::from(track)
+                // One probe gives the tags, the playing time (#172) and which
+                // tag blocks the file carries (#47); the Length and Tags columns
+                // are free as long as they are taken from here.
+                Ok(read) => TrackDto {
+                    duration_secs: Some(read.props.duration_secs),
+                    tag_blocks: read.blocks.iter().map(TagBlockDto::from).collect(),
+                    ..TrackDto::from(read.file)
                 },
                 Err(_) => TrackDto::unreadable(&path),
             })
@@ -3565,9 +3592,11 @@ impl From<tagrex_core::model::TrackFile> for TrackDto {
                 .map(|(field, value)| (field.to_storage_key(), value))
                 .collect(),
             unreadable: false,
-            // Filled by the caller that read the properties too (#172); a
-            // conversion from tags alone has no playing time to state.
+            // Both filled by the caller that read the properties too (#172,
+            // #47); a conversion from tags alone knows neither the playing time
+            // nor which blocks the file carries.
             duration_secs: None,
+            tag_blocks: Vec::new(),
         }
     }
 }

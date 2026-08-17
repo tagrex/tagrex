@@ -237,9 +237,11 @@ function mockKeyNotation(value, style) {
 function mockInvoke(cmd, args) {
   mockInvoke.state = mockInvoke.state || {
     tracks: [
-      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
-      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
-      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996" } },
+      // The second file deliberately carries a stale ID3v1 block as well (#47),
+      // so the Tag types column and the editor's line have something to show.
+      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, tag_blocks: [{ label: "ID3v2", read_from: true }], tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
+      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, tag_blocks: [{ label: "ID3v2", read_from: true }, { label: "ID3v1", read_from: false }], tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
+      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tag_blocks: [{ label: "ID3v2", read_from: true }], tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996" } },
     ],
     history: [],
   };

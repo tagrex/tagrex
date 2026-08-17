@@ -142,7 +142,20 @@ const statusSel = el("status-sel");
 function virtualCellText(track, key, pending) {
   if (key === "position") return vinylPositionOf(track, pending);
   if (key === "length") return track.duration_secs == null ? "" : fmtTime(track.duration_secs);
+  if (key === "tagtypes") return tagBlockSummary(track);
   return null;
+}
+
+// The Tag types cell (#47): every block the file carries, the one being read
+// first. That order is the point — the rest are the file's other answers, and
+// seeing them is how "the edit didn't take" becomes "you are reading the other
+// block".
+function tagBlockSummary(track) {
+  const blocks = track.tag_blocks || [];
+  if (!blocks.length) return "";
+  const read = blocks.filter((b) => b.read_from).map((b) => b.label);
+  const rest = blocks.filter((b) => !b.read_from).map((b) => b.label);
+  return [...read, ...rest].join(" + ");
 }
 
 function sortValue(track, key) {
@@ -154,6 +167,12 @@ function sortValue(track, key) {
     const disc = parseInt(track.tags.disc || "0", 10) || 0;
     const trk = parseInt(track.tags.track || "0", 10) || 0;
     return String(disc).padStart(4, "0") + String(trk).padStart(5, "0");
+  }
+  // Files carrying a second block sort together, ahead of the plain ones —
+  // which is the way you would go looking for them (#47).
+  if (key === "tagtypes") {
+    const blocks = track.tag_blocks || [];
+    return String(9 - Math.min(blocks.length, 9)) + tagBlockSummary(track).toLowerCase();
   }
   // A mask column sorts on what it renders, which is what the eye compares.
   if (customColumnOf(key)) return customColumnValue(key, track.path).toLowerCase();

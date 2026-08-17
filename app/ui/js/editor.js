@@ -29,10 +29,48 @@ function refreshFieldEditor() {
   const paths = selectedPaths();
   stagedFields = new Map();
   el("fields-count").textContent = paths.length ? `— ${plural(paths.length, "file", "files")}` : "";
+  renderTagBlocks(paths);
   closeAddField(); // collapse the add-field row back to its idle affordance
   populateKnownFields();
   renderFieldEditor(paths);
   hooks.refreshCoverWell();
+}
+
+// Which tag block the values on show came out of, and what else the file
+// carries (#47).
+//
+// Only worth a line when there is something to say, so it stays silent on the
+// ordinary file with one block — which is nearly all of them — and speaks up
+// exactly where the values can surprise you: a second block holds a second
+// answer, and it is the one other software may be reading.
+function renderTagBlocks(paths) {
+  const line = el("fields-blocks");
+  // Counted per FILE, not per distinct wording: two files telling the same
+  // story are two files, and a set of strings cannot say so.
+  let files = 0;
+  const wordings = new Set();
+  for (const path of paths) {
+    const blocks = trackAt(path)?.tag_blocks || [];
+    if (blocks.length < 2) continue;
+    files++;
+    const read = blocks.find((b) => b.read_from) || blocks[0];
+    const rest = blocks.filter((b) => b !== read).map((b) => b.label);
+    wordings.add(`${read.label} — also ${rest.join(" and ")}`);
+  }
+  if (!files) {
+    line.hidden = true;
+    return;
+  }
+  line.hidden = false;
+  if (wordings.size === 1) {
+    const only = [...wordings][0];
+    line.textContent =
+      files === 1
+        ? `Reading ${only.replace(" — also ", " — this file also carries ")}`
+        : `Reading ${only}, on all ${files} of them`;
+  } else {
+    line.textContent = `${files} of the selected files carry more than one tag block`;
+  }
 }
 
 // Suggest the custom field names already present on the selected files — the

@@ -59,6 +59,10 @@ const KNOWN_CUSTOM_LABELS = {
 const VIRTUAL_COLUMNS = [
   ["position", "Position"],
   ["length", "Length"],
+  // Which tag blocks the file carries (#47). The one being read comes first, so
+  // a file showing values you didn't expect explains itself: "ID3v2.4 + ID3v1"
+  // is a file with a second, stale answer in it.
+  ["tagtypes", "Tag types"],
 ];
 
 // Group key for a track that belongs to no dropped folder (a loose dropped

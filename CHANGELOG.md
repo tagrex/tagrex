@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A file says which tag blocks it carries.** A new **Tag types** column, and a
+  line in the tag editor when there is something to say — `Reading ID3v2 — this
+  file also carries ID3v1`. One file can hold several answers to the same
+  question, and until now nothing showed you that: the values you saw came from
+  one block while other software read another, which is exactly the confusion
+  behind #194. The block being read is named first, and it is also the one a
+  write goes to. Free — it comes off the probe the listing already does. (#47)
+
 - **A mask can ask a question, not just reshape an answer.** Eleven more
   functions: `$if`, `$if2`, `$equal`, `$nequal`, `$and`, `$or`, `$not`,
   `$greater`, `$longer`, `$isnumber` and `$in`, listed under **Logic** in the
