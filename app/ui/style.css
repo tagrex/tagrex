@@ -1587,7 +1587,10 @@ tr.drop-below td {
 
 .toast {
   position: fixed;
-  bottom: 44px;
+  /* Lifted clear of the staged-change bar while one is floating over the table
+     (#195): both anchor to the same edge, and the message must not cover the
+     buttons it is a message about. */
+  bottom: var(--toast-bottom, 44px);
   left: 50%;
   transform: translateX(-50%);
   background: var(--text);
@@ -1597,6 +1600,10 @@ tr.drop-below td {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   max-width: 80%;
   z-index: 30;
+}
+
+body.diffing {
+  --toast-bottom: 104px;
 }
 
 .toast.error {
