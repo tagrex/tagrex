@@ -1511,6 +1511,18 @@ body:not(.show-checkbox) #tracks td.sel {
 .query-presets:hover {
   color: var(--text);
 }
+/* The focus ring goes round the whole box, not round the half that has focus
+   (#200). On the field alone it followed the field's contour — square at the
+   seam, two pixels of accent over the caret's edge — and split one control in
+   two; the caret's own button ring (#76) did the same from the other side. */
+.query:has(:focus-visible) {
+  border-radius: var(--radius-md);
+  box-shadow: var(--ring);
+}
+.query input[type="text"]:focus-visible,
+.query .query-presets:focus-visible {
+  box-shadow: none;
+}
 /* The menu hangs off the whole box, and a row leads with the query itself —
    the source is the hint, not the heading. */
 #query-preset-menu {

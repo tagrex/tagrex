@@ -45,6 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   wrong two files could only be undone by changing the selection. Each press now
   runs its rule and offers the other one. (#199)
 
+- **The search box's focus ring goes round the whole box.** The field and the
+  caret beside it are one control, but the ring was drawn round the field alone:
+  square where the two meet, spilling over the caret's edge, with the caret's
+  grey border carrying on outside it. It now follows the control's own contour,
+  from either side. (#200)
+
 ## [0.6.0] - 2026-08-17
 
 ### Added
