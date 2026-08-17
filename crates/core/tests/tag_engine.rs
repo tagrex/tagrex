@@ -1410,3 +1410,105 @@ fn the_report_names_every_block_and_marks_the_one_being_read() {
         Some("Current")
     );
 }
+
+/// A hand-built ID3v2.3 tag, since both fixtures below need frames the backend
+/// will not write. `frames` is the already-encoded frame block.
+fn id3v23_tag(frames: &[u8]) -> Vec<u8> {
+    let mut tag = vec![b'I', b'D', b'3', 3, 0, 0];
+    // The tag header's size is synchsafe: seven bits per byte.
+    let size = frames.len() as u32;
+    tag.extend_from_slice(&[
+        ((size >> 21) & 0x7f) as u8,
+        ((size >> 14) & 0x7f) as u8,
+        ((size >> 7) & 0x7f) as u8,
+        (size & 0x7f) as u8,
+    ]);
+    tag.extend_from_slice(frames);
+    tag
+}
+
+/// One ID3v2.3 frame. Frame sizes in 2.3 are plain big-endian, unlike the
+/// header's.
+fn id3v23_frame(id: &[u8; 4], body: &[u8]) -> Vec<u8> {
+    let mut frame = id.to_vec();
+    frame.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    frame.extend_from_slice(&[0, 0]);
+    frame.extend_from_slice(body);
+    frame
+}
+
+/// #204, cause one: a `UFID` frame whose owner field is empty.
+///
+/// The backend errors on it in relaxed mode and substitutes an empty string in
+/// best-attempt — the two modes forgive different things, and #183 picked
+/// relaxed for its leniency about exactly this class of problem. A file in the
+/// user's library was unreadable for it.
+#[test]
+fn a_frame_only_one_parsing_mode_forgives_does_not_cost_the_file() {
+    let mut frames = Vec::new();
+    // Empty owner: just the terminator, then the identifier.
+    frames.extend_from_slice(&id3v23_frame(b"UFID", &[0x00, b'a', b'b', b'c']));
+    // Latin-1 encoding byte, then the text.
+    frames.extend_from_slice(&id3v23_frame(b"TIT2", b"\x00Comin On Strong"));
+
+    let path =
+        std::env::temp_dir().join(format!("tagrex-tag-engine-ufid-{}.mp3", std::process::id()));
+    let mut data = id3v23_tag(&frames);
+    data.extend_from_slice(&minimal_mp3());
+    std::fs::write(&path, data).expect("write fixture");
+
+    let read = TagEngine::read(&path);
+    std::fs::remove_file(&path).ok();
+    let read = read.expect("the file must still be readable");
+    assert_eq!(
+        read.tags.get(&TagField::Title).map(String::as_str),
+        Some("Comin On Strong")
+    );
+}
+
+/// #204, cause two: the audio starts past the window the backend sniffs, and
+/// the junk in between holds a stray sync of a different format.
+///
+/// The real file was read as AAC — 1035 bytes of junk with an ADTS-looking
+/// `FF F1` inside it — and then failed as AAC, because it is an MP3. Its title,
+/// musical key and tempo were all there to be had.
+#[test]
+fn audio_hiding_behind_junk_is_still_found_by_the_extension() {
+    let frames = id3v23_frame(b"TIT2", b"\x00Weekend Lover");
+    let path =
+        std::env::temp_dir().join(format!("tagrex-tag-engine-junk-{}.mp3", std::process::id()));
+
+    let mut data = id3v23_tag(&frames);
+    // More junk than the backend's 1024-byte tolerance, with a false ADTS sync
+    // early enough for the sniff to find it and conclude AAC.
+    let mut junk = vec![0x00u8; 1035];
+    junk[400] = 0xFF;
+    junk[401] = 0xF1;
+    data.extend_from_slice(&junk);
+    data.extend_from_slice(&minimal_mp3());
+    std::fs::write(&path, data).expect("write fixture");
+
+    let read = TagEngine::read(&path);
+    std::fs::remove_file(&path).ok();
+    let read = read.expect("the file must still be readable");
+    assert_eq!(read.format, AudioFormat::Mp3, "read as the wrong container");
+    assert_eq!(
+        read.tags.get(&TagField::Title).map(String::as_str),
+        Some("Weekend Lover")
+    );
+}
+
+/// The ladder must not turn a file that is genuinely not audio into one that
+/// reads: falling back is for a file the backend can parse, not for anything
+/// wearing the right extension.
+#[test]
+fn a_file_that_is_not_audio_at_all_still_fails() {
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-notaudio-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, b"this is a text file that happens to be named .mp3").unwrap();
+    let read = TagEngine::read(&path);
+    std::fs::remove_file(&path).ok();
+    assert!(read.is_err(), "a text file must not read as audio");
+}

@@ -207,6 +207,27 @@ impl AudioFormat {
         }
     }
 
+    /// The backend container this format is, for the concrete reads a write
+    /// needs. The inverse of [`from_lofty`](Self::from_lofty), and the reason
+    /// the write path never has to sniff the file again: the format on a
+    /// [`TrackFile`] came from a parse that already succeeded (#204).
+    fn to_lofty(self) -> FileType {
+        match self {
+            Self::Mp3 => FileType::Mpeg,
+            Self::Flac => FileType::Flac,
+            Self::OggVorbis => FileType::Vorbis,
+            Self::M4a => FileType::Mp4,
+            Self::Aac => FileType::Aac,
+            Self::Aiff => FileType::Aiff,
+            Self::Wav => FileType::Wav,
+            Self::Opus => FileType::Opus,
+            Self::Speex => FileType::Speex,
+            Self::Musepack => FileType::Mpc,
+            Self::MonkeysAudio => FileType::Ape,
+            Self::WavPack => FileType::WavPack,
+        }
+    }
+
     /// Whether this format keeps its tags in an ID3v2 tag. Those need the
     /// concrete-`Id3v2Tag` write path so binary frames (DJ cue points, ratings,
     /// ReplayGain) survive — lofty's generic tag doesn't even surface them on
@@ -609,17 +630,76 @@ fn custom_item_options() -> ParseOptions {
     tag_only_options().read_cover_art(false)
 }
 
+/// Parse a file, falling back through the ways a stubborn one can still be read
+/// (#204).
+///
+/// Three attempts, each reached only when the one before it failed — so the file
+/// that reads first time, which is very nearly every file, costs exactly what it
+/// cost before:
+///
+/// 1. **What the backend sniffs, relaxed.** The #183 choice, unchanged.
+/// 2. **The same container, best-attempt.** The two parsing modes are *not* a
+///    hierarchy, which is the trap: relaxed discards an item it cannot decode,
+///    best-attempt fills the hole in, and a `UFID` frame with an empty owner is
+///    a hard error in relaxed and an empty string in best-attempt. Neither
+///    forgives everything the other does, so a file only one of them can read is
+///    read by that one.
+/// 3. **The container the extension names, with a wide junk window.** Sniffing
+///    looks a bounded distance past the tag for a frame sync; a file whose audio
+///    starts beyond that can be sniffed as another format entirely — one real
+///    example carries 1035 bytes of junk with a stray ADTS sync inside it and
+///    was read as AAC. The writer already takes the container from the path, so
+///    this is also the reader agreeing with the writer.
+///
+/// The error reported when all three fail is the **first** one: it describes the
+/// file as it actually presents itself, which is what someone looking at the
+/// message needs.
 fn probe_file(path: &Path) -> Result<lofty::file::TaggedFile, TagIoError> {
-    Ok(Probe::open(path)?
+    let first = match Probe::open(path)?
         .guess_file_type()?
         .options(parse_options())
-        .read()?)
+        .read()
+    {
+        Ok(file) => return Ok(file),
+        Err(error) => error,
+    };
+
+    if let Ok(file) = Probe::open(path)?
+        .guess_file_type()?
+        .options(parse_options().parsing_mode(ParsingMode::BestAttempt))
+        .read()
+    {
+        return Ok(file);
+    }
+
+    if let Some(by_extension) = FileType::from_path(path) {
+        if let Ok(file) = Probe::open(path)?
+            .set_file_type(by_extension)
+            .options(parse_options().max_junk_bytes(STUBBORN_JUNK_BYTES))
+            .read()
+        {
+            return Ok(file);
+        }
+    }
+
+    Err(first.into())
 }
 
-/// The container a path holds, from its header and extension alone — no tag or
-/// property parsing. What the concrete readers dispatch on.
+/// How far past the tag the last-ditch attempt will look for the audio (#204).
+/// The backend's own limit is 1024, and the file that prompted this has 1035
+/// bytes of junk; 64 KiB is far enough to cover a padded or badly spliced file
+/// without being a licence to scan the whole thing.
+const STUBBORN_JUNK_BYTES: usize = 64 * 1024;
+
+/// The container a path holds, for a caller that has no parse to take it from.
+///
+/// This is the *resolved* container — what the file actually parses as, ladder
+/// and all — not merely what a sniff of its first bytes suggests, because the
+/// concrete reads have to agree with the parse the values came from. Callers on
+/// the read path pass the type down from their own probe instead; this is for
+/// the ones that only ever hold a path.
 fn container_of(path: &Path) -> Result<Option<FileType>, TagIoError> {
-    Ok(Probe::open(path)?.guess_file_type()?.file_type())
+    Ok(Some(probe_file(path)?.file_type()))
 }
 
 /// A buffered handle for the concrete readers. Parsing a tag is thousands of
@@ -633,10 +713,13 @@ fn buffered(path: &Path) -> Result<std::io::BufReader<std::fs::File>, TagIoError
 /// The file's concrete Vorbis Comments block, if it has one. Dispatches on the
 /// container the same way [`read_id3v2`] does, for every format that keeps its
 /// tags in Vorbis Comments.
-fn read_vorbis(path: &Path, options: ParseOptions) -> Result<Option<VorbisComments>, TagIoError> {
-    let container = container_of(path)?;
+fn read_vorbis(
+    path: &Path,
+    container: FileType,
+    options: ParseOptions,
+) -> Result<Option<VorbisComments>, TagIoError> {
     let mut file = buffered(path)?;
-    Ok(match container {
+    Ok(match Some(container) {
         Some(FileType::Flac) => FlacFile::read_from(&mut file, options)?
             .vorbis_comments()
             .cloned(),
@@ -660,10 +743,13 @@ fn read_vorbis(path: &Path, options: ParseOptions) -> Result<Option<VorbisCommen
 }
 
 /// The file's concrete APE tag, if it has one.
-fn read_ape(path: &Path, options: ParseOptions) -> Result<Option<ApeTag>, TagIoError> {
-    let container = container_of(path)?;
+fn read_ape(
+    path: &Path,
+    container: FileType,
+    options: ParseOptions,
+) -> Result<Option<ApeTag>, TagIoError> {
     let mut file = buffered(path)?;
-    Ok(match container {
+    Ok(match Some(container) {
         Some(FileType::Ape) => ApeFile::read_from(&mut file, options)?.ape().cloned(),
         Some(FileType::Mpc) => MpcFile::read_from(&mut file, options)?.ape().cloned(),
         Some(FileType::WavPack) => WavPackFile::read_from(&mut file, options)?.ape().cloned(),
@@ -762,7 +848,7 @@ fn freeform_item(atom: &Atom<'_>) -> Option<CustomItem> {
 /// such companion — the conversion drops the items on the floor — so those pay
 /// for a second read of the file. It is a tag-only, artwork-free one
 /// ([`custom_item_options`]), which is the cheapest parse the backend offers.
-fn custom_items(path: &Path, tag: Tag) -> Result<Vec<CustomItem>, TagIoError> {
+fn custom_items(path: &Path, container: FileType, tag: Tag) -> Result<Vec<CustomItem>, TagIoError> {
     Ok(match tag.tag_type() {
         TagType::Id3v2 => {
             let concrete = Id3v2Tag::from(tag);
@@ -772,7 +858,7 @@ fn custom_items(path: &Path, tag: Tag) -> Result<Vec<CustomItem>, TagIoError> {
             .into_iter()
             .filter_map(|atom| freeform_item(&atom))
             .collect(),
-        TagType::VorbisComments => read_vorbis(path, custom_item_options())?
+        TagType::VorbisComments => read_vorbis(path, container, custom_item_options())?
             .map(|tag| {
                 tag.items()
                     .filter(|(name, _)| !maps_to_item_key(TagType::VorbisComments, name))
@@ -780,7 +866,7 @@ fn custom_items(path: &Path, tag: Tag) -> Result<Vec<CustomItem>, TagIoError> {
                     .collect()
             })
             .unwrap_or_default(),
-        TagType::Ape => read_ape(path, custom_item_options())?
+        TagType::Ape => read_ape(path, container, custom_item_options())?
             .map(|tag| {
                 tag.into_iter()
                     .filter(|item| !maps_to_item_key(TagType::Ape, item.key()))
@@ -835,7 +921,11 @@ impl TagEngine {
     /// [`read`](Self::read) is this keeping only the first.
     pub fn read_with_props(path: &Path) -> Result<TrackRead, TagIoError> {
         let mut tagged_file = probe_file(path)?;
-        let format = AudioFormat::from_lofty(tagged_file.file_type())?;
+        // The container the file actually parsed as — which after #204 is not
+        // always what a sniff of its first bytes says. Passed down so the
+        // concrete reads look at the same file the values came from.
+        let container = tagged_file.file_type();
+        let format = AudioFormat::from_lofty(container)?;
         let properties = tagged_file.properties();
         let props = AudioProps {
             duration_secs: properties.duration().as_secs(),
@@ -891,7 +981,7 @@ impl TagEngine {
             // The rest of the fields are the format-specific items the generic
             // tag has no key for, which it therefore cannot hand over at all
             // (#201) — they come off the concrete tag, under their own names.
-            for (name, value) in custom_items(path, tag)? {
+            for (name, value) in custom_items(path, container, tag)? {
                 let (field, from_alias) = field_for_custom_name(&name);
                 insert_read_value(&mut tags, field, from_alias, value);
             }
@@ -949,7 +1039,7 @@ impl TagEngine {
             }
         }
         if file.format.uses_id3v2() {
-            write_id3v2(&file.path, &file.tags)
+            write_id3v2(&file.path, file.format.to_lofty(), &file.tags)
         } else {
             write_generic(file)
         }
@@ -987,7 +1077,10 @@ impl TagEngine {
     /// it is actionable — a file in front of you, a conversion about to run —
     /// never per row of a library.
     pub fn id3v2_revision(path: &Path) -> Result<Option<Id3v2Revision>, TagIoError> {
-        Ok(read_id3v2(path, custom_item_options())?
+        let Some(container) = container_of(path)? else {
+            return Ok(None);
+        };
+        Ok(read_id3v2(path, container, custom_item_options())?
             .map(|tag| Id3v2Revision::from_lofty(tag.original_version())))
     }
 
@@ -1026,7 +1119,10 @@ impl TagEngine {
         // Same reason as `write`: going through the generic tag would drop an
         // MP3's non-representable frames, so edit the concrete tag instead.
         if is_id3v2_container(path) {
-            let mut tag = read_id3v2(path, tag_only_options())?.unwrap_or_default();
+            let container = container_of(path)?.ok_or(TagIoError::UnsupportedFormat(
+                path.to_string_lossy().into_owned(),
+            ))?;
+            let mut tag = read_id3v2(path, container, tag_only_options())?.unwrap_or_default();
             // `remove_picture_type` takes one type at a time and the file may
             // hold types the model maps onto one of ours, so clear by rebuilding
             // from the frames that are not pictures at all.
@@ -1153,7 +1249,7 @@ fn sync_id3v1(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
     Ok(())
 }
 
-fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
+fn write_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), TagIoError> {
     let mut generic = Tag::new(TagType::Id3v2);
     for (field, value) in tags {
         push_field_items(&mut generic, field, value);
@@ -1175,7 +1271,7 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
         )));
     }
 
-    if let Some(original) = read_id3v2(path, tag_only_options())? {
+    if let Some(original) = read_id3v2(path, container, tag_only_options())? {
         for frame in &original {
             if !is_model_text_frame(frame) {
                 updated.insert(frame.clone());
@@ -1244,10 +1340,13 @@ fn is_model_text_frame(frame: &Frame<'_>) -> bool {
 /// The file's concrete ID3v2 tag, if it has one. Dispatches on the container so
 /// it works for every ID3v2-carrying format (MP3, AAC, AIFF, WAV), reading the
 /// concrete tag lofty's generic representation can't fully reproduce.
-fn read_id3v2(path: &Path, options: ParseOptions) -> Result<Option<Id3v2Tag>, TagIoError> {
-    let container = container_of(path)?;
+fn read_id3v2(
+    path: &Path,
+    container: FileType,
+    options: ParseOptions,
+) -> Result<Option<Id3v2Tag>, TagIoError> {
     let mut file = buffered(path)?;
-    let tag = match container {
+    let tag = match Some(container) {
         Some(FileType::Mpeg) => MpegFile::read_from(&mut file, options)?.id3v2().cloned(),
         Some(FileType::Aac) => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
         Some(FileType::Aiff) => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
@@ -1304,7 +1403,7 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
             push_field_items(&mut tag, field, value);
         }
     }
-    save_with_custom_items(&file.path, tag, &file.tags)
+    save_with_custom_items(&file.path, file.format.to_lofty(), tag, &file.tags)
 }
 
 /// Save a generic tag, putting the custom fields it cannot carry onto the
@@ -1317,11 +1416,16 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
 /// the file had. So the file's own concrete tag is the starting point: the model
 /// supplies the text, the concrete tag keeps everything the model has no room
 /// for, and the stale custom items are replaced by what the model now says.
-fn save_with_custom_items(path: &Path, mut tag: Tag, tags: &TagMap) -> Result<(), TagIoError> {
+fn save_with_custom_items(
+    path: &Path,
+    container: FileType,
+    mut tag: Tag,
+    tags: &TagMap,
+) -> Result<(), TagIoError> {
     let tag_type = tag.tag_type();
     match tag_type {
         TagType::VorbisComments => {
-            let existing = read_vorbis(path, tag_only_options())?.unwrap_or_default();
+            let existing = read_vorbis(path, container, tag_only_options())?.unwrap_or_default();
             // The conversion below folds an `ENCODER` comment into the vendor
             // string and drops the comment. That moves what made the file from
             // one place in it to another, which is exactly what #197 says not to
@@ -1364,7 +1468,7 @@ fn save_with_custom_items(path: &Path, mut tag: Tag, tags: &TagMap) -> Result<()
             merged.save_to_path(path, WriteOptions::default())?;
         }
         TagType::Ape => {
-            let (remainder, _) = read_ape(path, tag_only_options())?
+            let (remainder, _) = read_ape(path, container, tag_only_options())?
                 .unwrap_or_default()
                 .split_tag();
             let mut merged = remainder.merge_tag(tag);
