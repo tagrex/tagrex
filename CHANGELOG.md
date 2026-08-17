@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-08-17
+
 ### Fixed
 
 - **Clearing the tags on an MP3 no longer leaves a stale ID3v1 tag behind.**
