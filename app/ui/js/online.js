@@ -902,8 +902,9 @@ function applyMatchOrder(card, paths, matchedPairs, unmatched) {
 const AMBIGUOUS_SECS = 2;
 
 // Which cards currently offer "Match by length" instead of "Auto-match": armed
-// by a match on names, disarmed when the selection or the results change,
-// because the answer it would give is about THIS selection.
+// by a match on names, disarmed by a match on lengths (#199) and whenever the
+// selection or the results change, because the answer it would give is about
+// THIS selection.
 const armedByLength = new Set();
 let armedSelection = "";
 
@@ -932,6 +933,14 @@ function disarmLengthMatch() {
     if (card) setMatchButton(card, false);
   }
   armedByLength.clear();
+}
+
+// One card back to offering the names (#199), leaving any other card's offer
+// alone — the two rules alternate, so a length match that crossed the wrong two
+// files is undone by the next press rather than by clearing the selection.
+function disarmCard(card) {
+  armedByLength.delete(card.dataset.id);
+  setMatchButton(card, false);
 }
 
 // ---- what the lengths say about a match by name (#192) ----
@@ -1037,6 +1046,9 @@ function matchByLength(card) {
   const taken = new Set(matchedPairs.map((p) => p.path));
   const unmatched = paths.filter((path) => !taken.has(path));
   applyMatchOrder(card, paths, matchedPairs, unmatched);
+  // The lengths have had their say; the button now offers the names again
+  // (#199). A press that changed nothing returned above with the offer intact.
+  disarmCard(card);
   const dropped = release.tracks.length - matchedPairs.length;
   const notes = [];
   if (ambiguous.size) notes.push(`${plural(ambiguous.size, "track", "tracks")} the same length, left alone`);
@@ -1317,8 +1329,8 @@ el("release-list").addEventListener("click", (e) => {
     });
     if (menu) menu.hidden = !menu.hidden;
   } else if (act === "automatch") {
-    // One button, two rules (#191): names first, then lengths. Not a cycle —
-    // pressing it again re-runs the length match rather than going back.
+    // One button, two rules (#191), alternating (#199): the label is the rule
+    // the next press will use, and each press offers the other one back.
     if (armedByLength.has(card.dataset.id)) matchByLength(card);
     else autoMatchToRelease(card);
   } else if (act === "embed") {

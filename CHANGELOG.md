@@ -40,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   sorted column's arrow fades to mean "some files were placed by hand", and the
   next sort, apply or undo puts everything back under the header's rule. (#198)
 
+- **Auto-match and Match by length alternate.** The button offering the second
+  rule never offered the first one back, so a length match that crossed the
+  wrong two files could only be undone by changing the selection. Each press now
+  runs its rule and offers the other one. (#199)
+
 ## [0.6.0] - 2026-08-17
 
 ### Added
