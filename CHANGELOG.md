@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A mask can call functions.** `$upper(%artist%)`, `$left(%title%,20)`,
+  `$swapprefix(%albumartist%)` — twenty-two of them, covering case, slicing,
+  trimming, padding, search and replace, and three that know something about
+  music: `$stripprefix` and `$swapprefix` handle a leading *The*, and `$cutmix`
+  drops a trailing *(Original Mix)* or *(Remastered)* while leaving a remixer
+  credit alone, because that one names a different recording. Arguments are
+  patterns themselves, so calls nest and a placeholder or an optional `[…]`
+  section can sit inside one. The full list is in the reference behind every
+  mask box, under **Functions**; clicking one drops an empty call in with the
+  cursor already between the brackets. Two things worth knowing: a pattern that
+  calls a function can build a name but can no longer *read* tags out of one —
+  a transformation cannot be run backwards — and a `$` that doesn't begin a call
+  is still just a dollar sign, so patterns written before this keep working.
+  (#73)
+
 ## [0.7.0] - 2026-08-17
 
 ### Changed

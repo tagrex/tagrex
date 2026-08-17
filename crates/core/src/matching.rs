@@ -19,7 +19,7 @@
 /// "Desert Rain (Original Mix)". Remixer credits are **not** listed here: a
 /// remix is a different recording, and collapsing it onto the original is
 /// exactly the kind of silent mistagging this module exists to prevent.
-const NOISE_ATTRIBUTES: &[&str] = &[
+pub(crate) const NOISE_ATTRIBUTES: &[&str] = &[
     "original mix",
     "original version",
     "album version",

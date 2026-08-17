@@ -3320,7 +3320,8 @@ pub fn import_fields() -> Vec<ImportFieldDto> {
 /// One placeholder as the in-app reference shows it (#148).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlaceholderDto {
-    /// Ready to insert, percent signs included — `%catalognumber%`.
+    /// Ready to insert, as it is written in a pattern — `%catalognumber%` for a
+    /// placeholder, `$upper()` for a function (#73).
     pub token: String,
     pub name: String,
     pub description: String,
@@ -3340,7 +3341,7 @@ pub fn mask_placeholders() -> Vec<PlaceholderDto> {
     tagrex_core::mask::placeholder_reference()
         .into_iter()
         .map(|doc| PlaceholderDto {
-            token: format!("%{}%", doc.name),
+            token: doc.token,
             name: doc.name.to_string(),
             description: doc.description.to_string(),
             group: doc.group.label().to_string(),

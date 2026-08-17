@@ -31,10 +31,24 @@
 //!   render-only for the same reason `%side%` is: there is no tag to extract a
 //!   bitrate into, and pulling `%filename%` back out of a filename is a
 //!   tautology.
+//! - `$name(arg,arg)` — a function call (#73), which is what turns the pattern
+//!   from a substitution into a small expression language. Arguments are
+//!   themselves patterns, so they nest and may hold placeholders and sections;
+//!   `,` and `)` end an argument, and `','` writes a literal comma. The library
+//!   itself lives in [`functions`].
+//!
+//! **A mask that calls a function is render-only.** Substitution is invertible
+//! and that is the whole basis of the two directions; `$upper` is not, and
+//! guessing which half of `THE BEATLES` was upper-cased by the pattern and which
+//! by the file is exactly the invention this module refuses to make elsewhere.
+//! A `$` that is not followed by a name and a `(` stays an ordinary character,
+//! so patterns written before functions existed keep working.
 //!
 //! Beyond those, only the first-class [`TagField`] variants are valid
 //! placeholder names — `Custom` fields aren't addressable from a mask yet.
 //! Deferred rather than ignored, same as scripting in architecture.md.
+
+mod functions;
 
 use std::borrow::Cow;
 use std::path::Path;
@@ -44,6 +58,7 @@ use regex::Regex;
 use thiserror::Error;
 
 use crate::model::{AudioFormat, AudioProps, TagField, TagMap};
+use functions::{function_from_name, Function, ALL_FUNCTIONS};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Segment {
@@ -73,6 +88,12 @@ enum Segment {
     /// A property of the file rather than one of its tags (#147). Render-only,
     /// like [`Side`](Self::Side).
     File(FileValue),
+    /// `$name(arg,arg)` — a function over its arguments (#73). Each argument is
+    /// a segment list of its own, which is what lets calls nest and lets a
+    /// placeholder or a `[…]` section sit inside one. Render-only: a function
+    /// transforms, and a transformation cannot be run backwards out of a
+    /// filename.
+    Call(Function, Vec<Vec<Segment>>),
 }
 
 /// A property of the file itself, addressable from a mask (#147).
@@ -215,7 +236,8 @@ impl Mask {
         let segments = parse_segments(pattern)?;
         let mut previous = None;
         let adjacent_placeholders = has_ambiguous_adjacency(&segments, &mut previous);
-        let render_only = has_side(&segments) || has_file(&segments, |_| true);
+        let render_only =
+            has_side(&segments) || has_file(&segments, |_| true) || has_call(&segments);
         let extract_only = has_skip(&segments);
         let needs_audio_props = has_file(&segments, FileValue::needs_audio_props);
         let needs_metadata = has_file(&segments, FileValue::needs_metadata);
@@ -293,38 +315,57 @@ impl Mask {
 fn parse_segments(pattern: &str) -> Result<Vec<Segment>, MaskError> {
     let chars: Vec<char> = pattern.chars().collect();
     let mut position = 0;
-    let segments = parse_until(&chars, &mut position, None)?;
+    let (segments, _) = parse_until(&chars, &mut position, &[])?;
     debug_assert_eq!(position, chars.len());
     Ok(segments)
 }
 
-/// Parse segments until `terminator` (or end of input when `None`).
+/// Parse segments until one of `terminators` (or end of input), returning which
+/// one stopped it — `None` for end of input.
 ///
-/// Recursive because sections nest; the terminator distinguishes "ran out of
-/// input at the top level", which is fine, from "ran out inside a section",
-/// which is an unbalanced bracket.
+/// Recursive because sections and calls nest. Handing the terminator back rather
+/// than erroring on end-of-input is what lets one loop serve three callers that
+/// disagree about whether running out is a problem: at the top level it is the
+/// normal ending, inside `[…]` it is an unbalanced bracket, and inside a call it
+/// is a missing `)`. Each caller says so in its own words.
 fn parse_until(
     chars: &[char],
     position: &mut usize,
-    terminator: Option<char>,
-) -> Result<Vec<Segment>, MaskError> {
+    terminators: &[char],
+) -> Result<(Vec<Segment>, Option<char>), MaskError> {
     let mut segments = Vec::new();
     let mut literal = String::new();
 
     while *position < chars.len() {
         let current = chars[*position];
-        if Some(current) == terminator {
+        if terminators.contains(&current) {
             *position += 1;
             flush_literal(&mut literal, &mut segments);
-            return Ok(segments);
+            return Ok((segments, Some(current)));
         }
         match current {
             '[' => {
                 *position += 1;
                 flush_literal(&mut literal, &mut segments);
-                let inner = parse_until(chars, position, Some(']'))?;
+                let (inner, closed) = parse_until(chars, position, &[']'])?;
+                if closed.is_none() {
+                    return Err(MaskError::UnbalancedSection);
+                }
                 segments.push(Segment::Section(inner));
             }
+            // A call, but only when a name and a `(` really follow: a lone `$`
+            // is an ordinary character, so a pattern written before functions
+            // existed still means what it meant (#73).
+            '$' => match parse_call(chars, position)? {
+                Some(call) => {
+                    flush_literal(&mut literal, &mut segments);
+                    segments.push(call);
+                }
+                None => {
+                    literal.push('$');
+                    *position += 1;
+                }
+            },
             // Only reachable at the top level; inside a section `]` is the
             // terminator handled above.
             ']' => return Err(MaskError::UnbalancedSection),
@@ -374,11 +415,61 @@ fn parse_until(
         }
     }
 
-    if terminator.is_some() {
-        return Err(MaskError::UnbalancedSection);
-    }
     flush_literal(&mut literal, &mut segments);
-    Ok(segments)
+    Ok((segments, None))
+}
+
+/// Parse `$name(arg,arg)` starting at the `$`, or `None` when this `$` doesn't
+/// begin a call at all (#73).
+///
+/// The lookahead is what makes the sigil safe to introduce into a grammar that
+/// already ships: only `$` + a name + `(` is a call, so a pattern containing a
+/// price or a Windows variable keeps rendering as text. A name that *is*
+/// followed by `(` but isn't a function is an error rather than literal text —
+/// `$upprer(%title%)` is a typo, and silently writing it into a filename would
+/// be the worse answer.
+fn parse_call(chars: &[char], position: &mut usize) -> Result<Option<Segment>, MaskError> {
+    let mut cursor = *position + 1;
+    while cursor < chars.len() && (chars[cursor].is_ascii_alphanumeric() || chars[cursor] == '_') {
+        cursor += 1;
+    }
+    let name: String = chars[*position + 1..cursor].iter().collect();
+    if name.is_empty() || chars.get(cursor) != Some(&'(') {
+        return Ok(None);
+    }
+    let function = function_from_name(&name).ok_or(MaskError::UnknownFunction(name.clone()))?;
+
+    *position = cursor + 1;
+    let mut arguments = Vec::new();
+    loop {
+        let (argument, closed) = parse_until(chars, position, &[',', ')'])?;
+        match closed {
+            Some(')') => {
+                arguments.push(argument);
+                break;
+            }
+            Some(_) => arguments.push(argument),
+            None => return Err(MaskError::UnclosedCall(name)),
+        }
+    }
+
+    // Counted here rather than at render time: a miscounted call is a mistake in
+    // the pattern, and the pattern is being typed with a live preview next to
+    // it. `$upper()` reads as one empty argument, which is why no function needs
+    // an arity of zero for that to be well-defined.
+    let (minimum, maximum) = function.arity();
+    if arguments.len() < minimum || maximum.is_some_and(|most| arguments.len() > most) {
+        return Err(MaskError::BadArity {
+            name: function.name(),
+            expected: match maximum {
+                Some(most) if most == minimum => format!("{minimum}"),
+                Some(most) => format!("{minimum} to {most}"),
+                None => format!("{minimum} or more"),
+            },
+            actual: arguments.len(),
+        });
+    }
+    Ok(Some(Segment::Call(function, arguments)))
 }
 
 fn flush_literal(literal: &mut String, segments: &mut Vec<Segment>) {
@@ -472,6 +563,9 @@ fn build_regex_into(segments: &[Segment], index: &mut usize, out: &mut String) {
             // Render-only like `%side%`: a mask carrying one refuses to extract,
             // so it contributes no capture group and no index (#147).
             Segment::File(_) => {}
+            // Render-only too (#73), and for a stronger reason: a function is
+            // not invertible, so there is nothing to capture.
+            Segment::Call(..) => {}
         }
     }
 }
@@ -498,6 +592,8 @@ fn collect_captures(
             Segment::Skip => {}
             // Render-only; extraction is refused before reaching here (#147).
             Segment::File(_) => {}
+            // Render-only; extraction is refused before reaching here (#73).
+            Segment::Call(..) => {}
         }
     }
 }
@@ -558,6 +654,33 @@ fn render_segments(
                     produced = true;
                 }
                 out.push_str(&clean);
+            }
+            // A function call (#73). Each argument is a pattern in its own
+            // right, rendered into a string first — which is what makes the
+            // calls nest.
+            //
+            // `optional` is passed straight through rather than forced on: a
+            // bare `%artist%` on a file with no artist is an unsatisfiable
+            // pattern, and wrapping it in `$upper()` must not quietly turn that
+            // into an empty string. Inside a `[…]` it stays as forgiving as
+            // everything else there.
+            //
+            // The values arrive already sanitized, because the placeholders
+            // inside the arguments sanitized them; the result is not sanitized
+            // again, so a separator a *pattern* puts there deliberately still
+            // means what it does everywhere else in the mask.
+            Segment::Call(function, arguments) => {
+                let mut values = Vec::with_capacity(arguments.len());
+                for argument in arguments {
+                    let mut buffer = String::new();
+                    render_segments(argument, tags, file, optional, &mut buffer)?;
+                    values.push(buffer);
+                }
+                let value = function.apply(&values)?;
+                if !value.is_empty() {
+                    produced = true;
+                }
+                out.push_str(&value);
             }
         }
     }
@@ -705,6 +828,7 @@ fn has_side(segments: &[Segment]) -> bool {
     segments.iter().any(|segment| match segment {
         Segment::Side => true,
         Segment::Section(inner) => has_side(inner),
+        Segment::Call(_, arguments) => arguments.iter().any(|a| has_side(a)),
         _ => false,
     })
 }
@@ -714,6 +838,7 @@ fn has_skip(segments: &[Segment]) -> bool {
     segments.iter().any(|segment| match segment {
         Segment::Skip => true,
         Segment::Section(inner) => has_skip(inner),
+        Segment::Call(_, arguments) => arguments.iter().any(|a| has_skip(a)),
         _ => false,
     })
 }
@@ -725,6 +850,20 @@ fn has_file(segments: &[Segment], predicate: fn(FileValue) -> bool) -> bool {
     segments.iter().any(|segment| match segment {
         Segment::File(value) => predicate(*value),
         Segment::Section(inner) => has_file(inner, predicate),
+        // Arguments count: `$upper(%_codec%)` reads the container just as much
+        // as a bare `%_codec%` does, and missing that would leave the render
+        // without the probe it needs (#73).
+        Segment::Call(_, arguments) => arguments.iter().any(|a| has_file(a, predicate)),
+        _ => false,
+    })
+}
+
+/// Whether any segment is a function call, which makes the mask render-only
+/// (#73).
+fn has_call(segments: &[Segment]) -> bool {
+    segments.iter().any(|segment| match segment {
+        Segment::Call(..) => true,
+        Segment::Section(inner) => has_call(inner),
         _ => false,
     })
 }
@@ -745,7 +884,7 @@ fn has_ambiguous_adjacency(segments: &[Segment], previous: &mut Option<bool>) ->
         // and neither can state a width.
         let stated = match segment {
             Segment::Placeholder(_, _, stated) => Some(*stated),
-            Segment::Side | Segment::Skip | Segment::File(_) => Some(false),
+            Segment::Side | Segment::Skip | Segment::File(_) | Segment::Call(..) => Some(false),
             _ => None,
         };
         if let Some(stated) = stated {
@@ -928,7 +1067,13 @@ fn file_placeholder_doc(value: FileValue) -> (&'static str, &'static str) {
 /// One entry in the placeholder reference (#148).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlaceholderDoc {
-    /// The bare name; write it between percent signs.
+    /// How it is written in a pattern, ready to drop at a caret: a placeholder
+    /// wears its percent signs, a function its parentheses with a slot per
+    /// required argument — `$substr(,,)` (#73). The skeleton is deliberately
+    /// valid to parse, so inserting one never leaves a pattern the parser
+    /// rejects; it renders empty until the arguments are typed in.
+    pub token: String,
+    /// The bare name; for a placeholder, what goes between the percent signs.
     pub name: &'static str,
     pub description: &'static str,
     /// Which section of the reference it belongs under.
@@ -950,6 +1095,8 @@ pub enum PlaceholderGroup {
     Technical,
     /// `%side%` and `%skip%`, which behave unlike the rest.
     Special,
+    /// A `$name(…)` call rather than a placeholder (#73).
+    Function,
 }
 
 impl PlaceholderGroup {
@@ -959,6 +1106,7 @@ impl PlaceholderGroup {
             Self::File => "File",
             Self::Technical => "Technical",
             Self::Special => "Special",
+            Self::Function => "Functions",
         }
     }
 }
@@ -1014,6 +1162,7 @@ pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
         .map(|field| {
             let (name, description) = tag_placeholder_doc(field);
             PlaceholderDoc {
+                token: format!("%{name}%"),
                 name,
                 description,
                 group: PlaceholderGroup::Tag,
@@ -1025,6 +1174,7 @@ pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
     docs.extend(file_order.into_iter().map(|value| {
         let (name, description) = file_placeholder_doc(value);
         PlaceholderDoc {
+            token: format!("%{name}%"),
             name,
             description,
             // The underscore that marks a technical value in the pattern marks
@@ -1041,6 +1191,7 @@ pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
         }
     }));
     docs.push(PlaceholderDoc {
+        token: "%side%".to_string(),
         name: "side",
         description: "Vinyl side letter, from the disc number",
         group: PlaceholderGroup::Special,
@@ -1048,12 +1199,28 @@ pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
         extract: false,
     });
     docs.push(PlaceholderDoc {
+        token: "%skip%".to_string(),
         name: "skip",
         description: "Matches and discards a run of text",
         group: PlaceholderGroup::Special,
         render: false,
         extract: true,
     });
+    // The function library (#73), off the same table the parser reads — a name
+    // shown here is by construction a name that parses, exactly as for the
+    // placeholders above. All render-only: a function transforms, and a
+    // transformation cannot be undone out of a filename.
+    docs.extend(ALL_FUNCTIONS.iter().map(|function| {
+        let (name, description) = function.doc();
+        PlaceholderDoc {
+            token: function.token(),
+            name,
+            description,
+            group: PlaceholderGroup::Function,
+            render: true,
+            extract: false,
+        }
+    }));
     docs
 }
 
@@ -1075,8 +1242,20 @@ pub enum MaskError {
     UnknownPlaceholder(String),
     #[error("ambiguous pattern: adjacent placeholders without a separator")]
     Ambiguous,
-    #[error("render-only pattern: %side% is computed and cannot be extracted")]
+    #[error("render-only pattern: computed values and functions cannot be extracted")]
     RenderOnly,
+    #[error("unknown function: ${0}")]
+    UnknownFunction(String),
+    #[error("unclosed function call: ${0}( is missing its )")]
+    UnclosedCall(String),
+    #[error("${name} takes {expected} arguments, not {actual}")]
+    BadArity {
+        name: &'static str,
+        expected: String,
+        actual: usize,
+    },
+    #[error("bad argument: {0}")]
+    BadArgument(String),
     #[error("extract-only pattern: %skip% discards text and cannot be rendered")]
     ExtractOnly,
     #[error("missing tag for placeholder: %{0}%")]
@@ -1652,6 +1831,182 @@ mod tests {
         assert_eq!(mask.render_with(&TagMap::new(), &file).unwrap(), "track");
     }
 
+    // ---- the function library (#73) ----
+
+    #[test]
+    fn a_function_transforms_what_the_placeholders_resolved_to() {
+        let mask = Mask::parse("$upper(%artist%) - $caps(%title%)").unwrap();
+        let tags = tags(&[
+            (TagField::Artist, "autechre"),
+            (TagField::Title, "second bad vilbel"),
+        ]);
+        assert_eq!(mask.render(&tags).unwrap(), "AUTECHRE - Second Bad Vilbel");
+    }
+
+    #[test]
+    fn calls_nest_and_an_argument_is_a_pattern_of_its_own() {
+        // The argument holds a placeholder, a literal and another call.
+        let mask = Mask::parse("$left($upper(%artist% '('%year%')'),12)").unwrap();
+        let tags = tags(&[(TagField::Artist, "autechre"), (TagField::Year, "1994")]);
+        assert_eq!(mask.render(&tags).unwrap(), "AUTECHRE (19");
+    }
+
+    #[test]
+    fn a_comma_or_a_bracket_inside_an_argument_is_written_quoted() {
+        let mask = Mask::parse("$replace(%artist%,'&',and)").unwrap();
+        let ampersand = tags(&[(TagField::Artist, "Simon & Garfunkel")]);
+        assert_eq!(mask.render(&ampersand).unwrap(), "Simon and Garfunkel");
+
+        // `,` ends an argument, so a literal one has to be quoted.
+        let mask = Mask::parse("$getpart(%artist%,',',1)").unwrap();
+        let sorted = tags(&[(TagField::Artist, "Beatles, The")]);
+        assert_eq!(mask.render(&sorted).unwrap(), "Beatles");
+    }
+
+    #[test]
+    fn a_section_inside_a_call_still_disappears_when_it_is_empty() {
+        let mask = Mask::parse("$upper(%artist%[ - %year%])").unwrap();
+        let with_year = tags(&[(TagField::Artist, "Autechre"), (TagField::Year, "1994")]);
+        assert_eq!(mask.render(&with_year).unwrap(), "AUTECHRE - 1994");
+        let without = tags(&[(TagField::Artist, "Autechre")]);
+        assert_eq!(mask.render(&without).unwrap(), "AUTECHRE");
+    }
+
+    #[test]
+    fn a_call_inside_a_section_decides_whether_the_section_survives() {
+        let mask = Mask::parse("%title%[ '['$upper(%key%)']']").unwrap();
+        let with_key = tags(&[(TagField::Title, "Rain"), (TagField::InitialKey, "am")]);
+        assert_eq!(mask.render(&with_key).unwrap(), "Rain [AM]");
+        // No key: the call produces nothing, so the section contributes nothing
+        // -- not even its brackets and its space.
+        let without = tags(&[(TagField::Title, "Rain")]);
+        assert_eq!(mask.render(&without).unwrap(), "Rain");
+    }
+
+    #[test]
+    fn a_missing_tag_is_as_fatal_inside_a_call_as_outside_one() {
+        // Wrapping a placeholder in a function must not quietly turn an
+        // unsatisfiable pattern into an empty string -- that is what `[…]` is
+        // for, and it still works inside a call.
+        let mask = Mask::parse("$upper(%artist%)").unwrap();
+        assert!(matches!(
+            mask.render(&TagMap::new()),
+            Err(MaskError::MissingTag(name)) if name == "artist"
+        ));
+        let optional = Mask::parse("[$upper(%artist%)]").unwrap();
+        assert_eq!(optional.render(&TagMap::new()).unwrap(), "");
+    }
+
+    #[test]
+    fn a_dollar_that_starts_no_call_is_an_ordinary_character() {
+        // The sigil arrived after the grammar shipped, so a pattern that merely
+        // contains a `$` has to keep meaning what it meant.
+        let mask = Mask::parse("%title% '['$5']'").unwrap();
+        let tags = tags(&[(TagField::Title, "Rain")]);
+        assert_eq!(mask.render(&tags).unwrap(), "Rain [$5]");
+        let bare = Mask::parse("$").unwrap();
+        assert_eq!(bare.render(&TagMap::new()).unwrap(), "$");
+    }
+
+    #[test]
+    fn a_misspelt_or_miscounted_call_is_refused_when_the_pattern_is_parsed() {
+        // Not at render time: the pattern is typed with a live preview beside
+        // it, and "unknown function" there beats a wrong filename per file.
+        assert!(matches!(
+            Mask::parse("$upprer(%title%)"),
+            Err(MaskError::UnknownFunction(name)) if name == "upprer"
+        ));
+        assert!(matches!(
+            Mask::parse("$left(%title%)"),
+            Err(MaskError::BadArity {
+                name: "left",
+                actual: 1,
+                ..
+            })
+        ));
+        assert!(matches!(
+            Mask::parse("$upper(%title%,2)"),
+            Err(MaskError::BadArity {
+                name: "upper",
+                actual: 2,
+                ..
+            })
+        ));
+        assert!(matches!(
+            Mask::parse("$upper(%title%"),
+            Err(MaskError::UnclosedCall(name)) if name == "upper"
+        ));
+    }
+
+    #[test]
+    fn an_argument_that_should_be_a_number_and_is_not_fails_the_render() {
+        let mask = Mask::parse("$left(%title%,%artist%)").unwrap();
+        let tags = tags(&[(TagField::Title, "Rain"), (TagField::Artist, "Autechre")]);
+        assert!(matches!(mask.render(&tags), Err(MaskError::BadArgument(_))));
+    }
+
+    #[test]
+    fn a_mask_that_calls_a_function_cannot_extract() {
+        // A substitution is invertible and that is what the two directions rest
+        // on; a transformation is not, and guessing which half of `THE BEATLES`
+        // the pattern upper-cased is exactly the invention this module refuses.
+        let mask = Mask::parse("$upper(%artist%) - %title%").unwrap();
+        assert!(matches!(
+            mask.extract("AUTECHRE - Rain"),
+            Err(MaskError::RenderOnly)
+        ));
+        // Including when the call is buried in a section.
+        let nested = Mask::parse("%title%[ $upper(%key%)]").unwrap();
+        assert!(matches!(nested.extract("Rain"), Err(MaskError::RenderOnly)));
+    }
+
+    #[test]
+    fn a_file_property_inside_a_call_still_asks_for_the_read_it_needs() {
+        // Missing this would leave the render without the probe, and
+        // `$upper(%_codec%)` would quietly come out empty on every file.
+        let bitrate = Mask::parse("$num(%_bitrate%,4)").unwrap();
+        assert!(bitrate.needs_audio_props(), "the probe was skipped");
+        let dated = Mask::parse("[$left(%_filedate%,4)]").unwrap();
+        assert!(dated.needs_metadata(), "the metadata read was skipped");
+        // And a mask that asks for none of it still costs nothing extra.
+        let plain = Mask::parse("$upper(%artist%)").unwrap();
+        assert!(!plain.needs_audio_props() && !plain.needs_metadata());
+    }
+
+    #[test]
+    fn the_two_spellings_of_padding_a_number_agree() {
+        // `$num` exists to unify with `%field:width%`, so the two had better
+        // produce the same thing -- including on a value that is not a number,
+        // which neither may corrupt.
+        let tags = tags(&[(TagField::TrackNumber, "7"), (TagField::DiscNumber, "A1")]);
+        assert_eq!(
+            Mask::parse("%track:3%").unwrap().render(&tags).unwrap(),
+            Mask::parse("$num(%track%,3)")
+                .unwrap()
+                .render(&tags)
+                .unwrap()
+        );
+        assert_eq!(
+            Mask::parse("%disc:3%").unwrap().render(&tags).unwrap(),
+            Mask::parse("$num(%disc%,3)")
+                .unwrap()
+                .render(&tags)
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn the_real_thing_a_function_library_is_for() {
+        // The case that made this worth building: a sorting-form folder name
+        // from an album artist, with the throwaway attribute off the title.
+        let mask = Mask::parse("$swapprefix(%albumartist%)/$cutmix(%title%)").unwrap();
+        let tags = tags(&[
+            (TagField::AlbumArtist, "The Beatles"),
+            (TagField::Title, "Come Together (Remastered)"),
+        ]);
+        assert_eq!(mask.render(&tags).unwrap(), "Beatles, The/Come Together");
+    }
+
     // ---- the placeholder reference (#148) ----
 
     #[test]
@@ -1660,8 +2015,11 @@ mod tests {
         // takes. A name in the list that doesn't parse would be worse than no
         // list at all -- it would send the user down exactly the guessing path
         // the reference exists to end.
+        // Written the way the reference offers it, which is also the way the
+        // in-app list inserts it -- so this pins the insert too, not just the
+        // name (#73).
         for doc in placeholder_reference() {
-            let pattern = format!("%{}%", doc.name);
+            let pattern = doc.token.clone();
             assert!(
                 Mask::parse(&pattern).is_ok(),
                 "the reference lists {pattern}, which the parser rejects"
@@ -1675,7 +2033,7 @@ mod tests {
         // single-placeholder mask can return (a missing tag, no match) is about
         // the data, not about what the placeholder is capable of.
         for doc in placeholder_reference() {
-            let mask = Mask::parse(&format!("%{}%", doc.name)).unwrap();
+            let mask = Mask::parse(&doc.token).unwrap();
             let renders = !matches!(mask.render(&TagMap::new()), Err(MaskError::ExtractOnly));
             let extracts = !matches!(mask.extract("value"), Err(MaskError::RenderOnly));
             assert_eq!(renders, doc.render, "{} renders differently", doc.name);

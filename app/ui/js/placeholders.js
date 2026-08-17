@@ -29,8 +29,9 @@ async function catalogue() {
 const GRAMMAR = [
   ["%field:2%", "Pad a number to a width — %track:3% gives 007"],
   ["[ … ]", "Optional section: dropped whole when everything inside is empty"],
+  ["$name(…)", "Call a function; arguments are patterns too, and calls nest"],
   ["/", "Folder separator, where a pattern builds a path"],
-  ["'%'", "Quote a reserved character — % [ ] — literally"],
+  ["'%'", "Quote a reserved character — % [ ] , — literally"],
 ];
 
 function directionNote(entry) {
@@ -143,7 +144,12 @@ function insert(token) {
   const start = target.selectionStart ?? target.value.length;
   const end = target.selectionEnd ?? start;
   target.value = target.value.slice(0, start) + token + target.value.slice(end);
-  const caret = start + token.length;
+  // A function arrives as an empty call — `$upper()`, `$substr(,,)` — and the
+  // next thing to type is its first argument, so the caret lands inside the
+  // parentheses rather than after them (#73). A placeholder has nothing to fill
+  // in and keeps the caret at the end.
+  const opening = token.indexOf("(");
+  const caret = start + (opening >= 0 && token.endsWith(")") ? opening + 1 : token.length);
   target.focus();
   target.setSelectionRange(caret, caret);
   target.dispatchEvent(new Event("input", { bubbles: true }));
@@ -198,5 +204,7 @@ export async function initPlaceholderReference() {
 // Read straight from the warmed catalogue, so a column that no placeholder
 // addresses (File, Position) correctly gets nothing.
 export function placeholderToken(key) {
-  return cache?.find((entry) => entry.name === key)?.token ?? null;
+  // Placeholders only: the catalogue also carries the functions (#73), and a
+  // column header wants `%artist%`, never `$replace(,,)`.
+  return cache?.find((entry) => entry.name === key && entry.token.startsWith("%"))?.token ?? null;
 }

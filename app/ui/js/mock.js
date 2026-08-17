@@ -717,8 +717,20 @@ function mockInvoke(cmd, args) {
           ["_length", "Duration, m:ss", "Technical", true, false],
           ["side", "Vinyl side letter, from the disc number", "Special", true, false],
           ["skip", "Matches and discards a run of text", "Special", false, true],
-        ].map(([name, description, group, render, extract]) => ({
-          token: `%${name}%`,
+          // Functions (#73) are written `$name(…)`, not `%name%`, and one that
+          // takes several arguments arrives with a slot per argument — both
+          // shapes are here so the popover's insertion is exercised.
+          ["upper", "$upper(x) — UPPER CASE", "Functions", true, false, "$upper()"],
+          [
+            "substr",
+            "$substr(x,from,to) — characters from..to, 1-based",
+            "Functions",
+            true,
+            false,
+            "$substr(,,)",
+          ],
+        ].map(([name, description, group, render, extract, token]) => ({
+          token: token ?? `%${name}%`,
           name,
           description,
           group,
