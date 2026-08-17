@@ -897,3 +897,144 @@ fn minimal_wav() -> Vec<u8> {
     data.resize(data.len() + samples as usize, 128);
     data
 }
+
+/// #194: a file carrying both an ID3v2 and a legacy ID3v1 tag had only the
+/// ID3v2 one updated, so the two disagreed — invisibly, until the ID3v2 tag was
+/// cleared and the stale ID3v1 became the file's only answer, reading back as if
+/// nothing had been cleared (with every value cut to ID3v1's 30 bytes).
+#[test]
+fn a_write_keeps_an_existing_id3v1_tag_in_step() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::id3::v1::Id3v1Tag;
+    use lofty::mpeg::MpegFile;
+    use lofty::prelude::TagExt;
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-id3v1-sync-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    // The state a real file arrives in: an ID3v1 tag written by something older.
+    let legacy = Id3v1Tag {
+        artist: Some("Stale Artist".to_string()),
+        title: Some("Stale Title".to_string()),
+        ..Default::default()
+    };
+    legacy
+        .save_to_path(&path, WriteOptions::default())
+        .expect("seed id3v1");
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "New Artist".to_string());
+    tags.insert(TagField::Title, "New Title".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags,
+    })
+    .expect("write tags");
+
+    let id3v1 = {
+        let mut file = std::fs::File::open(&path).unwrap();
+        MpegFile::read_from(&mut file, ParseOptions::new())
+            .unwrap()
+            .id3v1()
+            .cloned()
+    };
+    std::fs::remove_file(&path).ok();
+
+    let id3v1 = id3v1.expect("the file still has its ID3v1 tag");
+    assert_eq!(id3v1.artist.as_deref(), Some("New Artist"));
+    assert_eq!(id3v1.title.as_deref(), Some("New Title"));
+}
+
+/// The other half of #194: clearing the tags has to take the ID3v1 block with
+/// it, or the file still answers with the old values.
+#[test]
+fn clearing_the_tags_removes_the_id3v1_tag() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::id3::v1::Id3v1Tag;
+    use lofty::mpeg::MpegFile;
+    use lofty::prelude::TagExt;
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-id3v1-clear-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    let legacy = Id3v1Tag {
+        artist: Some("Stale Artist".to_string()),
+        title: Some("Stale Title".to_string()),
+        album: Some("Stale Album".to_string()),
+        ..Default::default()
+    };
+    legacy
+        .save_to_path(&path, WriteOptions::default())
+        .expect("seed id3v1");
+
+    // What a cleared file looks like to the writer: nothing in the model at all.
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags: BTreeMap::new(),
+    })
+    .expect("write tags");
+
+    let id3v1 = {
+        let mut file = std::fs::File::open(&path).unwrap();
+        MpegFile::read_from(&mut file, ParseOptions::new())
+            .unwrap()
+            .id3v1()
+            .cloned()
+    };
+    let read_back = TagEngine::read(&path).expect("read tags");
+    std::fs::remove_file(&path).ok();
+
+    assert!(id3v1.is_none(), "the stale ID3v1 tag survived the clear");
+    assert_eq!(read_back.tags.get(&TagField::Artist), None);
+    assert_eq!(read_back.tags.get(&TagField::Album), None);
+}
+
+/// And a file that never had one does not acquire a legacy tag on write —
+/// nobody asked for it (#194).
+#[test]
+fn a_write_does_not_create_an_id3v1_tag() {
+    use lofty::config::ParseOptions;
+    use lofty::file::AudioFile;
+    use lofty::mpeg::MpegFile;
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-id3v1-none-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "Only In ID3v2".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Mp3,
+        tags,
+    })
+    .expect("write tags");
+
+    let id3v1 = {
+        let mut file = std::fs::File::open(&path).unwrap();
+        MpegFile::read_from(&mut file, ParseOptions::new())
+            .unwrap()
+            .id3v1()
+            .cloned()
+    };
+    let read_back = TagEngine::read(&path).expect("read tags");
+    std::fs::remove_file(&path).ok();
+
+    assert!(id3v1.is_none(), "a legacy tag appeared out of nowhere");
+    assert_eq!(
+        read_back.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Only In ID3v2")
+    );
+}

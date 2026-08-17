@@ -8,13 +8,14 @@ use std::sync::RwLock;
 use lofty::aac::AacFile;
 use lofty::config::{ParseOptions, ParsingMode, WriteOptions};
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
+use lofty::id3::v1::Id3v1Tag;
 use lofty::id3::v2::{Frame, Id3v2Tag};
 use lofty::iff::aiff::AiffFile;
 use lofty::iff::wav::WavFile;
 use lofty::mpeg::MpegFile;
 use lofty::picture::{MimeType, Picture, PictureType};
 use lofty::probe::Probe;
-use lofty::tag::{ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
+use lofty::tag::{Accessor, ItemKey, ItemValue, Tag, TagExt, TagItem, TagType};
 use thiserror::Error;
 
 /// Whether ID3v2 tags are written as v2.3 (`true`) or v2.4 (`false`, the
@@ -724,6 +725,71 @@ fn picture_from_cover(cover: &CoverArt) -> Picture {
 /// points and loops), popularimeter ratings, unsynchronised lyrics — is copied
 /// over from the file's existing tag. Text frames are deliberately *not* copied
 /// over, so clearing a field still clears it.
+/// Whether the file ends in an ID3v1 tag block. Read by hand — the block is
+/// always the last 128 bytes and starts with `TAG` — rather than by probing the
+/// file again, which a write has already done once.
+fn has_id3v1(path: &Path) -> Result<bool, TagIoError> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let length = file.metadata()?.len();
+    if length < 128 {
+        return Ok(false);
+    }
+    file.seek(SeekFrom::Start(length - 128))?;
+    let mut magic = [0u8; 3];
+    file.read_exact(&mut magic)?;
+    Ok(&magic == b"TAG")
+}
+
+/// Keep an ID3v1 tag the file already carries in step with what was just
+/// written (#194).
+///
+/// A file with both tags has two answers to every question, and only the ID3v2
+/// one was ever updated: the app showed the new value while anything reading
+/// ID3v1 — older DJ hardware, other software — still read the old one. Clearing
+/// the tags made it visible, because the stale ID3v1 was then the only tag left
+/// and read back as if nothing had been cleared, with every value cut to the 30
+/// bytes ID3v1 allows.
+///
+/// So a file that has one gets it rewritten from the model, and loses it when
+/// the model has nothing it can hold. One is never created where there wasn't
+/// one — nobody asked for a legacy tag — and neither cover art nor DJ cue
+/// points are involved, since ID3v1 cannot hold either.
+fn sync_id3v1(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
+    if !has_id3v1(path)? {
+        return Ok(());
+    }
+    // The seven fields ID3v1 has room for; lofty truncates the text on write.
+    let mut legacy = Id3v1Tag {
+        title: tags.get(&TagField::Title).cloned(),
+        artist: tags.get(&TagField::Artist).cloned(),
+        album: tags.get(&TagField::Album).cloned(),
+        // Four bytes, so a full date (ID3v2.4 allows one) contributes its year.
+        year: tags
+            .get(&TagField::Year)
+            .map(|year| year.chars().take(4).collect()),
+        comment: tags.get(&TagField::Comment).cloned(),
+        // One byte: a track number that doesn't fit is left out rather than
+        // wrapped around.
+        track_number: tags
+            .get(&TagField::TrackNumber)
+            .and_then(|track| track.parse::<u8>().ok())
+            .filter(|track| *track > 0),
+        ..Default::default()
+    };
+    // A genre is an index into ID3v1's fixed list, so anything outside it has
+    // nowhere to go; `set_genre` leaves the field alone in that case.
+    if let Some(genre) = tags.get(&TagField::Genre) {
+        legacy.set_genre(genre.clone());
+    }
+    if legacy.is_empty() {
+        TagType::Id3v1.remove_from_path(path)?;
+    } else {
+        legacy.save_to_path(path, WriteOptions::default())?;
+    }
+    Ok(())
+}
+
 fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
     let mut generic = Tag::new(TagType::Id3v2);
     for (field, value) in tags {
@@ -743,6 +809,9 @@ fn write_id3v2(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
         }
     }
     updated.save_to_path(path, id3_write_options())?;
+    // Whatever the file also carries in an ID3v1 block has to say the same
+    // thing (#194).
+    sync_id3v1(path, tags)?;
     Ok(())
 }
 

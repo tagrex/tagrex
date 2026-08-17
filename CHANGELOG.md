@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Clearing the tags on an MP3 no longer leaves a stale ID3v1 tag behind.**
+  Clearing looked like it did nothing: the values came back, cut off at thirty
+  characters. That is an ID3v1 field — the file carried a legacy tag beside its
+  ID3v2 one, only the ID3v2 one was ever written, and once it was cleared the old
+  ID3v1 was all that was left to read. The same silence covered ordinary edits:
+  the app showed the new value while anything reading ID3v1, older DJ hardware
+  included, still read the old one. A file that has one now gets it written with
+  everything else, and loses it when there is nothing left to put in it; a file
+  without one never acquires one. Cover art and DJ cue points are untouched —
+  ID3v1 can hold neither. (#194)
+
+- **A toast no longer covers the staged-change bar.** The message announcing a
+  staged change landed on the Discard and Apply buttons it was about; it now sits
+  above the bar while one is floating over the table. (#195)
+
+- **Folders keep an order you can predict, and an apply keeps the sort.** With a
+  column sort active, folder headers came out in the order of each folder's
+  first file — which reads as random — and applying anything re-read the library
+  into scan order while the header still showed a sort, so everything jumped and
+  the folder being worked on appeared to move. Folders now take their own order
+  under a sort, in its direction, and keep the scan order when nothing is
+  sorted; an apply or an undo re-sorts what it re-read. (#196)
+
 ## [0.6.0] - 2026-08-17
 
 ### Added
