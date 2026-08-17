@@ -4,8 +4,18 @@
 // in `tracks[].tags` — this exposes the rest, including custom ones. Edits are
 // staged into the shared buffer and previewed with everything else, so nothing
 // here writes.
-import { el, escapeHtml, ico, plural, toast } from "./dom.js";
-import { edits, selection, selectedPaths, trackAt, tracks } from "./state.js";
+import { confirmDialog, el, escapeHtml, ico, plural, toast } from "./dom.js";
+import { invoke } from "./invoke.js";
+import {
+  edits,
+  previewPlan,
+  selection,
+  selectedPaths,
+  setPreviewPlan,
+  setPreviewSource,
+  trackAt,
+  tracks,
+} from "./state.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS } from "./fields.js";
 import { hooks } from "./hooks.js";
 
@@ -49,13 +59,21 @@ function renderTagBlocks(paths) {
   // story are two files, and a set of strings cannot say so.
   let files = 0;
   const wordings = new Set();
+  // The blocks that could be stripped, keyed by kind so two files carrying the
+  // same spare block offer one button, not two.
+  const strippable = new Map();
   for (const path of paths) {
     const blocks = trackAt(path)?.tag_blocks || [];
     if (blocks.length < 2) continue;
     files++;
     const read = blocks.find((b) => b.read_from) || blocks[0];
-    const rest = blocks.filter((b) => b !== read).map((b) => b.label);
-    wordings.add(`${read.label} — also ${rest.join(" and ")}`);
+    const rest = blocks.filter((b) => b !== read);
+    wordings.add(`${read.label} — also ${rest.map((b) => b.label).join(" and ")}`);
+    for (const block of rest) {
+      const entry = strippable.get(block.kind) || { label: block.label, files: 0 };
+      entry.files++;
+      strippable.set(block.kind, entry);
+    }
   }
   if (!files) {
     line.hidden = true;
@@ -70,6 +88,67 @@ function renderTagBlocks(paths) {
         : `Reading ${only}, on all ${files} of them`;
   } else {
     line.textContent = `${files} of the selected files carry more than one tag block`;
+  }
+  renderBlockStrippers(line, strippable);
+}
+
+// A "Remove <block>" button per spare block the selection carries (#47).
+//
+// Only the blocks the app is NOT reading from: stripping the one the values
+// come from is emptying the file, which is what CLEAR TAGS is for, and offering
+// it here beside "Reading ID3v2" would read as the opposite of what it does.
+function renderBlockStrippers(line, strippable) {
+  for (const [kind, { label, files }] of strippable) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "text-btn";
+    button.textContent = `Remove ${label}`;
+    button.title =
+      files === 1
+        ? `Strip the ${label} block, leaving the rest of the file alone`
+        : `Strip the ${label} block from ${plural(files, "file", "files")}, leaving the rest alone`;
+    button.addEventListener("click", () => previewRemoveTagBlock(kind, label));
+    line.append(" ", button);
+  }
+}
+
+// Preview stripping one tag block from the selection, through the normal
+// preview/apply/undo path.
+//
+// Undo rebuilds the block from what it said rather than from its bytes, so for
+// anything but ID3v1 a frame the model cannot express — a cue point, a rating —
+// would not come back. That is worth a confirmation, not a footnote: the plan
+// says which blocks are in that position and the dialog repeats it.
+async function previewRemoveTagBlock(kind, label) {
+  const paths = selectedPaths();
+  if (paths.length === 0) {
+    toast(`Select the tracks whose ${label} tag to remove first`, true);
+    return;
+  }
+  try {
+    const plan = await invoke("preview_remove_tag_block", { paths, kind });
+    if (plan.changes.length === 0) {
+      toast(`None of the selected files carry a ${label} tag`);
+      return;
+    }
+    const inexact = plan.changes.some((change) =>
+      (change.block_removals || []).some((removal) => !removal.exact)
+    );
+    if (inexact) {
+      const ok = await confirmDialog(
+        `Undo rebuilds a ${label} block from its text and pictures. Anything else it holds — ` +
+          `cue points, ratings, player-specific frames — would not come back. ` +
+          `Remove it from ${plural(plan.changes.length, "file", "files")}?`,
+        "Remove"
+      );
+      if (!ok) return;
+    }
+    setPreviewPlan(plan);
+    setPreviewSource("blocks");
+    hooks.renderPreview(previewPlan);
+    toast(`Previewing ${label} removal on ${plural(plan.changes.length, "file", "files")}`);
+  } catch (e) {
+    toast(String(e), true);
   }
 }
 

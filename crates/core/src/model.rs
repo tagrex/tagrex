@@ -520,6 +520,58 @@ impl TagBlockKind {
             _ => return None,
         })
     }
+
+    /// A lossless string form, for the journal (#47). Distinct from
+    /// [`name`](Self::name), which is for reading: that one can be reworded, this
+    /// one is written into a database that outlives the build that wrote it.
+    pub fn to_storage_key(self) -> &'static str {
+        match self {
+            Self::Id3v1 => "id3v1",
+            Self::Id3v2 => "id3v2",
+            Self::VorbisComments => "vorbis",
+            Self::Ape => "ape",
+            Self::Mp4Ilst => "mp4",
+            Self::RiffInfo => "riff",
+            Self::AiffText => "aiff",
+        }
+    }
+
+    /// Inverse of [`to_storage_key`](Self::to_storage_key), or `None` for a key
+    /// this build does not know — a journal written by a newer one.
+    pub fn from_storage_key(key: &str) -> Option<Self> {
+        Some(match key {
+            "id3v1" => Self::Id3v1,
+            "id3v2" => Self::Id3v2,
+            "vorbis" => Self::VorbisComments,
+            "ape" => Self::Ape,
+            "mp4" => Self::Mp4Ilst,
+            "riff" => Self::RiffInfo,
+            "aiff" => Self::AiffText,
+            _ => return None,
+        })
+    }
+
+    fn to_tag_type(self) -> TagType {
+        match self {
+            Self::Id3v1 => TagType::Id3v1,
+            Self::Id3v2 => TagType::Id3v2,
+            Self::VorbisComments => TagType::VorbisComments,
+            Self::Ape => TagType::Ape,
+            Self::Mp4Ilst => TagType::Mp4Ilst,
+            Self::RiffInfo => TagType::RiffInfo,
+            Self::AiffText => TagType::AiffText,
+        }
+    }
+
+    /// Whether a block of this kind can hold an embedded image. ID3v1 has room
+    /// for seven text fields and nothing else, so removing one can never cost a
+    /// picture — which is what makes it the one kind undo restores exactly.
+    pub fn holds_pictures(self) -> bool {
+        matches!(
+            self,
+            Self::Id3v2 | Self::VorbisComments | Self::Mp4Ilst | Self::Ape
+        )
+    }
 }
 
 /// Which ID3v2 revision a block is written in (#47). The one tag kind whose
@@ -573,6 +625,43 @@ impl TagBlock {
     /// why the ID3v2 revision is not part of a per-file report.
     pub fn label(&self) -> &'static str {
         self.kind.name()
+    }
+}
+
+/// What a tag block held, in enough detail to put it back (#47).
+///
+/// A rebuild, not a copy of the bytes: the backend can write a tag block out but
+/// offers no way to read one back in, so undo reconstructs the block from what
+/// it said rather than restoring it verbatim. For ID3v1 that is the whole block
+/// — seven text fields, no room for anything else — and the round trip is exact.
+/// For every other kind it is the text and the pictures, and a frame the model
+/// cannot express (a DJ cue point, a rating) does not come back. That is what
+/// [`exact`](Self::exact) is for, and why a preview says so before the removal
+/// is staged.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct TagBlockContent {
+    /// What the block held, in the model's own field vocabulary.
+    ///
+    /// Deliberately not the format's own spelling of each key: ID3v1 has no
+    /// named keys at all — it is a fixed binary layout, and the backend maps
+    /// none of them — so a snapshot keyed that way comes out empty for the one
+    /// kind this has to be exact about. [`TagField`] round-trips losslessly and
+    /// is already what the journal persists.
+    pub tags: TagMap,
+    /// The images the block held.
+    pub covers: Vec<CoverArt>,
+}
+
+impl TagBlockContent {
+    /// Whether putting this block back would restore it whole.
+    ///
+    /// True only for ID3v1, and deliberately by *kind* rather than by
+    /// inspection: erring towards warning costs a sentence, and erring the other
+    /// way costs somebody their cue points. A block that turns out to have held
+    /// nothing exotic is warned about needlessly; one that did is never removed
+    /// silently.
+    pub fn exact(kind: TagBlockKind) -> bool {
+        kind == TagBlockKind::Id3v1
     }
 }
 
@@ -1082,6 +1171,85 @@ impl TagEngine {
         };
         Ok(read_id3v2(path, container, custom_item_options())?
             .map(|tag| Id3v2Revision::from_lofty(tag.original_version())))
+    }
+
+    /// What one of the file's tag blocks holds, as a snapshot undo can rebuild
+    /// it from (#47). `None` when the file carries no block of that kind.
+    ///
+    /// Taken from the generic representation of that block, which is where the
+    /// backend surfaces every item it has a key for, plus the pictures. What it
+    /// does *not* surface — a format-specific item, a binary frame — is the
+    /// difference [`TagBlockContent::exact`] warns about.
+    pub fn read_block(
+        path: &Path,
+        kind: TagBlockKind,
+    ) -> Result<Option<TagBlockContent>, TagIoError> {
+        let tagged = probe_file(path)?;
+        let tag_type = kind.to_tag_type();
+        let Some(tag) = tagged.tag(tag_type) else {
+            return Ok(None);
+        };
+        let mut tags = TagMap::new();
+        for item in tag.items() {
+            let value = match item.value() {
+                ItemValue::Text(text) | ItemValue::Locator(text) => text.clone(),
+                _ => continue,
+            };
+            insert_read_value(
+                &mut tags,
+                item_key_to_tag_field(item.key(), tag_type),
+                false,
+                value,
+            );
+        }
+        Ok(Some(TagBlockContent {
+            tags,
+            covers: tag.pictures().iter().map(cover_from_picture).collect(),
+        }))
+    }
+
+    /// Remove one tag block, leaving every other block in the file alone (#47).
+    ///
+    /// Not `remove_from_path`: on this backend that opens the file for reading
+    /// only and then cannot shorten it, so the block survives — the same trap
+    /// #194's ID3v1 removal hit. A handle we open for writing is the same code
+    /// path with a file it can actually write.
+    ///
+    /// Only [`Executor`](crate::plan::Executor) should call this.
+    pub fn remove_block(path: &Path, kind: TagBlockKind) -> Result<(), TagIoError> {
+        let mut handle = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(path)?;
+        kind.to_tag_type()
+            .remove_from(&mut handle, WriteOptions::default())?;
+        Ok(())
+    }
+
+    /// Put a removed tag block back from its snapshot (#47) — the undo of
+    /// [`remove_block`](Self::remove_block).
+    ///
+    /// Only [`Executor`](crate::plan::Executor) should call this.
+    pub fn restore_block(
+        path: &Path,
+        kind: TagBlockKind,
+        content: &TagBlockContent,
+    ) -> Result<(), TagIoError> {
+        let tag_type = kind.to_tag_type();
+        let mut tag = Tag::new(tag_type);
+        for (field, value) in &content.tags {
+            // A field this block type has no key for is dropped rather than
+            // guessed at — the same silent-drop rule the writer follows (#165),
+            // and part of what makes a rebuild exact only for ID3v1.
+            if item_key_for(field, tag_type).is_some() {
+                push_field_items(&mut tag, field, value);
+            }
+        }
+        for cover in &content.covers {
+            tag.push_picture(picture_from_cover(cover));
+        }
+        tag.save_to_path(path, WriteOptions::default())?;
+        Ok(())
     }
 
     /// Every image the file carries (#56), in the order the tag holds them.

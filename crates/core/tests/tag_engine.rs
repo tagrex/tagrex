@@ -9,7 +9,8 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use tagrex_core::model::{
-    AudioFormat, CoverArt, Id3v2Revision, TagBlockKind, TagEngine, TagField, TrackFile,
+    AudioFormat, CoverArt, Id3v2Revision, TagBlockContent, TagBlockKind, TagEngine, TagField,
+    TrackFile,
 };
 
 /// `fLaC` + a non-last STREAMINFO block (34 bytes, all zeroed out except a
@@ -1511,4 +1512,89 @@ fn a_file_that_is_not_audio_at_all_still_fails() {
     let read = TagEngine::read(&path);
     std::fs::remove_file(&path).ok();
     assert!(read.is_err(), "a text file must not read as audio");
+}
+
+/// #47: removing one tag block must leave every other block in the file exactly
+/// as it was, and the snapshot must put the removed one back.
+///
+/// ID3v1 is the case worth having exact — 81% of a real library carries one
+/// beside its ID3v2, and it holds seven text fields and nothing else, so there
+/// is nothing a rebuild can fail to bring back.
+#[test]
+fn removing_a_block_leaves_the_others_alone_and_undo_puts_it_back() {
+    use lofty::config::WriteOptions;
+    use lofty::id3::v1::Id3v1Tag;
+    use lofty::prelude::{Accessor, TagExt};
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-block-remove-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    let mut modern = lofty::id3::v2::Id3v2Tag::new();
+    modern.set_artist("Current".to_string());
+    modern.set_title("Modern Title".to_string());
+    modern
+        .save_to_path(&path, WriteOptions::default())
+        .expect("seed id3v2");
+    let legacy = Id3v1Tag {
+        artist: Some("Stale Artist".to_string()),
+        title: Some("Stale Title".to_string()),
+        ..Default::default()
+    };
+    legacy
+        .save_to_path(&path, WriteOptions::default())
+        .expect("seed id3v1");
+
+    let kinds = |path: &PathBuf| -> Vec<TagBlockKind> {
+        TagEngine::read_with_props(path)
+            .expect("read")
+            .blocks
+            .iter()
+            .map(|b| b.kind)
+            .collect()
+    };
+    assert_eq!(kinds(&path).len(), 2, "seeding failed");
+
+    // Snapshot, then remove.
+    let snapshot = TagEngine::read_block(&path, TagBlockKind::Id3v1)
+        .expect("read block")
+        .expect("the block is there");
+    assert!(
+        TagBlockContent::exact(TagBlockKind::Id3v1),
+        "ID3v1 has nothing a rebuild can miss"
+    );
+    TagEngine::remove_block(&path, TagBlockKind::Id3v1).expect("remove");
+
+    assert_eq!(
+        kinds(&path),
+        vec![TagBlockKind::Id3v2],
+        "the wrong block went"
+    );
+    // The block that stayed is untouched, values and all.
+    let after = TagEngine::read(&path).expect("read");
+    assert_eq!(
+        after.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Current")
+    );
+
+    // Undo.
+    TagEngine::restore_block(&path, TagBlockKind::Id3v1, &snapshot).expect("restore");
+    let restored = TagEngine::read_block(&path, TagBlockKind::Id3v1)
+        .expect("read block")
+        .expect("the block is back");
+    std::fs::remove_file(&path).ok();
+
+    assert_eq!(restored, snapshot, "the block did not come back as it went");
+    // And it really holds the legacy values, not an empty block that happens to
+    // compare equal to an empty snapshot.
+    assert_eq!(
+        snapshot.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Stale Artist")
+    );
+    assert_eq!(
+        restored.tags.get(&TagField::Title).map(String::as_str),
+        Some("Stale Title")
+    );
 }

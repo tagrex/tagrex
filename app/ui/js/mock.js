@@ -239,9 +239,9 @@ function mockInvoke(cmd, args) {
     tracks: [
       // The second file deliberately carries a stale ID3v1 block as well (#47),
       // so the Tag types column and the editor's line have something to show.
-      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, tag_blocks: [{ label: "ID3v2", read_from: true }], tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
-      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, tag_blocks: [{ label: "ID3v2", read_from: true }, { label: "ID3v1", read_from: false }], tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
-      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tag_blocks: [{ label: "ID3v2", read_from: true }], tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996" } },
+      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }], tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
+      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "ID3v1", kind: "id3v1", read_from: false }], tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
+      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "APE", kind: "ape", read_from: false }], tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996" } },
     ],
     history: [],
   };
@@ -613,6 +613,36 @@ function mockInvoke(cmd, args) {
         })
         .filter(Boolean);
       return Promise.resolve({ description: "Remove cover art", changes });
+    }
+    case "preview_remove_tag_block": {
+      // Only the files that actually carry that block, as the backend does; the
+      // snapshot is what undo would rebuild from, so the mock carries one too.
+      const changes = args.paths
+        .map((p) => {
+          const t = findTrack(p);
+          const block = (t?.tag_blocks || []).find((b) => b.kind === args.kind);
+          if (!block) return null;
+          return {
+            path: p,
+            rename_to: null,
+            tag_changes: [],
+            cover_change: null,
+            block_removals: [
+              {
+                kind: block.kind,
+                label: block.label,
+                // ID3v1 is the one kind that comes back whole (#47) — the mock
+                // says so too, so the warning path is reachable from a browser.
+                exact: block.kind === "id3v1",
+                tags: { artist: t.tags.artist || "", title: t.tags.title || "" },
+                covers: [],
+              },
+            ],
+          };
+        })
+        .filter(Boolean);
+      const label = changes[0]?.block_removals[0].label || args.kind;
+      return Promise.resolve({ description: `Remove ${label} tag`, changes });
     }
     case "export_cover": {
       // Pretend odd-indexed files have no cover so the skip path is exercised;

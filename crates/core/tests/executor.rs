@@ -361,6 +361,133 @@ fn embeds_cover_and_undo_removes_it() {
     assert_eq!(TagEngine::read_cover(&track).unwrap(), None);
 }
 
+/// #47: stripping a tag block goes through the executor like any other change —
+/// the other blocks survive it, and undo puts the stripped one back with what it
+/// held. ID3v1 beside ID3v2 is the case that matters: it is the pair most files
+/// in a real library carry, and the one whose rebuild is exact.
+#[test]
+fn strips_a_tag_block_and_undo_restores_it() {
+    use lofty::config::WriteOptions;
+    use lofty::id3::v1::Id3v1Tag;
+    use lofty::prelude::{Accessor, TagExt};
+    use tagrex_core::model::TagBlockKind;
+    use tagrex_core::plan::BlockRemoval;
+
+    let dir = TempDir::new("block");
+    let track = dir.path().join("track.mp3");
+    // A minimal MP3: five silent frames, enough for the backend to identify the
+    // format and write both blocks.
+    let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+    frame.resize(417, 0);
+    std::fs::write(&track, frame.repeat(5)).unwrap();
+
+    let mut modern = lofty::id3::v2::Id3v2Tag::new();
+    modern.set_artist("Current".to_string());
+    modern
+        .save_to_path(&track, WriteOptions::default())
+        .unwrap();
+    let legacy = Id3v1Tag {
+        artist: Some("Stale Artist".to_string()),
+        title: Some("Stale Title".to_string()),
+        ..Default::default()
+    };
+    legacy
+        .save_to_path(&track, WriteOptions::default())
+        .unwrap();
+
+    let removed = TagEngine::read_block(&track, TagBlockKind::Id3v1)
+        .unwrap()
+        .expect("the file carries an ID3v1 block");
+    let plan = ChangePlan {
+        description: "Remove ID3v1 tag".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            block_removals: vec![BlockRemoval {
+                kind: TagBlockKind::Id3v1,
+                removed: removed.clone(),
+            }],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+
+    let mut journal = VecJournal::new();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
+
+    let kinds: Vec<TagBlockKind> = TagEngine::read_with_props(&track)
+        .unwrap()
+        .blocks
+        .iter()
+        .map(|block| block.kind)
+        .collect();
+    assert_eq!(kinds, vec![TagBlockKind::Id3v2], "the wrong block went");
+    assert_eq!(
+        TagEngine::read(&track)
+            .unwrap()
+            .tags
+            .get(&TagField::Artist)
+            .map(String::as_str),
+        Some("Current"),
+        "the block that stayed was rewritten"
+    );
+
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
+    assert_eq!(
+        TagEngine::read_block(&track, TagBlockKind::Id3v1).unwrap(),
+        Some(removed),
+        "undo did not put the block back as it was"
+    );
+}
+
+/// A plan built against a block that has since changed on disk must not be
+/// applied: the snapshot it carries is the only copy undo would have (#47).
+#[test]
+fn a_stale_block_snapshot_is_refused() {
+    use lofty::config::WriteOptions;
+    use lofty::id3::v1::Id3v1Tag;
+    use lofty::prelude::TagExt;
+    use tagrex_core::model::{TagBlockContent, TagBlockKind};
+    use tagrex_core::plan::BlockRemoval;
+
+    let dir = TempDir::new("block-stale");
+    let track = dir.path().join("track.mp3");
+    let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+    frame.resize(417, 0);
+    std::fs::write(&track, frame.repeat(5)).unwrap();
+    let legacy = Id3v1Tag {
+        artist: Some("On Disk".to_string()),
+        ..Default::default()
+    };
+    legacy
+        .save_to_path(&track, WriteOptions::default())
+        .unwrap();
+
+    // The plan claims the block held nothing, which no longer matches the file.
+    let plan = ChangePlan {
+        description: "Remove ID3v1 tag".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            block_removals: vec![BlockRemoval {
+                kind: TagBlockKind::Id3v1,
+                removed: TagBlockContent::default(),
+            }],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+
+    let mut journal = VecJournal::new();
+    let result = Executor::apply(&plan, &mut journal, &roots(dir.path()));
+
+    assert!(matches!(result, Err(PlanError::Stale(_))));
+    assert!(
+        TagEngine::read_block(&track, TagBlockKind::Id3v1)
+            .unwrap()
+            .is_some(),
+        "a refused plan must not have touched the file"
+    );
+}
+
 /// Moving a file into folders that don't exist yet: the executor creates them,
 /// and rollback removes exactly the ones it created — never a directory that
 /// was already there, even if undo leaves it empty.

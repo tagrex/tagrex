@@ -291,6 +291,19 @@ fn preview_cover_remove(state: State<AppState>, paths: Vec<String>) -> Result<Pl
 }
 
 #[tauri::command]
+fn preview_remove_tag_block(
+    state: State<AppState>,
+    paths: Vec<String>,
+    kind: String,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_remove_tag_block(&paths, &kind)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn preview_clear_tags(state: State<AppState>, paths: Vec<String>) -> Result<PlanDto, String> {
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
@@ -903,6 +916,7 @@ fn main() {
             read_external_cover,
             read_cover_image,
             preview_cover_remove,
+            preview_remove_tag_block,
             preview_clear_tags,
             export_playlist,
             export_csv,

@@ -29,6 +29,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   behind #194. The block being read is named first, and it is also the one a
   write goes to. Free — it comes off the probe the listing already does. (#47)
 
+- **And now you can take one of those blocks off.** Beside that line in the tag
+  editor there is a **Remove ID3v1** — or APE, or whichever spare block the
+  selection carries — and it strips exactly that one, leaving the block the
+  values come from, and every other block, untouched. This is the answer to a
+  file that shows one artist here and a different one elsewhere: the stale
+  second answer goes, the good one stays. It is an ordinary staged change, so
+  the diff bar and undo work on it like anything else, and undo puts the block
+  back with what it held. Only the spare blocks are offered — emptying the one
+  being read is what **Clear tags** is for. One caveat, and the app says it
+  before it stages anything: undo rebuilds a block from its text and pictures
+  rather than from its bytes, so for anything but ID3v1 a frame the app has no
+  field for — a cue point, a rating — would not come back. ID3v1 holds seven
+  text fields and nothing else, which is why that one is exact. (#47)
+
 - **A mask can ask a question, not just reshape an answer.** Eleven more
   functions: `$if`, `$if2`, `$equal`, `$nequal`, `$and`, `$or`, `$not`,
   `$greater`, `$longer`, `$isnumber` and `$in`, listed under **Logic** in the

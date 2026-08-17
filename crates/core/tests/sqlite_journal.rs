@@ -170,6 +170,75 @@ fn custom_field_round_trips_through_storage() {
     );
 }
 
+/// #47: the snapshot of a stripped block is the only copy of it left, so it has
+/// to survive a restart — otherwise the "realized in the morning" scenario this
+/// journal exists for loses the block instead of restoring it.
+#[test]
+fn a_stripped_block_can_still_be_restored_after_a_restart() {
+    use lofty::config::WriteOptions;
+    use lofty::id3::v1::Id3v1Tag;
+    use lofty::prelude::TagExt;
+    use tagrex_core::model::TagBlockKind;
+    use tagrex_core::plan::BlockRemoval;
+
+    let dir = TempDir::new("block-restart");
+    let track = dir.path().join("track.mp3");
+    let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+    frame.resize(417, 0);
+    std::fs::write(&track, frame.repeat(5)).unwrap();
+    let legacy = Id3v1Tag {
+        artist: Some("Stale Artist".to_string()),
+        title: Some("Stale Title".to_string()),
+        ..Default::default()
+    };
+    legacy
+        .save_to_path(&track, WriteOptions::default())
+        .unwrap();
+
+    let removed = TagEngine::read_block(&track, TagBlockKind::Id3v1)
+        .unwrap()
+        .expect("the file carries an ID3v1 block");
+    let plan = ChangePlan {
+        description: "Remove ID3v1 tag".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            block_removals: vec![BlockRemoval {
+                kind: TagBlockKind::Id3v1,
+                removed: removed.clone(),
+            }],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+
+    let batch_id = {
+        let mut journal = SqliteJournal::open(&dir.db()).unwrap();
+        Executor::apply(&plan, &mut journal, &roots(dir.path()))
+            .unwrap()
+            .id
+    };
+    assert!(TagEngine::read_block(&track, TagBlockKind::Id3v1)
+        .unwrap()
+        .is_none());
+
+    // Reopen, as a fresh process would, and roll back.
+    let mut journal = SqliteJournal::open(&dir.db()).unwrap();
+    assert_eq!(
+        journal.batches().unwrap()[0].plan.changes[0].block_removals,
+        vec![BlockRemoval {
+            kind: TagBlockKind::Id3v1,
+            removed: removed.clone(),
+        }],
+        "the snapshot did not survive the reopen"
+    );
+    Executor::undo(&mut journal, batch_id, &roots(dir.path())).unwrap();
+
+    assert_eq!(
+        TagEngine::read_block(&track, TagBlockKind::Id3v1).unwrap(),
+        Some(removed)
+    );
+}
+
 #[test]
 fn ids_keep_climbing_across_reopens() {
     let dir = TempDir::new("ids");

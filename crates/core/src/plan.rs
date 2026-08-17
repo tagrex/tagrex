@@ -15,7 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 use crate::journal::{AppliedBatch, BatchId, JournalError, UndoJournal};
-use crate::model::{CoverArt, TagEngine, TagField, TrackFile};
+use crate::model::{CoverArt, TagBlockContent, TagBlockKind, TagEngine, TagField, TrackFile};
 
 /// A change to a single tag field: `old` is what preview shows as "current",
 /// `new` is what will be written. `None` means the field is absent/removed.
@@ -40,6 +40,27 @@ pub struct CoverChange {
     pub new: Vec<CoverArt>,
 }
 
+/// Removal of one whole tag block (#47), with what it held so undo can put it
+/// back. `removed` is both the restore source and what the staleness check
+/// compares the file against, the way [`CoverChange::old`] is.
+///
+/// Only removal, not conversion: turning one block into another is two of these
+/// plus a write, and belongs to whatever stages that, not here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockRemoval {
+    pub kind: TagBlockKind,
+    pub removed: TagBlockContent,
+}
+
+impl BlockRemoval {
+    /// Whether undoing this removal would restore the block whole — see
+    /// [`TagBlockContent::exact`]. The preview says so before the removal is
+    /// staged, which is the only warning the user gets.
+    pub fn exact(&self) -> bool {
+        TagBlockContent::exact(self.kind)
+    }
+}
+
 /// All changes planned for one file.
 #[derive(Debug, Clone, Default)]
 pub struct FileChange {
@@ -47,6 +68,10 @@ pub struct FileChange {
     pub tag_changes: Vec<FieldChange>,
     /// Planned cover-art change, if any.
     pub cover_change: Option<CoverChange>,
+    /// Tag blocks to strip from this file (#47). A file can carry several, and
+    /// stripping two of them is one operation to the user, so this is a list
+    /// rather than an option.
+    pub block_removals: Vec<BlockRemoval>,
     /// Planned rename, if any.
     pub rename_to: Option<PathBuf>,
     /// Whether `rename_to` is a COPY rather than a move (#153). The source is
@@ -172,6 +197,7 @@ impl Executor {
             }
             write_tag_changes(&change.path, change, Direction::Apply)?;
             apply_cover_change(&change.path, change, Direction::Apply)?;
+            remove_blocks(&change.path, change)?;
         }
         // ...then the moves and copies, creating any folders the targets need.
         // Directories are created here rather than in the pre-flight so a
@@ -206,6 +232,7 @@ impl Executor {
             };
             write_tag_changes(target, change, Direction::Apply)?;
             apply_cover_change(target, change, Direction::Apply)?;
+            remove_blocks(target, change)?;
         }
 
         // A move can leave the folder it emptied behind (#153). Removing those
@@ -310,6 +337,11 @@ impl Executor {
             if change.copy {
                 continue;
             }
+            // Blocks come back before the field and image values are restored,
+            // mirroring apply in reverse. It matters when the block that was
+            // stripped is the one the app reads from: put it back first and the
+            // restoring writes land on the same block they were taken from.
+            restore_blocks(&change.path, change)?;
             write_tag_changes(&change.path, change, Direction::Undo)?;
             apply_cover_change(&change.path, change, Direction::Undo)?;
         }
@@ -542,6 +574,31 @@ fn ensure_not_stale(change: &FileChange) -> Result<(), PlanError> {
         if TagEngine::read_covers(&change.path)? != cover_change.old {
             return Err(PlanError::Stale(change.path.clone()));
         }
+    }
+    // A block that has changed — or is already gone — since the plan was built
+    // would be journaled with a snapshot undo could not put back (#47).
+    for removal in &change.block_removals {
+        if TagEngine::read_block(&change.path, removal.kind)?.as_ref() != Some(&removal.removed) {
+            return Err(PlanError::Stale(change.path.clone()));
+        }
+    }
+    Ok(())
+}
+
+/// Strip this change's tag blocks (#47). Last of the per-file writes, so the
+/// field and image writes above still land on the block they were planned
+/// against even when that block is the one going away.
+fn remove_blocks(path: &Path, change: &FileChange) -> Result<(), PlanError> {
+    for removal in &change.block_removals {
+        TagEngine::remove_block(path, removal.kind)?;
+    }
+    Ok(())
+}
+
+/// Put back what [`remove_blocks`] stripped, from the snapshot the plan carries.
+fn restore_blocks(path: &Path, change: &FileChange) -> Result<(), PlanError> {
+    for removal in &change.block_removals {
+        TagEngine::restore_block(path, removal.kind, &removal.removed)?;
     }
     Ok(())
 }
