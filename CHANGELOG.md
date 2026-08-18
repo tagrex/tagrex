@@ -43,6 +43,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   field for — a cue point, a rating — would not come back. ID3v1 holds seven
   text fields and nothing else, which is why that one is exact. (#47)
 
+- **Tags can be written as a different kind of tag block.** **Convert…** beside
+  the block line in the tag editor: pick what to write these tags as — ID3v2,
+  APE, Vorbis Comments, ID3v1, whichever the file's container can carry — and
+  the app writes that block from what the current one holds and drops the old
+  one, so the file is never left carrying two answers to the same question. Only
+  targets *every* selected file can take are offered, and a selection reading
+  from two different blocks is not offered the conversion at all, because there
+  would be no single source to convert. Undoable like anything else. The one
+  case worth naming: **switching an ID3v2 block between 2.3 and 2.4**, which
+  restamps the header and keeps every frame — cue points included — rather than
+  rebuilding the block, so it is lossless in both directions and undo puts the
+  original revision back. Every other conversion rebuilds the block from the
+  values the app can read, and says so first: the dialog names the fields the
+  target has no room for (worked out by putting the values through the real
+  conversion, not from a table) and warns that anything the app cannot read
+  would not come across. (#205)
+
 - **A mask can ask a question, not just reshape an answer.** Eleven more
   functions: `$if`, `$if2`, `$equal`, `$nequal`, `$and`, `$or`, `$not`,
   `$greater`, `$longer`, `$isnumber` and `$in`, listed under **Logic** in the

@@ -371,7 +371,7 @@ fn strips_a_tag_block_and_undo_restores_it() {
     use lofty::id3::v1::Id3v1Tag;
     use lofty::prelude::{Accessor, TagExt};
     use tagrex_core::model::TagBlockKind;
-    use tagrex_core::plan::BlockRemoval;
+    use tagrex_core::plan::BlockChange;
 
     let dir = TempDir::new("block");
     let track = dir.path().join("track.mp3");
@@ -402,10 +402,7 @@ fn strips_a_tag_block_and_undo_restores_it() {
         description: "Remove ID3v1 tag".to_string(),
         changes: vec![FileChange {
             path: track.clone(),
-            block_removals: vec![BlockRemoval {
-                kind: TagBlockKind::Id3v1,
-                removed: removed.clone(),
-            }],
+            block_changes: vec![BlockChange::removal(TagBlockKind::Id3v1, removed.clone())],
             ..FileChange::default()
         }],
         ..ChangePlan::default()
@@ -439,6 +436,172 @@ fn strips_a_tag_block_and_undo_restores_it() {
     );
 }
 
+/// #205: converting a block writes the target and drops the source in one
+/// change, and undo puts the file back the way it was — both halves of it.
+#[test]
+fn converts_one_block_into_another_and_undo_reverses_both_halves() {
+    use tagrex_core::model::{TagBlockContent, TagBlockKind};
+    use tagrex_core::plan::BlockChange;
+
+    let dir = TempDir::new("block-convert");
+    let track = dir.path().join("track.mp3");
+    let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+    frame.resize(417, 0);
+    std::fs::write(&track, frame.repeat(5)).unwrap();
+
+    // Start from an APE block only, so the conversion has a source and the
+    // target genuinely does not exist yet.
+    let mut source = TagBlockContent::default();
+    source
+        .tags
+        .insert(TagField::Artist, "Convert Me".to_string());
+    source.tags.insert(TagField::Title, "A Title".to_string());
+    TagEngine::write_block(&track, TagBlockKind::Ape, None, &source).unwrap();
+
+    let plan = ChangePlan {
+        description: "Convert APE to ID3v2".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            block_changes: vec![
+                BlockChange {
+                    kind: TagBlockKind::Id3v2,
+                    revision: None,
+                    old_revision: None,
+                    old: None,
+                    new: Some(source.clone()),
+                },
+                BlockChange::removal(TagBlockKind::Ape, source.clone()),
+            ],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+
+    let mut journal = VecJournal::new();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
+
+    let kinds: Vec<TagBlockKind> = TagEngine::read_with_props(&track)
+        .unwrap()
+        .blocks
+        .iter()
+        .map(|block| block.kind)
+        .collect();
+    assert_eq!(
+        kinds,
+        vec![TagBlockKind::Id3v2],
+        "the target should be the only block left"
+    );
+    assert_eq!(
+        TagEngine::read(&track)
+            .unwrap()
+            .tags
+            .get(&TagField::Artist)
+            .map(String::as_str),
+        Some("Convert Me"),
+        "the values did not come across"
+    );
+
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
+    assert_eq!(
+        TagEngine::read_block(&track, TagBlockKind::Ape).unwrap(),
+        Some(source),
+        "the source block did not come back"
+    );
+    assert!(
+        TagEngine::read_block(&track, TagBlockKind::Id3v2)
+            .unwrap()
+            .is_none(),
+        "the block the conversion created should be gone again"
+    );
+}
+
+/// #205: switching an ID3v2 block between 2.3 and 2.4 restamps the header and
+/// keeps the frames — including the binary ones the model cannot express, which
+/// is the whole reason this case does not go through the rebuild. Undo puts the
+/// original revision back rather than the app-wide default.
+#[test]
+fn a_revision_switch_keeps_every_frame_and_undo_restores_the_revision() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::id3::v2::{Frame, PrivateFrame};
+    use lofty::mpeg::MpegFile;
+    use lofty::prelude::{Accessor, TagExt};
+    use tagrex_core::model::{Id3v2Revision, TagBlockKind};
+    use tagrex_core::plan::BlockChange;
+
+    let dir = TempDir::new("block-revision");
+    let track = dir.path().join("track.mp3");
+    let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+    frame.resize(417, 0);
+    std::fs::write(&track, frame.repeat(5)).unwrap();
+
+    // A DJ cue point stands in for everything the model cannot express.
+    let mut tag = lofty::id3::v2::Id3v2Tag::new();
+    tag.set_artist("Kept".to_string());
+    tag.insert(Frame::Private(PrivateFrame::new(
+        "SeratoMarkers".to_string(),
+        vec![7, 7, 7, 7],
+    )));
+    tag.save_to_path(&track, WriteOptions::default().use_id3v23(true))
+        .unwrap();
+    assert_eq!(
+        TagEngine::id3v2_revision(&track).unwrap(),
+        Some(Id3v2Revision::V3)
+    );
+
+    let content = TagEngine::read_block(&track, TagBlockKind::Id3v2)
+        .unwrap()
+        .unwrap();
+    let plan = ChangePlan {
+        description: "Convert to ID3v2.4".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            block_changes: vec![BlockChange {
+                kind: TagBlockKind::Id3v2,
+                revision: Some(Id3v2Revision::V4),
+                old_revision: Some(Id3v2Revision::V3),
+                old: Some(content.clone()),
+                new: Some(content),
+            }],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+
+    let mut journal = VecJournal::new();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
+
+    assert_eq!(
+        TagEngine::id3v2_revision(&track).unwrap(),
+        Some(Id3v2Revision::V4)
+    );
+    let private_frames = |path: &Path| -> usize {
+        let mut file = std::fs::File::open(path).unwrap();
+        MpegFile::read_from(&mut file, ParseOptions::new())
+            .unwrap()
+            .id3v2()
+            .map(|tag| {
+                tag.iter()
+                    .filter(|frame| matches!(frame, Frame::Private(_)))
+                    .count()
+            })
+            .unwrap_or(0)
+    };
+    assert_eq!(
+        private_frames(&track),
+        1,
+        "the cue-point frame did not survive the revision switch"
+    );
+
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
+    assert_eq!(
+        TagEngine::id3v2_revision(&track).unwrap(),
+        Some(Id3v2Revision::V3),
+        "undo left the file in the revision it was converted to"
+    );
+    assert_eq!(private_frames(&track), 1);
+}
+
 /// A plan built against a block that has since changed on disk must not be
 /// applied: the snapshot it carries is the only copy undo would have (#47).
 #[test]
@@ -447,7 +610,7 @@ fn a_stale_block_snapshot_is_refused() {
     use lofty::id3::v1::Id3v1Tag;
     use lofty::prelude::TagExt;
     use tagrex_core::model::{TagBlockContent, TagBlockKind};
-    use tagrex_core::plan::BlockRemoval;
+    use tagrex_core::plan::BlockChange;
 
     let dir = TempDir::new("block-stale");
     let track = dir.path().join("track.mp3");
@@ -467,10 +630,10 @@ fn a_stale_block_snapshot_is_refused() {
         description: "Remove ID3v1 tag".to_string(),
         changes: vec![FileChange {
             path: track.clone(),
-            block_removals: vec![BlockRemoval {
-                kind: TagBlockKind::Id3v1,
-                removed: TagBlockContent::default(),
-            }],
+            block_changes: vec![BlockChange::removal(
+                TagBlockKind::Id3v1,
+                TagBlockContent::default(),
+            )],
             ..FileChange::default()
         }],
         ..ChangePlan::default()

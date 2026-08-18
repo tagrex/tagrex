@@ -179,7 +179,7 @@ fn a_stripped_block_can_still_be_restored_after_a_restart() {
     use lofty::id3::v1::Id3v1Tag;
     use lofty::prelude::TagExt;
     use tagrex_core::model::TagBlockKind;
-    use tagrex_core::plan::BlockRemoval;
+    use tagrex_core::plan::BlockChange;
 
     let dir = TempDir::new("block-restart");
     let track = dir.path().join("track.mp3");
@@ -202,10 +202,7 @@ fn a_stripped_block_can_still_be_restored_after_a_restart() {
         description: "Remove ID3v1 tag".to_string(),
         changes: vec![FileChange {
             path: track.clone(),
-            block_removals: vec![BlockRemoval {
-                kind: TagBlockKind::Id3v1,
-                removed: removed.clone(),
-            }],
+            block_changes: vec![BlockChange::removal(TagBlockKind::Id3v1, removed.clone())],
             ..FileChange::default()
         }],
         ..ChangePlan::default()
@@ -224,11 +221,8 @@ fn a_stripped_block_can_still_be_restored_after_a_restart() {
     // Reopen, as a fresh process would, and roll back.
     let mut journal = SqliteJournal::open(&dir.db()).unwrap();
     assert_eq!(
-        journal.batches().unwrap()[0].plan.changes[0].block_removals,
-        vec![BlockRemoval {
-            kind: TagBlockKind::Id3v1,
-            removed: removed.clone(),
-        }],
+        journal.batches().unwrap()[0].plan.changes[0].block_changes,
+        vec![BlockChange::removal(TagBlockKind::Id3v1, removed.clone())],
         "the snapshot did not survive the reopen"
     );
     Executor::undo(&mut journal, batch_id, &roots(dir.path())).unwrap();

@@ -15,10 +15,10 @@ use tauri::{Manager, State};
 
 use player::{Player, PlayerStatus};
 use tagrex::{
-    ActionGroupDto, AlignMatchDto, App, BatchDto, CandidateDto, CoverArtDto, CoverExportDto,
-    CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportFieldDto, ImportSelectionDto,
-    ImportTrackDto, NameProbeDto, PlaceholderDto, PlanDto, ProviderHub, ReleaseDto, SaveImagesDto,
-    SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
+    ActionGroupDto, AlignMatchDto, App, BatchDto, BlockTargetsDto, CandidateDto, CoverArtDto,
+    CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateGroupDto, ImportFieldDto,
+    ImportSelectionDto, ImportTrackDto, NameProbeDto, PlaceholderDto, PlanDto, ProviderHub,
+    ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto, TransformRuleDto,
 };
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
@@ -299,6 +299,32 @@ fn preview_remove_tag_block(
     let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
     with_app(&state, |app| {
         app.preview_remove_tag_block(&paths, &kind)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn tag_block_targets(
+    state: State<AppState>,
+    paths: Vec<String>,
+) -> Result<BlockTargetsDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.tag_block_targets(&paths).map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
+fn preview_convert_tag_block(
+    state: State<AppState>,
+    paths: Vec<String>,
+    from: String,
+    to: String,
+    revision: Option<String>,
+) -> Result<PlanDto, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_convert_tag_block(&paths, &from, &to, revision.as_deref())
             .map_err(|e| e.to_string())
     })
 }
@@ -917,6 +943,8 @@ fn main() {
             read_cover_image,
             preview_cover_remove,
             preview_remove_tag_block,
+            preview_convert_tag_block,
+            tag_block_targets,
             preview_clear_tags,
             export_playlist,
             export_csv,

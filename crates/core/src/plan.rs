@@ -15,7 +15,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 use crate::journal::{AppliedBatch, BatchId, JournalError, UndoJournal};
-use crate::model::{CoverArt, TagBlockContent, TagBlockKind, TagEngine, TagField, TrackFile};
+use crate::model::{
+    CoverArt, Id3v2Revision, TagBlockContent, TagBlockKind, TagEngine, TagField, TrackFile,
+};
 
 /// A change to a single tag field: `old` is what preview shows as "current",
 /// `new` is what will be written. `None` means the field is absent/removed.
@@ -40,21 +42,56 @@ pub struct CoverChange {
     pub new: Vec<CoverArt>,
 }
 
-/// Removal of one whole tag block (#47), with what it held so undo can put it
-/// back. `removed` is both the restore source and what the staleness check
-/// compares the file against, the way [`CoverChange::old`] is.
+/// A change to one whole tag block (#47, #205). Both sides are the WHOLE block,
+/// the way [`CoverChange`]'s are the whole image set: `old` is what the file
+/// carries and what undo writes back, `new` is what replaces it, and `None` on
+/// either side means no block of that kind at all.
 ///
-/// Only removal, not conversion: turning one block into another is two of these
-/// plus a write, and belongs to whatever stages that, not here.
+/// One shape for three operations, because they are the same write with
+/// different ends: stripping a block is `new: None`, giving a file a block it
+/// lacked is `old: None`, and rewriting one in place — a different ID3v2
+/// revision, say — is both sides present. A conversion between two kinds is two
+/// of these, one per kind, which is why this is per-kind rather than a
+/// from/to pair.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BlockRemoval {
+pub struct BlockChange {
     pub kind: TagBlockKind,
-    pub removed: TagBlockContent,
+    /// Which ID3v2 revision to write, for the ID3v2 block only. `None` follows
+    /// the app-wide preference (#79), which is what a removal's undo and an
+    /// ordinary write both want; a conversion sets it deliberately.
+    pub revision: Option<Id3v2Revision>,
+    /// The revision the block was in, so undo puts that back rather than
+    /// whatever the app-wide preference happens to say. A revision is part of
+    /// what the block *was*, and an undo that quietly leaves a 2.3 file as 2.4
+    /// has not undone anything the user can see.
+    pub old_revision: Option<Id3v2Revision>,
+    pub old: Option<TagBlockContent>,
+    pub new: Option<TagBlockContent>,
 }
 
-impl BlockRemoval {
-    /// Whether undoing this removal would restore the block whole — see
-    /// [`TagBlockContent::exact`]. The preview says so before the removal is
+impl BlockChange {
+    /// Strip a block, keeping what it held so undo can rebuild it.
+    pub fn removal(kind: TagBlockKind, removed: TagBlockContent) -> Self {
+        Self {
+            kind,
+            revision: None,
+            old_revision: None,
+            old: Some(removed),
+            new: None,
+        }
+    }
+
+    /// Whether this only changes which revision the ID3v2 block is written in,
+    /// leaving its contents alone — the 2.3 <-> 2.4 switch (#205).
+    ///
+    /// Worth telling apart because it can be done without rebuilding the block,
+    /// and so without losing the frames a rebuild cannot carry.
+    fn is_revision_only(&self) -> bool {
+        self.kind == TagBlockKind::Id3v2 && self.old.is_some() && self.old == self.new
+    }
+
+    /// Whether undoing this change would put the block back whole — see
+    /// [`TagBlockContent::exact`]. The preview says so before the change is
     /// staged, which is the only warning the user gets.
     pub fn exact(&self) -> bool {
         TagBlockContent::exact(self.kind)
@@ -68,10 +105,11 @@ pub struct FileChange {
     pub tag_changes: Vec<FieldChange>,
     /// Planned cover-art change, if any.
     pub cover_change: Option<CoverChange>,
-    /// Tag blocks to strip from this file (#47). A file can carry several, and
-    /// stripping two of them is one operation to the user, so this is a list
-    /// rather than an option.
-    pub block_removals: Vec<BlockRemoval>,
+    /// Whole-block changes for this file (#47, #205). A list because a file can
+    /// carry several blocks and one operation can touch more than one of them —
+    /// a conversion writes the target block and drops the source in the same
+    /// change, and undoing half of that would be worse than not offering it.
+    pub block_changes: Vec<BlockChange>,
     /// Planned rename, if any.
     pub rename_to: Option<PathBuf>,
     /// Whether `rename_to` is a COPY rather than a move (#153). The source is
@@ -197,7 +235,7 @@ impl Executor {
             }
             write_tag_changes(&change.path, change, Direction::Apply)?;
             apply_cover_change(&change.path, change, Direction::Apply)?;
-            remove_blocks(&change.path, change)?;
+            write_blocks(&change.path, change, Direction::Apply)?;
         }
         // ...then the moves and copies, creating any folders the targets need.
         // Directories are created here rather than in the pre-flight so a
@@ -232,7 +270,7 @@ impl Executor {
             };
             write_tag_changes(target, change, Direction::Apply)?;
             apply_cover_change(target, change, Direction::Apply)?;
-            remove_blocks(target, change)?;
+            write_blocks(target, change, Direction::Apply)?;
         }
 
         // A move can leave the folder it emptied behind (#153). Removing those
@@ -341,7 +379,7 @@ impl Executor {
             // mirroring apply in reverse. It matters when the block that was
             // stripped is the one the app reads from: put it back first and the
             // restoring writes land on the same block they were taken from.
-            restore_blocks(&change.path, change)?;
+            write_blocks(&change.path, change, Direction::Undo)?;
             write_tag_changes(&change.path, change, Direction::Undo)?;
             apply_cover_change(&change.path, change, Direction::Undo)?;
         }
@@ -577,28 +615,49 @@ fn ensure_not_stale(change: &FileChange) -> Result<(), PlanError> {
     }
     // A block that has changed — or is already gone — since the plan was built
     // would be journaled with a snapshot undo could not put back (#47).
-    for removal in &change.block_removals {
-        if TagEngine::read_block(&change.path, removal.kind)?.as_ref() != Some(&removal.removed) {
+    for block_change in &change.block_changes {
+        if TagEngine::read_block(&change.path, block_change.kind)? != block_change.old {
             return Err(PlanError::Stale(change.path.clone()));
         }
     }
     Ok(())
 }
 
-/// Strip this change's tag blocks (#47). Last of the per-file writes, so the
+/// Write this change's blocks (#47, #205). Last of the per-file writes, so the
 /// field and image writes above still land on the block they were planned
 /// against even when that block is the one going away.
-fn remove_blocks(path: &Path, change: &FileChange) -> Result<(), PlanError> {
-    for removal in &change.block_removals {
-        TagEngine::remove_block(path, removal.kind)?;
+///
+/// A conversion's two halves are ordered: every block being written goes first,
+/// then the ones being dropped. The other order would leave a file with no tag
+/// block at all between the two writes, and a crash in that gap would lose
+/// everything rather than half of it.
+fn write_blocks(path: &Path, change: &FileChange, direction: Direction) -> Result<(), PlanError> {
+    let target = |block_change: &BlockChange| match direction {
+        Direction::Apply => block_change.new.clone(),
+        Direction::Undo => block_change.old.clone(),
+    };
+    let revision = |block_change: &BlockChange| match direction {
+        Direction::Apply => block_change.revision,
+        Direction::Undo => block_change.old_revision,
+    };
+    for block_change in &change.block_changes {
+        // A revision switch keeps the block as it is and only restamps the
+        // header, so it never goes through the rebuild — see
+        // [`TagEngine::set_id3v2_revision`] for why that matters.
+        if block_change.is_revision_only() {
+            if let Some(revision) = revision(block_change) {
+                TagEngine::set_id3v2_revision(path, revision)?;
+                continue;
+            }
+        }
+        if let Some(content) = target(block_change) {
+            TagEngine::write_block(path, block_change.kind, revision(block_change), &content)?;
+        }
     }
-    Ok(())
-}
-
-/// Put back what [`remove_blocks`] stripped, from the snapshot the plan carries.
-fn restore_blocks(path: &Path, change: &FileChange) -> Result<(), PlanError> {
-    for removal in &change.block_removals {
-        TagEngine::restore_block(path, removal.kind, &removal.removed)?;
+    for block_change in &change.block_changes {
+        if target(block_change).is_none() {
+            TagEngine::remove_block(path, block_change.kind)?;
+        }
     }
     Ok(())
 }

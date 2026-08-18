@@ -55,6 +55,11 @@ function refreshFieldEditor() {
 // answer, and it is the one other software may be reading.
 function renderTagBlocks(paths) {
   const line = el("fields-blocks");
+  closeConvertPicker();
+  if (paths.length === 0) {
+    line.hidden = true;
+    return;
+  }
   // Counted per FILE, not per distinct wording: two files telling the same
   // story are two files, and a set of strings cannot say so.
   let files = 0;
@@ -62,11 +67,16 @@ function renderTagBlocks(paths) {
   // The blocks that could be stripped, keyed by kind so two files carrying the
   // same spare block offer one button, not two.
   const strippable = new Map();
+  // The block the values come from. Conversion reads from it, so it has to be
+  // the same kind across the selection or there is no single source to convert.
+  const readKinds = new Set();
   for (const path of paths) {
     const blocks = trackAt(path)?.tag_blocks || [];
+    if (blocks.length === 0) continue;
+    const read = blocks.find((b) => b.read_from) || blocks[0];
+    readKinds.add(read.kind);
     if (blocks.length < 2) continue;
     files++;
-    const read = blocks.find((b) => b.read_from) || blocks[0];
     const rest = blocks.filter((b) => b !== read);
     wordings.add(`${read.label} — also ${rest.map((b) => b.label).join(" and ")}`);
     for (const block of rest) {
@@ -75,12 +85,21 @@ function renderTagBlocks(paths) {
       strippable.set(block.kind, entry);
     }
   }
-  if (!files) {
+  if (readKinds.size === 0) {
     line.hidden = true;
     return;
   }
   line.hidden = false;
-  if (wordings.size === 1) {
+  if (!files) {
+    // Nothing surprising to report, but the line is where converting lives, so
+    // it states the plain fact instead of going silent. One block means the
+    // values can't have come from anywhere else.
+    const only = [...paths]
+      .map((path) => (trackAt(path)?.tag_blocks || [])[0])
+      .find(Boolean);
+    line.textContent =
+      readKinds.size === 1 ? `Carrying ${only.label}` : "Carrying one tag block each";
+  } else if (wordings.size === 1) {
     const only = [...wordings][0];
     line.textContent =
       files === 1
@@ -90,6 +109,7 @@ function renderTagBlocks(paths) {
     line.textContent = `${files} of the selected files carry more than one tag block`;
   }
   renderBlockStrippers(line, strippable);
+  renderConvertButton(line, readKinds);
 }
 
 // A "Remove <block>" button per spare block the selection carries (#47).
@@ -132,7 +152,7 @@ async function previewRemoveTagBlock(kind, label) {
       return;
     }
     const inexact = plan.changes.some((change) =>
-      (change.block_removals || []).some((removal) => !removal.exact)
+      (change.block_changes || []).some((block) => !block.exact)
     );
     if (inexact) {
       const ok = await confirmDialog(
@@ -147,6 +167,155 @@ async function previewRemoveTagBlock(kind, label) {
     setPreviewSource("blocks");
     hooks.renderPreview(previewPlan);
     toast(`Previewing ${label} removal on ${plural(plan.changes.length, "file", "files")}`);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// The "Convert…" affordance beside the block line (#205).
+//
+// Only when every selected file reads from the same kind of block: the
+// conversion takes its values from that block, and a selection reading from two
+// different ones has no single source. Offering it anyway would convert half
+// the files from somewhere the user didn't look at.
+function renderConvertButton(line, readKinds) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "text-btn";
+  button.textContent = "Convert…";
+  if (readKinds.size > 1) {
+    button.disabled = true;
+    button.title = "The selected files read from different tag blocks — convert them separately";
+  } else {
+    button.title = "Write these tags as a different kind of tag block";
+    button.addEventListener("click", () => openConvertPicker([...readKinds][0]));
+  }
+  line.append(" ", button);
+}
+
+function closeConvertPicker() {
+  const box = el("fields-blocks-convert");
+  box.hidden = true;
+  box.replaceChildren();
+}
+
+// Fetch the targets for the current selection and offer them. Asked for on
+// demand rather than on every selection change: it reads each selected file,
+// and making a row click pay for a menu nobody opened is what #184 was about.
+async function openConvertPicker(from) {
+  const paths = selectedPaths();
+  const box = el("fields-blocks-convert");
+  let targets;
+  try {
+    targets = await invoke("tag_block_targets", { paths });
+  } catch (e) {
+    toast(String(e), true);
+    return;
+  }
+  if (!targets.kinds.length) {
+    toast("These files have no tag block kind in common", true);
+    return;
+  }
+
+  box.replaceChildren();
+  box.hidden = false;
+  const kindSelect = document.createElement("select");
+  for (const { kind, label } of targets.kinds) {
+    kindSelect.append(new Option(label, kind));
+  }
+  kindSelect.value = from;
+
+  // The revision only means anything for ID3v2, so it appears with it and
+  // disappears with it rather than sitting there greyed out.
+  const revisionSelect = document.createElement("select");
+  for (const { kind, label } of targets.revisions) {
+    revisionSelect.append(new Option(`ID3v${label}`, kind));
+  }
+  revisionSelect.value = "id3v24";
+  const syncRevision = () => {
+    revisionSelect.hidden = kindSelect.value !== "id3v2";
+  };
+  kindSelect.addEventListener("change", syncRevision);
+  syncRevision();
+
+  const go = document.createElement("button");
+  go.type = "button";
+  go.className = "text-btn";
+  go.textContent = "Preview";
+  go.addEventListener("click", () =>
+    previewConvertTagBlock(from, kindSelect.value, revisionSelect.hidden ? null : revisionSelect.value)
+  );
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "text-btn";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", closeConvertPicker);
+
+  const label = document.createElement("span");
+  label.className = "muted";
+  label.textContent = "Write these tags as";
+  box.append(label, kindSelect, revisionSelect, go, cancel);
+}
+
+// A storage key as the field editor writes it. A custom field is named the way
+// the file spells it, and a key with no row of its own is shown as it comes —
+// better a raw key in the warning than a field silently left out of it.
+function fieldLabel(key) {
+  if (key.startsWith("custom:")) {
+    const name = key.slice(7);
+    return KNOWN_CUSTOM_LABELS[name] || name;
+  }
+  return (EXTENDED_FIELDS.find(([field]) => field === key) || [key, key])[1];
+}
+
+// Preview a conversion, through the normal preview/apply/undo path.
+//
+// The confirmation is the point of this whole flow: the target block may have
+// no room for a field the source held, and that is a loss the user has to see
+// BEFORE it is staged, not discover afterwards in the diff. The backend works
+// out what would go, per file, by putting the values through the conversion in
+// memory — so the list is what will actually happen, not a guess.
+async function previewConvertTagBlock(from, to, revision) {
+  const paths = selectedPaths();
+  try {
+    const plan = await invoke("preview_convert_tag_block", { paths, from, to, revision });
+    if (plan.changes.length === 0) {
+      toast("None of the selected files carry that tag block");
+      return;
+    }
+    // Switching an ID3v2 block between 2.3 and 2.4 restamps the header and
+    // keeps every frame, so there is nothing to warn about. Every other
+    // conversion REBUILDS the target block out of the values the app can see,
+    // and what it cannot see — cue points, ratings, player-specific frames —
+    // does not survive that. The computed list below names what is certainly
+    // lost; the sentence covers what cannot be listed.
+    const revisionOnly = from === to && to === "id3v2";
+    if (!revisionOnly) {
+      const lostFields = new Set();
+      let lostPictures = 0;
+      for (const change of plan.changes) {
+        for (const block of change.block_changes || []) {
+          for (const field of block.lost_fields || []) lostFields.add(field);
+          lostPictures += block.lost_pictures || 0;
+        }
+      }
+      const parts = [];
+      if (lostFields.size) parts.push([...lostFields].map(fieldLabel).sort().join(", "));
+      if (lostPictures) parts.push(plural(lostPictures, "embedded image", "embedded images"));
+      const drops = parts.length ? ` It has no room for ${parts.join(" and ")}.` : "";
+      const ok = await confirmDialog(
+        `This rebuilds the block from the values the app can read.${drops} Anything it cannot read — ` +
+          `cue points, ratings, player-specific frames — would not come across, and undo cannot bring ` +
+          `it back. Convert ${plural(plan.changes.length, "file", "files")}?`,
+        "Convert"
+      );
+      if (!ok) return;
+    }
+    closeConvertPicker();
+    setPreviewPlan(plan);
+    setPreviewSource("blocks");
+    hooks.renderPreview(previewPlan);
+    toast(`Previewing ${plan.description.toLowerCase()} on ${plural(plan.changes.length, "file", "files")}`);
   } catch (e) {
     toast(String(e), true);
   }

@@ -1514,6 +1514,90 @@ fn a_file_that_is_not_audio_at_all_still_fails() {
     assert!(read.is_err(), "a text file must not read as audio");
 }
 
+/// #205: the ID3v2 revision a conversion asks for is the one that lands on
+/// disk, whichever way the app-wide preference happens to be set.
+#[test]
+fn a_conversion_writes_the_id3v2_revision_it_was_asked_for() {
+    use tagrex_core::model::{Id3v2Revision, TagBlockContent, TagBlockKind, TagField};
+
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-revision-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, minimal_mp3()).expect("write fixture");
+
+    let mut content = TagBlockContent::default();
+    content
+        .tags
+        .insert(TagField::Artist, "Revision Test".to_string());
+
+    for revision in [Id3v2Revision::V3, Id3v2Revision::V4] {
+        TagEngine::write_block(&path, TagBlockKind::Id3v2, Some(revision), &content)
+            .expect("write block");
+        assert_eq!(
+            TagEngine::id3v2_revision(&path).expect("read revision"),
+            Some(revision),
+            "asked for {} and the file says otherwise",
+            revision.name()
+        );
+    }
+    std::fs::remove_file(&path).ok();
+}
+
+/// #205: what a conversion costs is worked out against the backend's own
+/// conversion, so the warning names what will really go — not a guess.
+#[test]
+fn conversion_loss_names_what_the_target_block_cannot_hold() {
+    use tagrex_core::model::{TagBlockContent, TagBlockKind, TagField};
+
+    let mut content = TagBlockContent::default();
+    content.tags.insert(TagField::Artist, "Kept".to_string());
+    content.tags.insert(TagField::Title, "Kept".to_string());
+    content.tags.insert(TagField::Isrc, "Dropped".to_string());
+    content.covers.push(CoverArt {
+        mime: "image/png".to_string(),
+        data: vec![1, 2, 3],
+        ..CoverArt::default()
+    });
+
+    // ID3v2 holds everything here, pictures included.
+    assert!(content.conversion_loss(TagBlockKind::Id3v2).is_empty());
+
+    // ID3v1 has seven text slots and no room for a picture.
+    let loss = content.conversion_loss(TagBlockKind::Id3v1);
+    assert!(
+        loss.fields.contains(&TagField::Isrc),
+        "ID3v1 cannot hold an ISRC, got {:?}",
+        loss.fields
+    );
+    assert!(
+        !loss.fields.contains(&TagField::Artist),
+        "the artist survives ID3v1"
+    );
+    assert_eq!(loss.pictures, 1, "ID3v1 cannot hold a picture");
+}
+
+/// #205: a container is only offered the blocks it can actually be given.
+#[test]
+fn only_blocks_a_container_can_carry_are_offered() {
+    use tagrex_core::model::{AudioFormat, TagBlockKind};
+
+    let mp3 = TagBlockKind::writable_for(AudioFormat::Mp3);
+    assert!(mp3.contains(&TagBlockKind::Id3v2));
+    assert!(mp3.contains(&TagBlockKind::Id3v1));
+    assert!(
+        !mp3.contains(&TagBlockKind::Mp4Ilst),
+        "an MP3 cannot carry MP4 atoms"
+    );
+
+    let flac = TagBlockKind::writable_for(AudioFormat::Flac);
+    assert!(flac.contains(&TagBlockKind::VorbisComments));
+    assert!(
+        !flac.contains(&TagBlockKind::Id3v1),
+        "a FLAC cannot carry ID3v1"
+    );
+}
+
 /// #47: removing one tag block must leave every other block in the file exactly
 /// as it was, and the snapshot must put the removed one back.
 ///

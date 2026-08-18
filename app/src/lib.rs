@@ -27,10 +27,10 @@ use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::{FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{
-    is_writable_value, CoverArt, CoverKind, TagBlock, TagBlockContent, TagBlockKind, TagEngine,
-    TagField,
+    is_writable_value, CoverArt, CoverKind, Id3v2Revision, TagBlock, TagBlockContent, TagBlockKind,
+    TagEngine, TagField,
 };
-use tagrex_core::plan::{BlockRemoval, ChangePlan, CoverChange, Executor, FieldChange, FileChange};
+use tagrex_core::plan::{BlockChange, ChangePlan, CoverChange, Executor, FieldChange, FileChange};
 use tagrex_core::provider::{FetchedImage, MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
 use tagrex_core::transform::{
@@ -190,29 +190,73 @@ pub struct CoverChangeDto {
     pub new: Vec<CoverArtDto>,
 }
 
-/// A planned removal of one whole tag block (#47), with what the block held so
-/// undo can rebuild it.
-///
-/// The snapshot crosses the IPC boundary and comes back with the plan, the way
-/// [`CoverChangeDto`] already does: once the block is off the file this is the
-/// only copy of it, and the preview is where it was read.
+/// One choice the block-conversion UI can offer: a target block kind, or an
+/// ID3v2 revision. Same shape for both — a storage key and what to show.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TagBlockOptionDto {
+    pub kind: String,
+    pub label: String,
+}
+
+/// What the selection can be converted to (#205).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct BlockTargetsDto {
+    /// Block kinds every selected file can be given. Empty for an empty
+    /// selection, and for a mixed one with no container in common.
+    pub kinds: Vec<TagBlockOptionDto>,
+    /// The ID3v2 revisions the app will write, for when the target is ID3v2.
+    pub revisions: Vec<TagBlockOptionDto>,
+}
+
+/// One side of a planned block change: what a block holds, or would hold.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-pub struct BlockRemovalDto {
+pub struct BlockContentDto {
+    /// Storage-key -> value.
+    #[serde(default)]
+    pub tags: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub covers: Vec<CoverArtDto>,
+}
+
+/// A planned change to one whole tag block (#47, #205). Both sides are the
+/// whole block: `old` is what the file carries and what undo writes back, `new`
+/// is what replaces it, and `null` on either side means no block of that kind.
+///
+/// The contents cross the IPC boundary and come back with the plan, the way
+/// [`CoverChangeDto`] already does: once a block is off the file the plan holds
+/// the only copy of it, and the preview is where it was read.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct BlockChangeDto {
     /// A [`TagBlockKind`] storage key (`id3v1`, `id3v2`, `vorbis`, …).
     pub kind: String,
     /// Display name of the block, so the preview doesn't have to map keys back.
     #[serde(default)]
     pub label: String,
-    /// Whether undo would restore the block whole. False means the rebuild is
-    /// text and pictures only, and the preview must say so before this is
-    /// staged — see [`TagBlockContent::exact`].
+    /// An [`Id3v2Revision`] storage key (`id3v23`, `id3v24`) for an ID3v2 write,
+    /// or absent to follow the app-wide preference (#79).
+    #[serde(default)]
+    pub revision: Option<String>,
+    /// The revision the block was in, so undo puts that back rather than the
+    /// app-wide default.
+    #[serde(default)]
+    pub old_revision: Option<String>,
+    /// Whether undo would put the block back whole. False means the rebuild is
+    /// text and pictures only, and the UI must say so before this is staged —
+    /// see [`TagBlockContent::exact`].
     #[serde(default)]
     pub exact: bool,
-    /// What the block held, storage-key -> value.
+    /// Fields this change would not carry through, storage keys, when it writes
+    /// a block (#205). Empty for a plain removal, where nothing is being
+    /// rewritten into a narrower block.
     #[serde(default)]
-    pub tags: std::collections::BTreeMap<String, String>,
+    pub lost_fields: Vec<String>,
+    /// Images the target block cannot hold.
     #[serde(default)]
-    pub covers: Vec<CoverArtDto>,
+    pub lost_pictures: usize,
+    #[serde(default)]
+    pub old: Option<BlockContentDto>,
+    #[serde(default)]
+    pub new: Option<BlockContentDto>,
 }
 
 /// A planned change to one file: tag edits, a cover change, a block removal,
@@ -232,9 +276,9 @@ pub struct FileChangeDto {
     /// filled by `attach_sidecars` at preview time. Serialized as `[[from, to], …]`.
     #[serde(default)]
     pub sidecar_renames: Vec<(String, String)>,
-    /// Tag blocks to strip from this file (#47).
+    /// Whole-block changes for this file (#47, #205).
     #[serde(default)]
-    pub block_removals: Vec<BlockRemovalDto>,
+    pub block_changes: Vec<BlockChangeDto>,
 }
 
 /// A previewable plan, ready to render as a "current -> new" diff.
@@ -1474,7 +1518,7 @@ impl App {
                 tag_changes: Vec::new(),
                 cover_change: None,
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy: false,
             };
             self.attach_sidecars(&mut change);
@@ -1560,7 +1604,7 @@ impl App {
                 tag_changes,
                 cover_change: None,
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy: false,
             });
         }
@@ -1657,7 +1701,7 @@ impl App {
                     tag_changes: Vec::new(),
                     cover_change: None,
                     sidecar_renames: Vec::new(),
-                    block_removals: Vec::new(),
+                    block_changes: Vec::new(),
                     copy: false,
                 };
                 self.attach_sidecars(&mut change);
@@ -1694,7 +1738,7 @@ impl App {
                     tag_changes: Vec::new(),
                     cover_change: None,
                     sidecar_renames: Vec::new(),
-                    block_removals: Vec::new(),
+                    block_changes: Vec::new(),
                     copy: false,
                 };
                 self.attach_sidecars(&mut change);
@@ -1724,7 +1768,7 @@ impl App {
                     tag_changes,
                     cover_change: None,
                     sidecar_renames: Vec::new(),
-                    block_removals: Vec::new(),
+                    block_changes: Vec::new(),
                     copy: false,
                 });
             }
@@ -1838,7 +1882,7 @@ impl App {
                 tag_changes,
                 cover_change: None,
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy: false,
             };
             if renamed {
@@ -1969,7 +2013,7 @@ impl App {
                 // Recomputed below rather than carried over: the sidecars follow
                 // the destination name, which a file-scoped chain just changed.
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy: false,
             };
             if renamed {
@@ -2069,7 +2113,7 @@ impl App {
                 tag_changes: Vec::new(),
                 cover_change: None,
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy,
             };
             self.attach_sidecars(&mut change);
@@ -2125,7 +2169,7 @@ impl App {
                     tag_changes,
                     cover_change: None,
                     sidecar_renames: Vec::new(),
-                    block_removals: Vec::new(),
+                    block_changes: Vec::new(),
                     copy: false,
                 });
             }
@@ -2165,7 +2209,7 @@ impl App {
                     tag_changes,
                     cover_change: None,
                     sidecar_renames: Vec::new(),
-                    block_removals: Vec::new(),
+                    block_changes: Vec::new(),
                     copy: false,
                 });
             }
@@ -2224,7 +2268,7 @@ impl App {
                     new: cover_arts_to_dto(&new),
                 }),
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy: false,
             });
         }
@@ -2275,7 +2319,7 @@ impl App {
                     new: new_dtos.clone(),
                 }),
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy: false,
             });
         }
@@ -2397,7 +2441,7 @@ impl App {
                     new: Vec::new(),
                 }),
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy: false,
             });
         }
@@ -2434,22 +2478,176 @@ impl App {
                 tag_changes: Vec::new(),
                 cover_change: None,
                 sidecar_renames: Vec::new(),
-                block_removals: vec![BlockRemovalDto {
+                block_changes: vec![BlockChangeDto {
                     kind: block_kind.to_storage_key().to_string(),
                     label: block_kind.name().to_string(),
+                    revision: None,
+                    old_revision: None,
                     exact: TagBlockContent::exact(block_kind),
-                    tags: content
-                        .tags
-                        .iter()
-                        .map(|(field, value)| (field.to_storage_key().to_string(), value.clone()))
-                        .collect(),
-                    covers: cover_arts_to_dto(&content.covers),
+                    lost_fields: Vec::new(),
+                    lost_pictures: 0,
+                    old: Some(block_content_to_dto(&content)),
+                    new: None,
                 }],
                 copy: false,
             });
         }
         Ok(PlanDto {
             description: format!("Remove {} tag", block_kind.name()),
+            changes,
+            prune_empty_dirs: false,
+        })
+    }
+
+    /// Which tag blocks the selection can be converted *to* (#205), and which
+    /// ID3v2 revisions the app will write.
+    ///
+    /// The intersection across the selection, not the union: a target offered
+    /// for a mixed selection has to be one every file can actually take, or the
+    /// conversion would quietly skip half of them. Asked of the backend per
+    /// container rather than answered from a table here.
+    pub fn tag_block_targets(&self, paths: &[PathBuf]) -> Result<BlockTargetsDto, AppError> {
+        let mut shared: Option<Vec<TagBlockKind>> = None;
+        for path in paths {
+            let format = TagEngine::read(path)?.format;
+            let writable = TagBlockKind::writable_for(format);
+            shared = Some(match shared {
+                None => writable,
+                Some(kinds) => kinds
+                    .into_iter()
+                    .filter(|kind| writable.contains(kind))
+                    .collect(),
+            });
+        }
+        Ok(BlockTargetsDto {
+            kinds: shared
+                .unwrap_or_default()
+                .into_iter()
+                .map(|kind| TagBlockOptionDto {
+                    kind: kind.to_storage_key().to_string(),
+                    label: kind.name().to_string(),
+                })
+                .collect(),
+            revisions: Id3v2Revision::WRITABLE
+                .into_iter()
+                .map(|revision| TagBlockOptionDto {
+                    kind: revision.to_storage_key().to_string(),
+                    label: revision.name().to_string(),
+                })
+                .collect(),
+        })
+    }
+
+    /// Preview converting one tag block into another kind (#205), through the
+    /// normal preview/apply/undo path.
+    ///
+    /// Convert means *replace*: the target block is written from what the source
+    /// held and the source is dropped, both in one change, so a file is never
+    /// left carrying two answers to the same question. Converting a block into
+    /// its own kind is the in-place case — the ID3v2 revision switch — and there
+    /// the source is not dropped, because it *is* the target.
+    ///
+    /// A file that doesn't carry the source block is skipped, the way removal
+    /// skips it. What the conversion would drop is worked out per file and
+    /// travels with the plan, so the UI can say so before anything is staged.
+    pub fn preview_convert_tag_block(
+        &self,
+        paths: &[PathBuf],
+        from: &str,
+        to: &str,
+        revision: Option<&str>,
+    ) -> Result<PlanDto, AppError> {
+        let source = TagBlockKind::from_storage_key(from)
+            .ok_or_else(|| AppError::UnknownTagBlock(from.to_string()))?;
+        let target = TagBlockKind::from_storage_key(to)
+            .ok_or_else(|| AppError::UnknownTagBlock(to.to_string()))?;
+        let revision = match revision {
+            Some(key) => Some(
+                Id3v2Revision::from_storage_key(key)
+                    .ok_or_else(|| AppError::UnknownTagBlock(key.to_string()))?,
+            ),
+            None => None,
+        };
+
+        let mut changes = Vec::new();
+        for path in paths {
+            let Some(content) = TagEngine::read_block(path, source)? else {
+                continue;
+            };
+            let format = TagEngine::read(path)?.format;
+            if !TagBlockKind::writable_for(format).contains(&target) {
+                return Err(AppError::BlockNotWritable {
+                    kind: target.name().to_string(),
+                    format: format.name().to_string(),
+                });
+            }
+            let loss = content.conversion_loss(target);
+            // Which revision the file's ID3v2 block is in, so undo restamps the
+            // header back rather than leaving a 2.3 file as 2.4. It belongs to
+            // whichever side of the conversion IS the ID3v2 block — read once,
+            // and only when one of them is.
+            let current_revision = if source == TagBlockKind::Id3v2 || target == TagBlockKind::Id3v2
+            {
+                TagEngine::id3v2_revision(path)?.map(|r| r.to_storage_key().to_string())
+            } else {
+                None
+            };
+            let mut block_changes = vec![BlockChangeDto {
+                kind: target.to_storage_key().to_string(),
+                label: target.name().to_string(),
+                revision: revision.map(|r| r.to_storage_key().to_string()),
+                old_revision: if target == TagBlockKind::Id3v2 {
+                    current_revision.clone()
+                } else {
+                    None
+                },
+                exact: TagBlockContent::exact(target),
+                lost_fields: loss
+                    .fields
+                    .iter()
+                    .map(|field| field.to_storage_key().to_string())
+                    .collect(),
+                lost_pictures: loss.pictures,
+                old: TagEngine::read_block(path, target)?
+                    .as_ref()
+                    .map(block_content_to_dto),
+                new: Some(block_content_to_dto(&content)),
+            }];
+            if source != target {
+                block_changes.push(BlockChangeDto {
+                    kind: source.to_storage_key().to_string(),
+                    label: source.name().to_string(),
+                    revision: None,
+                    old_revision: if source == TagBlockKind::Id3v2 {
+                        current_revision
+                    } else {
+                        None
+                    },
+                    exact: TagBlockContent::exact(source),
+                    lost_fields: Vec::new(),
+                    lost_pictures: 0,
+                    old: Some(block_content_to_dto(&content)),
+                    new: None,
+                });
+            }
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes: Vec::new(),
+                cover_change: None,
+                sidecar_renames: Vec::new(),
+                block_changes,
+                copy: false,
+            });
+        }
+
+        let description = match (source == target, revision) {
+            (true, Some(revision)) => format!("Convert to ID3v{}", revision.name()),
+            (true, None) => format!("Rewrite {} tag", target.name()),
+            (false, _) => format!("Convert {} to {}", source.name(), target.name()),
+        };
+        Ok(PlanDto {
+            description,
             changes,
             prune_empty_dirs: false,
         })
@@ -3040,7 +3238,7 @@ impl App {
                     tag_changes,
                     cover_change: None,
                     sidecar_renames: Vec::new(),
-                    block_removals: Vec::new(),
+                    block_changes: Vec::new(),
                     copy: false,
                 });
             }
@@ -3676,6 +3874,30 @@ fn cover_art_to_dto(art: &CoverArt) -> CoverArtDto {
     }
 }
 
+/// One side of a block change, coming in from the UI.
+fn block_content_from_dto(dto: &BlockContentDto) -> TagBlockContent {
+    TagBlockContent {
+        tags: dto
+            .tags
+            .iter()
+            .map(|(field, value)| (TagField::from_storage_key(field), value.clone()))
+            .collect(),
+        covers: cover_dtos_to_art(&dto.covers),
+    }
+}
+
+/// One side of a block change, going out to the UI.
+fn block_content_to_dto(content: &TagBlockContent) -> BlockContentDto {
+    BlockContentDto {
+        tags: content
+            .tags
+            .iter()
+            .map(|(field, value)| (field.to_storage_key().to_string(), value.clone()))
+            .collect(),
+        covers: cover_arts_to_dto(&content.covers),
+    }
+}
+
 fn cover_arts_to_dto(arts: &[CoverArt]) -> Vec<CoverArtDto> {
     arts.iter().map(cover_art_to_dto).collect()
 }
@@ -3733,25 +3955,25 @@ impl PlanDto {
                         .iter()
                         .map(|(from, to)| (PathBuf::from(from), PathBuf::from(to)))
                         .collect(),
-                    // A removal whose kind this build has no name for is dropped
-                    // rather than guessed at — the same rule the journal follows
-                    // when it reads one back (#47).
-                    block_removals: change
-                        .block_removals
+                    // A block change whose kind this build has no name for is
+                    // dropped rather than guessed at — the same rule the journal
+                    // follows when it reads one back (#47).
+                    block_changes: change
+                        .block_changes
                         .iter()
-                        .filter_map(|removal| {
-                            Some(BlockRemoval {
-                                kind: TagBlockKind::from_storage_key(&removal.kind)?,
-                                removed: TagBlockContent {
-                                    tags: removal
-                                        .tags
-                                        .iter()
-                                        .map(|(field, value)| {
-                                            (TagField::from_storage_key(field), value.clone())
-                                        })
-                                        .collect(),
-                                    covers: cover_dtos_to_art(&removal.covers),
-                                },
+                        .filter_map(|block_change| {
+                            Some(BlockChange {
+                                kind: TagBlockKind::from_storage_key(&block_change.kind)?,
+                                revision: block_change
+                                    .revision
+                                    .as_deref()
+                                    .and_then(Id3v2Revision::from_storage_key),
+                                old_revision: block_change
+                                    .old_revision
+                                    .as_deref()
+                                    .and_then(Id3v2Revision::from_storage_key),
+                                old: block_change.old.as_ref().map(block_content_from_dto),
+                                new: block_change.new.as_ref().map(block_content_from_dto),
                             })
                         })
                         .collect(),
@@ -3872,6 +4094,8 @@ pub enum AppError {
     UnknownTransform(String),
     #[error("unknown tag block: {0}")]
     UnknownTagBlock(String),
+    #[error("a {format} file cannot carry a {kind} tag")]
+    BlockNotWritable { kind: String, format: String },
     #[error("nothing to open: the drop contained no audio files")]
     EmptyDrop,
     #[error("not an image file: {0}")]
@@ -4251,7 +4475,7 @@ mod tests {
                 tag_changes: Vec::new(),
                 cover_change: None,
                 sidecar_renames: Vec::new(),
-                block_removals: Vec::new(),
+                block_changes: Vec::new(),
                 copy: false,
             }],
         };
@@ -5155,11 +5379,16 @@ mod tests {
             .unwrap();
 
         assert_eq!(plan.changes.len(), 1);
-        let removal = &plan.changes[0].block_removals[0];
+        let removal = &plan.changes[0].block_changes[0];
         assert_eq!(removal.kind, "id3v1");
         assert!(removal.exact, "ID3v1 comes back whole");
+        assert!(removal.new.is_none(), "a removal writes no block back");
         assert_eq!(
-            removal.tags.get("artist").map(String::as_str),
+            removal
+                .old
+                .as_ref()
+                .and_then(|old| old.tags.get("artist"))
+                .map(String::as_str),
             Some("Stale Artist")
         );
 
@@ -5200,6 +5429,86 @@ mod tests {
         let app = open_app(&dir);
         let plan = app.preview_remove_tag_block(&[track], "id3v1").unwrap();
         assert!(plan.changes.is_empty());
+    }
+
+    /// #205: converting through the command layer replaces the block, states
+    /// what it cost, and undoes back to exactly the block that was there.
+    #[test]
+    fn converting_a_tag_block_replaces_it_and_reports_the_loss() {
+        let dir = TempDir::new("block-convert");
+        let track = dir.0.join("x.mp3");
+        let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+        frame.resize(417, 0);
+        std::fs::write(&track, frame.repeat(5)).unwrap();
+        let mut tags = std::collections::BTreeMap::new();
+        tags.insert(TagField::Artist, "Convert Me".to_string());
+        tags.insert(TagField::Isrc, "BEA509600123".to_string());
+        TagEngine::write(&tagrex_core::model::TrackFile {
+            path: track.clone(),
+            format: tagrex_core::model::AudioFormat::Mp3,
+            tags,
+        })
+        .unwrap();
+
+        let mut app = open_app(&dir);
+        let plan = app
+            .preview_convert_tag_block(std::slice::from_ref(&track), "id3v2", "id3v1", None)
+            .unwrap();
+
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(plan.description, "Convert ID3v2 to ID3v1");
+        let target = &plan.changes[0].block_changes[0];
+        assert_eq!(target.kind, "id3v1");
+        assert!(
+            target.lost_fields.contains(&"isrc".to_string()),
+            "ID3v1 has no room for an ISRC, got {:?}",
+            target.lost_fields
+        );
+        // The second half drops the source, so the file is left with one answer.
+        assert_eq!(plan.changes[0].block_changes[1].kind, "id3v2");
+        assert!(plan.changes[0].block_changes[1].new.is_none());
+
+        let batch = app.apply(&plan).unwrap();
+        let kinds: Vec<String> = TagEngine::read_with_props(&track)
+            .unwrap()
+            .blocks
+            .iter()
+            .map(|block| block.kind.to_storage_key().to_string())
+            .collect();
+        assert_eq!(kinds, vec!["id3v1".to_string()]);
+        assert_eq!(
+            TagEngine::read(&track)
+                .unwrap()
+                .tags
+                .get(&TagField::Artist)
+                .map(String::as_str),
+            Some("Convert Me")
+        );
+
+        app.undo(batch.id).unwrap();
+        let back = TagEngine::read_with_props(&track).unwrap();
+        assert_eq!(back.blocks.len(), 1);
+        assert_eq!(back.blocks[0].kind, TagBlockKind::Id3v2);
+        assert_eq!(
+            TagEngine::read(&track)
+                .unwrap()
+                .tags
+                .get(&TagField::Isrc)
+                .map(String::as_str),
+            Some("BEA509600123"),
+            "undo should bring back the field ID3v1 could not hold"
+        );
+    }
+
+    /// A target the container cannot carry is refused up front rather than
+    /// producing a write that lands nowhere.
+    #[test]
+    fn converting_to_a_block_the_container_cannot_carry_is_refused() {
+        let dir = TempDir::new("block-convert-bad");
+        let track = dir.tagged_flac("x.flac", "Artist", "Title");
+        let app = open_app(&dir);
+        let result = app.preview_convert_tag_block(&[track], "vorbis", "id3v1", None);
+        assert!(matches!(result, Err(AppError::BlockNotWritable { .. })));
     }
 
     #[test]

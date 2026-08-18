@@ -1559,6 +1559,20 @@ body:not(.show-checkbox) #tracks td.sel {
   margin: 0;
 }
 
+/* The tag-block convert picker (#205): one compact inline row under the block
+   line, only present while it is open. */
+.blocks-convert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+}
+.blocks-convert select {
+  font-size: var(--text-xs);
+}
+
 .empty {
   padding: 24px 14px;
   color: var(--muted);

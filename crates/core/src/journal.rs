@@ -10,8 +10,10 @@ use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
-use crate::model::{CoverArt, CoverKind, TagBlockContent, TagBlockKind, TagField, TagMap};
-use crate::plan::{BlockRemoval, ChangePlan, CoverChange, FieldChange, FileChange};
+use crate::model::{
+    CoverArt, CoverKind, Id3v2Revision, TagBlockContent, TagBlockKind, TagField, TagMap,
+};
+use crate::plan::{BlockChange, ChangePlan, CoverChange, FieldChange, FileChange};
 
 /// Identifier of an applied batch, stable across restarts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -222,6 +224,31 @@ impl SqliteJournal {
                  description      TEXT NOT NULL,
                  mime             TEXT NOT NULL,
                  data             BLOB NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS block_changes (
+                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                 file_change_id INTEGER NOT NULL REFERENCES file_changes(id) ON DELETE CASCADE,
+                 kind           TEXT NOT NULL,
+                 revision       TEXT,
+                 old_revision   TEXT,
+                 has_old        INTEGER NOT NULL,
+                 has_new        INTEGER NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS block_change_fields (
+                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                 block_change_id INTEGER NOT NULL REFERENCES block_changes(id) ON DELETE CASCADE,
+                 side            TEXT NOT NULL,
+                 field           TEXT NOT NULL,
+                 value           TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS block_change_images (
+                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                 block_change_id INTEGER NOT NULL REFERENCES block_changes(id) ON DELETE CASCADE,
+                 side            TEXT NOT NULL,
+                 kind            TEXT NOT NULL,
+                 description     TEXT NOT NULL,
+                 mime            TEXT NOT NULL,
+                 data            BLOB NOT NULL
              );",
         )?;
         // `copied` (#153) arrived after the table did, and a journal from an
@@ -310,35 +337,51 @@ impl UndoJournal for SqliteJournal {
                 )?;
             }
 
-            // A stripped block and everything it held (#47) — the snapshot is
-            // the only copy left once the block is off the file, so it is stored
-            // whole, field rows and picture rows both.
-            for removal in &change.block_removals {
+            // Both whole sides of every block change (#47, #205), field rows and
+            // picture rows. A stripped block's snapshot is the only copy left
+            // once it is off the file, so nothing here is stored by reference.
+            // `has_old`/`has_new` are separate from the row counts because a
+            // block that exists and holds nothing is not the same as no block.
+            for block_change in &change.block_changes {
                 tx.execute(
-                    "INSERT INTO block_removals (file_change_id, kind) VALUES (?1, ?2)",
-                    rusqlite::params![file_change_id, removal.kind.to_storage_key()],
+                    "INSERT INTO block_changes \
+                     (file_change_id, kind, revision, old_revision, has_old, has_new) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![
+                        file_change_id,
+                        block_change.kind.to_storage_key(),
+                        block_change.revision.map(Id3v2Revision::to_storage_key),
+                        block_change.old_revision.map(Id3v2Revision::to_storage_key),
+                        block_change.old.is_some(),
+                        block_change.new.is_some(),
+                    ],
                 )?;
-                let removal_id = tx.last_insert_rowid();
-                for (field, value) in &removal.removed.tags {
-                    tx.execute(
-                        "INSERT INTO block_removal_fields (block_removal_id, field, value) \
-                         VALUES (?1, ?2, ?3)",
-                        rusqlite::params![removal_id, field.to_storage_key(), value],
-                    )?;
-                }
-                for image in &removal.removed.covers {
-                    tx.execute(
-                        "INSERT INTO block_removal_images \
-                         (block_removal_id, kind, description, mime, data) \
-                         VALUES (?1, ?2, ?3, ?4, ?5)",
-                        rusqlite::params![
-                            removal_id,
-                            image.kind.to_storage_key(),
-                            image.description,
-                            image.mime,
-                            image.data,
-                        ],
-                    )?;
+                let block_change_id = tx.last_insert_rowid();
+                let sides = [("old", &block_change.old), ("new", &block_change.new)];
+                for (side, content) in sides {
+                    let Some(content) = content else { continue };
+                    for (field, value) in &content.tags {
+                        tx.execute(
+                            "INSERT INTO block_change_fields \
+                             (block_change_id, side, field, value) VALUES (?1, ?2, ?3, ?4)",
+                            rusqlite::params![block_change_id, side, field.to_storage_key(), value],
+                        )?;
+                    }
+                    for image in &content.covers {
+                        tx.execute(
+                            "INSERT INTO block_change_images \
+                             (block_change_id, side, kind, description, mime, data) \
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                            rusqlite::params![
+                                block_change_id,
+                                side,
+                                image.kind.to_storage_key(),
+                                image.description,
+                                image.mime,
+                                image.data,
+                            ],
+                        )?;
+                    }
                 }
             }
         }
@@ -448,7 +491,7 @@ impl SqliteJournal {
                 rename_to: rename_to.map(PathBuf::from),
                 copy: copied,
                 sidecar_renames: self.load_sidecar_renames(file_change_id)?,
-                block_removals: self.load_block_removals(file_change_id)?,
+                block_changes: self.load_block_changes(file_change_id)?,
             });
         }
         Ok(changes)
@@ -471,13 +514,105 @@ impl SqliteJournal {
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
-    /// The blocks one file change stripped (#47), with what each held.
+    /// The whole-block changes one file change carries (#47, #205), both sides
+    /// of each.
     ///
     /// A row whose `kind` this build has no name for is skipped rather than
     /// guessed at: it comes from a newer build, and undoing it would mean
     /// writing a block this one cannot address. The rest of the batch still
-    /// rolls back.
-    fn load_block_removals(&self, file_change_id: i64) -> Result<Vec<BlockRemoval>, JournalError> {
+    /// rolls back. A file change with no rows here falls back to the legacy
+    /// removal-only tables, so a batch recorded before conversion landed can
+    /// still be undone.
+    fn load_block_changes(&self, file_change_id: i64) -> Result<Vec<BlockChange>, JournalError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, kind, revision, old_revision, has_old, has_new FROM block_changes \
+             WHERE file_change_id = ?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![file_change_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, bool>(4)?,
+                row.get::<_, bool>(5)?,
+            ))
+        })?;
+
+        let mut changes = Vec::new();
+        let mut any = false;
+        for row in rows {
+            let (id, kind, revision, old_revision, has_old, has_new) = row?;
+            any = true;
+            let Some(kind) = TagBlockKind::from_storage_key(&kind) else {
+                continue;
+            };
+            let side = |side: &str, present: bool| -> Result<_, JournalError> {
+                if !present {
+                    return Ok(None);
+                }
+                Ok(Some(TagBlockContent {
+                    tags: self.load_block_change_fields(id, side)?,
+                    covers: self.load_block_change_images(id, side)?,
+                }))
+            };
+            changes.push(BlockChange {
+                kind,
+                revision: revision
+                    .as_deref()
+                    .and_then(Id3v2Revision::from_storage_key),
+                old_revision: old_revision
+                    .as_deref()
+                    .and_then(Id3v2Revision::from_storage_key),
+                old: side("old", has_old)?,
+                new: side("new", has_new)?,
+            });
+        }
+        if any {
+            return Ok(changes);
+        }
+        self.load_legacy_block_removals(file_change_id)
+    }
+
+    fn load_block_change_fields(&self, id: i64, side: &str) -> Result<TagMap, JournalError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT field, value FROM block_change_fields \
+             WHERE block_change_id = ?1 AND side = ?2 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![id, side], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut tags = TagMap::new();
+        for row in rows {
+            let (field, value) = row?;
+            tags.insert(TagField::from_storage_key(&field), value);
+        }
+        Ok(tags)
+    }
+
+    fn load_block_change_images(&self, id: i64, side: &str) -> Result<Vec<CoverArt>, JournalError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT kind, description, mime, data FROM block_change_images \
+             WHERE block_change_id = ?1 AND side = ?2 ORDER BY id",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![id, side], |row| {
+            Ok(CoverArt {
+                kind: CoverKind::from_storage_key(&row.get::<_, String>(0)?),
+                description: row.get::<_, String>(1)?,
+                mime: row.get::<_, String>(2)?,
+                data: row.get::<_, Vec<u8>>(3)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// A batch recorded when a block change could only ever be a removal. Read
+    /// only, never written: the tables stay so a pending undo from that build
+    /// still works.
+    fn load_legacy_block_removals(
+        &self,
+        file_change_id: i64,
+    ) -> Result<Vec<BlockChange>, JournalError> {
         let mut stmt = self
             .conn
             .prepare("SELECT id, kind FROM block_removals WHERE file_change_id = ?1 ORDER BY id")?;
@@ -491,47 +626,34 @@ impl SqliteJournal {
             let Some(kind) = TagBlockKind::from_storage_key(&kind) else {
                 continue;
             };
-            removals.push(BlockRemoval {
-                kind,
-                removed: TagBlockContent {
-                    tags: self.load_block_fields(removal_id)?,
-                    covers: self.load_block_images(removal_id)?,
-                },
-            });
+            let mut fields = self.conn.prepare(
+                "SELECT field, value FROM block_removal_fields \
+                 WHERE block_removal_id = ?1 ORDER BY id",
+            )?;
+            let mut tags = TagMap::new();
+            for row in fields.query_map(rusqlite::params![removal_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })? {
+                let (field, value) = row?;
+                tags.insert(TagField::from_storage_key(&field), value);
+            }
+            let mut images = self.conn.prepare(
+                "SELECT kind, description, mime, data FROM block_removal_images \
+                 WHERE block_removal_id = ?1 ORDER BY id",
+            )?;
+            let covers = images
+                .query_map(rusqlite::params![removal_id], |row| {
+                    Ok(CoverArt {
+                        kind: CoverKind::from_storage_key(&row.get::<_, String>(0)?),
+                        description: row.get::<_, String>(1)?,
+                        mime: row.get::<_, String>(2)?,
+                        data: row.get::<_, Vec<u8>>(3)?,
+                    })
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            removals.push(BlockChange::removal(kind, TagBlockContent { tags, covers }));
         }
         Ok(removals)
-    }
-
-    fn load_block_fields(&self, removal_id: i64) -> Result<TagMap, JournalError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT field, value FROM block_removal_fields \
-             WHERE block_removal_id = ?1 ORDER BY id",
-        )?;
-        let rows = stmt.query_map(rusqlite::params![removal_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?;
-        let mut tags = TagMap::new();
-        for row in rows {
-            let (field, value) = row?;
-            tags.insert(TagField::from_storage_key(&field), value);
-        }
-        Ok(tags)
-    }
-
-    fn load_block_images(&self, removal_id: i64) -> Result<Vec<CoverArt>, JournalError> {
-        let mut stmt = self.conn.prepare(
-            "SELECT kind, description, mime, data FROM block_removal_images \
-             WHERE block_removal_id = ?1 ORDER BY id",
-        )?;
-        let rows = stmt.query_map(rusqlite::params![removal_id], |row| {
-            Ok(CoverArt {
-                kind: CoverKind::from_storage_key(&row.get::<_, String>(0)?),
-                description: row.get::<_, String>(1)?,
-                mime: row.get::<_, String>(2)?,
-                data: row.get::<_, Vec<u8>>(3)?,
-            })
-        })?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     /// The image-set change for one file change (#56), or `None` when it carries

@@ -241,7 +241,7 @@ function mockInvoke(cmd, args) {
       // so the Tag types column and the editor's line have something to show.
       { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }], tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
       { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "ID3v1", kind: "id3v1", read_from: false }], tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
-      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "APE", kind: "ape", read_from: false }], tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996" } },
+      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "APE", kind: "ape", read_from: false }], tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996", bpm: "128", isrc: "BEA509600123" } },
     ],
     history: [],
   };
@@ -627,22 +627,90 @@ function mockInvoke(cmd, args) {
             rename_to: null,
             tag_changes: [],
             cover_change: null,
-            block_removals: [
+            block_changes: [
               {
                 kind: block.kind,
                 label: block.label,
                 // ID3v1 is the one kind that comes back whole (#47) — the mock
                 // says so too, so the warning path is reachable from a browser.
                 exact: block.kind === "id3v1",
-                tags: { artist: t.tags.artist || "", title: t.tags.title || "" },
-                covers: [],
+                lost_fields: [],
+                lost_pictures: 0,
+                old: { tags: { artist: t.tags.artist || "", title: t.tags.title || "" }, covers: [] },
+                new: null,
               },
             ],
           };
         })
         .filter(Boolean);
-      const label = changes[0]?.block_removals[0].label || args.kind;
+      const label = changes[0]?.block_changes[0].label || args.kind;
       return Promise.resolve({ description: `Remove ${label} tag`, changes });
+    }
+    case "tag_block_targets": {
+      // The mock library is all MP3, so every MP3-capable block is on offer.
+      return Promise.resolve({
+        kinds: [
+          { kind: "id3v2", label: "ID3v2" },
+          { kind: "ape", label: "APE" },
+          { kind: "id3v1", label: "ID3v1" },
+        ],
+        revisions: [
+          { kind: "id3v23", label: "2.3" },
+          { kind: "id3v24", label: "2.4" },
+        ],
+      });
+    }
+    case "preview_convert_tag_block": {
+      const LABELS = { id3v2: "ID3v2", id3v1: "ID3v1", ape: "APE" };
+      const changes = args.paths
+        .map((p) => {
+          const t = findTrack(p);
+          const block = (t?.tag_blocks || []).find((b) => b.kind === args.from);
+          if (!block) return null;
+          const content = { tags: { ...t.tags }, covers: [] };
+          // ID3v1's seven slots are the mock's stand-in for a lossy target, so
+          // the "this would drop things" dialog is reachable from a browser.
+          const lost_fields =
+            args.to === "id3v1"
+              ? Object.keys(t.tags).filter(
+                  (f) => !["artist", "title", "album", "year", "genre", "comment", "track"].includes(f)
+                )
+              : [];
+          const block_changes = [
+            {
+              kind: args.to,
+              label: LABELS[args.to] || args.to,
+              revision: args.revision || null,
+              exact: args.to === "id3v1",
+              lost_fields,
+              lost_pictures: 0,
+              old: args.to === args.from ? content : null,
+              new: content,
+            },
+          ];
+          if (args.to !== args.from) {
+            block_changes.push({
+              kind: args.from,
+              label: block.label,
+              revision: null,
+              exact: args.from === "id3v1",
+              lost_fields: [],
+              lost_pictures: 0,
+              old: content,
+              new: null,
+            });
+          }
+          return { path: p, rename_to: null, tag_changes: [], cover_change: null, block_changes };
+        })
+        .filter(Boolean);
+      const target = LABELS[args.to] || args.to;
+      const description =
+        args.to === args.from
+          ? args.revision
+            ? `Convert to ID3v${args.revision === "id3v23" ? "2.3" : "2.4"}`
+            : `Rewrite ${target} tag`
+          : `Convert ${LABELS[args.from] || args.from} to ${target}`;
+      return Promise.resolve({ description, changes });
     }
     case "export_cover": {
       // Pretend odd-indexed files have no cover so the skip path is exercised;

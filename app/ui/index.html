@@ -363,6 +363,9 @@
                 <!-- Which tag block the values come from, for the selection
                      (#47). Silent unless there is something to say. -->
                 <p id="fields-blocks" class="hint muted" style="padding: 0" hidden></p>
+                <!-- The convert picker (#205), built on demand by renderTagBlocks
+                     so nothing is fetched until the user asks to convert. -->
+                <div id="fields-blocks-convert" class="blocks-convert" hidden></div>
                 <!-- Grouped core/extended field rows are built by renderFieldEditor. -->
                 <div id="fields-body" class="fe"></div>
                 <!-- ADD FIELD (#114): an unobtrusive affordance — a "+ Add field"

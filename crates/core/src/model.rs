@@ -13,8 +13,8 @@ use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::flac::FlacFile;
 use lofty::id3::v1::Id3v1Tag;
 use lofty::id3::v2::{ExtendedTextFrame, Frame, Id3v2Tag, Id3v2Version};
-use lofty::iff::aiff::AiffFile;
-use lofty::iff::wav::WavFile;
+use lofty::iff::aiff::{AiffFile, AiffTextChunks};
+use lofty::iff::wav::{RiffInfoList, WavFile};
 use lofty::mp4::{Atom, AtomData, AtomIdent, Ilst};
 use lofty::mpeg::MpegFile;
 use lofty::musepack::MpcFile;
@@ -572,6 +572,53 @@ impl TagBlockKind {
             Self::Id3v2 | Self::VorbisComments | Self::Mp4Ilst | Self::Ape
         )
     }
+
+    /// Every kind, in the order the app offers them: the ones a file is most
+    /// likely to be converted *to* first.
+    pub const ALL: [Self; 7] = [
+        Self::Id3v2,
+        Self::VorbisComments,
+        Self::Ape,
+        Self::Mp4Ilst,
+        Self::Id3v1,
+        Self::RiffInfo,
+        Self::AiffText,
+    ];
+
+    /// The kinds a container can actually be given (#205) — asked of the
+    /// backend, which knows both what each container may hold and which of
+    /// those it can only read. Offering a kind a format cannot carry would
+    /// produce a conversion that silently writes nothing.
+    pub fn writable_for(format: AudioFormat) -> Vec<Self> {
+        let file_type = format.to_lofty();
+        Self::ALL
+            .into_iter()
+            .filter(|kind| file_type.tag_support(kind.to_tag_type()).is_writable())
+            .collect()
+    }
+}
+
+/// What converting a block's contents into another kind would cost (#205).
+///
+/// Worked out by putting the values through the backend's own conversion for
+/// the target kind and seeing what comes back, rather than from a table of our
+/// own: which fields a kind can hold is the backend's business, it differs in
+/// ways no summary captures — ID3v1's seven fixed slots, RIFF INFO's short list
+/// — and a table would drift the first time the backend learns a mapping.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ConversionLoss {
+    /// Fields that would not come back the way they went in — the target has no
+    /// key for them, or its own conversion changes the value.
+    pub fields: Vec<TagField>,
+    /// Images the target kind cannot hold.
+    pub pictures: usize,
+}
+
+impl ConversionLoss {
+    /// Whether the conversion keeps everything, and so needs no warning.
+    pub fn is_empty(&self) -> bool {
+        self.fields.is_empty() && self.pictures == 0
+    }
 }
 
 /// Which ID3v2 revision a block is written in (#47). The one tag kind whose
@@ -609,6 +656,33 @@ impl Id3v2Revision {
             _ => Self::V4,
         }
     }
+
+    /// A lossless string form, for the journal and the IPC boundary — the same
+    /// split between reading and storage as [`TagBlockKind::to_storage_key`].
+    pub fn to_storage_key(self) -> &'static str {
+        match self {
+            Self::V2 => "id3v22",
+            Self::V3 => "id3v23",
+            Self::V4 => "id3v24",
+        }
+    }
+
+    /// Inverse of [`to_storage_key`](Self::to_storage_key), or `None` for a key
+    /// this build does not know.
+    pub fn from_storage_key(key: &str) -> Option<Self> {
+        Some(match key {
+            "id3v22" => Self::V2,
+            "id3v23" => Self::V3,
+            "id3v24" => Self::V4,
+            _ => return None,
+        })
+    }
+
+    /// The revisions the app will write. 2.2 is read and reported — plenty of
+    /// old files are still in it — but the backend writes only 2.3 and 2.4, so
+    /// offering 2.2 as a conversion target would be offering a write that
+    /// quietly produced something else.
+    pub const WRITABLE: [Self; 2] = [Self::V3, Self::V4];
 }
 
 /// One tag block a file carries (#47).
@@ -663,6 +737,81 @@ impl TagBlockContent {
     pub fn exact(kind: TagBlockKind) -> bool {
         kind == TagBlockKind::Id3v1
     }
+
+    /// What writing this content as a block of `kind` would drop (#205).
+    ///
+    /// Computed against the backend's own conversion, in memory — nothing is
+    /// written and no file is touched — so the preview can state the cost of a
+    /// conversion before it is staged.
+    pub fn conversion_loss(&self, kind: TagBlockKind) -> ConversionLoss {
+        let survived = tag_to_map(&round_trip_through(kind, tag_for_block(kind, self)));
+        ConversionLoss {
+            fields: self
+                .tags
+                .iter()
+                .filter(|(field, value)| survived.get(*field) != Some(*value))
+                .map(|(field, _)| field.clone())
+                .collect(),
+            pictures: if kind.holds_pictures() {
+                0
+            } else {
+                self.covers.len()
+            },
+        }
+    }
+}
+
+/// The generic tag one block's worth of content becomes on the way to disk.
+fn tag_for_block(kind: TagBlockKind, content: &TagBlockContent) -> Tag {
+    let tag_type = kind.to_tag_type();
+    let mut tag = Tag::new(tag_type);
+    for (field, value) in &content.tags {
+        // A field this block type has no key for is dropped rather than guessed
+        // at — the same silent-drop rule the writer follows (#165), and part of
+        // what makes a rebuild exact only for ID3v1.
+        if item_key_for(field, tag_type).is_some() {
+            push_field_items(&mut tag, field, value);
+        }
+    }
+    for cover in &content.covers {
+        tag.push_picture(picture_from_cover(cover));
+    }
+    tag
+}
+
+/// Put a generic tag through the concrete type for `kind` and back, which is
+/// what a write of that block does and therefore what survives it.
+fn round_trip_through(kind: TagBlockKind, tag: Tag) -> Tag {
+    match kind {
+        TagBlockKind::Id3v1 => Tag::from(Id3v1Tag::from(tag)),
+        TagBlockKind::Id3v2 => Tag::from(Id3v2Tag::from(tag)),
+        TagBlockKind::VorbisComments => Tag::from(VorbisComments::from(tag)),
+        TagBlockKind::Ape => Tag::from(ApeTag::from(tag)),
+        TagBlockKind::Mp4Ilst => Tag::from(Ilst::from(tag)),
+        TagBlockKind::RiffInfo => Tag::from(RiffInfoList::from(tag)),
+        TagBlockKind::AiffText => Tag::from(AiffTextChunks::from(tag)),
+    }
+}
+
+/// A generic tag's text items in the model's field vocabulary. Shared by
+/// [`TagEngine::read_block`] and the conversion-loss check so the two agree on
+/// what "the block holds this" means.
+fn tag_to_map(tag: &Tag) -> TagMap {
+    let tag_type = tag.tag_type();
+    let mut tags = TagMap::new();
+    for item in tag.items() {
+        let value = match item.value() {
+            ItemValue::Text(text) | ItemValue::Locator(text) => text.clone(),
+            _ => continue,
+        };
+        insert_read_value(
+            &mut tags,
+            item_key_to_tag_field(item.key(), tag_type),
+            false,
+            value,
+        );
+    }
+    tags
 }
 
 /// One read of a file: its tags, its technical properties, and the tag blocks it
@@ -1173,6 +1322,31 @@ impl TagEngine {
             .map(|tag| Id3v2Revision::from_lofty(tag.original_version())))
     }
 
+    /// Rewrite the file's ID3v2 block at `revision`, keeping every frame it
+    /// holds (#205). `false` when the file carries no ID3v2 block.
+    ///
+    /// Deliberately not a rebuild from the model's own view of the block, which
+    /// is what [`write_block`](Self::write_block) does: that view does not
+    /// surface a binary frame at all, so rebuilding would drop the cue points,
+    /// ratings and ReplayGain data that #52 exists to protect. Changing 2.3 to
+    /// 2.4 is meant to change the header, not to empty the tag — so this is the
+    /// concrete path, the same one an ordinary write uses.
+    ///
+    /// Only [`Executor`](crate::plan::Executor) should call this.
+    pub fn set_id3v2_revision(path: &Path, revision: Id3v2Revision) -> Result<bool, TagIoError> {
+        let Some(container) = container_of(path)? else {
+            return Ok(false);
+        };
+        let Some(tag) = read_id3v2(path, container, custom_item_options())? else {
+            return Ok(false);
+        };
+        tag.save_to_path(
+            path,
+            WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3),
+        )?;
+        Ok(true)
+    }
+
     /// What one of the file's tag blocks holds, as a snapshot undo can rebuild
     /// it from (#47). `None` when the file carries no block of that kind.
     ///
@@ -1189,21 +1363,8 @@ impl TagEngine {
         let Some(tag) = tagged.tag(tag_type) else {
             return Ok(None);
         };
-        let mut tags = TagMap::new();
-        for item in tag.items() {
-            let value = match item.value() {
-                ItemValue::Text(text) | ItemValue::Locator(text) => text.clone(),
-                _ => continue,
-            };
-            insert_read_value(
-                &mut tags,
-                item_key_to_tag_field(item.key(), tag_type),
-                false,
-                value,
-            );
-        }
         Ok(Some(TagBlockContent {
-            tags,
+            tags: tag_to_map(tag),
             covers: tag.pictures().iter().map(cover_from_picture).collect(),
         }))
     }
@@ -1235,20 +1396,34 @@ impl TagEngine {
         kind: TagBlockKind,
         content: &TagBlockContent,
     ) -> Result<(), TagIoError> {
-        let tag_type = kind.to_tag_type();
-        let mut tag = Tag::new(tag_type);
-        for (field, value) in &content.tags {
-            // A field this block type has no key for is dropped rather than
-            // guessed at — the same silent-drop rule the writer follows (#165),
-            // and part of what makes a rebuild exact only for ID3v1.
-            if item_key_for(field, tag_type).is_some() {
-                push_field_items(&mut tag, field, value);
+        Self::write_block(path, kind, None, content)
+    }
+
+    /// Write one tag block of `kind`, replacing whatever block of that kind the
+    /// file carries and leaving every other block alone (#205).
+    ///
+    /// `revision` chooses the ID3v2 revision for this write and is ignored for
+    /// every other kind; `None` means the app-wide preference (#79), which is
+    /// what an ordinary write and a restore both want. A conversion passes the
+    /// revision the user picked, because "make this file's ID3v2 a 2.3" is the
+    /// single most-asked-for case of #205 and the app-wide default is the wrong
+    /// lever for one file.
+    ///
+    /// Only [`Executor`](crate::plan::Executor) should call this.
+    pub fn write_block(
+        path: &Path,
+        kind: TagBlockKind,
+        revision: Option<Id3v2Revision>,
+        content: &TagBlockContent,
+    ) -> Result<(), TagIoError> {
+        let options = match (kind, revision) {
+            (TagBlockKind::Id3v2, Some(revision)) => {
+                WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3)
             }
-        }
-        for cover in &content.covers {
-            tag.push_picture(picture_from_cover(cover));
-        }
-        tag.save_to_path(path, WriteOptions::default())?;
+            (TagBlockKind::Id3v2, None) => id3_write_options(),
+            _ => WriteOptions::default(),
+        };
+        tag_for_block(kind, content).save_to_path(path, options)?;
         Ok(())
     }
 
