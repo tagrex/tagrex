@@ -7,19 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Fixed
+## [0.9.0] - 2026-08-18
 
-- **Two kinds of awkward file are no longer given up on.** A file that failed to
-  read was listed as unreadable and left alone, which was the safe thing to do
-  but not always the right one. Reading now tries harder before it gives up: the
-  same parse as before, then the backend's other parsing mode — the two forgive
-  *different* faults, and a file whose only problem is a malformed identifier
-  frame is read by the second — and finally the container the file's extension
-  names, for a file whose audio starts far enough behind padding that the format
-  is guessed wrong entirely. Found on a real 3799-file library where exactly two
-  files were affected: one lost nothing but its own tags, the other was hiding a
-  title, a musical key and a tempo. Costs nothing for a file that reads first
-  time, which is very nearly all of them. (#204)
+### Added
 
 - **A file says which tag blocks it carries.** A new **Tag types** column, and a
   line in the tag editor when there is something to say — `Reading ID3v2 — this
@@ -72,6 +62,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   empty rather than an error, because asking whether something is there cannot
   fail on the answer being no. `$greater` compares as numbers rather than as
   text, so `9` is not greater than `10`. (#202)
+
+### Fixed
+
+- **Two kinds of awkward file are no longer given up on.** A file that failed to
+  read was listed as unreadable and left alone, which was the safe thing to do
+  but not always the right one. Reading now tries harder before it gives up: the
+  same parse as before, then the backend's other parsing mode — the two forgive
+  *different* faults, and a file whose only problem is a malformed identifier
+  frame is read by the second — and finally the container the file's extension
+  names, for a file whose audio starts far enough behind padding that the format
+  is guessed wrong entirely. Found on a real 3799-file library where exactly two
+  files were affected: one lost nothing but its own tags, the other was hiding a
+  title, a musical key and a tempo. Costs nothing for a file that reads first
+  time, which is very nearly all of them. (#204)
 
 ## [0.8.0] - 2026-08-17
 
