@@ -233,6 +233,58 @@ fn a_stripped_block_can_still_be_restored_after_a_restart() {
     );
 }
 
+/// #206: the bytes of a destroyed ID3v2 block are the only copy of its binary
+/// frames, so they have to survive a restart along with everything else.
+#[test]
+fn the_bytes_of_a_destroyed_id3v2_block_survive_a_restart() {
+    use lofty::config::WriteOptions;
+    use lofty::prelude::{Accessor, TagExt};
+    use tagrex_core::model::{TagBlockKind, TagEngine as Engine};
+    use tagrex_core::plan::BlockChange;
+
+    let dir = TempDir::new("block-bytes-restart");
+    let track = dir.path().join("track.mp3");
+    let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+    frame.resize(417, 0);
+    std::fs::write(&track, frame.repeat(5)).unwrap();
+    let mut tag = lofty::id3::v2::Id3v2Tag::new();
+    tag.set_artist("Journaled".to_string());
+    tag.save_to_path(&track, WriteOptions::default()).unwrap();
+
+    let content = Engine::read_block(&track, TagBlockKind::Id3v2)
+        .unwrap()
+        .unwrap();
+    let bytes = Engine::dump_id3v2(&track).unwrap().expect("bytes");
+    let plan = ChangePlan {
+        description: "Remove ID3v2 tag".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            block_changes: vec![BlockChange {
+                kind: TagBlockKind::Id3v2,
+                revision: None,
+                old_revision: None,
+                old_bytes: Some(bytes.clone()),
+                old: Some(content),
+                new: None,
+            }],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+
+    {
+        let mut journal = SqliteJournal::open(&dir.db()).unwrap();
+        Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
+    }
+
+    let journal = SqliteJournal::open(&dir.db()).unwrap();
+    assert_eq!(
+        journal.batches().unwrap()[0].plan.changes[0].block_changes[0].old_bytes,
+        Some(bytes),
+        "the block's bytes did not survive the reopen"
+    );
+}
+
 #[test]
 fn ids_keep_climbing_across_reopens() {
     let dir = TempDir::new("ids");

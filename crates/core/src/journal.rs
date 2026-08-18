@@ -231,6 +231,7 @@ impl SqliteJournal {
                  kind           TEXT NOT NULL,
                  revision       TEXT,
                  old_revision   TEXT,
+                 old_bytes      BLOB,
                  has_old        INTEGER NOT NULL,
                  has_new        INTEGER NOT NULL
              );
@@ -345,13 +346,14 @@ impl UndoJournal for SqliteJournal {
             for block_change in &change.block_changes {
                 tx.execute(
                     "INSERT INTO block_changes \
-                     (file_change_id, kind, revision, old_revision, has_old, has_new) \
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                     (file_change_id, kind, revision, old_revision, old_bytes, has_old, has_new) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     rusqlite::params![
                         file_change_id,
                         block_change.kind.to_storage_key(),
                         block_change.revision.map(Id3v2Revision::to_storage_key),
                         block_change.old_revision.map(Id3v2Revision::to_storage_key),
+                        block_change.old_bytes,
                         block_change.old.is_some(),
                         block_change.new.is_some(),
                     ],
@@ -525,8 +527,8 @@ impl SqliteJournal {
     /// still be undone.
     fn load_block_changes(&self, file_change_id: i64) -> Result<Vec<BlockChange>, JournalError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, kind, revision, old_revision, has_old, has_new FROM block_changes \
-             WHERE file_change_id = ?1 ORDER BY id",
+            "SELECT id, kind, revision, old_revision, old_bytes, has_old, has_new \
+             FROM block_changes WHERE file_change_id = ?1 ORDER BY id",
         )?;
         let rows = stmt.query_map(rusqlite::params![file_change_id], |row| {
             Ok((
@@ -534,15 +536,16 @@ impl SqliteJournal {
                 row.get::<_, String>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
-                row.get::<_, bool>(4)?,
+                row.get::<_, Option<Vec<u8>>>(4)?,
                 row.get::<_, bool>(5)?,
+                row.get::<_, bool>(6)?,
             ))
         })?;
 
         let mut changes = Vec::new();
         let mut any = false;
         for row in rows {
-            let (id, kind, revision, old_revision, has_old, has_new) = row?;
+            let (id, kind, revision, old_revision, old_bytes, has_old, has_new) = row?;
             any = true;
             let Some(kind) = TagBlockKind::from_storage_key(&kind) else {
                 continue;
@@ -564,6 +567,7 @@ impl SqliteJournal {
                 old_revision: old_revision
                     .as_deref()
                     .and_then(Id3v2Revision::from_storage_key),
+                old_bytes,
                 old: side("old", has_old)?,
                 new: side("new", has_new)?,
             });

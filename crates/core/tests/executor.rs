@@ -467,6 +467,7 @@ fn converts_one_block_into_another_and_undo_reverses_both_halves() {
                     kind: TagBlockKind::Id3v2,
                     revision: None,
                     old_revision: None,
+                    old_bytes: None,
                     old: None,
                     new: Some(source.clone()),
                 },
@@ -560,6 +561,7 @@ fn a_revision_switch_keeps_every_frame_and_undo_restores_the_revision() {
                 kind: TagBlockKind::Id3v2,
                 revision: Some(Id3v2Revision::V4),
                 old_revision: Some(Id3v2Revision::V3),
+                old_bytes: None,
                 old: Some(content.clone()),
                 new: Some(content),
             }],
@@ -600,6 +602,110 @@ fn a_revision_switch_keeps_every_frame_and_undo_restores_the_revision() {
         "undo left the file in the revision it was converted to"
     );
     assert_eq!(private_frames(&track), 1);
+}
+
+/// #206: undoing a change that destroyed an ID3v2 block must give back the
+/// frames the model cannot express — a DJ cue point is the case that matters,
+/// and a rebuild from text and pictures would silently drop it.
+#[test]
+fn undoing_a_destroyed_id3v2_block_brings_its_binary_frames_back() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::id3::v2::{Frame, PrivateFrame};
+    use lofty::mpeg::MpegFile;
+    use lofty::prelude::{Accessor, TagExt};
+    use tagrex_core::model::{TagBlockContent, TagBlockKind};
+    use tagrex_core::plan::BlockChange;
+
+    let dir = TempDir::new("block-bytes");
+    let track = dir.path().join("track.mp3");
+    let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+    frame.resize(417, 0);
+    std::fs::write(&track, frame.repeat(5)).unwrap();
+
+    let mut tag = lofty::id3::v2::Id3v2Tag::new();
+    tag.set_artist("Convert Me".to_string());
+    tag.insert(Frame::Private(PrivateFrame::new(
+        "SeratoMarkers".to_string(),
+        vec![9, 8, 7, 6],
+    )));
+    tag.save_to_path(&track, WriteOptions::default()).unwrap();
+
+    let cue_points = |path: &Path| -> Vec<Vec<u8>> {
+        let mut file = std::fs::File::open(path).unwrap();
+        MpegFile::read_from(&mut file, ParseOptions::new())
+            .unwrap()
+            .id3v2()
+            .map(|tag| {
+                tag.iter()
+                    .filter_map(|frame| match frame {
+                        Frame::Private(private) => Some(private.private_data.to_vec()),
+                        _ => None,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(cue_points(&track), vec![vec![9, 8, 7, 6]], "seeding failed");
+
+    // Convert ID3v2 to ID3v1: the ID3v2 block is destroyed, and only the bytes
+    // kept with the plan can bring its cue point back.
+    let content = TagEngine::read_block(&track, TagBlockKind::Id3v2)
+        .unwrap()
+        .unwrap();
+    let bytes = TagEngine::dump_id3v2(&track).unwrap().expect("bytes");
+    let plan = ChangePlan {
+        description: "Convert ID3v2 to ID3v1".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            block_changes: vec![
+                BlockChange {
+                    kind: TagBlockKind::Id3v1,
+                    revision: None,
+                    old_revision: None,
+                    old_bytes: None,
+                    old: None,
+                    new: Some(content.clone()),
+                },
+                BlockChange {
+                    kind: TagBlockKind::Id3v2,
+                    revision: None,
+                    old_revision: None,
+                    old_bytes: Some(bytes),
+                    old: Some(content),
+                    new: None,
+                },
+            ],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+
+    let mut journal = VecJournal::new();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
+    assert!(
+        cue_points(&track).is_empty(),
+        "the ID3v2 block should be gone after the conversion"
+    );
+
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
+    assert_eq!(
+        cue_points(&track),
+        vec![vec![9, 8, 7, 6]],
+        "undo rebuilt the block instead of restoring its bytes"
+    );
+    assert_eq!(
+        TagEngine::read(&track)
+            .unwrap()
+            .tags
+            .get(&TagField::Artist)
+            .map(String::as_str),
+        Some("Convert Me")
+    );
+    assert!(
+        !TagBlockContent::exact(TagBlockKind::Id3v2),
+        "a rebuild is still not exact — the bytes are what made this one so"
+    );
 }
 
 /// A plan built against a block that has since changed on disk must not be

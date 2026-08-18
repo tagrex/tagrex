@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Undo now brings a destroyed ID3v2 block back frame for frame.** Removing or
+  converting a block used to put it back by rebuilding it from what the app can
+  read — its fields and its pictures — so anything the app has no field for was
+  gone for good: DJ cue points, ratings, player-specific frames. The app warned
+  about it, but a warning is not an undo, and the reachable case was real —
+  converting away from ID3v2 destroys the block that holds exactly that data.
+  The block is now kept as bytes before it is destroyed, and undo writes those
+  bytes back, so what comes out is what went in. ID3v2 only, which is where that
+  data lives on the containers people tag; every other kind still rebuilds, and
+  still says so before you commit to it. The conversion dialog now tells the two
+  apart instead of always assuming the worse one. (#206)
+
 ## [0.9.0] - 2026-08-18
 
 ### Added

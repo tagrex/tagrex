@@ -1,6 +1,7 @@
 //! Tag data model and the tag I/O engine facade.
 
 use std::collections::{BTreeMap, HashSet};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::RwLock;
@@ -8,7 +9,7 @@ use std::sync::RwLock;
 use lofty::aac::AacFile;
 use lofty::ape::{ApeFile, ApeItem, ApeTag};
 use lofty::config::{ParseOptions, ParsingMode, WriteOptions};
-use lofty::error::{FileEncodingError, FileParseError};
+use lofty::error::{FileEncodingError, FileParseError, TagEncodingError};
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::flac::FlacFile;
 use lofty::id3::v1::Id3v1Tag;
@@ -33,6 +34,12 @@ use thiserror::Error;
 /// a rarely-changed, app-wide default; the app sets it from saved settings via
 /// [`set_write_id3v23`].
 static WRITE_ID3V23: AtomicBool = AtomicBool::new(false);
+
+/// The silent MPEG frame [`TagEngine::restore_id3v2_bytes`] pads a journaled
+/// ID3v2 chunk with, and how many of them. Enough audio for the backend to
+/// recognize the bytes as an MP3 and hand the tag back; never written to disk.
+const SILENT_MPEG_FRAME_LEN: usize = 417;
+const SILENT_MPEG_FRAMES: usize = 5;
 
 /// Set the ID3v2 version future writes use (`true` = v2.3, `false` = v2.4).
 pub fn set_write_id3v23(v23: bool) {
@@ -1322,6 +1329,73 @@ impl TagEngine {
             .map(|tag| Id3v2Revision::from_lofty(tag.original_version())))
     }
 
+    /// The file's ID3v2 block as bytes, so undo can put it back frame for
+    /// frame (#206). `None` for a file with no ID3v2 block, and for every other
+    /// kind of block.
+    ///
+    /// A rebuild from [`TagBlockContent`] cannot carry a frame the model has no
+    /// field for — a cue point, a rating — and a removal or a conversion
+    /// destroys the block before anything can re-read it, so the bytes are the
+    /// only way back. ID3v2 alone because that is where those frames live on the
+    /// containers people tag, and it is the block #52 is about.
+    ///
+    /// Pictures are stripped: they already travel beside this as
+    /// [`TagBlockContent::covers`], and leaving them in would make an
+    /// artwork-heavy selection pay for its covers twice — once here and once
+    /// there. [`restore_id3v2_bytes`](Self::restore_id3v2_bytes) puts them back.
+    pub fn dump_id3v2(path: &Path) -> Result<Option<Vec<u8>>, TagIoError> {
+        let Some(container) = container_of(path)? else {
+            return Ok(None);
+        };
+        let Some(mut tag) = read_id3v2(path, container, custom_item_options())? else {
+            return Ok(None);
+        };
+        tag.retain(|frame| !matches!(frame, Frame::Picture(_)));
+        let mut bytes = Vec::new();
+        tag.dump_to(&mut bytes, WriteOptions::default())?;
+        Ok(Some(bytes))
+    }
+
+    /// Put back a block [`dump_id3v2`](Self::dump_id3v2) took, with `covers` as
+    /// its pictures (#206).
+    ///
+    /// The backend can write an ID3v2 chunk out but has no public way to read
+    /// one back, so the bytes are handed to it as what they already are: an
+    /// ID3v2 chunk followed by MPEG frames IS an MP3, and reading that back
+    /// gives every frame — binary ones included — without this module having to
+    /// understand any of them. The silent frames exist only to make the parse
+    /// succeed and are never written anywhere.
+    ///
+    /// Only [`Executor`](crate::plan::Executor) should call this.
+    pub fn restore_id3v2_bytes(
+        path: &Path,
+        bytes: &[u8],
+        covers: &[CoverArt],
+        revision: Option<Id3v2Revision>,
+    ) -> Result<(), TagIoError> {
+        let mut synthetic = bytes.to_vec();
+        let mut silence = vec![0xFF, 0xFB, 0x90, 0x00];
+        silence.resize(SILENT_MPEG_FRAME_LEN, 0);
+        for _ in 0..SILENT_MPEG_FRAMES {
+            synthetic.extend_from_slice(&silence);
+        }
+        let mut tag = MpegFile::read_from(&mut Cursor::new(synthetic), custom_item_options())?
+            .id3v2()
+            .cloned()
+            .ok_or_else(|| {
+                TagIoError::UnsupportedFormat("the journaled ID3v2 block did not parse".to_string())
+            })?;
+        for cover in covers {
+            tag.insert_picture(picture_from_cover(cover));
+        }
+        let options = match revision {
+            Some(revision) => WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3),
+            None => id3_write_options(),
+        };
+        tag.save_to_path(path, options)?;
+        Ok(())
+    }
+
     /// Rewrite the file's ID3v2 block at `revision`, keeping every frame it
     /// holds (#205). `false` when the file carries no ID3v2 block.
     ///
@@ -2165,6 +2239,10 @@ pub enum TagIoError {
     Backend(#[from] FileParseError),
     #[error("tag backend error: {0}")]
     BackendWrite(#[from] FileEncodingError),
+    // Encoding a tag to bytes rather than to a file — the journaled ID3v2
+    // snapshot (#206) is the only thing that does this.
+    #[error("tag encoding error: {0}")]
+    Encoding(#[from] TagEncodingError),
 }
 
 #[cfg(test)]

@@ -65,6 +65,12 @@ pub struct BlockChange {
     /// what the block *was*, and an undo that quietly leaves a 2.3 file as 2.4
     /// has not undone anything the user can see.
     pub old_revision: Option<Id3v2Revision>,
+    /// The ID3v2 block as it was, in bytes, so undo puts it back frame for
+    /// frame instead of rebuilding it from `old` (#206). `None` for every other
+    /// kind, and for a change that creates a block rather than replacing one.
+    ///
+    /// Pictures are not in here — they are in `old` — so restoring takes both.
+    pub old_bytes: Option<Vec<u8>>,
     pub old: Option<TagBlockContent>,
     pub new: Option<TagBlockContent>,
 }
@@ -76,6 +82,7 @@ impl BlockChange {
             kind,
             revision: None,
             old_revision: None,
+            old_bytes: None,
             old: Some(removed),
             new: None,
         }
@@ -90,11 +97,15 @@ impl BlockChange {
         self.kind == TagBlockKind::Id3v2 && self.old.is_some() && self.old == self.new
     }
 
-    /// Whether undoing this change would put the block back whole — see
-    /// [`TagBlockContent::exact`]. The preview says so before the change is
+    /// Whether undoing this change would put the block back whole.
+    ///
+    /// True when the bytes of the old block were kept (#206), which makes the
+    /// restore frame-for-frame whatever the kind; otherwise it falls back to
+    /// what a rebuild from the model's view can manage, which is ID3v1 alone —
+    /// see [`TagBlockContent::exact`]. The preview says so before the change is
     /// staged, which is the only warning the user gets.
     pub fn exact(&self) -> bool {
-        TagBlockContent::exact(self.kind)
+        self.old_bytes.is_some() || TagBlockContent::exact(self.kind)
     }
 }
 
@@ -651,7 +662,28 @@ fn write_blocks(path: &Path, change: &FileChange, direction: Direction) -> Resul
             }
         }
         if let Some(content) = target(block_change) {
-            TagEngine::write_block(path, block_change.kind, revision(block_change), &content)?;
+            // Undo puts an ID3v2 block back from its bytes when they were kept
+            // (#206), so the frames the model cannot express come back too.
+            // Apply never has bytes to write: it is producing a block, not
+            // putting one back.
+            match (direction, &block_change.old_bytes) {
+                (Direction::Undo, Some(bytes)) if block_change.kind == TagBlockKind::Id3v2 => {
+                    TagEngine::restore_id3v2_bytes(
+                        path,
+                        bytes,
+                        &content.covers,
+                        block_change.old_revision,
+                    )?;
+                }
+                _ => {
+                    TagEngine::write_block(
+                        path,
+                        block_change.kind,
+                        revision(block_change),
+                        &content,
+                    )?;
+                }
+            }
         }
     }
     for block_change in &change.block_changes {

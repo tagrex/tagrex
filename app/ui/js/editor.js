@@ -303,10 +303,19 @@ async function previewConvertTagBlock(from, to, revision) {
       if (lostFields.size) parts.push([...lostFields].map(fieldLabel).sort().join(", "));
       if (lostPictures) parts.push(plural(lostPictures, "embedded image", "embedded images"));
       const drops = parts.length ? ` It has no room for ${parts.join(" and ")}.` : "";
+      // Whether every block this touches can be put back exactly. An ID3v2
+      // block is journaled as bytes (#206), so undo restores it frame for
+      // frame; anything else is rebuilt from what the app can read, and what it
+      // cannot read is gone for good. The two are different promises and the
+      // dialog should not make the wrong one.
+      const undoable = plan.changes.every((change) =>
+        (change.block_changes || []).every((block) => block.exact)
+      );
       const ok = await confirmDialog(
         `This rebuilds the block from the values the app can read.${drops} Anything it cannot read — ` +
-          `cue points, ratings, player-specific frames — would not come across, and undo cannot bring ` +
-          `it back. Convert ${plural(plan.changes.length, "file", "files")}?`,
+          `cue points, ratings, player-specific frames — would not come across. ` +
+          (undoable ? "Undo puts the original block back." : "Undo cannot bring those back.") +
+          ` Convert ${plural(plan.changes.length, "file", "files")}?`,
         "Convert"
       );
       if (!ok) return;

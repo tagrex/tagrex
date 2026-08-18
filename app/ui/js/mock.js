@@ -633,7 +633,9 @@ function mockInvoke(cmd, args) {
                 label: block.label,
                 // ID3v1 is the one kind that comes back whole (#47) — the mock
                 // says so too, so the warning path is reachable from a browser.
-                exact: block.kind === "id3v1",
+                // ID3v1 comes back whole from a rebuild, ID3v2 from its
+                // journaled bytes (#206) — both are exact, for different reasons.
+                exact: block.kind === "id3v1" || block.kind === "id3v2",
                 lost_fields: [],
                 lost_pictures: 0,
                 old: { tags: { artist: t.tags.artist || "", title: t.tags.title || "" }, covers: [] },
@@ -681,7 +683,7 @@ function mockInvoke(cmd, args) {
               kind: args.to,
               label: LABELS[args.to] || args.to,
               revision: args.revision || null,
-              exact: args.to === "id3v1",
+              exact: args.to === "id3v1" || args.to === "id3v2",
               lost_fields,
               lost_pictures: 0,
               old: args.to === args.from ? content : null,
@@ -693,7 +695,7 @@ function mockInvoke(cmd, args) {
               kind: args.from,
               label: block.label,
               revision: null,
-              exact: args.from === "id3v1",
+              exact: args.from === "id3v1" || args.from === "id3v2",
               lost_fields: [],
               lost_pictures: 0,
               old: content,

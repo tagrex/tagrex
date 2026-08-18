@@ -240,6 +240,12 @@ pub struct BlockChangeDto {
     /// app-wide default.
     #[serde(default)]
     pub old_revision: Option<String>,
+    /// The old ID3v2 block as base64 bytes (#206), so undo puts it back frame
+    /// for frame rather than rebuilding it from `old`. Absent for every other
+    /// kind. Pictures are not in here — they are in `old.covers` — so an
+    /// artwork-heavy selection does not carry its covers twice.
+    #[serde(default)]
+    pub old_bytes_base64: Option<String>,
     /// Whether undo would put the block back whole. False means the rebuild is
     /// text and pictures only, and the UI must say so before this is staged —
     /// see [`TagBlockContent::exact`].
@@ -2482,8 +2488,9 @@ impl App {
                     kind: block_kind.to_storage_key().to_string(),
                     label: block_kind.name().to_string(),
                     revision: None,
-                    old_revision: None,
-                    exact: TagBlockContent::exact(block_kind),
+                    old_revision: id3v2_revision_key(path, block_kind)?,
+                    old_bytes_base64: id3v2_bytes_base64(path, block_kind)?,
+                    exact: TagBlockContent::exact(block_kind) || block_kind == TagBlockKind::Id3v2,
                     lost_fields: Vec::new(),
                     lost_pictures: 0,
                     old: Some(block_content_to_dto(&content)),
@@ -2601,7 +2608,8 @@ impl App {
                 } else {
                     None
                 },
-                exact: TagBlockContent::exact(target),
+                old_bytes_base64: id3v2_bytes_base64(path, target)?,
+                exact: TagBlockContent::exact(target) || target == TagBlockKind::Id3v2,
                 lost_fields: loss
                     .fields
                     .iter()
@@ -2623,7 +2631,8 @@ impl App {
                     } else {
                         None
                     },
-                    exact: TagBlockContent::exact(source),
+                    old_bytes_base64: id3v2_bytes_base64(path, source)?,
+                    exact: TagBlockContent::exact(source) || source == TagBlockKind::Id3v2,
                     lost_fields: Vec::new(),
                     lost_pictures: 0,
                     old: Some(block_content_to_dto(&content)),
@@ -3874,6 +3883,29 @@ fn cover_art_to_dto(art: &CoverArt) -> CoverArtDto {
     }
 }
 
+/// The bytes of the file's ID3v2 block, base64 for the IPC boundary, when
+/// `kind` IS the ID3v2 block (#206). `None` otherwise, including for a file
+/// that carries no such block.
+///
+/// This is what makes undoing a destroyed ID3v2 block frame-for-frame instead
+/// of a rebuild from the fields the model happens to know — see
+/// [`TagEngine::dump_id3v2`].
+fn id3v2_bytes_base64(path: &Path, kind: TagBlockKind) -> Result<Option<String>, AppError> {
+    if kind != TagBlockKind::Id3v2 {
+        return Ok(None);
+    }
+    Ok(TagEngine::dump_id3v2(path)?
+        .map(|bytes| base64::engine::general_purpose::STANDARD.encode(bytes)))
+}
+
+/// The revision the file's ID3v2 block is in, when `kind` is that block.
+fn id3v2_revision_key(path: &Path, kind: TagBlockKind) -> Result<Option<String>, AppError> {
+    if kind != TagBlockKind::Id3v2 {
+        return Ok(None);
+    }
+    Ok(TagEngine::id3v2_revision(path)?.map(|r| r.to_storage_key().to_string()))
+}
+
 /// One side of a block change, coming in from the UI.
 fn block_content_from_dto(dto: &BlockContentDto) -> TagBlockContent {
     TagBlockContent {
@@ -3972,6 +4004,13 @@ impl PlanDto {
                                     .old_revision
                                     .as_deref()
                                     .and_then(Id3v2Revision::from_storage_key),
+                                old_bytes: block_change.old_bytes_base64.as_deref().and_then(
+                                    |encoded| {
+                                        base64::engine::general_purpose::STANDARD
+                                            .decode(encoded)
+                                            .ok()
+                                    },
+                                ),
                                 old: block_change.old.as_ref().map(block_content_from_dto),
                                 new: block_change.new.as_ref().map(block_content_from_dto),
                             })
@@ -5465,8 +5504,19 @@ mod tests {
             target.lost_fields
         );
         // The second half drops the source, so the file is left with one answer.
-        assert_eq!(plan.changes[0].block_changes[1].kind, "id3v2");
-        assert!(plan.changes[0].block_changes[1].new.is_none());
+        let dropped = &plan.changes[0].block_changes[1];
+        assert_eq!(dropped.kind, "id3v2");
+        assert!(dropped.new.is_none());
+        // #206: the block being destroyed travels as bytes, which is what makes
+        // undo frame-for-frame rather than a rebuild.
+        assert!(
+            dropped
+                .old_bytes_base64
+                .as_deref()
+                .is_some_and(|bytes| !bytes.is_empty()),
+            "the destroyed ID3v2 block was not journaled as bytes"
+        );
+        assert!(dropped.exact, "kept bytes make the restore exact");
 
         let batch = app.apply(&plan).unwrap();
         let kinds: Vec<String> = TagEngine::read_with_props(&track)
