@@ -95,6 +95,7 @@ import {
   tracks, setTracks, reindexTracks,
   previewPlan, setPreviewPlan,
   previewSource, setPreviewSource,
+  pendingImportCover, setPendingImportCover,
   diffByPath, setDiffByPath,
   applySelection, setApplySelection,
   edits, selection, selectedPaths, tag, trackAt, trackByPath,
@@ -1433,7 +1434,12 @@ async function previewEdits() {
     return;
   }
   try {
-    setPreviewPlan(await invoke("preview_tag_edits", { edits: list }));
+    // The cover rides along exactly once: whether it is written at all is the
+    // backend's decision (the import-cover setting, per file), but a second
+    // staging must not silently re-offer it.
+    const cover = pendingImportCover;
+    setPendingImportCover(null);
+    setPreviewPlan(await invoke("preview_tag_edits", { edits: list, cover }));
     setPreviewSource("edits");
     renderPreview(previewPlan);
   } catch (e) {

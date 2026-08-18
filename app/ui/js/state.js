@@ -36,6 +36,16 @@ export let previewPlan = null;
 export function setPreviewPlan(value) {
   previewPlan = value;
 }
+// The release cover an import wants written alongside its tags (#207), waiting
+// for the staging call that turns the pending edits into a plan. One plan means
+// one Apply and one undo for what the user did as a single action; leaving the
+// cover to its own batch is what made undoing an import bring back the tags and
+// keep the artwork.
+export let pendingImportCover = null;
+export function setPendingImportCover(value) {
+  pendingImportCover = value;
+}
+
 export let previewSource = null;
 export function setPreviewSource(value) {
   previewSource = value;

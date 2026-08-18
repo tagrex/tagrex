@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **An import can bring the release's cover with it.** Until now importing tags
+  from a release wrote the text fields and nothing else; getting the artwork on
+  took a second button, a second Apply and — the part that actually bit — a
+  second entry in the journal, so undoing "the import" gave back the tags and
+  left the cover behind. Now they are one change: one Apply writes both, one
+  undo takes back both. **Settings › Online import › Cover art** has three
+  states, and the default is **If missing** — a file carrying no artwork gets
+  the release cover, a file that already has one is left exactly as it is,
+  decided per file so a mixed selection is filled in precisely where it is
+  needed. **Always** replaces existing artwork; **Never** is the old behaviour.
+  Because the table has no column for artwork and a cover change would otherwise
+  make a row go quietly staged, the action bar and the toast now name it —
+  "Edit tags + cover on 3 files". (#207)
+
 ### Fixed
 
 - **Undo now brings a destroyed ID3v2 block back frame for frame.** Removing or

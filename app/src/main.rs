@@ -205,9 +205,15 @@ fn preview_move(
 }
 
 #[tauri::command]
-fn preview_tag_edits(state: State<AppState>, edits: Vec<TagEditDto>) -> Result<PlanDto, String> {
+fn preview_tag_edits(
+    state: State<AppState>,
+    edits: Vec<TagEditDto>,
+    // The release cover an import brought with it (#207), when there is one.
+    cover: Option<CoverArtDto>,
+) -> Result<PlanDto, String> {
     with_app(&state, |app| {
-        app.preview_tag_edits(&edits).map_err(|e| e.to_string())
+        app.preview_tag_edits_with_cover(&edits, cover.as_ref())
+            .map_err(|e| e.to_string())
     })
 }
 

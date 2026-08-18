@@ -514,8 +514,33 @@ function mockInvoke(cmd, args) {
         if (old === nv) continue;
         (byPath[e.path] = byPath[e.path] || []).push({ field: e.field, old, new: nv });
       }
-      const changes = Object.entries(byPath).map(([path, tag_changes]) => ({ path, rename_to: null, tag_changes }));
-      return Promise.resolve({ description: "Edit tags", changes });
+      // The release cover an import handed over (#207). The mock stands in for
+      // the "if missing" default: a track already carrying one keeps it, so both
+      // sides of the setting are reachable from a browser.
+      const changes = Object.entries(byPath).map(([path, tag_changes]) => {
+        const track = findTrack(path);
+        const gets_cover = args.cover && !track?.cover;
+        return {
+          path,
+          rename_to: null,
+          tag_changes,
+          cover_change: gets_cover ? { old: [], new: [args.cover] } : null,
+        };
+      });
+      if (args.cover) {
+        for (const p of args.paths || []) {
+          if (changes.some((c) => c.path === p)) continue;
+          const track = findTrack(p);
+          if (track && !track.cover) {
+            changes.push({ path: p, rename_to: null, tag_changes: [], cover_change: { old: [], new: [args.cover] } });
+          }
+        }
+      }
+      const covered = changes.filter((c) => c.cover_change).length;
+      return Promise.resolve({
+        description: covered ? `Edit tags + cover on ${plural(covered, "file", "files")}` : "Edit tags",
+        changes,
+      });
     }
     case "preview_clear_tags": {
       const changes = [];

@@ -18,6 +18,7 @@ import {
   selection,
   setManualOrder,
   setPreviewPlan,
+  setPendingImportCover,
   setPreviewSource,
   setTracks,
   tag,
@@ -1237,14 +1238,30 @@ async function importRelease(card) {
       }
       if (fields.size === 0) edits.delete(change.path);
     }
+    // Hand the release's cover to the staging step (#207) so the tags and the
+    // artwork become ONE plan — one Apply, one undo. Whether any of it is
+    // written is the backend's call: the import-cover setting decides, per
+    // file, and "only when the file has none" is the default.
+    //
+    // Awaited, unlike the fire-and-forget fetch that expanding a card starts:
+    // importing straight after expanding would otherwise race it and drop the
+    // artwork silently, which is the one failure this feature must not have.
+    await loadFullCover(card.dataset.id, release.cover_image_url, card);
+    setPendingImportCover(coverCache.get(card.dataset.id) || null);
     // No plain render here: `previewEdits` stages the plan and repaints the
     // table as a diff a moment later, so rendering first only builds a few
     // thousand rows to throw them away (#186).
     refreshFieldEditor();
     await hooks.previewEdits();
+    // The cover has to be named. The table shows changes per column and
+    // artwork has none, so a file that only gains a cover is a staged row that
+    // says nothing — this line is the only place a few hundred KB about to be
+    // written gets announced (#207).
+    const covered = (previewPlan?.changes || []).filter((c) => c.cover_change).length;
+    const coverNote = covered ? `, cover on ${plural(covered, "file", "files")}` : "";
     toast(
-      merged
-        ? `Merged ${plural(merged, "field change", "field changes")} from Discogs into pending edits`
+      merged || covered
+        ? `Merged ${plural(merged, "field change", "field changes")} from Discogs into pending edits${coverNote}`
         : "Nothing new to import from this release",
     );
   } catch (e) {

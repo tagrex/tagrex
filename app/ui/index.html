@@ -830,7 +830,17 @@
               <button id="set-import-all" type="button" class="text-btn">All</button>
               <button id="set-import-none" type="button" class="text-btn">None</button>
             </div>
-            <p class="settings-hint">Cover art isn't listed: embedding one is its own button on the release card, not something an import does on its own.</p>
+
+            <!-- Whether the release's artwork comes with the tags (#207). -->
+            <div class="settings-row">
+              <label>Cover art</label>
+              <div class="seg" id="set-import-cover" role="tablist" aria-label="Import cover art">
+                <button class="seg-btn" type="button" data-import-cover="never">Never</button>
+                <button class="seg-btn active" type="button" data-import-cover="if-missing">If missing</button>
+                <button class="seg-btn" type="button" data-import-cover="always">Always</button>
+              </div>
+            </div>
+            <p class="settings-hint">Whether an import also embeds the release's cover. <strong>If missing</strong> only fills in files that carry no artwork at all, so nothing you chose yourself is ever overwritten — decided per file, so a mixed selection gets it exactly where it's needed. <strong>Always</strong> replaces the cover a file already has. Either way the tags and the artwork are one change, so a single undo takes back both.</p>
           </div>
 
           <div class="settings-group">

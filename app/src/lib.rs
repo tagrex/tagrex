@@ -190,6 +190,49 @@ pub struct CoverChangeDto {
     pub new: Vec<CoverArtDto>,
 }
 
+/// Whether an online import writes the release's cover onto the files (#207).
+///
+/// Three states rather than a switch, because "add artwork" and "replace
+/// artwork" are different enough to want apart: the first fills a gap, the
+/// second overwrites something a person may have chosen deliberately.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ImportCover {
+    /// Leave artwork alone; embedding stays the release card's own button.
+    Never,
+    /// Embed only into files carrying no cover at all — the default, and the
+    /// one that can never destroy anything. Decided per FILE, so a mixed
+    /// selection gets the cover exactly where it is missing.
+    #[default]
+    IfMissing,
+    /// Embed into every file, replacing the cover it already has.
+    Always,
+}
+
+impl ImportCover {
+    /// The settings key, and the inverse. An unknown key reads as the default
+    /// rather than as an error: a stale or hand-edited setting should not stop
+    /// an import.
+    pub fn from_storage_key(key: &str) -> Self {
+        match key {
+            "never" => Self::Never,
+            "always" => Self::Always,
+            _ => Self::IfMissing,
+        }
+    }
+
+    pub fn to_storage_key(self) -> &'static str {
+        match self {
+            Self::Never => "never",
+            Self::IfMissing => "if-missing",
+            Self::Always => "always",
+        }
+    }
+}
+
+fn default_import_cover() -> String {
+    ImportCover::default().to_storage_key().to_string()
+}
+
 /// One choice the block-conversion UI can offer: a target block kind, or an
 /// ID3v2 revision. Same shape for both — a storage key and what to show.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -393,6 +436,10 @@ pub struct SettingsDto {
     /// default 85; otherwise 1..=100.
     #[serde(default)]
     pub cover_quality: u8,
+    /// Whether an online import brings the release's cover with it (#207):
+    /// `never`, `if-missing` (the default) or `always`. See [`ImportCover`].
+    #[serde(default = "default_import_cover")]
+    pub import_cover: String,
     /// Saved transform-chain action groups (#57): each a named, ordered set of
     /// steps + scope. Stored data only — `apply_settings` ignores it; the UI
     /// reads it from `load_settings` and rewrites it via `save_settings`.
@@ -460,6 +507,7 @@ impl Default for SettingsDto {
             read_priority: Vec::new(),
             cover_max_px: 0,
             cover_quality: 0,
+            import_cover: default_import_cover(),
             action_groups: Vec::new(),
             carry_sidecars: default_carry_sidecars(),
             sidecar_extensions: default_sidecar_extensions(),
@@ -1091,6 +1139,9 @@ pub struct App {
     sidecar_extensions: RefCell<Vec<String>>,
     /// Storage keys an online import must not write (#152), from settings.
     import_skip_fields: RefCell<HashSet<String>>,
+    /// Whether an import brings the release's cover with it (#207), from
+    /// settings.
+    import_cover: Cell<ImportCover>,
     /// Destinations outside `library_root` the user has explicitly chosen to
     /// reorganize into during this session (#153), and which therefore bound
     /// writes alongside the library root.
@@ -1127,6 +1178,7 @@ impl App {
             carry_folder_extras: Cell::new(default_carry_folder_extras()),
             sidecar_extensions: RefCell::new(default_sidecar_extensions()),
             import_skip_fields: RefCell::new(HashSet::new()),
+            import_cover: Cell::new(ImportCover::default()),
             extra_roots: RefCell::new(Vec::new()),
         })
     }
@@ -1210,6 +1262,13 @@ impl App {
         *self.sidecar_extensions.borrow_mut() = settings.sidecar_extensions.clone();
         *self.import_skip_fields.borrow_mut() =
             settings.import_skip_fields.iter().cloned().collect();
+        self.import_cover
+            .set(ImportCover::from_storage_key(&settings.import_cover));
+    }
+
+    /// What an online import should do about the release's cover (#207).
+    pub fn import_cover_mode(&self) -> ImportCover {
+        self.import_cover.get()
     }
 
     /// Scan the library and read each file's tags. A file whose tags can't be
@@ -2149,6 +2208,24 @@ impl App {
     /// real diff and the executor's staleness check is accurate) and drops
     /// no-op edits. An empty requested value clears the field.
     pub fn preview_tag_edits(&self, edits: &[TagEditDto]) -> Result<PlanDto, AppError> {
+        self.preview_tag_edits_with_cover(edits, None)
+    }
+
+    /// The same, plus the release cover an online import brought with it (#207).
+    ///
+    /// One plan rather than two, which is the whole point: the tags and the
+    /// artwork a user asked for in one action become one batch, so one Apply
+    /// writes them and one undo takes them back. Before this they were separate
+    /// batches and undoing "the import" left the cover behind.
+    ///
+    /// `cover` is what the release offers; whether any of it is written is
+    /// [`ImportCover`]'s decision, taken per file so a mixed selection gets
+    /// artwork exactly where it is missing.
+    pub fn preview_tag_edits_with_cover(
+        &self,
+        edits: &[TagEditDto],
+        cover: Option<&CoverArtDto>,
+    ) -> Result<PlanDto, AppError> {
         // Group edits by file so each file is read once and becomes one change.
         let mut by_path: std::collections::BTreeMap<&str, Vec<&TagEditDto>> =
             std::collections::BTreeMap::new();
@@ -2156,7 +2233,23 @@ impl App {
             by_path.entry(&edit.path).or_default().push(edit);
         }
 
+        // Resized once, up front (#41), so every file embeds the same trimmed
+        // image and the preview shows exactly what will be written.
+        let mode = self.import_cover.get();
+        let import_art = match (cover, mode) {
+            (Some(cover), ImportCover::IfMissing | ImportCover::Always) => cover_dto_to_art(cover)
+                .map(|art| {
+                    tagrex_core::cover::resize_cover(
+                        &art,
+                        self.cover_max_px.get(),
+                        self.cover_quality.get(),
+                    )
+                }),
+            _ => None,
+        };
+
         let mut changes = Vec::new();
+        let mut with_cover = 0;
         for (path, group) in by_path {
             let track = TagEngine::read(Path::new(path))?;
             let mut tag_changes = Vec::new();
@@ -2168,12 +2261,19 @@ impl App {
                     tag_changes.push(FieldChangeDto::new(edit.field.clone(), old, new));
                 }
             }
-            if !tag_changes.is_empty() {
+            let cover_change = match &import_art {
+                Some(art) => import_cover_change(Path::new(path), art, mode)?,
+                None => None,
+            };
+            if cover_change.is_some() {
+                with_cover += 1;
+            }
+            if !tag_changes.is_empty() || cover_change.is_some() {
                 changes.push(FileChangeDto {
                     path: path.to_string(),
                     rename_to: None,
                     tag_changes,
-                    cover_change: None,
+                    cover_change,
                     sidecar_renames: Vec::new(),
                     block_changes: Vec::new(),
                     copy: false,
@@ -2181,12 +2281,54 @@ impl App {
             }
         }
         Ok(PlanDto {
-            description: "Edit tags".to_string(),
+            // The artwork is named because the table cannot show it: a cover
+            // change has no column, so a file that only gains one looks like a
+            // staged row with nothing in it. The bar and the toast are the only
+            // places that can say a few hundred KB is about to be written.
+            description: if with_cover > 0 {
+                match with_cover {
+                    1 => "Edit tags + cover on 1 file".to_string(),
+                    n => format!("Edit tags + cover on {n} files"),
+                }
+            } else {
+                "Edit tags".to_string()
+            },
             changes,
             prune_empty_dirs: false,
         })
     }
+}
 
+/// The cover change one file gets from an import (#207), or `None` when this
+/// file should keep the artwork it has.
+///
+/// The front cover goes in and every other image stays (#56), the same rule
+/// the cover well follows: a fetched image means "this is the cover", never
+/// "throw away the back and the disc".
+fn import_cover_change(
+    path: &Path,
+    art: &CoverArt,
+    mode: ImportCover,
+) -> Result<Option<CoverChangeDto>, AppError> {
+    let old = TagEngine::read_covers(path)?;
+    if mode == ImportCover::IfMissing && !old.is_empty() {
+        return Ok(None);
+    }
+    let mut new = old.clone();
+    match new.iter().position(|c| c.kind == CoverKind::Front) {
+        Some(at) => new[at] = art.clone(),
+        None => new.insert(0, art.clone()),
+    }
+    if old == new {
+        return Ok(None); // already this exact cover
+    }
+    Ok(Some(CoverChangeDto {
+        old: cover_arts_to_dto(&old),
+        new: cover_arts_to_dto(&new),
+    }))
+}
+
+impl App {
     /// Build a plan that wipes every modeled text field from each selected file
     /// for a fresh start (#94), through the normal preview/apply/**undo** path so
     /// it stays reversible and journaled. Only the text tags TagRex models are
@@ -4751,6 +4893,7 @@ mod tests {
             read_priority: vec!["vorbis".into(), "id3v2".into()],
             cover_max_px: 500,
             cover_quality: 90,
+            import_cover: "never".into(),
             action_groups: Vec::new(),
             carry_sidecars: true,
             sidecar_extensions: Vec::new(),
@@ -5559,6 +5702,113 @@ mod tests {
         let app = open_app(&dir);
         let result = app.preview_convert_tag_block(&[track], "vorbis", "id3v1", None);
         assert!(matches!(result, Err(AppError::BlockNotWritable { .. })));
+    }
+
+    /// #207: an import's cover fills in the files that have none and leaves the
+    /// ones that already carry artwork alone — the default, decided per file.
+    #[test]
+    fn an_imported_cover_fills_the_gap_without_overwriting() {
+        let dir = TempDir::new("import-cover");
+        let bare = dir.tagged_flac("bare.flac", "Artist", "Bare");
+        let has_art = dir.tagged_flac("art.flac", "Artist", "Has Art");
+        let existing = CoverArt {
+            mime: "image/png".to_string(),
+            data: vec![1, 2, 3, 4],
+            ..CoverArt::default()
+        };
+        TagEngine::write_covers(&has_art, std::slice::from_ref(&existing)).unwrap();
+
+        let mut app = open_app(&dir);
+        let release_cover = CoverArtDto {
+            mime: "image/png".to_string(),
+            data_base64: base64::engine::general_purpose::STANDARD.encode([9, 9, 9, 9]),
+            ..CoverArtDto::default()
+        };
+        let edits = |path: &PathBuf| TagEditDto {
+            path: path.to_string_lossy().into_owned(),
+            field: "album".into(),
+            value: Some("Imported".into()),
+        };
+        let list = vec![edits(&bare), edits(&has_art)];
+
+        // The default: fill the gap, never overwrite.
+        let plan = app
+            .preview_tag_edits_with_cover(&list, Some(&release_cover))
+            .unwrap();
+        let covered: Vec<&str> = plan
+            .changes
+            .iter()
+            .filter(|change| change.cover_change.is_some())
+            .map(|change| change.path.as_str())
+            .collect();
+        assert_eq!(covered, vec![bare.to_string_lossy().as_ref()]);
+        assert_eq!(plan.description, "Edit tags + cover on 1 file");
+
+        // Both files still get their tag change, cover or not.
+        assert_eq!(plan.changes.len(), 2);
+
+        app.apply(&plan).unwrap();
+        assert_eq!(
+            TagEngine::read_cover(&bare).unwrap().map(|c| c.data),
+            Some(vec![9, 9, 9, 9]),
+            "the file with no artwork should have got the release cover"
+        );
+        assert_eq!(
+            TagEngine::read_cover(&has_art).unwrap(),
+            Some(existing),
+            "the file that had artwork must keep exactly what it had"
+        );
+    }
+
+    /// The other two states of the setting: off writes no artwork at all, and
+    /// "always" replaces what the file has.
+    #[test]
+    fn the_import_cover_setting_switches_between_never_and_always() {
+        let dir = TempDir::new("import-cover-modes");
+        let track = dir.tagged_flac("x.flac", "Artist", "Title");
+        TagEngine::write_covers(
+            &track,
+            &[CoverArt {
+                mime: "image/png".to_string(),
+                data: vec![1, 1, 1],
+                ..CoverArt::default()
+            }],
+        )
+        .unwrap();
+
+        let app = open_app(&dir);
+        let release_cover = CoverArtDto {
+            mime: "image/png".to_string(),
+            data_base64: base64::engine::general_purpose::STANDARD.encode([7, 7, 7]),
+            ..CoverArtDto::default()
+        };
+        let list = vec![TagEditDto {
+            path: track.to_string_lossy().into_owned(),
+            field: "album".into(),
+            value: Some("Imported".into()),
+        }];
+
+        let with_mode = |mode: &str| {
+            app.apply_settings(&SettingsDto {
+                import_cover: mode.to_string(),
+                ..SettingsDto::default()
+            });
+            app.preview_tag_edits_with_cover(&list, Some(&release_cover))
+                .unwrap()
+        };
+
+        assert!(
+            with_mode("never").changes[0].cover_change.is_none(),
+            "never means never"
+        );
+        assert!(
+            with_mode("if-missing").changes[0].cover_change.is_none(),
+            "this file already has artwork"
+        );
+        assert!(
+            with_mode("always").changes[0].cover_change.is_some(),
+            "always replaces it"
+        );
     }
 
     #[test]

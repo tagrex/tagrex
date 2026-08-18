@@ -31,6 +31,9 @@ import {
 // here now (moved out of TAGGER › ONLINE); the search still reads it via the
 // same #discogs-token input.
 let id3Choice = "v24"; // "v23" | "v24", mirrored by the segmented control
+// Whether an import brings the release's cover (#207): "never" | "if-missing"
+// | "always", mirrored by its segmented control.
+let importCoverChoice = "if-missing";
 
 function updateSettingsDot() {
   el("settings-open").classList.toggle("has-token", !!el("discogs-token").value.trim());
@@ -41,6 +44,13 @@ function setId3Choice(choice) {
   el("set-id3")
     .querySelectorAll(".seg-btn")
     .forEach((b) => b.classList.toggle("active", b.dataset.id3 === choice));
+}
+
+function setImportCoverChoice(choice) {
+  importCoverChoice = choice;
+  el("set-import-cover")
+    .querySelectorAll(".seg-btn")
+    .forEach((b) => b.classList.toggle("active", b.dataset.importCover === choice));
 }
 
 // Reflect + apply a theme choice from the segmented control (live, like the font
@@ -251,6 +261,7 @@ async function openSettings() {
     el("set-proxy").value = s.proxy || "";
     el("set-rate").value = s.rate_limit_per_min || 0;
     setId3Choice(s.id3_v23 ? "v23" : "v24");
+    setImportCoverChoice(s.import_cover || "if-missing");
     el("set-cover-max").value = s.cover_max_px || 0;
     el("set-cover-quality").value = s.cover_quality || 85;
     readPriority = normalizePriority(s.read_priority);
@@ -314,6 +325,7 @@ async function saveSettings() {
       carry_folder_extras: el("set-carry-extras").checked,
       sidecar_extensions: parseSidecarExts(el("set-sidecar-exts").value),
       import_skip_fields: importSkipFromForm(),
+      import_cover: importCoverChoice,
     };
     setSavedSettings(settings);
     // Display prefs are local-only; apply + persist before the backend
@@ -355,6 +367,10 @@ el("settings-save").addEventListener("click", saveSettings);
 el("set-id3").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-id3]");
   if (btn) setId3Choice(btn.dataset.id3);
+});
+el("set-import-cover").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-import-cover]");
+  if (btn) setImportCoverChoice(btn.dataset.importCover);
 });
 // Theme is a live control — switch immediately on click.
 el("set-theme").addEventListener("click", (e) => {
