@@ -92,6 +92,16 @@ fn list_tracks(state: State<AppState>) -> Result<Vec<TrackDto>, String> {
     with_app(&state, |app| Ok(app.list_tracks()))
 }
 
+/// Move files to the system Trash (#213). Returns what actually went, so the
+/// table drops exactly those rows. Refuses the whole call if any path is not a
+/// file this session lists inside the open library — nothing is moved then.
+#[tauri::command]
+fn trash_files(state: State<AppState>, paths: Vec<PathBuf>) -> Result<Vec<String>, String> {
+    with_app_mut(&state, |app| {
+        app.trash_files(&paths).map_err(|e| e.to_string())
+    })
+}
+
 /// Lock a set of fields against change for the rest of the session (#48).
 /// Replaces the whole set, so the UI sends what is locked rather than a delta.
 #[tauri::command]
@@ -951,6 +961,7 @@ fn main() {
             open_library,
             open_drop,
             list_tracks,
+            trash_files,
             set_locked_fields,
             locked_fields,
             find_duplicates,

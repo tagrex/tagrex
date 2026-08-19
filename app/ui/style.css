@@ -4698,6 +4698,17 @@ body.drag-active #drop-overlay {
   color: var(--accent-text);
   outline: none;
 }
+/* An item that deletes something (#213). Red as text rather than a red fill:
+   the row is not a warning until you are on it, and a menu that shouts before
+   you reach for it teaches people to click past the colour. */
+.ctx-item.danger {
+  color: var(--del);
+}
+.ctx-item.danger:hover,
+.ctx-item.danger:focus-visible {
+  background: var(--del);
+  color: #fff;
+}
 .ctx-sep {
   height: 1px;
   margin: var(--space-1) var(--space-1);

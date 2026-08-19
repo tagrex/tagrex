@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A button to re-read the open folder.** Files change under the app — one is
+  dropped into the folder, a track is edited elsewhere — and the only way to see
+  that was to go back through the folder chooser. The button beside Browse…
+  re-scans and re-reads tags while keeping everything a reopen would throw away:
+  sort, grouping, filter, columns, the mode you are in, the selection and any
+  pending edits, all of which survive for files that are still there and are
+  dropped for files that are not. It reports what moved ("3 tracks, 1 more"),
+  and it is inert while a change is staged — discarding a plan is a decision,
+  not a side effect of refreshing.
+- **A right-click menu on the file column**, with two entries. **Remove from the
+  list** takes files out of the table without touching disk, for narrowing a
+  working set by hand; a re-read brings them back. **Move to Trash…** puts them
+  in the system Trash after a confirmation that names how many. The menu acts on
+  the whole selection when the row you clicked is part of it, and otherwise on
+  that one row — which it selects first, so what is about to happen is visible
+  before it happens. A deletion is confined to the open folder the way every
+  write already is, refuses the whole batch if any path fails that check, and is
+  deliberately not in the undo history: the journal cannot bring a file back out
+  of the Trash, which is exactly why this is the Trash and not a delete.
 - **Fields can be locked against change.** A padlock beside every field in the
   EDITOR panel marks it as not-to-be-touched: no import, transform, rename,
   clear-tags or hand edit can change a locked field, its column in the table

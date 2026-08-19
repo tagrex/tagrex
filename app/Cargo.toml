@@ -43,6 +43,12 @@ rodio = { version = "0.22", default-features = false, features = [
 # (`open`/`start`/`xdg-open`); the URL is built + validated in main.rs so only
 # Discogs/MusicBrainz release pages can ever be opened.
 open = "5"
+# Move files to the system Trash from the file table's context menu (#213).
+# Cross-platform (Finder's trash, the Windows recycle bin, the freedesktop
+# trash spec). `default-features = false` drops the `chrono` timestamp reader,
+# which only matters for *listing* what is already in the trash — something
+# nothing here does.
+trash = { version = "5.2.6", default-features = false }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

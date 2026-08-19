@@ -254,6 +254,11 @@ function mockInvoke(cmd, args) {
     // Field locks (#48). The enforcement lives in the backend's plan gate and
     // has no browser stand-in, so locking here drives the UI — padlocks, inert
     // cells, disabled inputs — and nothing else.
+    // Moving files to the Trash (#213). The browser has no trash and no files,
+    // so the mock answers with what it was asked to remove — enough to drive
+    // the confirmation, the rows leaving and the toast.
+    case "trash_files":
+      return Promise.resolve([...(args.paths || [])]);
     case "set_locked_fields":
       mockLockedFields = new Set(args.fields || []);
       return Promise.resolve();

@@ -1077,6 +1077,7 @@ function enterDiffState() {
   renderLockedSkips();
   el("diff-actionbar").hidden = false;
   updateDiffBar();
+  updateRefreshButton(); // a staged plan puts the re-read out of reach (#212)
   // The rule chain acts on the staged plan while one is staged (#142), and its
   // wording says so — so it has to hear about entering and leaving this state.
   refreshGenerator();
@@ -1109,6 +1110,7 @@ function exitDiffState() {
   el("diff-actionbar").hidden = true;
   renderTracks();
   refreshGenerator();
+  updateRefreshButton(); // the re-read is reachable again (#212)
 }
 
 // Sync the floating action bar (apply count + enabled) and the header select-all
@@ -1341,6 +1343,70 @@ function updateLibAction() {
   btn.classList.toggle("opening", dirty);
   btn.title = dirty ? "Open the path you typed" : "Choose a folder to open";
   btn.setAttribute("aria-label", btn.title);
+  updateRefreshButton();
+}
+
+// Whether the folder can be re-read right now (#212). Not before anything is
+// open, and not while a plan is staged: the diff describes files as they were
+// when it was built, and a re-scan under it would leave it talking about a
+// library that has moved. Discarding a plan is a decision, not a side effect of
+// pressing Refresh.
+function updateRefreshButton() {
+  const btn = el("lib-refresh");
+  const staged = Boolean(diffByPath);
+  btn.disabled = !openedRoot || staged;
+  btn.title = staged
+    ? "Discard or apply the staged change before re-reading the folder"
+    : "Re-read the open folder";
+  btn.setAttribute("aria-label", "Re-read the open folder");
+}
+
+// Re-read the open folder (#212).
+//
+// Deliberately not a reopen: sort, grouping, filter, the column layout and the
+// mode you are in all stay exactly as they were — the point is to see what the
+// folder says now, not to start again. What cannot survive is anything keyed to
+// a path that has gone: a selection entry and a pending edit for a file no
+// longer there are dropped, and everything still present keeps both.
+async function refreshLibrary() {
+  if (!openedRoot || diffByPath) return;
+  const btn = el("lib-refresh");
+  btn.disabled = true;
+  try {
+    const fresh = await invoke("list_tracks", {});
+    const present = new Set(fresh.map((track) => track.path));
+    const goneFromSelection = [...selection].filter((path) => !present.has(path));
+    const goneFromEdits = [...edits.keys()].filter((path) => !present.has(path));
+    for (const path of goneFromSelection) selection.delete(path);
+    for (const path of goneFromEdits) edits.delete(path);
+    const before = tracks.length;
+    setTracks(fresh);
+    // Nothing left selected but files to select: the same rule the open path
+    // follows, so an operation is never aimed at nothing without saying so.
+    if (selection.size === 0) {
+      const firstReadable = fresh.find((track) => !track.unreadable);
+      if (firstReadable) selection.add(firstReadable.path);
+    }
+    updateEditsButton();
+    renderTracks();
+    refreshCustomColumnCells();
+    syncSelectionUI();
+    const delta = fresh.length - before;
+    const change =
+      delta === 0
+        ? "no change"
+        : delta > 0
+          ? `${plural(delta, "track", "tracks")} more`
+          : `${plural(-delta, "track", "tracks")} gone`;
+    const dropped = goneFromEdits.length
+      ? `, ${plural(goneFromEdits.length, "pending edit", "pending edits")} dropped`
+      : "";
+    toast(`Re-read ${openedRoot} — ${plural(fresh.length, "track", "tracks")}, ${change}${dropped}`);
+  } catch (e) {
+    toast(String(e), true);
+  } finally {
+    updateRefreshButton();
+  }
 }
 
 // Show the input over the indicator, with the current path selected so a paste
@@ -1669,8 +1735,114 @@ function showEditCtx(x, y, field) {
 document.addEventListener("contextmenu", (e) => {
   e.preventDefault(); // never show the webview's native menu
   const field = e.target.closest('input, textarea, [contenteditable="true"]');
-  if (field) showEditCtx(e.clientX, e.clientY, field);
-  else hideEditCtx();
+  if (field) {
+    hideFileCtx();
+    showEditCtx(e.clientX, e.clientY, field);
+    return;
+  }
+  hideEditCtx();
+  // The file column carries its own menu (#213). Inert while a plan is staged,
+  // like every other row gesture — the diff names files, and taking one out
+  // from under it would leave the plan talking about something that is gone.
+  const fileCell = diffByPath ? null : e.target.closest("td.file");
+  const tr = fileCell && fileCell.closest("tr");
+  if (tr && tr.dataset.path) showFileCtx(e.clientX, e.clientY, tr);
+  else hideFileCtx();
+});
+
+// ---- the file column's context menu (#213) ----
+const fileCtx = el("file-ctx");
+// The paths the open menu acts on, decided when it opens rather than when an
+// item is clicked: what the menu is about must be what was on screen when it
+// appeared, even if something else moves in between.
+let fileCtxPaths = [];
+
+function hideFileCtx() {
+  fileCtx.hidden = true;
+  fileCtxPaths = [];
+}
+
+function showFileCtx(x, y, tr) {
+  const path = tr.dataset.path;
+  // Right-clicking inside the selection acts on all of it; right-clicking
+  // outside narrows to that row and SELECTS it, so nothing is ever done to
+  // files the user cannot see are involved.
+  if (!selection.has(path)) {
+    selection.clear();
+    selection.add(path);
+    setActiveRowByPath(path, false);
+    syncSelectionUI();
+  }
+  fileCtxPaths = selectedPaths();
+  const many = fileCtxPaths.length > 1;
+  fileCtx.querySelector('[data-cmd="hide"]').textContent = many
+    ? `Remove ${plural(fileCtxPaths.length, "file", "files")} from the list`
+    : "Remove from the list";
+  fileCtx.querySelector('[data-cmd="trash"]').textContent = many
+    ? `Move ${plural(fileCtxPaths.length, "file", "files")} to Trash…`
+    : "Move to Trash…";
+  fileCtx.hidden = false;
+  const r = fileCtx.getBoundingClientRect();
+  const pad = 8;
+  fileCtx.style.left = Math.max(pad, Math.min(x, window.innerWidth - r.width - pad)) + "px";
+  fileCtx.style.top = Math.max(pad, Math.min(y, window.innerHeight - r.height - pad)) + "px";
+}
+
+// Drop rows from the table without touching disk. The library is the model, so
+// this is a filter over it — and a re-read (#212) brings them all back, which is
+// what makes "remove from the list" safe to offer beside a deletion.
+function dropFromList(paths) {
+  const gone = new Set(paths);
+  for (const path of gone) {
+    selection.delete(path);
+    edits.delete(path);
+  }
+  setTracks(tracks.filter((track) => !gone.has(track.path)));
+  if (selection.size === 0) {
+    const firstReadable = tracks.find((track) => !track.unreadable);
+    if (firstReadable) selection.add(firstReadable.path);
+  }
+  updateEditsButton();
+  renderTracks();
+  syncSelectionUI();
+}
+
+async function trashFiles(paths) {
+  const ok = await confirmDialog(
+    `Move ${plural(paths.length, "file", "files")} to the Trash? ` +
+      `This is not part of the undo history — the Trash is where they can be got back from.`,
+    "Move to Trash"
+  );
+  if (!ok) return;
+  try {
+    const trashed = await invoke("trash_files", { paths });
+    dropFromList(trashed);
+    toast(`Moved ${plural(trashed.length, "file", "files")} to the Trash`);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+fileCtx.addEventListener("click", (e) => {
+  const item = e.target.closest(".ctx-item");
+  if (!item) return;
+  const paths = fileCtxPaths;
+  hideFileCtx();
+  if (!paths.length) return;
+  if (item.dataset.cmd === "hide") {
+    dropFromList(paths);
+    toast(`Removed ${plural(paths.length, "file", "files")} from the list — a re-read brings them back`);
+  } else if (item.dataset.cmd === "trash") {
+    trashFiles(paths);
+  }
+});
+
+document.addEventListener("mousedown", (e) => {
+  if (!fileCtx.hidden && !e.target.closest("#file-ctx")) hideFileCtx();
+});
+window.addEventListener("scroll", hideFileCtx, true);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") hideFileCtx();
 });
 
 // Paste at the caret. Read the clipboard through the Tauri plugin — reading it
@@ -1733,6 +1905,7 @@ el("diff-show-old").addEventListener("change", (e) => {
 el("lib-action").addEventListener("click", () =>
   libraryIsDirty() ? openLibrary() : browseForFolder()
 );
+el("lib-refresh").addEventListener("click", refreshLibrary);
 el("root-display").addEventListener("click", editRootPath);
 el("root-recent").addEventListener("click", (e) => {
   e.stopPropagation();

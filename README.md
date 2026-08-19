@@ -41,7 +41,10 @@ Intel Macs are not built — Apple Silicon only.
 configurable tag columns, grouping by any modeled field, filtering (substring or
 regex, optionally field-scoped as `artist:aphex`) and saved filter/sort presets.
 Selection is first-class: click, ⌘/Ctrl, Shift ranges, keyboard. Tag cells edit
-in place.
+in place, offering the values the library already holds as you type. A button
+beside the folder path re-reads what is open without losing your sort, filter or
+pending edits, and right-clicking a file offers to drop it from the list or move
+it to the system Trash.
 
 **Nothing is written until you look at it.** Every mutating operation — rename,
 move, tag edit, transform, import, cover embed — produces a change plan that is

@@ -3042,6 +3042,55 @@ impl App {
         roots
     }
 
+    /// Move files to the system Trash (#213).
+    ///
+    /// **Not a change plan, and not in the undo journal.** The journal restores
+    /// tags and renames; it cannot bring a file back out of the Trash, and a
+    /// history entry offering an undo that silently does nothing would be worse
+    /// than no entry at all. The Trash is itself the undo — which is the whole
+    /// reason this is a trash and not a delete.
+    ///
+    /// Confined twice over. A path must resolve inside the open library (or a
+    /// destination this session was given, #153), the same rule every write
+    /// obeys; and it must be a file this session actually lists, so the only
+    /// thing that can ask for a deletion is a row that is on screen. Either
+    /// check failing refuses the whole call before anything is moved — a batch
+    /// half-deleted because the fourth path was wrong is not a state to leave
+    /// somebody in.
+    ///
+    /// Returns what went, so the caller can drop exactly those rows.
+    pub fn trash_files(&mut self, paths: &[PathBuf]) -> Result<Vec<String>, AppError> {
+        let roots: Vec<PathBuf> = self
+            .allowed_roots()
+            .iter()
+            .filter_map(|root| std::fs::canonicalize(root).ok())
+            .collect();
+        let listed: HashSet<PathBuf> = self.source_paths().into_iter().collect();
+        for path in paths {
+            if !listed.contains(path) {
+                return Err(AppError::OutsideRoot(path.to_string_lossy().into_owned()));
+            }
+            // Canonicalized, so a symlink cannot point out of the library and
+            // take the real file with it.
+            let resolved = std::fs::canonicalize(path)?;
+            if !resolved.is_file() || !roots.iter().any(|root| resolved.starts_with(root)) {
+                return Err(AppError::OutsideRoot(path.to_string_lossy().into_owned()));
+            }
+        }
+        trash::delete_all(paths).map_err(|err| AppError::Trash(err.to_string()))?;
+        // A drop-of-files session lists an explicit set rather than a folder
+        // (#127), and a trashed file has to leave it — otherwise the next
+        // re-read still asks for it and shows it as unreadable rather than gone.
+        if let Some(files) = self.file_filter.as_mut() {
+            let gone: HashSet<&PathBuf> = paths.iter().collect();
+            files.retain(|path| !gone.contains(path));
+        }
+        Ok(paths
+            .iter()
+            .map(|path| path.to_string_lossy().into_owned())
+            .collect())
+    }
+
     /// Apply a previewed plan to disk and record it for undo.
     pub fn apply(&mut self, plan: &PlanDto) -> Result<BatchDto, AppError> {
         let change_plan = plan.to_change_plan();
@@ -4355,6 +4404,8 @@ pub enum AppError {
     Transform(#[from] tagrex_core::transform::TransformError),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("could not move to the Trash: {0}")]
+    Trash(String),
 }
 
 #[cfg(test)]
@@ -6827,6 +6878,52 @@ mod tests {
             style: style.into(),
             ..replace_rule("", "")
         }
+    }
+
+    // ---- moving files to the Trash (#213) ----
+
+    #[test]
+    fn trashing_a_file_takes_it_out_of_the_library() {
+        let dir = TempDir::new("trash-one");
+        let kept = dir.tagged_flac("keep.flac", "Autechre", "Rain");
+        let gone = dir.tagged_flac("gone.flac", "Autechre", "Second Bad Vilbel");
+        let mut app = open_app(&dir);
+        assert_eq!(app.list_tracks().len(), 2);
+
+        let trashed = app.trash_files(std::slice::from_ref(&gone)).unwrap();
+        assert_eq!(trashed.len(), 1);
+        assert!(!gone.exists(), "the file is still where it was");
+        assert!(kept.exists(), "the wrong file went");
+        let left = app.list_tracks();
+        assert_eq!(left.len(), 1);
+        assert!(left[0].path.ends_with("keep.flac"));
+    }
+
+    #[test]
+    fn trashing_refuses_anything_outside_the_library_and_moves_nothing() {
+        let dir = TempDir::new("trash-outside");
+        let library = dir.0.join("library");
+        std::fs::create_dir_all(&library).unwrap();
+        let inside = dir.tagged_flac_at("library/x.flac", "Autechre", "Rain");
+        let outside = dir.tagged_flac("elsewhere.flac", "Autechre", "Rain");
+        let mut app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+
+        // Not a file this session lists, so it is refused on that count alone --
+        // before the root check even matters.
+        let error = app
+            .trash_files(std::slice::from_ref(&outside))
+            .expect_err("refuses");
+        assert!(matches!(error, AppError::OutsideRoot(_)), "{error:?}");
+        assert!(outside.exists(), "a refused path was deleted anyway");
+
+        // And a refusal anywhere in the batch leaves the whole batch alone: no
+        // half-deleted selection.
+        let error = app
+            .trash_files(&[inside.clone(), outside.clone()])
+            .expect_err("refuses");
+        assert!(matches!(error, AppError::OutsideRoot(_)), "{error:?}");
+        assert!(inside.exists(), "the batch was half-applied");
+        assert!(outside.exists());
     }
 
     // ---- field locks (#48) ----
