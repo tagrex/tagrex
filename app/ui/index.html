@@ -637,7 +637,13 @@
            and the one thing a player has to be able to say is what is playing.
            Stacked, it has the whole width of the bar. -->
       <div class="pl-main">
-        <span id="pl-title" class="mono" title=""></span>
+        <!-- Title and elapsed/total share the line above the waveform: they are
+             both "what is playing, and where in it", and neither needs a column
+             of its own beside the bar. -->
+        <div class="pl-line">
+          <span id="pl-title" class="mono" title=""></span>
+          <span id="pl-time" class="muted">0:00 / 0:00</span>
+        </div>
         <!-- The seek bar draws the track's amplitude envelope (#101). The range
              input is still the control — it keeps the drag, the keyboard and the
              existing seek handling — and is made invisible over a canvas that
@@ -647,9 +653,17 @@
           <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
         </span>
       </div>
-      <span id="pl-time" class="muted">0:00 / 0:00</span>
-      <button id="pl-mute" class="icon" title="Mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
-      <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" title="Volume" aria-label="Volume" />
+      <!-- Volume folds away behind its own button (the slider took a fixed strip
+           of the row to be used seconds at a time). The button shows the current
+           state, so muted is still readable without opening anything; the
+           popover holds the mute toggle and the slider. -->
+      <div class="pl-vol">
+        <button id="pl-volume-btn" class="icon" title="Volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
+        <div id="pl-volume-pop" class="pl-vol-pop" hidden>
+          <button id="pl-mute" class="icon" title="Mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
+          <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" title="Volume" aria-label="Volume" />
+        </div>
+      </div>
     </footer>
 
     <div id="toast" class="toast" hidden></div>

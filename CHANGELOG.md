@@ -67,6 +67,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The player row gives its width to the waveform.** The elapsed/total time
+  moved onto the title's line, at the right end of it — the two answer the same
+  question, and the time no longer needs a column beside the bar. Volume folded
+  away behind its own button: a slider used for a few seconds at a time was
+  holding a fixed strip of the row permanently, and the button still shows the
+  state, so muted is readable without opening anything. Clicking it opens a
+  popover with the mute toggle beside the slider. Between them the waveform
+  gained a few hundred pixels.
 - **The player's transport buttons are flat, and the track title is readable.**
   The five glyphs wore the shared button chrome — a border, a fill and a shadow
   each, and not even the same width, since the repeat button carries a

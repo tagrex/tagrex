@@ -4,7 +4,7 @@
 // backend's status, and everything about the transport — the queued next track,
 // repeat, volume, the seek drag — is its own business. The rest of the UI only
 // asks it to start a track or show the bar.
-import { el, fileName, ico, toast } from "./dom.js";
+import { el, fileName, ico, placeFloating, toast } from "./dom.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { tracks, selection, activeRowPath } from "./state.js";
@@ -184,6 +184,12 @@ function applyVolume(level, { persist = true } = {}) {
   const label = v === 0 ? "Unmute" : "Mute";
   el("pl-mute").title = label;
   el("pl-mute").setAttribute("aria-label", label);
+  // The button on the bar carries the same glyph: the slider is folded away, so
+  // this is the only place muted can be read without opening anything.
+  el("pl-volume-btn").innerHTML = ico(v === 0 ? "volume-off" : "volume");
+  const barLabel = v === 0 ? "Volume — muted" : `Volume — ${Math.round(v * 100)}%`;
+  el("pl-volume-btn").title = barLabel;
+  el("pl-volume-btn").setAttribute("aria-label", barLabel);
   if (v > 0) volumeBeforeMute = v;
   if (persist) {
     try {
@@ -467,6 +473,45 @@ el("pl-repeat").addEventListener("click", () => {
 });
 el("pl-volume").addEventListener("input", (e) => {
   applyVolume(Number(e.target.value) / 100);
+});
+
+// ---- the volume popover ----
+// The slider held a fixed strip of the row to be used for a few seconds at a
+// time, and the row is where the waveform wants every pixel it can get. Folded
+// behind its own button, placed with the same helper every other popover uses.
+const volumePop = el("pl-volume-pop");
+
+function closeVolume() {
+  volumePop.hidden = true;
+  el("pl-volume-btn").setAttribute("aria-expanded", "false");
+}
+
+function toggleVolume() {
+  if (!volumePop.hidden) {
+    closeVolume();
+    return;
+  }
+  volumePop.hidden = false;
+  el("pl-volume-btn").setAttribute("aria-expanded", "true");
+  placeFloating(volumePop, el("pl-volume-btn"), { align: "right" });
+  el("pl-volume").focus();
+}
+
+el("pl-volume-btn").addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleVolume();
+});
+document.addEventListener("mousedown", (e) => {
+  if (!volumePop.hidden && !e.target.closest(".pl-vol")) closeVolume();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !volumePop.hidden) {
+    closeVolume();
+    el("pl-volume-btn").focus();
+  }
+});
+window.addEventListener("resize", () => {
+  if (!volumePop.hidden) placeFloating(volumePop, el("pl-volume-btn"), { align: "right" });
 });
 el("pl-mute").addEventListener("click", () => {
   const cur = Number(el("pl-volume").value) / 100;
