@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A cell being edited offers the values the library already holds.** Typing an
+  album artist that eleven other files already carry is how a single letter of
+  drift gets in — "Various" beside "various", "Warp Records" beside "Warp" — so
+  a double-clicked cell now lists what the open files say for that column, with
+  the count of how many carry each value beside it, most-used first. What starts
+  with the typed text comes before what merely contains it, and the matching
+  part is marked. A value staged but not yet applied counts too: correcting one
+  row and reaching for the same wording on the next is the case this is for.
+  **It never types for you** — nothing is inserted until a row is chosen, no row
+  is highlighted by default, and Enter reaches the list only after ↓ or ↑ has
+  stepped into it, so "type it and press Enter" is exactly the gesture it always
+  was. ↓ on an untouched cell opens the whole list, Esc dismisses it, and a
+  click picks a row. Silent on the columns where a repeat means nothing — title,
+  ISRC, URL, track/disc numbers and BPM.
+
 - **Masks can do arithmetic.** The third and last group of the mask function
   library: `$add` `$sub` `$mul` `$div` `$mod` `$min` `$max` `$round`, listed
   under **Math** in the reference popover. Numbers are decimal, because the one

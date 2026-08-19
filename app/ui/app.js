@@ -46,6 +46,12 @@ import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
 import { initPlaceholderReference } from "./js/placeholders.js";
 import {
+  cellSuggestKey,
+  endCellSuggest,
+  openCellSuggest,
+  refreshCellSuggest,
+} from "./js/suggest.js";
+import {
   currentFieldValue,
   refreshFieldEditor,
   openAddField,
@@ -2042,6 +2048,9 @@ function selectGroup(key, mode) {
 function beginCellEdit(cell) {
   cell.contentEditable = "true";
   cell.focus();
+  // Read the library's values for this column once per edit, not per keystroke
+  // (#63). Nothing shows until something is typed.
+  openCellSuggest(cell);
   const range = document.createRange();
   range.selectNodeContents(cell);
   const sel = window.getSelection();
@@ -2107,6 +2116,7 @@ tracksBody.addEventListener(
   (e) => {
     if (e.target.classList && e.target.classList.contains("editable")) {
       e.target.contentEditable = "false";
+      endCellSuggest(); // the suggestion list belongs to the edit (#63)
     }
   },
   true,
@@ -2406,12 +2416,24 @@ document.addEventListener("click", (e) => {
 // close, in chain.js, since there is one per rule chain (#144).
 // Track edits on any editable cell (event delegation).
 tracksBody.addEventListener("input", (e) => {
-  if (e.target.classList.contains("editable")) onCellEdit(e.target);
+  if (!e.target.classList.contains("editable")) return;
+  onCellEdit(e.target);
+  refreshCellSuggest(e.target); // offer what the library already says (#63)
 });
 // Enter commits a cell instead of inserting a newline, and leaves edit mode.
 tracksBody.addEventListener("keydown", (e) => {
-  if (e.target.classList.contains("editable") && e.key === "Enter") {
+  if (!e.target.classList.contains("editable")) return;
+  // The suggestion list gets first refusal on the arrows, and on Enter/Escape
+  // only once an arrow has stepped into it (#63) — so a cell nobody is reading
+  // suggestions for still commits on Enter exactly as it always has.
+  if (cellSuggestKey(e)) return;
+  if (e.key === "Enter") {
     e.preventDefault();
+    // Ending the edit ends the suggestions with it, said here rather than left
+    // to the blur listener below: turning contentEditable off moves focus to
+    // the body WITHOUT firing a blur on the cell, so the list would stay on
+    // screen over a cell nobody is editing any more (#63).
+    endCellSuggest();
     e.target.contentEditable = "false";
     e.target.blur();
   }
