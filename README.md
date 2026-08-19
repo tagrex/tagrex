@@ -63,8 +63,10 @@ ago and forgot would be worse than none.
   content-based candidate matching plus exact ISRC matching, auto-align and
   auto-numbering on import.
 - **RENAMER** — rename files and reorganize them into folders from a mask
-  (`%artist% - %title%`), with conditional `[...]` sections, zero-padding and
-  `%field:width%`. Folder moves create and clean up directories, and same-named
+  (`%artist% - %title%`). Masks support conditional `[...]` sections,
+  zero-padding, `%field:width%`, and functions such as `$upper(%artist%)`,
+  `$if2(%albumartist%,%artist%)`, and `$div(%bpm%,2)`. Folder moves create and
+  clean up directories, and same-named
   sidecar files (`.lrc`, `.cue`, per-track covers…) travel with the track.
 - **GENERATOR** — text transforms: case conversion, find/replace, remove
   diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key
