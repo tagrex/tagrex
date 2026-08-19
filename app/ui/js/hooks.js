@@ -20,6 +20,10 @@ export const hooks = {
   // Lend the column measurer real rows for values the window doesn't hold
   // (#189); returns the function that takes them away again.
   mountMeasureRows: () => () => {},
+  // Select one file in the table and bring it on screen; false when the open
+  // library does not hold it (#216). The player's title uses it to answer
+  // "which row is this?".
+  revealPath: () => false,
   // Rebuild the table header. Locking a field puts a padlock on its column
   // (#48), and the header is built by columns.js — which already reads the lock
   // set, so locks.js reaching back for it directly would be a cycle.

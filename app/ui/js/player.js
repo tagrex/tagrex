@@ -42,6 +42,9 @@ let waveFor = null;
 // drag, not only when a status poll brings a new position.
 let plPosition = 0;
 
+/// How opaque the part of the track that has not played yet is drawn.
+const UNPLAYED_ALPHA = 0.5;
+
 // Ask for the waveform of `path`, and paint it if it is still the track playing
 // when it arrives. A failure is silent: a missing picture is cosmetic, and a
 // file that cannot be decoded here is one the player has already complained
@@ -103,12 +106,18 @@ function drawWave() {
 
   const played = plDuration > 0 ? Math.min(1, Math.max(0, plPosition / plDuration)) : 0;
   const middle = height / 2;
-  const behind = themeColor("--border", "#d8dce2");
+  // The unplayed half is drawn in the muted TEXT colour rather than the border
+  // colour: a border is meant to be barely there, and at bar width it left the
+  // rest of the track nearly invisible in both themes. Half opacity keeps it
+  // quieter than the played part without disappearing into the panel.
+  const behind = themeColor("--muted", "#636b76");
   const ahead = themeColor("--accent", "#0b6b53");
 
   if (!wavePeaks || !wavePeaks.length) {
+    ctx.globalAlpha = UNPLAYED_ALPHA;
     ctx.fillStyle = behind;
     ctx.fillRect(0, middle - 0.5, width, 1);
+    ctx.globalAlpha = 1;
     if (played > 0) {
       ctx.fillStyle = ahead;
       ctx.fillRect(0, middle - 0.5, width * played, 1);
@@ -130,9 +139,15 @@ function drawWave() {
     // is still a line rather than a gap in the bar.
     const half = Math.max(0.5, (peak / 255) * (height / 2 - 1));
     const x = bar * pitch;
-    ctx.fillStyle = x + pitch <= playedX ? ahead : behind;
+    // A bar counts as played once the playhead has ENTERED it. Requiring the
+    // whole bar to be behind the head left the one under it grey, which read as
+    // the colour lagging a couple of pixels behind the cursor.
+    const done = x < playedX;
+    ctx.globalAlpha = done ? 1 : UNPLAYED_ALPHA;
+    ctx.fillStyle = done ? ahead : behind;
     ctx.fillRect(x, middle - half, pitch - 1, half * 2);
   }
+  ctx.globalAlpha = 1;
   // The playhead itself, so the boundary is readable even where the envelope is
   // flat and the two colours meet mid-bar.
   ctx.fillStyle = ahead;
@@ -155,6 +170,7 @@ function fmtTime(seconds) {
 // Stop/seek only make sense with a loaded track; the play/pause button stays
 // enabled even when idle so it can start the current track (#99 redesign).
 function setPlayerControlsEnabled(on) {
+  plTitle.disabled = !on; // nothing loaded, nothing to find in the table
   plStop.disabled = !on;
   plSeek.disabled = !on;
   el("pl-prev").disabled = !on;
@@ -330,7 +346,7 @@ function playTrack(path) {
   playingPath = path;
   plPaused = false;
   plTitle.textContent = playerLabel(path);
-  plTitle.title = path;
+  plTitle.title = `${path}\nClick to find this track in the table`;
   playerBar.classList.remove("idle");
   setPlayerVisible(true);
   setPlayerControlsEnabled(true);
@@ -382,7 +398,7 @@ async function pollPlayerStatus() {
 
   if (changed) {
     plTitle.textContent = playerLabel(st.path);
-    plTitle.title = st.path;
+    plTitle.title = `${st.path}\nClick to find this track in the table`;
     playerBar.classList.remove("idle");
     setPlayerVisible(true);
     setPlayerControlsEnabled(true);
@@ -496,6 +512,17 @@ function toggleVolume() {
   placeFloating(volumePop, el("pl-volume-btn"), { align: "right" });
   el("pl-volume").focus();
 }
+
+// The title answers "which row is this?" — a real question after a few minutes
+// of listening, and the bar is the only thing that knows. Selects the track and
+// scrolls it into view; says so when the file is not in the open library, which
+// happens after opening a different folder while playback carries on.
+plTitle.addEventListener("click", () => {
+  if (!playingPath) return;
+  if (!hooks.revealPath(playingPath)) {
+    toast("That track isn't in the open library any more");
+  }
+});
 
 el("pl-volume-btn").addEventListener("click", (e) => {
   e.stopPropagation();

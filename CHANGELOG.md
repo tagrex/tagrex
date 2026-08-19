@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Clicking the player's title finds that track in the table.** It selects the
+  track alone, makes it the keyboard anchor and scrolls it into view — after a
+  few minutes of listening, with a filter on or the table scrolled elsewhere,
+  "which row is this?" is a real question and the bar is the only thing that
+  knows. A file no longer in the open library says so.
 - **The player row gives its width to the waveform.** The elapsed/total time
   moved onto the title's line, at the right end of it — the two answer the same
   question, and the time no longer needs a column beside the bar. Volume folded
@@ -75,6 +80,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   state, so muted is readable without opening anything. Clicking it opens a
   popover with the mute toggle beside the slider. Between them the waveform
   gained a few hundred pixels.
+- **The unplayed half of the waveform can be seen.** It was drawn in the border
+  colour — a hairline colour by definition, wrong for half the picture — and is
+  now the muted text colour at half opacity, legible in both themes without
+  competing with the played part.
+- **The played colour no longer lags the playhead.** A bar was painted as played
+  only once all of it was behind the cursor, so the bar under the cursor stayed
+  grey and the colour appeared to trail it. A bar counts as played once the
+  playhead has entered it.
+- **A thinner volume slider**, and **the player row no longer selects as text** —
+  dragging the seek bar used to highlight the title and the clock along the way.
 - **The player's transport buttons are flat, and the track title is readable.**
   The five glyphs wore the shared button chrome — a border, a fill and a shadow
   each, and not even the same width, since the repeat button carries a

@@ -73,6 +73,7 @@ Object.assign(hooks, {
   updateSortIndicators,
   mountMeasureRows,
   renderTableHead,
+  revealPath,
   navigablePaths: () => navPaths,
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
@@ -2432,6 +2433,24 @@ function setActiveRowByPath(path, focus) {
 
 function setActiveRow(tr, focus) {
   setActiveRowByPath(tr ? tr.dataset.path : null, focus);
+}
+
+// Point the table at one file: select it alone, make it the keyboard anchor and
+// bring it on screen. What the player's title does when clicked (#216) — after
+// a few minutes of listening, "which row is this?" is a real question, and the
+// bar is the only thing that knows the answer.
+//
+// Returns false when the file is not in the open library at all; a file that is
+// there but hidden by the filter or inside a collapsed folder still selects,
+// since the selection is the model's and not the DOM's (#189) — it simply has no
+// row to scroll to.
+function revealPath(path) {
+  if (!path || !trackAt(path)) return false;
+  selection.clear();
+  selection.add(path);
+  setActiveRowByPath(path, true);
+  syncSelectionUI();
+  return true;
 }
 
 tracksBody.addEventListener("keydown", (e) => {
