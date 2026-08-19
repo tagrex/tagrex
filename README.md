@@ -77,8 +77,9 @@ ago and forgot would be worse than none.
   that maps to nothing and a live read-out of what the pattern is pulling out.
 - **RENAMER** — rename files and reorganize them into folders from a mask
   (`%artist% - %title%`), with conditional `[...]` sections, zero-padding,
-  `%field:width%` and the function language below. Folder moves create and clean
-  up directories, and same-named sidecar files (`.lrc`, `.cue`, per-track
+  `%field:width%` and the function language below, e.g. `$upper(%artist%)` and
+  `$if2(%albumartist%,%artist%)`. Folder moves create and clean up
+  directories, and same-named sidecar files (`.lrc`, `.cue`, per-track
   covers…) travel with the track.
 - **GENERATOR** — text transforms: case conversion, find/replace, remove
   diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key
