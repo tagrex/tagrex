@@ -105,6 +105,85 @@ impl Default for Player {
     }
 }
 
+/// How many buckets a waveform is reduced to (#101). Wide enough that a
+/// three-minute track shows its structure at any window width the player bar
+/// ever has, small enough that the whole thing is a kilobyte of JSON.
+const WAVEFORM_BUCKETS: usize = 1000;
+
+/// Samples per coarse peak while decoding. The pass does not know how long the
+/// file will turn out to be — a duration read from tags can be wrong, and some
+/// formats do not state one at all — so it collects peaks at a fixed
+/// granularity and reduces that to [`WAVEFORM_BUCKETS`] afterwards. An hour of
+/// 44.1 kHz stereo is about 310k coarse peaks, a megabyte held for the length
+/// of one call.
+const WAVEFORM_WINDOW: usize = 1024;
+
+/// The quietest peak a waveform is scaled against (#101). Normalising to the
+/// loudest sample is what makes a quiet recording legible, but a track that is
+/// nearly silent would be amplified into a wall of noise — so the divisor never
+/// goes below this, which caps the amplification at 20x.
+const WAVEFORM_FLOOR: f32 = 0.05;
+
+/// The amplitude envelope of `path`, as [`WAVEFORM_BUCKETS`] values of 0..=255
+/// (#101).
+///
+/// Decoded through the same rodio/Symphonia path playback uses, deliberately:
+/// anything the player can play is then something the bar can draw, and there
+/// is no second decoder configuration to drift out of step with the first.
+///
+/// **RMS, not peak.** The obvious envelope — the loudest sample in each
+/// bucket — draws a solid block for anything mastered in the last thirty years:
+/// measured on a real track it averaged 216 of 255 with almost every bucket at
+/// the ceiling, which tells you nothing about where the intro ends. RMS follows
+/// how loud a passage actually *is*, so an intro, a breakdown and a drop are
+/// three different heights. The result is normalised to the file's own loudest
+/// passage, so the picture fills the bar whatever the recording level.
+///
+/// Blocking and slow — seconds for an hour-long mix. The caller must keep it off
+/// the main thread.
+pub fn waveform(path: &std::path::Path) -> Result<Vec<u8>, String> {
+    let file = File::open(path).map_err(|err| err.to_string())?;
+    let decoder = Decoder::try_from(file).map_err(|err| err.to_string())?;
+
+    let mut coarse: Vec<f32> = Vec::new();
+    let mut sum_squares = 0.0f64;
+    let mut in_window = 0usize;
+    for sample in decoder {
+        sum_squares += (sample as f64) * (sample as f64);
+        in_window += 1;
+        if in_window == WAVEFORM_WINDOW {
+            coarse.push((sum_squares / WAVEFORM_WINDOW as f64).sqrt() as f32);
+            sum_squares = 0.0;
+            in_window = 0;
+        }
+    }
+    // The tail of the file is a window like any other, however short.
+    if in_window > 0 {
+        coarse.push((sum_squares / in_window as f64).sqrt() as f32);
+    }
+    if coarse.is_empty() {
+        return Err("nothing decoded".to_string());
+    }
+
+    let loudest = coarse.iter().copied().fold(0.0f32, f32::max);
+    // Loudest PASSAGE, not loudest sample — see above; the floor below is what
+    // keeps a near-silent file from being amplified into a wall of noise.
+    let scale = 1.0 / loudest.max(WAVEFORM_FLOOR);
+    let mut buckets = Vec::with_capacity(WAVEFORM_BUCKETS);
+    for index in 0..WAVEFORM_BUCKETS {
+        // Ranges are computed from the index rather than stepped, so the
+        // rounding error cannot accumulate and leave the last bucket empty.
+        let from = index * coarse.len() / WAVEFORM_BUCKETS;
+        let to = ((index + 1) * coarse.len() / WAVEFORM_BUCKETS).max(from + 1);
+        let loudest_here = coarse[from..to.min(coarse.len())]
+            .iter()
+            .copied()
+            .fold(0.0f32, f32::max);
+        buckets.push(((loudest_here * scale).clamp(0.0, 1.0) * 255.0).round() as u8);
+    }
+    Ok(buckets)
+}
+
 /// One queued track: its path and total duration (from lofty, since rodio's
 /// `total_duration` is unreliable for MP3).
 struct Track {

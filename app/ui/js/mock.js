@@ -257,6 +257,20 @@ function mockInvoke(cmd, args) {
     // Moving files to the Trash (#213). The browser has no trash and no files,
     // so the mock answers with what it was asked to remove — enough to drive
     // the confirmation, the rows leaving and the toast.
+    // The waveform behind the seek bar (#101). No decoder in the browser, so
+    // this is a made-up envelope — enough to drive the canvas, the played/unplayed
+    // split and the playhead. The real one is decoded in player.rs.
+    case "waveform": {
+      const peaks = [];
+      for (let i = 0; i < 1000; i += 1) {
+        const t = i / 1000;
+        const body = t < 0.08 ? t / 0.08 : t > 0.92 ? (1 - t) / 0.08 : 1;
+        const swell = 0.55 + 0.45 * Math.abs(Math.sin(t * Math.PI * 5));
+        const grain = 0.85 + 0.15 * Math.abs(Math.sin(t * 220));
+        peaks.push(Math.round(255 * body * swell * grain));
+      }
+      return new Promise((resolve) => setTimeout(() => resolve(peaks), 400));
+    }
     case "trash_files":
       return Promise.resolve([...(args.paths || [])]);
     case "set_locked_fields":

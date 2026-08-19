@@ -16,6 +16,7 @@ const plStop = el("pl-stop");
 const plTitle = el("pl-title");
 const plSeek = el("pl-seek");
 const plTime = el("pl-time");
+const plWave = el("pl-wave");
 
 // Playback runs in the native (rodio) backend; the UI mirrors its polled
 // status. `playingPath` is the track the backend reports as current, `plPaused`
@@ -31,6 +32,112 @@ let plSeeking = false;
 let seekRefusedFor = null;
 // Poll timer handle (one interval once a library is open).
 let plPollTimer = null;
+// The waveform behind the seek bar (#101): the buckets themselves, and which
+// track they are for. The backend decodes the file to get them, which takes
+// long enough to matter, so an answer that arrives after the track has moved on
+// is thrown away rather than painted over the wrong track.
+let wavePeaks = null;
+let waveFor = null;
+// Where the playhead is, kept because the canvas is redrawn on resize and on a
+// drag, not only when a status poll brings a new position.
+let plPosition = 0;
+
+// Ask for the waveform of `path`, and paint it if it is still the track playing
+// when it arrives. A failure is silent: a missing picture is cosmetic, and a
+// file that cannot be decoded here is one the player has already complained
+// about.
+async function loadWaveform(path) {
+  waveFor = path;
+  try {
+    const peaks = await invoke("waveform", { path });
+    if (waveFor !== path || playingPath !== path) return;
+    wavePeaks = peaks;
+    drawWave();
+  } catch {
+    if (waveFor === path) wavePeaks = null;
+  }
+}
+
+// A different track is now the current one: drop the old picture before asking
+// for the new one, so the bar is never showing one track's envelope under
+// another's playhead.
+//
+// Called from BOTH places a track can change, which is not one place: starting
+// one from the UI sets `playingPath` optimistically (see `playTrack`), so the
+// poll's own change branch never fires for it and only sees the backend
+// advancing the queue by itself.
+function beginWaveform(path) {
+  wavePeaks = null;
+  plPosition = 0;
+  drawWave();
+  loadWaveform(path);
+}
+
+// One CSS custom property, resolved now. Read at draw time rather than cached:
+// the theme can change under the player, and this runs a few times a second at
+// most.
+function themeColor(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+// Paint the envelope, the played part of it, and the playhead.
+//
+// Mirrored around the middle, one bar every two device-independent pixels, each
+// bar the loudest bucket it covers — so widening the window shows more detail
+// and narrowing it never drops a peak. With no peaks (still decoding, or a file
+// that would not decode) it draws the centre line alone, which reads as "no
+// picture" rather than as an empty track.
+function drawWave() {
+  const wrap = plWave.parentElement;
+  const width = Math.max(1, Math.round(wrap.clientWidth));
+  const height = Math.max(1, Math.round(wrap.clientHeight));
+  const dpr = window.devicePixelRatio || 1;
+  if (plWave.width !== Math.round(width * dpr) || plWave.height !== Math.round(height * dpr)) {
+    plWave.width = Math.round(width * dpr);
+    plWave.height = Math.round(height * dpr);
+  }
+  const ctx = plWave.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const played = plDuration > 0 ? Math.min(1, Math.max(0, plPosition / plDuration)) : 0;
+  const middle = height / 2;
+  const behind = themeColor("--border", "#d8dce2");
+  const ahead = themeColor("--accent", "#0b6b53");
+
+  if (!wavePeaks || !wavePeaks.length) {
+    ctx.fillStyle = behind;
+    ctx.fillRect(0, middle - 0.5, width, 1);
+    if (played > 0) {
+      ctx.fillStyle = ahead;
+      ctx.fillRect(0, middle - 0.5, width * played, 1);
+    }
+    return;
+  }
+
+  const pitch = 2;
+  const bars = Math.max(1, Math.floor(width / pitch));
+  const playedX = width * played;
+  for (let bar = 0; bar < bars; bar += 1) {
+    const from = Math.floor((bar * wavePeaks.length) / bars);
+    const to = Math.max(from + 1, Math.floor(((bar + 1) * wavePeaks.length) / bars));
+    let peak = 0;
+    for (let i = from; i < to && i < wavePeaks.length; i += 1) {
+      if (wavePeaks[i] > peak) peak = wavePeaks[i];
+    }
+    // A bar of at least one pixel each side of the middle, so a silent passage
+    // is still a line rather than a gap in the bar.
+    const half = Math.max(0.5, (peak / 255) * (height / 2 - 1));
+    const x = bar * pitch;
+    ctx.fillStyle = x + pitch <= playedX ? ahead : behind;
+    ctx.fillRect(x, middle - half, pitch - 1, half * 2);
+  }
+  // The playhead itself, so the boundary is readable even where the envelope is
+  // flat and the two colours meet mid-bar.
+  ctx.fillStyle = ahead;
+  ctx.fillRect(Math.min(width - 1, playedX), 0, 1, height);
+}
 
 // ---- preview player ----
 // Playback is native (rodio backend, #30): the UI sends commands and polls the
@@ -132,6 +239,11 @@ function playerIdle() {
   plTime.textContent = "0:00 / 0:00";
   plSeek.value = "0";
   plToggle.innerHTML = ico("play");
+  // Nothing loaded, nothing to draw (#101).
+  wavePeaks = null;
+  waveFor = null;
+  plPosition = 0;
+  drawWave();
   playerBar.classList.add("idle");
   setPlayerVisible(false);
   setPlayerControlsEnabled(false);
@@ -217,6 +329,7 @@ function playTrack(path) {
   setPlayerVisible(true);
   setPlayerControlsEnabled(true);
   markPlayingRow();
+  beginWaveform(path); // #101 — and this is the path most tracks start on
 }
 
 function togglePlay() {
@@ -268,6 +381,7 @@ async function pollPlayerStatus() {
     setPlayerVisible(true);
     setPlayerControlsEnabled(true);
     markPlayingRow();
+    beginWaveform(st.path); // the backend advanced the queue on its own (#101)
   }
   // Keep the queue primed for gapless continuation.
   if (st.wants_next) {
@@ -285,9 +399,11 @@ async function pollPlayerStatus() {
   }
   plDuration = st.duration_secs || 0;
   if (!plSeeking) {
+    plPosition = st.position_secs || 0;
     plSeek.value = plDuration
       ? String(Math.round((st.position_secs / plDuration) * 1000))
       : "0";
+    drawWave();
   }
   plTime.textContent = `${fmtTime(st.position_secs)} / ${fmtTime(plDuration)}`;
   plToggle.innerHTML = ico(plPaused ? "play" : "pause");
@@ -328,6 +444,10 @@ plSeek.addEventListener("input", () => {
   plSeeking = true;
   const target = (Number(plSeek.value) / 1000) * plDuration;
   plTime.textContent = `${fmtTime(target)} / ${fmtTime(plDuration)}`;
+  // The playhead follows the drag rather than waiting for the release: the
+  // point of a waveform is aiming at something you can see.
+  plPosition = target;
+  drawWave();
 });
 // Prev/Next step through the same playable files the gapless queue uses. At an
 // end they wrap only when Repeat all is on, matching what auto-advance does.
@@ -362,6 +482,17 @@ plSeek.addEventListener("change", () => {
 // tints that row as it renders, and the transport state is this module's.
 function isPlayingPath(path) {
   return path === playingPath;
+}
+
+// A canvas keeps its pixels, not its layout, so the picture is redrawn whenever
+// the bar's width changes. An observer on the element rather than a window
+// resize listener: the bar also grows when the mode panel is collapsed or the
+// splitter is dragged, and neither of those is a window resize.
+
+if (window.ResizeObserver) {
+  new ResizeObserver(() => drawWave()).observe(plWave.parentElement);
+} else {
+  window.addEventListener("resize", drawWave);
 }
 
 // The transport's own persisted state, restored as the module loads — it used

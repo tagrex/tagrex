@@ -467,6 +467,57 @@ fn player_seek(player: State<Player>, secs: f64) {
     player.seek(secs);
 }
 
+/// Waveforms already computed, newest last (#101): the file's path, the mtime
+/// it was decoded at, and the buckets.
+///
+/// Keyed by mtime as well as path because a file whose tags were just rewritten
+/// is a different file on disk, and a stale picture beside a track that has
+/// changed is exactly the kind of small lie that makes a display untrustworthy.
+/// Bounded, and a kilobyte an entry — the cache exists so replaying a track
+/// costs nothing, not so a whole library can be held.
+type WaveformState = Mutex<Vec<(String, u64, Vec<u8>)>>;
+
+/// How many waveforms are kept. Sixty-four kilobytes of pictures, which is more
+/// than anybody plays through in a sitting.
+const WAVEFORM_CACHE_ENTRIES: usize = 64;
+
+/// The amplitude envelope of a file, for the player's seek bar (#101).
+///
+/// `async` and off on a blocking thread, both deliberately: decoding an
+/// hour-long mix takes seconds, a *synchronous* command would run it on the main
+/// thread and freeze the whole webview, and an async one that blocked would sit
+/// on a runtime worker that provider requests also want.
+#[tauri::command]
+async fn waveform(cache: State<'_, WaveformState>, path: String) -> Result<Vec<u8>, String> {
+    let stamp = std::fs::metadata(&path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|since| since.as_secs())
+        .unwrap_or(0);
+    // Scoped so no guard is alive across the await below.
+    {
+        let entries = cache.lock().unwrap();
+        if let Some((_, _, peaks)) = entries
+            .iter()
+            .find(|(cached, at, _)| cached == &path && *at == stamp)
+        {
+            return Ok(peaks.clone());
+        }
+    }
+    let target = PathBuf::from(&path);
+    let peaks = tauri::async_runtime::spawn_blocking(move || player::waveform(&target))
+        .await
+        .map_err(|err| err.to_string())??;
+    let mut entries = cache.lock().unwrap();
+    entries.retain(|(cached, _, _)| cached != &path);
+    entries.push((path, stamp, peaks.clone()));
+    if entries.len() > WAVEFORM_CACHE_ENTRIES {
+        entries.remove(0);
+    }
+    Ok(peaks)
+}
+
 #[tauri::command]
 fn player_set_volume(player: State<Player>, level: f64) {
     player.set_volume(level as f32);
@@ -957,6 +1008,7 @@ fn main() {
             Ok(())
         })
         .manage(Player::new())
+        .manage(WaveformState::default())
         .invoke_handler(tauri::generate_handler![
             open_library,
             open_drop,
@@ -1012,6 +1064,7 @@ fn main() {
             player_stop,
             player_seek,
             player_set_volume,
+            waveform,
             builtin_action_groups,
             mask_placeholders,
             import_fields,

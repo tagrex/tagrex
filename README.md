@@ -79,7 +79,9 @@ ago and forgot would be worse than none.
 `folder.jpg` next to the tracks, or drag an image onto the window.
 
 **A preview player** — gapless playback with prev/next, a three-state repeat and
-volume, for checking that a file is what its tags claim.
+volume, for checking that a file is what its tags claim. The seek bar draws the
+track's loudness envelope, so an intro, a breakdown and a drop are three
+different shapes to aim at.
 
 **Vinyl-aware** — side letters map to disc numbers (`A1` → disc 1, track 1)
 rather than being stored verbatim, with a `MediaType` tag, a render-only
@@ -98,8 +100,8 @@ for typography still being trialled.
 - **Parsing tags out of filenames.** The mask grammar is bidirectional in the
   core and `%skip%` exists for it, but only the render direction (tags →
   filename) is exposed in the UI.
-- **A waveform seek bar**, lyrics, multi-value fields, AcoustID fingerprinting,
-  CUE import/export, and a multilingual UI.
+- **Lyrics**, multi-value fields, AcoustID fingerprinting, CUE import/export,
+  and a multilingual UI.
 
 ## Motivation
 

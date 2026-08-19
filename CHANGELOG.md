@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The seek bar draws the track's waveform.** The plain slider is now a
+  loudness envelope, with the played part in the accent colour, a playhead, and
+  the same click-and-drag seeking it always had — the range input is still the
+  control underneath, so the keyboard and every existing behaviour are
+  unchanged. The envelope is **RMS, not peak**: the loudest sample per bucket
+  draws a solid block for anything mastered in the last thirty years (measured
+  on a real track it sat at 216 of 255 with most buckets at the ceiling), while
+  RMS follows how loud a passage actually is, so an intro, a breakdown and a
+  drop are three different heights. Decoded through the same path playback uses,
+  so anything the player can play is something the bar can draw, and cached per
+  file and modification time so replaying a track costs nothing. A track being
+  decoded shows a centre line and still seeks; a file that will not decode keeps
+  it, silently.
 - **A button to re-read the open folder.** Files change under the app — one is
   dropped into the folder, a track is edited elsewhere — and the only way to see
   that was to go back through the folder chooser. The button beside Browse…
@@ -41,6 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   deliberately not persisted — one set months ago and long forgotten would make
   every operation quietly do less than it says. The Track/Disc numbers lock as
   one, since a renumbering rewrites them together.
+
+### Changed
+
+- **Dependencies are compiled optimised in debug builds too.** Only
+  dependencies — our own crates stay unoptimised and quick to rebuild. Audio
+  decoding is why: a waveform for a six-minute track took 26 seconds through an
+  unoptimised decoder against half a second through an optimised one, and the
+  debug bundle is what gets run all day. The cost is one slower first build,
+  since dependencies are compiled once.
+
 
 ### Fixed
 

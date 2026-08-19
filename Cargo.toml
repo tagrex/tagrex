@@ -21,3 +21,11 @@ rust-version = "1.89"
 [workspace.dependencies]
 thiserror = "1"
 tagrex-core = { path = "crates/core" }
+
+# Dependencies are optimised even in a debug build — our own crates are not, so
+# they stay debuggable and quick to rebuild. Audio decoding is why (#101): a
+# waveform for a six-minute track took 26 s unoptimised against 0.5 s optimised,
+# and the debug bundle is what gets run all day. Dependencies compile once, so
+# the cost is one slower first build.
+[profile.dev.package."*"]
+opt-level = 2
