@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Masks can do arithmetic.** The third and last group of the mask function
+  library: `$add` `$sub` `$mul` `$div` `$mod` `$min` `$max` `$round`, listed
+  under **Math** in the reference popover. Numbers are decimal, because the one
+  field anybody really computes with is BPM and it is routinely `128.5` —
+  `$div(%bpm%,2)` on a 128.5 track gives `64.25`, not a truncated `64`, and a
+  result never comes out as `64.00000001`: six decimals, trailing zeros
+  removed. Two decisions hold across the whole group. An operand that does not
+  read as a number counts as **0**, so `$add(%bpm%,1)` on a file with no tempo
+  is a `1` rather than a rename of a thousand files stopped by one of them; the
+  places argument of `$round` is written in the pattern, so a bad one still
+  reports itself. Division by zero produces **nothing** — the language's own
+  empty value, which a `[…]` section drops around and `$if2` can replace. Note
+  that `0` is a value, so a section wrapped around a computed value always
+  survives: `[' ('$if(%bpm%,$div(%bpm%,2))')']` is how a pattern says "only when
+  there is a tempo".
+
 ## [0.10.0] - 2026-08-18
 
 ### Added

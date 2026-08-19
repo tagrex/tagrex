@@ -1106,6 +1106,8 @@ pub enum PlaceholderGroup {
     Function,
     /// A `$name(…)` call that asks a question about one (#202).
     Logic,
+    /// A `$name(…)` call that computes with one (#203).
+    Math,
 }
 
 impl PlaceholderGroup {
@@ -1117,6 +1119,7 @@ impl PlaceholderGroup {
             Self::Special => "Special",
             Self::Function => "Functions",
             Self::Logic => "Logic",
+            Self::Math => "Math",
         }
     }
 
@@ -1124,7 +1127,7 @@ impl PlaceholderGroup {
     /// `%name%` — which is what decides the shape of the token the reference
     /// offers, and what keeps a column header from picking up a function.
     pub fn is_function(self) -> bool {
-        matches!(self, Self::Function | Self::Logic)
+        matches!(self, Self::Function | Self::Logic | Self::Math)
     }
 }
 
@@ -2097,8 +2100,78 @@ mod tests {
         ));
     }
 
+    // ---- the arithmetic group (#203) ----
+
     #[test]
-    fn the_reference_splits_the_two_kinds_of_call_and_writes_both_the_same_way() {
+    fn arithmetic_computes_with_a_tag_and_prints_the_result_as_a_number() {
+        // Half-time from the tempo, which is the one field anybody really wants
+        // to compute with -- and it is routinely fractional, so the result has
+        // to be able to carry a decimal without inventing one where there is
+        // none.
+        let mask = Mask::parse("%title% '('$div(%bpm%,2)')'").unwrap();
+        let fractional = tags(&[(TagField::Title, "Rain"), (TagField::Bpm, "128.5")]);
+        assert_eq!(mask.render(&fractional).unwrap(), "Rain (64.25)");
+        let whole = tags(&[(TagField::Title, "Rain"), (TagField::Bpm, "128")]);
+        assert_eq!(mask.render(&whole).unwrap(), "Rain (64)");
+    }
+
+    #[test]
+    fn an_operand_the_file_does_not_carry_does_not_fail_the_render() {
+        // The decision the group is built on: a missing tempo is a file with
+        // nothing to compute, not a pattern to reject, and a rename over a
+        // thousand files must not stop on one of them.
+        let mask = Mask::parse("$add(%bpm%,1)").unwrap();
+        assert_eq!(mask.render(&TagMap::new()).unwrap(), "1");
+
+        // Which is emphatically not the count rule: that argument is written in
+        // the pattern, and a bad one still says so.
+        let places = Mask::parse("$round(%bpm%,%artist%)").unwrap();
+        let tags = tags(&[(TagField::Bpm, "128.5"), (TagField::Artist, "Autechre")]);
+        assert!(matches!(
+            places.render(&tags),
+            Err(MaskError::BadArgument(_))
+        ));
+    }
+
+    #[test]
+    fn a_division_that_has_no_answer_drops_its_section_instead_of_failing() {
+        let mask = Mask::parse("%title%[' ('$div(%bpm%,%disc%)')']").unwrap();
+        // A zero divisor produces nothing, and nothing is what makes a section
+        // disappear -- brackets, space and all.
+        let zero = tags(&[
+            (TagField::Title, "Rain"),
+            (TagField::Bpm, "128"),
+            (TagField::DiscNumber, "0"),
+        ]);
+        assert_eq!(mask.render(&zero).unwrap(), "Rain");
+        let two = tags(&[
+            (TagField::Title, "Rain"),
+            (TagField::Bpm, "128"),
+            (TagField::DiscNumber, "2"),
+        ]);
+        assert_eq!(mask.render(&two).unwrap(), "Rain (64)");
+    }
+
+    #[test]
+    fn a_section_around_a_computed_value_needs_the_boolean_guard() {
+        // The consequence of counting a non-number as 0: the section survives,
+        // because `0` is a value and that is the same rule `[…]` has always
+        // followed. Worth pinning rather than leaving to be discovered on a
+        // thousand renamed files.
+        let bare = Mask::parse("%title%[' ('$div(%bpm%,2)')']").unwrap();
+        let no_tempo = tags(&[(TagField::Title, "Rain")]);
+        assert_eq!(bare.render(&no_tempo).unwrap(), "Rain (0)");
+
+        // What a pattern writes instead -- and it is the group that came first
+        // that provides the guard.
+        let guarded = Mask::parse("%title%[' ('$if(%bpm%,$div(%bpm%,2))')']").unwrap();
+        assert_eq!(guarded.render(&no_tempo).unwrap(), "Rain");
+        let tempo = tags(&[(TagField::Title, "Rain"), (TagField::Bpm, "128")]);
+        assert_eq!(guarded.render(&tempo).unwrap(), "Rain (64)");
+    }
+
+    #[test]
+    fn the_reference_splits_the_three_kinds_of_call_and_writes_them_the_same_way() {
         for doc in placeholder_reference() {
             assert_eq!(
                 doc.group.is_function(),
@@ -2111,7 +2184,9 @@ mod tests {
             .iter()
             .map(|doc| doc.group.label())
             .collect();
-        assert!(groups.contains(&"Functions") && groups.contains(&"Logic"));
+        assert!(
+            groups.contains(&"Functions") && groups.contains(&"Logic") && groups.contains(&"Math")
+        );
     }
 
     // ---- the placeholder reference (#148) ----

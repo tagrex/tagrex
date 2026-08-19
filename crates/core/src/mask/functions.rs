@@ -40,6 +40,28 @@
 //! being there, and a function whose whole job is to ask "is it there?" cannot
 //! fail because the answer is no. See [`Function::tolerates_missing_tags`].
 //!
+//! # What a number is (#203)
+//!
+//! The arithmetic group rests on a rule of its own, and it is deliberately not
+//! the rule a *count* argument follows: **an operand that does not read as a
+//! number is 0.** A count comes from the pattern — `$left(%title%,two)` is a
+//! mistake somebody typed, and it says so. An operand comes from the data, and
+//! a file with no BPM is an ordinary file, not a broken mask; `$add(%bpm%,1)`
+//! must not stop a rename over a thousand of them. For the same reason the
+//! group tolerates a missing tag exactly as the boolean one does.
+//!
+//! One consequence is worth spelling out, because a pattern can be written
+//! around it but not guessed at: `0` is a value, so a `[…]` section wrapped
+//! around an arithmetic call always survives. `[$if(%bpm%,' '$div(%bpm%,2))]`
+//! is how a pattern says "only when there is a tempo" — the boolean group is
+//! exactly the guard for it, which is why that group came first.
+//!
+//! Numbers are decimal, because the field anybody actually computes with is
+//! BPM and it is routinely `128.5`. Results print through [`format_number`],
+//! which is what keeps `$div(%bpm%,2)` out of `64.00000001` territory. What has
+//! no answer at all — division by zero — is the empty string, the same
+//! "nothing" the rest of the grammar already reads.
+//!
 //! Arguments are evaluated before the function runs — including the branch an
 //! `$if` will not take. That is deliberate: with absence turned into emptiness
 //! the untaken branch has nothing to fail on, an argument renders into a buffer
@@ -97,6 +119,16 @@ pub(super) enum Function {
     Longer,
     IsNumber,
     In,
+    // The arithmetic group (#203): computing with a value rather than reshaping
+    // it or asking about it.
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Min,
+    Max,
+    Round,
 }
 
 impl Function {
@@ -139,31 +171,57 @@ impl Function {
             // Two at the least: `$and` of one thing is the thing, which is
             // almost certainly a miscounted call rather than an intention.
             Self::And | Self::Or => (2, None),
+            // Summing and comparing extend to a list the way `$and` does;
+            // subtraction and division are the two that read as one pair.
+            Self::Add | Self::Mul | Self::Min | Self::Max => (2, None),
+            Self::Sub | Self::Div | Self::Mod => (2, Some(2)),
+            Self::Round => (1, Some(2)),
         }
     }
 
     /// Whether a missing tag inside this function's arguments is emptiness
     /// rather than an error (#202).
     ///
-    /// True for the boolean group alone. Everywhere else the rule from #73
-    /// holds — wrapping `%artist%` in `$upper()` must not quietly turn an
-    /// unsatisfiable pattern into an empty string, because `[…]` is what says
-    /// "if it is there". These functions *are* that question in another form,
-    /// so for them absence is an answer.
+    /// True for the boolean group and, since #203, for the arithmetic one.
+    /// Everywhere else the rule from #73 holds — wrapping `%artist%` in
+    /// `$upper()` must not quietly turn an unsatisfiable pattern into an empty
+    /// string, because `[…]` is what says "if it is there". The boolean
+    /// functions *are* that question in another form, so for them absence is an
+    /// answer; for the arithmetic ones a missing operand is the 0 that the
+    /// group treats every non-number as.
     pub(super) fn tolerates_missing_tags(self) -> bool {
+        self.is_arithmetic()
+            || matches!(
+                self,
+                Self::If
+                    | Self::If2
+                    | Self::Equal
+                    | Self::NotEqual
+                    | Self::And
+                    | Self::Or
+                    | Self::Not
+                    | Self::Greater
+                    | Self::Longer
+                    | Self::IsNumber
+                    | Self::In
+            )
+    }
+
+    /// Whether this is one of the arithmetic functions (#203).
+    ///
+    /// Two things key off it: the section of the reference it appears under, and
+    /// the rule that turns an operand which is not a number into a 0.
+    pub(super) fn is_arithmetic(self) -> bool {
         matches!(
             self,
-            Self::If
-                | Self::If2
-                | Self::Equal
-                | Self::NotEqual
-                | Self::And
-                | Self::Or
-                | Self::Not
-                | Self::Greater
-                | Self::Longer
-                | Self::IsNumber
-                | Self::In
+            Self::Add
+                | Self::Sub
+                | Self::Mul
+                | Self::Div
+                | Self::Mod
+                | Self::Min
+                | Self::Max
+                | Self::Round
         )
     }
 
@@ -257,6 +315,38 @@ impl Function {
             Self::Longer => flag(first.chars().count() > args[1].chars().count()),
             Self::IsNumber => flag(number(first).is_some()),
             Self::In => flag(!first.is_empty() && args[1].contains(first)),
+
+            // The arithmetic group (#203). Every operand goes through
+            // `value_number`, so a value the file doesn't carry is a 0 rather
+            // than a stopped rename.
+            Self::Add => format_number(operands(args).sum()),
+            Self::Sub => format_number(value_number(first) - value_number(&args[1])),
+            Self::Mul => format_number(operands(args).product()),
+            // Division by zero is an outcome, not a panic and not an invented
+            // number: nothing, which is the answer the rest of the grammar
+            // already knows how to read -- a `[…]` drops around it and `$if2`
+            // can put something else in its place.
+            Self::Div | Self::Mod => {
+                let divisor = value_number(&args[1]);
+                if divisor == 0.0 {
+                    String::new()
+                } else if matches!(self, Self::Div) {
+                    format_number(value_number(first) / divisor)
+                } else {
+                    format_number(value_number(first) % divisor)
+                }
+            }
+            Self::Min => format_number(operands(args).fold(f64::INFINITY, f64::min)),
+            Self::Max => format_number(operands(args).fold(f64::NEG_INFINITY, f64::max)),
+            // How many decimals to keep is a count, so it follows the count
+            // rule: `$round(%bpm%,two)` is a pattern written wrong.
+            Self::Round => {
+                let places = match args.get(1) {
+                    Some(value) => count(self, value)?,
+                    None => 0,
+                };
+                format_number(round_to(value_number(first), places))
+            }
         })
     }
 
@@ -343,14 +433,31 @@ impl Function {
             Self::Longer => ("longer", "$longer(a,b) — a has more characters than b"),
             Self::IsNumber => ("isnumber", "$isnumber(x) — x reads as a number"),
             Self::In => ("in", "$in(x,text) — text contains x"),
+            Self::Add => (
+                "add",
+                "$add(a,b,…) — sum; a value that is not a number counts as 0",
+            ),
+            Self::Sub => ("sub", "$sub(a,b) — a minus b"),
+            Self::Mul => ("mul", "$mul(a,b,…) — product"),
+            Self::Div => ("div", "$div(a,b) — a divided by b, empty when b is 0"),
+            Self::Mod => ("mod", "$mod(a,b) — what is left over after dividing"),
+            Self::Min => ("min", "$min(a,b,…) — the smallest of them"),
+            Self::Max => ("max", "$max(a,b,…) — the largest of them"),
+            Self::Round => (
+                "round",
+                "$round(x[,n]) — to a whole number, or to n decimals",
+            ),
         }
     }
 
-    /// Which section of the reference this belongs under (#202): the ones that
-    /// reshape a value, and the ones that ask a question about it. Two shorter
-    /// lists read better than one of thirty-three.
+    /// Which section of the reference this belongs under: the ones that reshape
+    /// a value (#73), the ones that ask a question about it (#202) and the ones
+    /// that compute with it (#203). Three shorter lists read better than one of
+    /// forty-one.
     pub(super) fn group(self) -> PlaceholderGroup {
-        if self.tolerates_missing_tags() {
+        if self.is_arithmetic() {
+            PlaceholderGroup::Math
+        } else if self.tolerates_missing_tags() {
             PlaceholderGroup::Logic
         } else {
             PlaceholderGroup::Function
@@ -394,6 +501,14 @@ pub(super) const ALL_FUNCTIONS: &[Function] = &[
     Function::Longer,
     Function::In,
     Function::IsNumber,
+    Function::Add,
+    Function::Sub,
+    Function::Mul,
+    Function::Div,
+    Function::Mod,
+    Function::Min,
+    Function::Max,
+    Function::Round,
 ];
 
 /// A function by the name written in the pattern, or `None` — the parser then
@@ -439,6 +554,58 @@ fn number(value: &str) -> Option<f64> {
         .parse::<f64>()
         .ok()
         .filter(|parsed| parsed.is_finite())
+}
+
+/// How many decimals a computed number is printed to, and rounded to, before
+/// the trailing zeros come off (#203). Far past anything a tag means, and near
+/// enough to what a double can promise that `$div(%bpm%,3)` reads as a number
+/// rather than as an artefact of binary floating point.
+const DECIMALS: usize = 6;
+
+/// An operand of the arithmetic group: a value read as a number, or 0 (#203).
+///
+/// Deliberately not the [`count`] rule. A count is written in the pattern and a
+/// bad one is a mistake to report; an operand comes from the file, and an empty
+/// BPM is an ordinary file rather than a broken mask.
+fn value_number(value: &str) -> f64 {
+    number(value).unwrap_or(0.0)
+}
+
+/// Every argument as an operand, for the functions that take a list of them.
+fn operands(args: &[String]) -> impl Iterator<Item = f64> + '_ {
+    args.iter().map(|value| value_number(value))
+}
+
+/// Round to `places` decimals, half away from zero. Asking for more than the
+/// language prints is the same as asking for what it prints, so the argument is
+/// clamped there rather than reaching for a precision a double cannot keep.
+fn round_to(value: f64, places: usize) -> f64 {
+    let factor = 10f64.powi(places.min(DECIMALS) as i32);
+    (value * factor).round() / factor
+}
+
+/// A computed number as a pattern prints it: no trailing zeros, no `1e-7`, and
+/// never the `64.00000001` that binary floating point would otherwise put in a
+/// filename.
+///
+/// A result that is not finite prints as nothing — the same "no answer"
+/// division by zero gives, because a filename cannot hold an infinity.
+fn format_number(value: f64) -> String {
+    if !value.is_finite() {
+        return String::new();
+    }
+    let text = format!("{:.*}", DECIMALS, value);
+    let trimmed = match text.find('.') {
+        Some(_) => text.trim_end_matches('0').trim_end_matches('.'),
+        None => text.as_str(),
+    };
+    // What a rounded-away negative fraction leaves behind; it is zero, and no
+    // filename should say otherwise.
+    if trimmed == "-0" {
+        "0".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// A count argument: a plain non-negative integer.
@@ -834,20 +1001,93 @@ mod tests {
     }
 
     #[test]
-    fn only_the_boolean_group_treats_a_missing_tag_as_an_answer() {
-        // The rule from #73 still holds everywhere else, and this is what the
-        // render arm keys off -- so it is worth pinning which side each function
-        // is on.
+    fn only_the_string_group_fails_over_a_missing_tag() {
+        // The rule from #73 holds for the functions that reshape a value, and
+        // this is what the render arm keys off -- so it is worth pinning which
+        // side each function is on. Both of the other groups have a reason to
+        // treat absence as data: the boolean one answers a question about it,
+        // the arithmetic one counts it as 0.
         for function in ALL_FUNCTIONS {
             assert_eq!(
                 function.tolerates_missing_tags(),
-                function.group() == PlaceholderGroup::Logic,
+                function.group() != PlaceholderGroup::Function,
                 "{} is on one side of the rule and in the other group",
                 function.name()
             );
         }
+        assert_eq!(Function::Add.group(), PlaceholderGroup::Math);
         assert!(Function::If2.tolerates_missing_tags());
+        assert!(Function::Add.tolerates_missing_tags());
         assert!(!Function::Upper.tolerates_missing_tags());
+    }
+
+    // ---- the arithmetic group (#203) ----
+
+    #[test]
+    fn arithmetic_counts_a_value_that_is_not_a_number_as_zero() {
+        // The decision the whole group rests on: an operand comes from the
+        // file, so an empty BPM is a file with nothing to add, not a pattern to
+        // reject. The count arguments elsewhere keep the opposite rule.
+        assert_eq!(call(Function::Add, &["", "1"]), "1");
+        assert_eq!(call(Function::Add, &["fast", "1"]), "1");
+        assert_eq!(call(Function::Sub, &["10", ""]), "10");
+        assert_eq!(call(Function::Mul, &["", "5"]), "0");
+    }
+
+    #[test]
+    fn the_four_operations_read_and_print_as_decimals() {
+        assert_eq!(call(Function::Add, &["1", "2"]), "3");
+        // A list, the way `$and` takes one.
+        assert_eq!(call(Function::Add, &["1", "2", "3.5"]), "6.5");
+        assert_eq!(call(Function::Sub, &["128.5", "0.5"]), "128");
+        assert_eq!(call(Function::Mul, &["2", "3", "4"]), "24");
+        // The real one: half-time from a tempo, which integer-only arithmetic
+        // would get wrong on exactly the tracks that carry a fractional BPM.
+        assert_eq!(call(Function::Div, &["128.5", "2"]), "64.25");
+        assert_eq!(call(Function::Mod, &["7", "2"]), "1");
+        assert_eq!(call(Function::Min, &["9", "10", "3"]), "3");
+        assert_eq!(call(Function::Max, &["9", "10", "3"]), "10");
+    }
+
+    #[test]
+    fn a_result_never_comes_out_as_a_floating_point_artefact() {
+        // The reason results print through one place: this is `0.30000000000000004`
+        // in a double, and no filename may say that.
+        assert_eq!(call(Function::Add, &["0.1", "0.2"]), "0.3");
+        // Whole results have no decimal point at all.
+        assert_eq!(call(Function::Div, &["128", "2"]), "64");
+        // Six decimals is where it stops, and the trailing zeros come off.
+        assert_eq!(call(Function::Div, &["1", "3"]), "0.333333");
+        assert_eq!(call(Function::Sub, &["0.5", "0.5"]), "0");
+        // Not a negative zero.
+        assert_eq!(call(Function::Mul, &["-0.0000001", "1"]), "0");
+    }
+
+    #[test]
+    fn dividing_by_zero_is_nothing_rather_than_a_failure() {
+        // An outcome, not a panic and not an invented number -- and it is the
+        // language's own "nothing", so a section drops around it and `$if2` can
+        // put something else there.
+        assert_eq!(call(Function::Div, &["10", "0"]), "");
+        assert_eq!(call(Function::Mod, &["10", "0"]), "");
+        // An empty divisor is a 0 divisor, by the group's own rule.
+        assert_eq!(call(Function::Div, &["10", ""]), "");
+        assert_eq!(call(Function::If2, &["", "unknown"]), "unknown");
+    }
+
+    #[test]
+    fn round_takes_the_places_it_is_given_and_they_are_a_count() {
+        assert_eq!(call(Function::Round, &["128.5"]), "129");
+        assert_eq!(call(Function::Round, &["128.4"]), "128");
+        assert_eq!(call(Function::Round, &["-1.5"]), "-2");
+        assert_eq!(call(Function::Round, &["1.23456", "2"]), "1.23");
+        // Nothing to round: no decimal point appears.
+        assert_eq!(call(Function::Round, &["7", "2"]), "7");
+        // The places argument is written in the pattern, so a bad one is a
+        // pattern error -- unlike the value being rounded.
+        let args = vec!["1.5".to_string(), "two".to_string()];
+        let error = Function::Round.apply(&args).expect_err("refuses");
+        assert!(matches!(error, MaskError::BadArgument(_)), "{error:?}");
     }
 
     #[test]
