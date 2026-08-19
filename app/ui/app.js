@@ -45,6 +45,7 @@ import { closeTransformPopover, refreshGenerator } from "./js/generator.js";
 import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
 import { initPlaceholderReference } from "./js/placeholders.js";
+import { isFieldLocked, loadFieldLocks, pushFieldLocks } from "./js/locks.js";
 import {
   cellSuggestKey,
   endCellSuggest,
@@ -71,6 +72,7 @@ Object.assign(hooks, {
   openDrop,
   updateSortIndicators,
   mountMeasureRows,
+  renderTableHead,
   navigablePaths: () => navPaths,
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
@@ -463,7 +465,11 @@ function buildTrackRow(track, groupKey) {
     const edited = pending && pending.has(field);
     const value = edited ? pending.get(field) : original;
     const td = document.createElement("td");
-    td.className = "editable";
+    // A locked column keeps its cell shape and its dirty/error states, and
+    // simply refuses to be edited (#48). Still marked `editable` so the diff and
+    // the column machinery treat it like any other tag column — what `locked`
+    // takes away is the double-click.
+    td.className = "editable" + (isFieldLocked(field) ? " locked" : "");
     // Not editable until double-clicked (single click selects the row).
     // The "double-click to edit" hint is a self-managed tooltip (see cellTip
     // below), not a native title — same-text neighbours made the OS bubble
@@ -1034,6 +1040,15 @@ function discardPreview() {
 // floating Apply/Discard bar. An empty plan just leaves the table untouched.
 function renderPreview(plan) {
   if (!plan || plan.changes.length === 0) {
+    // A plan a lock emptied would otherwise land as "nothing to change", which
+    // is the one message it must not give: nothing changed BECAUSE of the lock,
+    // and the difference is the whole point of having one (#48). Said here
+    // rather than in each caller — every mode's plan comes through this.
+    const skips = (plan && plan.locked_skipped) || [];
+    if (skips.length) {
+      const parts = skips.map((s) => `${diffLabel(s.field)} on ${plural(s.files, "file", "files")}`);
+      toast(`Nothing left to change — locked: ${parts.join(", ")}`);
+    }
     exitDiffState();
     return;
   }
@@ -1059,11 +1074,28 @@ function enterDiffState() {
   showView("files"); // never diff over the dedup view
   renderTracks();
   el("ab-plan").textContent = previewPlan.description ? ` · ${previewPlan.description}` : "";
+  renderLockedSkips();
   el("diff-actionbar").hidden = false;
   updateDiffBar();
   // The rule chain acts on the staged plan while one is staged (#142), and its
   // wording says so — so it has to hear about entering and leaving this state.
   refreshGenerator();
+}
+
+// What a lock kept out of the staged plan (#48).
+//
+// A change that silently did not happen is the one thing a lock must never be,
+// so the bar names the fields and how many files each would have touched. It
+// reads as a note rather than an error: nothing went wrong, the plan did
+// exactly what the locks said it could.
+function renderLockedSkips() {
+  const note = el("ab-locked");
+  const skips = (previewPlan && previewPlan.locked_skipped) || [];
+  note.hidden = skips.length === 0;
+  if (!skips.length) return;
+  const parts = skips.map((s) => `${diffLabel(s.field)} on ${plural(s.files, "file", "files")}`);
+  note.textContent = ` · locked: ${parts.join(", ")}`;
+  note.title = `${parts.length === 1 ? "This field is" : "These fields are"} locked, so the plan left ${parts.length === 1 ? "it" : "them"} alone.`;
 }
 
 // Leave the diff-state: drop the plan + apply scope and put the plain rows back.
@@ -1374,6 +1406,10 @@ async function afterOpen(label) {
   openedRoot = label;
   rootInput.value = label;
   leaveRootEdit();
+  // Opening builds a new backend session with nothing locked, and the locks
+  // belong to the person rather than to the folder they happen to have open —
+  // so they are handed to it again (#48).
+  await pushFieldLocks();
   setTracks(await invoke("list_tracks", {}));
   // Only the first readable track is selected on open (#128), so an operation
   // never silently hits the whole library — the user picks what to work on
@@ -2103,7 +2139,7 @@ tracksBody.addEventListener("dblclick", (e) => {
     return;
   }
   const cell = e.target.closest("td.editable");
-  if (cell) {
+  if (cell && !cell.classList.contains("locked")) {
     hideCellTip();
     beginCellEdit(cell);
   }
@@ -2164,6 +2200,11 @@ tracksBody.addEventListener("pointermove", (e) => {
     clearTimeout(cellTipTimer);
     cellTip.hidden = true;
     cellTipCell = cell;
+    // A locked cell explains itself rather than offering an edit it will
+    // refuse — and says where the lock can be taken off again (#48).
+    cellTip.textContent = cell.classList.contains("locked")
+      ? "Locked — unlock it in the EDITOR panel"
+      : "Double-click to edit";
     const { clientX, clientY } = e;
     cellTipTimer = window.setTimeout(() => showCellTipAt(clientX, clientY), 350);
   }
@@ -2440,6 +2481,10 @@ tracksBody.addEventListener("keydown", (e) => {
 });
 
 loadSavedToken();
+// What the session locks (#48). Nothing is open yet at start-up, so this
+// normally answers "nothing"; after a window reload with a library still open it
+// is what stops the padlocks from disagreeing with the backend enforcing them.
+loadFieldLocks();
 
 // Apply the saved column choice (#43) and build the header before any library
 // is opened.

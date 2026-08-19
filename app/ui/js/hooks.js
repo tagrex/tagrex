@@ -20,6 +20,10 @@ export const hooks = {
   // Lend the column measurer real rows for values the window doesn't hold
   // (#189); returns the function that takes them away again.
   mountMeasureRows: () => () => {},
+  // Rebuild the table header. Locking a field puts a padlock on its column
+  // (#48), and the header is built by columns.js — which already reads the lock
+  // set, so locks.js reaching back for it directly would be a cycle.
+  renderTableHead: () => {},
   // The files the table shows, in visual order, skipping the ones a collapsed
   // folder hides — what the rows themselves answered before the table was
   // windowed (#189).

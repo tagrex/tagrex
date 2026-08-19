@@ -92,6 +92,24 @@ fn list_tracks(state: State<AppState>) -> Result<Vec<TrackDto>, String> {
     with_app(&state, |app| Ok(app.list_tracks()))
 }
 
+/// Lock a set of fields against change for the rest of the session (#48).
+/// Replaces the whole set, so the UI sends what is locked rather than a delta.
+#[tauri::command]
+fn set_locked_fields(state: State<AppState>, fields: Vec<String>) -> Result<(), String> {
+    with_app(&state, |app| {
+        app.set_locked_fields(&fields);
+        Ok(())
+    })
+}
+
+/// What is locked right now (#48). The UI reads it back on start rather than
+/// trusting its own copy — the lock lives in the session, and the window can be
+/// reloaded without the session ending.
+#[tauri::command]
+fn locked_fields(state: State<AppState>) -> Result<Vec<String>, String> {
+    with_app(&state, |app| Ok(app.locked_fields()))
+}
+
 #[tauri::command]
 fn find_duplicates(
     state: State<AppState>,
@@ -933,6 +951,8 @@ fn main() {
             open_library,
             open_drop,
             list_tracks,
+            set_locked_fields,
+            locked_fields,
             find_duplicates,
             open_release_page,
             preview_rename,

@@ -234,6 +234,9 @@ function mockKeyNotation(value, style) {
 }
 
 // ---- browser-only mock (no effect inside Tauri) ----
+// Locked fields (#48), held for the page's life the way the session holds them.
+let mockLockedFields = new Set();
+
 function mockInvoke(cmd, args) {
   mockInvoke.state = mockInvoke.state || {
     tracks: [
@@ -248,6 +251,14 @@ function mockInvoke(cmd, args) {
   const s = mockInvoke.state;
   const findTrack = (p) => s.tracks.find((x) => x.path === p);
   switch (cmd) {
+    // Field locks (#48). The enforcement lives in the backend's plan gate and
+    // has no browser stand-in, so locking here drives the UI — padlocks, inert
+    // cells, disabled inputs — and nothing else.
+    case "set_locked_fields":
+      mockLockedFields = new Set(args.fields || []);
+      return Promise.resolve();
+    case "locked_fields":
+      return Promise.resolve([...mockLockedFields]);
     case "open_library":
       // The backend refuses a path that is not a folder (#179); the mock has no
       // disk, so it refuses the shapes that can't be one — which is enough to

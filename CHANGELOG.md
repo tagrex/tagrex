@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Fields can be locked against change.** A padlock beside every field in the
+  EDITOR panel marks it as not-to-be-touched: no import, transform, rename,
+  clear-tags or hand edit can change a locked field, its column in the table
+  carries a padlock in the header and its cells no longer open for editing. The
+  lock is enforced where plans are built, not where they are applied — a locked
+  field never enters a change in the first place, so the diff you approve is
+  the diff that runs. What a lock kept out is reported rather than silently
+  dropped: the Apply bar names the fields and how many files each would have
+  touched, and an operation a lock leaves with nothing to do says so instead of
+  reading as "nothing to change". Locks last for the session and are
+  deliberately not persisted — one set months ago and long forgotten would make
+  every operation quietly do less than it says. The Track/Disc numbers lock as
+  one, since a renumbering rewrites them together.
+
 - **A cell being edited offers the values the library already holds.** Typing an
   album artist that eleven other files already carry is how a single letter of
   drift gets in — "Various" beside "various", "Warp Records" beside "Warp" — so

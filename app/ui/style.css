@@ -2094,7 +2094,9 @@ td.unreadable-note {
    per-row "changed / rejected" state so it survives a long scroll. */
 .fe-row {
   display: grid;
-  grid-template-columns: 3px 124px 1fr;
+  /* The fourth column is the padlock (#48); a duo row has none and the column
+     collapses to nothing. */
+  grid-template-columns: 3px 124px 1fr auto;
   align-items: center;
   column-gap: var(--space-3);
   padding: 1px 0 1px var(--space-1);
@@ -2115,6 +2117,61 @@ td.unreadable-note {
 }
 .fe-row.error .fe-marker {
   background: var(--del);
+}
+
+/* ---- field locks (#48) ----------------------------------------------------
+   The padlock that marks a field as not-to-be-touched. Idle it is quiet — a
+   dimmed outline that comes up on hover — because most fields are not locked
+   and a column of dark padlocks would read as a warning. A locked one is
+   accent-coloured and always visible: that is a state, not an offer. */
+.fe-lock {
+  opacity: 0;
+  color: var(--muted);
+  transition: opacity 120ms ease;
+}
+.fe-row:hover .fe-lock,
+.fe-lock:focus-visible,
+.fe-lock.on {
+  opacity: 1;
+}
+.fe-lock.on {
+  color: var(--accent-ink);
+}
+/* The locked row itself: the value recedes, because it is not up for editing. */
+.fe-row.locked .fe-label,
+.fe-row.locked .fe-duo-label {
+  color: var(--muted);
+}
+.fe-row.locked .field-input:disabled {
+  background: var(--row-hover);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* A locked COLUMN in the file table: the header carries the padlock and the
+   cells refuse the double-click. Deliberately understated — the cells still
+   show their values and still take a dirty/error state from a plan built
+   before the lock; what they no longer do is open for typing. */
+.th-lock {
+  margin-left: 4px;
+  color: var(--accent-ink);
+  vertical-align: -1px;
+}
+.th-lock .ico {
+  width: 11px;
+  height: 11px;
+}
+#tracks tbody td.editable.locked {
+  cursor: default;
+}
+
+/* What a lock kept out of the staged plan, in the diff bar. A note, not an
+   error: the plan did exactly what the locks allowed. */
+.diff-actionbar .ab-locked {
+  color: var(--accent-ink);
+}
+.diff-actionbar .ab-locked[hidden] {
+  display: none;
 }
 
 /* faint fill so a changed row reads across the whole rhythm, not just the bar */

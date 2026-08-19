@@ -9,6 +9,7 @@ import { el, escapeHtml, ico, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { EXTENDED_FIELDS, VIRTUAL_COLUMNS } from "./fields.js";
+import { isFieldLocked } from "./locks.js";
 import { placeholderToken } from "./placeholders.js";
 import { groupByPref, saveGroupBy } from "./prefs.js";
 import { enablePointerReorder } from "./reorder.js";
@@ -459,10 +460,20 @@ function renderTableHead() {
       const token = placeholderToken(key === "length" ? "_length" : key);
       th.title = token ? `${columnLabel(key)} · ${token}` : columnLabel(key);
     }
+    // A locked column says so in its header (#48): its cells refuse to be
+    // edited and no operation will change them, and a column that quietly did
+    // less than the rest would read as a bug.
+    const lockedColumn = isFieldLocked(key);
+    if (lockedColumn) {
+      th.classList.add("locked");
+      th.title = `${th.title} · locked`;
+    }
     // A drag grip on the right edge resizes the column; a label span keeps the
     // header text clipping (ellipsis) independent of the grip.
     th.innerHTML =
-      `<span class="th-label">${escapeHtml(columnLabel(key))}<span class="sort-ind"></span></span>` +
+      `<span class="th-label">${escapeHtml(columnLabel(key))}` +
+      (lockedColumn ? `<span class="th-lock">${ico("lock")}</span>` : "") +
+      `<span class="sort-ind"></span></span>` +
       `<span class="col-resize" data-key="${escapeHtml(key)}"></span>`;
     // Drag the header itself to reorder (#89) — the direct version of the
     // Columns popover's grips, over the same order model. File is structural and

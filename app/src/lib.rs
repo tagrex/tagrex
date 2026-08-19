@@ -330,6 +330,19 @@ pub struct FileChangeDto {
     pub block_changes: Vec<BlockChangeDto>,
 }
 
+/// One field a lock kept out of a plan (#48), and how many files it would have
+/// changed.
+///
+/// A lock that silently drops a change is indistinguishable from an operation
+/// that found nothing to do, so a plan carries what it was not allowed to do
+/// alongside what it will.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LockedSkipDto {
+    /// Storage key (see [`TagField::to_storage_key`]).
+    pub field: String,
+    pub files: usize,
+}
+
 /// A previewable plan, ready to render as a "current -> new" diff.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlanDto {
@@ -340,6 +353,10 @@ pub struct PlanDto {
     /// exactly as before.
     #[serde(default)]
     pub prune_empty_dirs: bool,
+    /// What a locked field kept out of this plan (#48). Empty in every plan
+    /// built while nothing is locked, which is the ordinary case.
+    #[serde(default)]
+    pub locked_skipped: Vec<LockedSkipDto>,
 }
 
 /// One requested tag edit from the table: set `field` on `path` to `value`
@@ -1142,6 +1159,16 @@ pub struct App {
     /// Whether an import brings the release's cover with it (#207), from
     /// settings.
     import_cover: Cell<ImportCover>,
+    /// Storage keys locked against change for this session (#48). Every plan
+    /// this backend builds drops changes to them — see [`App::plan`].
+    ///
+    /// Not the same thing as `import_skip_fields` above, and the two are worth
+    /// telling apart: that one is a *setting*, persisted, and it narrows what an
+    /// online import writes. This one is a *session* lock over every operation
+    /// there is, deliberately forgotten on restart — a lock the user set months
+    /// ago and cannot remember is worse than no lock, because it makes an
+    /// operation quietly do less than it says.
+    locked_fields: RefCell<HashSet<String>>,
     /// Destinations outside `library_root` the user has explicitly chosen to
     /// reorganize into during this session (#153), and which therefore bound
     /// writes alongside the library root.
@@ -1179,6 +1206,7 @@ impl App {
             sidecar_extensions: RefCell::new(default_sidecar_extensions()),
             import_skip_fields: RefCell::new(HashSet::new()),
             import_cover: Cell::new(ImportCover::default()),
+            locked_fields: RefCell::new(HashSet::new()),
             extra_roots: RefCell::new(Vec::new()),
         })
     }
@@ -1269,6 +1297,88 @@ impl App {
     /// What an online import should do about the release's cover (#207).
     pub fn import_cover_mode(&self) -> ImportCover {
         self.import_cover.get()
+    }
+
+    /// Lock a set of fields against change for the rest of this session (#48),
+    /// replacing whatever was locked before. Storage keys; unknown ones are
+    /// kept rather than rejected, since a key this build cannot name is a key it
+    /// also cannot write.
+    pub fn set_locked_fields(&self, fields: &[String]) {
+        *self.locked_fields.borrow_mut() = fields.iter().cloned().collect();
+    }
+
+    /// What is currently locked (#48), sorted so the answer is stable. The UI
+    /// reads this back rather than assuming its own copy survived, since the
+    /// lock lives here and the window can be reloaded out from under it.
+    pub fn locked_fields(&self) -> Vec<String> {
+        let mut fields: Vec<String> = self.locked_fields.borrow().iter().cloned().collect();
+        fields.sort();
+        fields
+    }
+
+    /// The one gate every plan this backend builds passes through (#48).
+    ///
+    /// A change to a locked field is dropped here and counted, so the plan
+    /// carries both what it will do and what it was not allowed to do. Here
+    /// rather than beside each `tag_changes.push` for the same reason #152's
+    /// import gate sits at the end of its loop: an operation written later is
+    /// covered without its author having to remember this exists.
+    ///
+    /// And *before* the plan leaves the backend rather than at apply time,
+    /// which is the point of the issue: what the preview shows is what will be
+    /// written. A lock enforced only by the executor would let the diff promise
+    /// a change that never happens, which is worse than no lock at all.
+    ///
+    /// Nothing here touches cover or block changes. A lock protects a field's
+    /// *value*; the artwork and the tag blocks are the container, they have
+    /// their own deliberate operations, and each of those already spells out in
+    /// its preview exactly what it takes away.
+    fn plan(
+        &self,
+        description: impl Into<String>,
+        changes: Vec<FileChangeDto>,
+        prune_empty_dirs: bool,
+    ) -> PlanDto {
+        let locked = self.locked_fields.borrow();
+        let mut skipped: Vec<LockedSkipDto> = Vec::new();
+        let mut kept = Vec::with_capacity(changes.len());
+        for mut change in changes {
+            if !locked.is_empty() {
+                change.tag_changes.retain(|field_change| {
+                    if !locked.contains(&field_change.field) {
+                        return true;
+                    }
+                    match skipped.iter_mut().find(|s| s.field == field_change.field) {
+                        Some(entry) => entry.files += 1,
+                        None => skipped.push(LockedSkipDto {
+                            field: field_change.field.clone(),
+                            files: 1,
+                        }),
+                    }
+                    false
+                });
+            }
+            // A file the lock emptied is no longer a change. Dropping it keeps
+            // the "12 files to apply" count honest and stops the diff staging a
+            // row in which nothing differs.
+            if change.tag_changes.is_empty()
+                && change.rename_to.is_none()
+                && change.cover_change.is_none()
+                && change.block_changes.is_empty()
+            {
+                continue;
+            }
+            kept.push(change);
+        }
+        // Most files first, so a preview with room for one line names the lock
+        // that did the most.
+        skipped.sort_by(|a, b| b.files.cmp(&a.files).then_with(|| a.field.cmp(&b.field)));
+        PlanDto {
+            description: description.into(),
+            changes: kept,
+            prune_empty_dirs,
+            locked_skipped: skipped,
+        }
     }
 
     /// Scan the library and read each file's tags. A file whose tags can't be
@@ -1589,11 +1699,7 @@ impl App {
             self.attach_sidecars(&mut change);
             changes.push(change);
         }
-        Ok(PlanDto {
-            description: format!("Rename by mask: {mask_pattern}"),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan(format!("Rename by mask: {mask_pattern}"), changes, false))
     }
 
     /// Build a tag plan by reading each file's own name through a mask (#139) —
@@ -1673,11 +1779,7 @@ impl App {
                 copy: false,
             });
         }
-        Ok(PlanDto {
-            description: format!("Tags from name: {mask_pattern}"),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan(format!("Tags from name: {mask_pattern}"), changes, false))
     }
 
     /// What a mask pulls out of one file's name (#139), for the live probe
@@ -1839,11 +1941,7 @@ impl App {
             }
         }
 
-        Ok(PlanDto {
-            description: format!("Transform ({scope})"),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan(format!("Transform ({scope})"), changes, false))
     }
 
     /// Preview several action groups run in order as **one** plan (#137).
@@ -1957,11 +2055,7 @@ impl App {
         }
 
         let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
-        Ok(PlanDto {
-            description: format!("Transform ({})", names.join(", ")),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan(format!("Transform ({})", names.join(", ")), changes, false))
     }
 
     /// Run action groups over a **staged plan** rather than over the files (#142).
@@ -2087,11 +2181,7 @@ impl App {
             changes.push(revised);
         }
 
-        Ok(PlanDto {
-            description: cleaned_up_description(&plan.description),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan(cleaned_up_description(&plan.description), changes, false))
     }
 
     /// Build a plan that moves files into a folder structure rendered from a
@@ -2192,15 +2282,15 @@ impl App {
             0 => String::new(),
             n => format!(" · carrying {}", plural_files(n)),
         };
-        Ok(PlanDto {
-            description: format!(
+        Ok(self.plan(
+            format!(
                 "{} by mask: {mask_pattern}{carried_note}",
                 if copy { "Copy" } else { "Reorganize" }
             ),
             changes,
             // A copy empties nothing, so there is nothing to prune either way.
-            prune_empty_dirs: prune_empty_dirs && !copy,
-        })
+            prune_empty_dirs && !copy,
+        ))
     }
 
     /// Build a tag-edit plan from requested cell edits, without writing. Reads
@@ -2280,12 +2370,12 @@ impl App {
                 });
             }
         }
-        Ok(PlanDto {
+        Ok(self.plan(
             // The artwork is named because the table cannot show it: a cover
             // change has no column, so a file that only gains one looks like a
             // staged row with nothing in it. The bar and the toast are the only
             // places that can say a few hundred KB is about to be written.
-            description: if with_cover > 0 {
+            if with_cover > 0 {
                 match with_cover {
                     1 => "Edit tags + cover on 1 file".to_string(),
                     n => format!("Edit tags + cover on {n} files"),
@@ -2294,8 +2384,8 @@ impl App {
                 "Edit tags".to_string()
             },
             changes,
-            prune_empty_dirs: false,
-        })
+            false,
+        ))
     }
 }
 
@@ -2362,11 +2452,7 @@ impl App {
                 });
             }
         }
-        Ok(PlanDto {
-            description: "Clear tags".to_string(),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan("Clear tags".to_string(), changes, false))
     }
 
     /// Preview embedding `cover` as the front cover of each `paths` file,
@@ -2420,11 +2506,7 @@ impl App {
                 copy: false,
             });
         }
-        Ok(PlanDto {
-            description: "Embed cover art".to_string(),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan("Embed cover art".to_string(), changes, false))
     }
 
     /// Preview replacing every selected file's whole image set with `covers`
@@ -2471,15 +2553,15 @@ impl App {
                 copy: false,
             });
         }
-        Ok(PlanDto {
-            description: if new.is_empty() {
+        Ok(self.plan(
+            if new.is_empty() {
                 "Remove cover art".to_string()
             } else {
                 format!("Set {} cover image(s)", new.len())
             },
             changes,
-            prune_empty_dirs: false,
-        })
+            false,
+        ))
     }
 
     /// Summarize the cover state across `paths` for the cover well: the total,
@@ -2593,11 +2675,7 @@ impl App {
                 copy: false,
             });
         }
-        Ok(PlanDto {
-            description: "Remove cover art".to_string(),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan("Remove cover art".to_string(), changes, false))
     }
 
     /// Preview stripping one kind of tag block from every `paths` file that
@@ -2641,11 +2719,7 @@ impl App {
                 copy: false,
             });
         }
-        Ok(PlanDto {
-            description: format!("Remove {} tag", block_kind.name()),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan(format!("Remove {} tag", block_kind.name()), changes, false))
     }
 
     /// Which tag blocks the selection can be converted *to* (#205), and which
@@ -2797,11 +2871,7 @@ impl App {
             (true, None) => format!("Rewrite {} tag", target.name()),
             (false, _) => format!("Convert {} to {}", source.name(), target.name()),
         };
-        Ok(PlanDto {
-            description,
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan(description, changes, false))
     }
 
     /// Export the embedded front cover of each `paths` file to an image file
@@ -3394,11 +3464,7 @@ impl App {
                 });
             }
         }
-        Ok(PlanDto {
-            description: "Import Discogs release".to_string(),
-            changes,
-            prune_empty_dirs: false,
-        })
+        Ok(self.plan("Import Discogs release".to_string(), changes, false))
     }
 }
 
@@ -4650,6 +4716,7 @@ mod tests {
         let plan = PlanDto {
             description: "sneaky".into(),
             prune_empty_dirs: false,
+            locked_skipped: Vec::new(),
             changes: vec![FileChangeDto {
                 path: track.to_string_lossy().into_owned(),
                 rename_to: Some(elsewhere.join("stolen.flac").to_string_lossy().into_owned()),
@@ -6760,6 +6827,157 @@ mod tests {
             style: style.into(),
             ..replace_rule("", "")
         }
+    }
+
+    // ---- field locks (#48) ----
+
+    #[test]
+    fn a_locked_field_never_reaches_the_plan_and_the_plan_says_so() {
+        let dir = TempDir::new("locked-transform");
+        let track = dir.tagged_flac("x.flac", "the_x_factor", "desert_rain");
+        let app = open_app(&dir);
+        app.set_locked_fields(&["artist".to_string()]);
+
+        let rules = vec![replace_rule("_", " ")];
+        let plan = app
+            .preview_transform(std::slice::from_ref(&track), &rules, "tags")
+            .unwrap();
+
+        // The transform would have rewritten both; the lock kept one out of the
+        // plan entirely rather than letting it through to be dropped at apply.
+        let fields: Vec<&str> = plan.changes[0]
+            .tag_changes
+            .iter()
+            .map(|c| c.field.as_str())
+            .collect();
+        assert_eq!(fields, vec!["title"]);
+        assert_eq!(plan.locked_skipped.len(), 1);
+        assert_eq!(plan.locked_skipped[0].field, "artist");
+        assert_eq!(plan.locked_skipped[0].files, 1);
+    }
+
+    #[test]
+    fn a_file_the_lock_empties_drops_out_of_the_plan() {
+        let dir = TempDir::new("locked-empties");
+        let track = dir.tagged_flac("x.flac", "the_x_factor", "desert_rain");
+        let app = open_app(&dir);
+        app.set_locked_fields(&["artist".to_string(), "title".to_string()]);
+
+        let rules = vec![replace_rule("_", " ")];
+        let plan = app
+            .preview_transform(std::slice::from_ref(&track), &rules, "tags")
+            .unwrap();
+
+        // Nothing left to do, so there is no file to stage -- a row whose every
+        // cell is unchanged would be worse than no row.
+        assert!(plan.changes.is_empty());
+        assert_eq!(plan.locked_skipped.len(), 2);
+        assert_eq!(
+            plan.locked_skipped.iter().map(|s| s.files).sum::<usize>(),
+            2
+        );
+    }
+
+    #[test]
+    fn clearing_tags_leaves_a_locked_field_alone() {
+        // The operation a lock exists for: Clear tags is one click and takes
+        // everything, and the field somebody locked is exactly the one they
+        // could not afford to lose.
+        let dir = TempDir::new("locked-clear");
+        let track = dir.tagged_flac("x.flac", "Autechre", "Rain");
+        let app = open_app(&dir);
+        app.set_locked_fields(&["artist".to_string()]);
+
+        let plan = app
+            .preview_clear_tags(std::slice::from_ref(&track))
+            .unwrap();
+        assert!(
+            plan.changes[0]
+                .tag_changes
+                .iter()
+                .all(|c| c.field != "artist"),
+            "the lock let a clear through"
+        );
+        assert!(plan.changes[0]
+            .tag_changes
+            .iter()
+            .any(|c| c.field == "title"));
+        assert_eq!(plan.locked_skipped[0].field, "artist");
+    }
+
+    #[test]
+    fn an_edit_typed_at_a_locked_field_is_refused_too() {
+        // The table makes a locked cell uneditable, so this cannot ordinarily
+        // be reached -- but the backend is what guarantees the lock, and a plan
+        // arriving from anywhere else must obey it just the same.
+        let dir = TempDir::new("locked-edit");
+        let track = dir.tagged_flac("x.flac", "Autechre", "Rain");
+        let app = open_app(&dir);
+        app.set_locked_fields(&["artist".to_string()]);
+
+        let edits = vec![TagEditDto {
+            path: track.to_string_lossy().into_owned(),
+            field: "artist".into(),
+            value: Some("Someone Else".into()),
+        }];
+        let plan = app.preview_tag_edits(&edits).unwrap();
+        assert!(plan.changes.is_empty());
+        assert_eq!(plan.locked_skipped[0].field, "artist");
+    }
+
+    #[test]
+    fn what_the_lock_kept_out_of_the_plan_is_still_on_disk_after_apply() {
+        // The end of the whole chain, on a real file: lock a field, run an
+        // operation that would have rewritten it, apply, and read the file
+        // back. Green preview assertions above say the plan is right; this says
+        // the bytes are.
+        let dir = TempDir::new("locked-apply");
+        let track = dir.tagged_flac("x.flac", "the_x_factor", "desert_rain");
+        let mut app = open_app(&dir);
+        app.set_locked_fields(&["artist".to_string()]);
+
+        let rules = vec![replace_rule("_", " ")];
+        let plan = app
+            .preview_transform(std::slice::from_ref(&track), &rules, "tags")
+            .unwrap();
+        app.apply(&plan).unwrap();
+
+        let after = TagEngine::read(&track).unwrap();
+        assert_eq!(
+            after.tags.get(&TagField::Artist).map(String::as_str),
+            Some("the_x_factor"),
+            "the lock did not survive the write"
+        );
+        assert_eq!(
+            after.tags.get(&TagField::Title).map(String::as_str),
+            Some("desert rain"),
+            "the unlocked field should still have been rewritten"
+        );
+    }
+
+    #[test]
+    fn locking_nothing_leaves_every_plan_exactly_as_it_was() {
+        // The ordinary case, and the one that must cost nothing: no lock, no
+        // report, and the same changes as before the gate existed.
+        let dir = TempDir::new("locked-none");
+        let track = dir.tagged_flac("x.flac", "the_x_factor", "desert_rain");
+        let app = open_app(&dir);
+
+        let rules = vec![replace_rule("_", " ")];
+        let plan = app
+            .preview_transform(std::slice::from_ref(&track), &rules, "tags")
+            .unwrap();
+        assert_eq!(plan.changes[0].tag_changes.len(), 2);
+        assert!(plan.locked_skipped.is_empty());
+
+        // And a lock set, then cleared, is a lock gone.
+        app.set_locked_fields(&["artist".to_string()]);
+        app.set_locked_fields(&[]);
+        assert!(app.locked_fields().is_empty());
+        let again = app
+            .preview_transform(std::slice::from_ref(&track), &rules, "tags")
+            .unwrap();
+        assert_eq!(again.changes[0].tag_changes.len(), 2);
     }
 
     #[test]

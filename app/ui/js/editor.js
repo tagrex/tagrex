@@ -17,6 +17,7 @@ import {
   tracks,
 } from "./state.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS } from "./fields.js";
+import { isFieldLocked, lockButton } from "./locks.js";
 import { hooks } from "./hooks.js";
 
 // Fields the user actually touched in the dialog, staged until they confirm.
@@ -528,6 +529,13 @@ function fieldRow(key, label, paths) {
   input.dataset.key = key;
   input.spellcheck = false;
   if (numeric) input.inputMode = "numeric";
+  // A locked field cannot be typed into here either (#48). The backend is what
+  // refuses the change; this is so the refusal is visible before the typing
+  // rather than after it, as an edit that quietly failed to stage.
+  if (isFieldLocked(key)) {
+    row.classList.add("locked");
+    input.disabled = true;
+  }
   if (shared === null) {
     row.classList.add("multiple");
     input.classList.add("multiple");
@@ -564,7 +572,7 @@ function fieldRow(key, label, paths) {
   if (shared) reflect();
 
   cell.append(input, hint);
-  row.append(marker, labelCell, cell);
+  row.append(marker, labelCell, cell, lockButton([key], label, refreshFieldEditor));
   return row;
 }
 
@@ -617,6 +625,7 @@ function fieldDuoRow(pairs, paths) {
     } else {
       input.value = shared;
     }
+    if (isFieldLocked(key)) input.disabled = true;
     input.addEventListener("input", () => {
       stagedFields.set(key, input.value);
       input.classList.remove("multiple");
@@ -649,7 +658,15 @@ function fieldDuoRow(pairs, paths) {
   });
 
   reflectRow(); // surface a pre-filled invalid value on first render (rare)
-  row.append(marker, labelCell, value);
+  // One padlock for the whole row, in the same column every other row keeps it
+  // in (#48). Not one per pair: four numbers on one line leave no room for two
+  // more buttons — the second pair wraps onto a line of its own — and the
+  // numbers are one idea anyway. Where a file sits in its release is what a
+  // renumbering rewrites, and it rewrites the disc alongside the track.
+  const keys = pairs.flatMap((p) => p.pair);
+  const label = pairs.map((p) => p.label).join(" / ");
+  if (keys.every((key) => isFieldLocked(key))) row.classList.add("locked");
+  row.append(marker, labelCell, value, lockButton(keys, label, refreshFieldEditor));
   return row;
 }
 

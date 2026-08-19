@@ -50,6 +50,12 @@ Apply/Discard bar. Applying goes through a transactional executor with a
 persistent SQLite undo journal, so a batch survives an application restart and
 can still be rolled back.
 
+**Fields can be locked.** A padlock beside a field in the EDITOR panel puts it
+out of reach: no import, transform, rename or clear-tags can change it, its
+table cells stop opening for editing, and a plan reports what the lock kept out
+rather than silently doing less. Locks last for the session — one you set months
+ago and forgot would be worse than none.
+
 **Modes**, each a verb applied to that table:
 
 - **TAGGER** — edit tags by hand, or pull them from Discogs (personal token) or
