@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   pointer has merely passed over — so a random handful stayed on screen and the
   rest did not. They are always visible now: a faint outline beside every field,
   accent-coloured once the field is locked.
+- **Locking a column no longer makes the table header a line taller.** The
+  padlock in the header wrapped onto a line of its own — the shared icon glyph
+  is a block element, and the header label does not wrap — so the whole header
+  row grew the moment any field was locked. It now sits beside the column name
+  and the header keeps its height.
 
 - **A cell being edited offers the values the library already holds.** Typing an
   album artist that eleven other files already carry is how a single letter of
