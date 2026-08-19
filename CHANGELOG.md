@@ -67,6 +67,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The player's transport buttons are flat, and the track title is readable.**
+  The five glyphs wore the shared button chrome — a border, a fill and a shadow
+  each, and not even the same width, since the repeat button carries a
+  superscript — so a row of transport controls read as a row of boxes. They are
+  glyph-only equal squares now, with a fill only under the pointer. The title
+  moved from a fixed column beside the seek bar, where most titles were
+  ellipsised after a few words, to its own line above the waveform, where it has
+  the whole width; the seek bar's length no longer depends on it either, which
+  is what the fixed column was for. Disabled transport buttons dim again — the
+  waveform change had rewritten the selector that did it.
 - **The field padlocks no longer come and go with the mouse.** They were
   revealed on row hover, and WebKit holds a stale hover state on rows the
   pointer has merely passed over — so a random handful stayed on screen and the

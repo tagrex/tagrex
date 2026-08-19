@@ -632,15 +632,21 @@
       <button id="pl-stop" class="icon" title="Stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
       <button id="pl-next" class="icon" title="Next track" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
       <button id="pl-repeat" class="icon" title="Repeat off" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
-      <span id="pl-title" class="mono" title=""></span>
-      <!-- The seek bar draws the track's amplitude envelope (#101). The range
-           input is still the control — it keeps the drag, the keyboard and the
-           existing seek handling — and is made invisible over a canvas that
-           paints the waveform and the playhead. -->
-      <span id="pl-wave-wrap" class="pl-wave-wrap">
-        <canvas id="pl-wave" aria-hidden="true"></canvas>
-        <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
-      </span>
+      <!-- The title sits ABOVE the seek bar rather than beside it: squeezed into
+           a column next to the waveform it was ellipsised after a few words,
+           and the one thing a player has to be able to say is what is playing.
+           Stacked, it has the whole width of the bar. -->
+      <div class="pl-main">
+        <span id="pl-title" class="mono" title=""></span>
+        <!-- The seek bar draws the track's amplitude envelope (#101). The range
+             input is still the control — it keeps the drag, the keyboard and the
+             existing seek handling — and is made invisible over a canvas that
+             paints the waveform and the playhead. -->
+        <span id="pl-wave-wrap" class="pl-wave-wrap">
+          <canvas id="pl-wave" aria-hidden="true"></canvas>
+          <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
+        </span>
+      </div>
       <span id="pl-time" class="muted">0:00 / 0:00</span>
       <button id="pl-mute" class="icon" title="Mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
       <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" title="Volume" aria-label="Volume" />

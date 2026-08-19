@@ -1822,14 +1822,41 @@ body.show-checkbox tr.playing td.sel {
   display: none;
 }
 
-#player button:disabled,
-/* Disabled: the input stays invisible either way, so it is the picture that has
-   to recede. */
+#player button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* The seek input is invisible either way, so what has to recede when there is
+   nothing loaded is the picture. */
 #pl-seek:disabled {
   cursor: default;
 }
 #player.idle .pl-wave-wrap {
   opacity: 0.45;
+}
+
+/* Transport buttons are FLAT: glyph only, no border, no fill, no shadow.
+   Wearing the shared button chrome they read as five separate boxed controls of
+   slightly different widths — the repeat button carries a superscript and is
+   wider than the rest — which is a lot of furniture for what is one row of
+   transport glyphs. Equal squares, and a fill only under the pointer. */
+#player .icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+}
+#player .icon:hover:not(:disabled),
+#player .icon:focus-visible {
+  background: var(--row-hover);
+}
+#player .icon > svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* Toolbar divider: separates the view controls from the one control that acts
@@ -1891,11 +1918,14 @@ body.show-checkbox tr.playing td.sel {
   font-variant-numeric: tabular-nums;
 }
 
-/* Seek takes the row; volume is a fixed short slider so it can't compete with
-   it for width as the window resizes. */
-.pl-wave-wrap {
+/* The title + waveform column takes the row; volume is a fixed short slider so
+   it can't compete with it for width as the window resizes. */
+.pl-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 #pl-volume {
   flex: 0 0 auto;
@@ -1907,19 +1937,22 @@ body.show-checkbox tr.playing td.sel {
   font-style: italic;
 }
 
-/* Fixed basis, NOT `auto`. With a content-sized title the seek slider absorbed
-   whatever was left over, so its width — and the meaning of a given pixel on it
-   — changed with every track, which made the bar useless as a stable reference
-   and jumped the layout on each advance. A constant column means the slider
-   starts at the same x and keeps the same length for a given window width;
-   the title ellipsises instead, with the full text on the tooltip. It still
-   shrinks (1) so a narrow window stays usable. */
+/* Above the bar, not beside it. Beside it the title needed a FIXED width —
+   a content-sized one would have changed the length of the seek bar with every
+   track, so a given pixel on it meant something different from one song to the
+   next — and a fixed column ellipsised most titles after a few words. Stacked,
+   the seek bar's width no longer depends on the title at all, and the title has
+   the whole width to be read in. */
 #pl-title {
-  flex: 0 1 280px;
+  display: block;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-size: var(--text-xs);
+  line-height: 1.3;
+  color: var(--muted);
 }
 
 /* The seek bar is a waveform (#101). The canvas paints; the range input keeps
@@ -1928,7 +1961,8 @@ body.show-checkbox tr.playing td.sel {
    worse seek bar than the plain slider was. */
 .pl-wave-wrap {
   position: relative;
-  flex: 1 1 auto;
+  display: block;
+  width: 100%;
   min-width: 80px;
   height: 26px;
   border-radius: var(--radius-sm);
