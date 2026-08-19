@@ -84,7 +84,10 @@ export function lockButton(keys, label, onChanged) {
   const on = keys.every((key) => locked.has(key));
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "icon fe-lock" + (on ? " on" : "");
+  // Not the shared `.icon` class: that is a full control-height square with the
+  // button chrome, and a column of those beside every field would shout. This
+  // one carries its own quiet styling.
+  button.className = "fe-lock" + (on ? " on" : "");
   button.innerHTML = ico(on ? "lock" : "unlock");
   button.title = on
     ? `${label} is locked — no operation will change it. Click to unlock.`

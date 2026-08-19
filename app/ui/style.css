@@ -2120,21 +2120,37 @@ td.unreadable-note {
 }
 
 /* ---- field locks (#48) ----------------------------------------------------
-   The padlock that marks a field as not-to-be-touched. Idle it is quiet — a
-   dimmed outline that comes up on hover — because most fields are not locked
-   and a column of dark padlocks would read as a warning. A locked one is
-   accent-coloured and always visible: that is a state, not an offer. */
+   The padlock that marks a field as not-to-be-touched. ALWAYS visible, and
+   deliberately so: revealing it on row hover left WebKit holding a stale
+   :hover on rows the pointer had merely passed over, so a random handful of
+   padlocks stayed on screen and the rest did not. A control whose presence
+   depends on where the mouse has been reads as a bug even when it isn't.
+   Quiet enough to sit beside every field — a faint outline in the muted
+   colour — and accent-coloured at full strength once it is on, because that is
+   a state rather than an offer. */
 .fe-lock {
-  opacity: 0;
+  flex: none;
+  padding: 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
   color: var(--muted);
-  transition: opacity 120ms ease;
+  opacity: 0.45;
+  cursor: pointer;
+  line-height: 0;
 }
-.fe-row:hover .fe-lock,
-.fe-lock:focus-visible,
+.fe-lock > svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+.fe-lock:hover,
+.fe-lock:focus-visible {
+  opacity: 1;
+  background: var(--row-hover);
+}
 .fe-lock.on {
   opacity: 1;
-}
-.fe-lock.on {
   color: var(--accent-ink);
 }
 /* The locked row itself: the value recedes, because it is not up for editing. */

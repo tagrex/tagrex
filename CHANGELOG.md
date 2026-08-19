@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   every operation quietly do less than it says. The Track/Disc numbers lock as
   one, since a renumbering rewrites them together.
 
+### Fixed
+
+- **The field padlocks no longer come and go with the mouse.** They were
+  revealed on row hover, and WebKit holds a stale hover state on rows the
+  pointer has merely passed over — so a random handful stayed on screen and the
+  rest did not. They are always visible now: a faint outline beside every field,
+  accent-coloured once the field is locked.
+
 - **A cell being edited offers the values the library already holds.** Typing an
   album artist that eleven other files already carry is how a single letter of
   drift gets in — "Various" beside "various", "Warp Records" beside "Warp" — so
