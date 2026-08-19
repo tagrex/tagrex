@@ -1761,6 +1761,8 @@ body.show-checkbox tr.playing td.sel {
 }
 
 /* ---- status bar ---- */
+/* One strip at the bottom, not two (#219): the count on the left, the player
+   in the space between, Preview edits on the right. */
 .statusbar {
   flex: 0 0 auto;
   display: flex;
@@ -1770,6 +1772,11 @@ body.show-checkbox tr.playing td.sel {
   font-size: 11px;
   background: var(--panel);
   border-top: 1px solid var(--border);
+}
+/* Right-aligned whether or not the player is up: with the player there it sits
+   after it, and with the player down the free space collects here. */
+#preview-edits {
+  margin-left: auto;
 }
 
 /* The bar's 11px is for the status text; the button is a control, so it takes
@@ -1783,31 +1790,35 @@ body.show-checkbox tr.playing td.sel {
   white-space: nowrap;
 }
 
+/* The player takes the space between the count and Preview edits, which is
+   what puts it in the middle of the bar. No background or border of its own any
+   more — it is inside the status bar now, not a strip under it. */
 #player {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 2px 0;
   /* Nothing in this row is text to copy, and dragging the seek bar was
-     highlighting the title and the clock along the way. */
+     highlighting the title and the clock along the way. BOTH spellings: the
+     unprefixed one alone left WKWebView still painting a selection over the
+     waveform, which is why every other rule in this file carries the pair. */
   user-select: none;
-  background: var(--panel);
-  border-top: 1px solid var(--border);
-  z-index: 15;
+  -webkit-user-select: none;
 }
 
 #player[hidden] {
   display: none;
 }
 
-/* The row now comes and goes with playback, so give it a short rise instead of
-   popping the layout. Keyframes (not a transition) because the element goes
-   through display:none — an animation re-runs on each reveal, where a
-   transition would have nothing to interpolate from. */
+/* The player comes and goes with playback inside a bar that is already there,
+   so it fades in rather than sliding up from off-screen. Keyframes (not a
+   transition) because the element goes through display:none — an animation
+   re-runs on each reveal, where a transition would have nothing to interpolate
+   from. */
 @keyframes player-rise {
   from {
-    transform: translateY(100%);
     opacity: 0;
   }
 }

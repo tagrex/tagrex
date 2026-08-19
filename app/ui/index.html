@@ -622,48 +622,50 @@
            row's own toggle takes over. -->
       <button id="sb-play" class="icon" hidden title="Play the current track" aria-label="Play the current track"><svg class="ico"><use href="#i-play"/></svg></button>
       <span id="status-sel" class="muted"></span>
-      <div class="spacer"></div>
+      <!-- The player lives IN this bar rather than in a second one below it: two
+           strips for what reads as one strip of chrome, and the player is the
+           thing worth the room. It takes the space between the count and
+           Preview edits, which puts it in the middle of the bar. -->
+      <div id="player" hidden>
+        <button id="pl-prev" class="icon" title="Previous track" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
+        <button id="pl-toggle" class="icon" title="Play / pause" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
+        <button id="pl-stop" class="icon" title="Stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
+        <button id="pl-next" class="icon" title="Next track" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
+        <button id="pl-repeat" class="icon" title="Repeat off" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
+        <!-- The title sits ABOVE the seek bar rather than beside it: squeezed into
+             a column next to the waveform it was ellipsised after a few words,
+             and the one thing a player has to be able to say is what is playing.
+             Stacked, it has the whole width of the bar. -->
+        <div class="pl-main">
+          <!-- Title and elapsed/total share the line above the waveform: they are
+               both "what is playing, and where in it", and neither needs a column
+               of its own beside the bar. -->
+          <div class="pl-line">
+            <button type="button" id="pl-title" class="mono" title=""></button>
+            <span id="pl-time" class="muted">0:00 / 0:00</span>
+          </div>
+          <!-- The seek bar draws the track's amplitude envelope (#101). The range
+               input is still the control — it keeps the drag, the keyboard and the
+               existing seek handling — and is made invisible over a canvas that
+               paints the waveform and the playhead. -->
+          <span id="pl-wave-wrap" class="pl-wave-wrap">
+            <canvas id="pl-wave" aria-hidden="true"></canvas>
+            <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
+          </span>
+        </div>
+        <!-- Volume folds away behind its own button (the slider took a fixed strip
+             of the row to be used seconds at a time). The button shows the current
+             state, so muted is still readable without opening anything; the
+             popover holds the mute toggle and the slider. -->
+        <div class="pl-vol">
+          <button id="pl-volume-btn" class="icon" title="Volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
+          <div id="pl-volume-pop" class="pl-vol-pop" hidden>
+            <button id="pl-mute" class="icon" title="Mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
+            <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" title="Volume" aria-label="Volume" />
+          </div>
+        </div>
+        </div>
       <button id="preview-edits" disabled title="Preview the pending inline cell edits">Preview edits</button>
-    </footer>
-
-    <footer id="player" hidden>
-      <button id="pl-prev" class="icon" title="Previous track" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
-      <button id="pl-toggle" class="icon" title="Play / pause" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
-      <button id="pl-stop" class="icon" title="Stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
-      <button id="pl-next" class="icon" title="Next track" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
-      <button id="pl-repeat" class="icon" title="Repeat off" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
-      <!-- The title sits ABOVE the seek bar rather than beside it: squeezed into
-           a column next to the waveform it was ellipsised after a few words,
-           and the one thing a player has to be able to say is what is playing.
-           Stacked, it has the whole width of the bar. -->
-      <div class="pl-main">
-        <!-- Title and elapsed/total share the line above the waveform: they are
-             both "what is playing, and where in it", and neither needs a column
-             of its own beside the bar. -->
-        <div class="pl-line">
-          <button type="button" id="pl-title" class="mono" title=""></button>
-          <span id="pl-time" class="muted">0:00 / 0:00</span>
-        </div>
-        <!-- The seek bar draws the track's amplitude envelope (#101). The range
-             input is still the control — it keeps the drag, the keyboard and the
-             existing seek handling — and is made invisible over a canvas that
-             paints the waveform and the playhead. -->
-        <span id="pl-wave-wrap" class="pl-wave-wrap">
-          <canvas id="pl-wave" aria-hidden="true"></canvas>
-          <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
-        </span>
-      </div>
-      <!-- Volume folds away behind its own button (the slider took a fixed strip
-           of the row to be used seconds at a time). The button shows the current
-           state, so muted is still readable without opening anything; the
-           popover holds the mute toggle and the slider. -->
-      <div class="pl-vol">
-        <button id="pl-volume-btn" class="icon" title="Volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
-        <div id="pl-volume-pop" class="pl-vol-pop" hidden>
-          <button id="pl-mute" class="icon" title="Mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
-          <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" title="Volume" aria-label="Volume" />
-        </div>
-      </div>
     </footer>
 
     <div id="toast" class="toast" hidden></div>

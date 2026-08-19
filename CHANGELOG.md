@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **One bar at the bottom instead of two.** The status bar and the player were
+  two strips stacked on each other — about 90px of chrome for what reads as one
+  — with the whole middle of the status bar empty. The player now sits in that
+  middle: the file count on the left, the player between, Preview edits on the
+  right, and the bar shrinks back when nothing is playing.
 - **Clicking the player's title finds that track in the table.** It selects the
   track alone, makes it the keyboard anchor and scrolls it into view — after a
   few minutes of listening, with a filter on or the table scrolled elsewhere,
@@ -90,6 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   playhead has entered it.
 - **A thinner volume slider**, and **the player row no longer selects as text** —
   dragging the seek bar used to highlight the title and the clock along the way.
+  (Fixed twice: the first attempt carried only the unprefixed `user-select`,
+  which a Chromium check passes and the app's own webview does not.)
 - **The player's transport buttons are flat, and the track title is readable.**
   The five glyphs wore the shared button chrome — a border, a fill and a shadow
   each, and not even the same width, since the repeat button carries a
