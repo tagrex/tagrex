@@ -1776,6 +1776,7 @@ body.show-checkbox tr.playing td.sel {
 /* Right-aligned whether or not the player is up: with the player there it sits
    after it, and with the player down the free space collects here. */
 #preview-edits {
+  flex: 0 0 auto;
   margin-left: auto;
 }
 
@@ -4003,7 +4004,13 @@ td[data-field="year"],
 #pl-time,
 .tk-count,
 .match-pct,
+/* Neither shrinks nor wraps: it is a short fixed phrase, and the player beside
+   it is the elastic one (#221). Left to the flex default it gave way first and
+   broke "3799 files · 3 selected" across two lines, which made the whole bar
+   taller to save the player a few pixels it does not need. */
 #status-sel {
+  flex: 0 0 auto;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 

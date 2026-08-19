@@ -67,6 +67,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The file count no longer wraps to make room for the player.** In a narrow
+  window "3799 files · 3 selected" broke across two lines and took the whole bar
+  taller with it. The label is a short fixed phrase and now neither shrinks nor
+  wraps; the player gives way instead, which its waveform can afford — it just
+  shows less detail.
 - **One bar at the bottom instead of two.** The status bar and the player were
   two strips stacked on each other — about 90px of chrome for what reads as one
   — with the whole middle of the status bar empty. The player now sits in that
