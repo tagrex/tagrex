@@ -66,14 +66,31 @@ ago and forgot would be worse than none.
   content-based candidate matching plus exact ISRC matching, auto-align and
   auto-numbering on import.
 - **RENAMER** — rename files and reorganize them into folders from a mask
-  (`%artist% - %title%`), with conditional `[...]` sections, zero-padding and
-  `%field:width%`. Folder moves create and clean up directories, and same-named
-  sidecar files (`.lrc`, `.cue`, per-track covers…) travel with the track.
+  (`%artist% - %title%`), with conditional `[...]` sections, zero-padding,
+  `%field:width%` and the function language below. Folder moves create and clean
+  up directories, and same-named sidecar files (`.lrc`, `.cue`, per-track
+  covers…) travel with the track.
 - **GENERATOR** — text transforms: case conversion, find/replace, remove
   diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key
   notation. Chains can be saved as named action groups and re-run as one plan.
 - **DEDUPLICATOR** — read-only scan for likely duplicates by a chosen criterion.
 - **EXPORTER** — M3U playlists, CSV, HTML, XML, and mask-based reports.
+
+**A mask is a small expression language.** Placeholders are only the start:
+`$name(arg,arg)` calls wrap them, arguments are patterns in their own right so
+calls nest and may hold placeholders and sections of their own —
+`$if2(%albumartist%,%artist%)`, `$swapprefix(%artist%)`,
+`[$if(%bpm%,' - '$round($div(%bpm%,2)))]`. Forty-one functions in three groups:
+reshaping a value (`lower`, `upper`, `caps`, `left`, `substr`, `replace`,
+`getpart`, `stripprefix`, `cutmix`…), asking a question about it (`if`, `if2`,
+`equal`, `and`, `greater`, `isnumber`, `in`…) and computing with it (`add`,
+`sub`, `div`, `mod`, `min`, `max`, `round`). A value counts as true when it is
+not empty — the same rule `[...]` already follows. Positions and lengths are in
+characters rather than bytes and clamp instead of failing, so what stops a
+rename is a bad pattern, not an awkward title. A mask that calls a function is
+render-only: substitution is invertible in both directions and `$upper` is not.
+Every mask input carries a `?` that lists the whole library, argument by
+argument.
 
 **Cover art** — fetch from a provider, embed, export, resize on embed, save
 `folder.jpg` next to the tracks, or drag an image onto the window.

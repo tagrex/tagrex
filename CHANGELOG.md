@@ -57,6 +57,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The README describes masks as they now are.** Its RENAMER paragraph still
+  presented a mask as placeholders, `[...]` sections and zero-padding — the
+  grammar before the function language landed. It now says what a mask actually
+  is: `$name(arg,arg)` calls around the placeholders, arguments that are
+  patterns themselves and therefore nest, forty-one functions across the three
+  groups, the empty-is-false rule the language shares with `[...]`, and why a
+  mask that calls a function only renders. Discoverability for someone reading
+  the repo; the in-app reference already listed every function.
+
 - **Dependencies are compiled optimised in debug builds too.** Only
   dependencies — our own crates stay unoptimised and quick to rebuild. Audio
   decoding is why: a waveform for a six-minute track took 26 seconds through an
