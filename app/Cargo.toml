@@ -47,8 +47,12 @@ open = "5"
 # Cross-platform (Finder's trash, the Windows recycle bin, the freedesktop
 # trash spec). `default-features = false` drops the `chrono` timestamp reader,
 # which only matters for *listing* what is already in the trash — something
-# nothing here does.
-trash = { version = "5.2.6", default-features = false }
+# nothing here does. It also drops the COM apartment mode, which is not
+# optional: on Windows the crate fails to compile unless one is named (#222),
+# so the default one is asked for by name. Inert on the other platforms.
+trash = { version = "5.2.6", default-features = false, features = [
+    "coinit_apartmentthreaded",
+] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Windows build works again.** Asking for the trash crate without its
+  default features — done to drop a timestamp reader nothing here uses — also
+  dropped the COM apartment mode, which is not optional: on Windows that crate
+  refuses to compile unless one is named. Nothing showed on macOS or Linux,
+  where the module is not built, and CI builds only Linux, so the first sign of
+  it was the 0.11.0 release build failing on both Windows targets. The apartment
+  mode is now asked for by name.
+
 ## [0.11.0] - 2026-08-20
 
 ### Added
