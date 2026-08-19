@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-20
+
 ### Added
 
 - **The seek bar draws the track's waveform.** The plain slider is now a
