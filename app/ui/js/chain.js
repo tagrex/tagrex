@@ -511,6 +511,10 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
       for (const group of shipped) box.appendChild(groupMenuRow(group));
     }
 
+    // Both footer rows live in one sticky box (#242): sticking each of them to
+    // the bottom of the list put them in the same place, one over the other.
+    const foot = document.createElement("div");
+    foot.className = "groups-foot";
     // The checklist's one action, above the save row: what the ticks are for.
     if (onRun) {
       const runFoot = document.createElement("div");
@@ -524,11 +528,11 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
         onRun(tickedInOrder());
       });
       runFoot.appendChild(runBtn);
-      box.appendChild(runFoot);
+      foot.appendChild(runFoot);
     }
 
-    const foot = document.createElement("div");
-    foot.className = "col-menu-foot preset-save";
+    const saveRow = document.createElement("div");
+    saveRow.className = "col-menu-foot preset-save";
     const input = document.createElement("input");
     input.type = "text";
     input.placeholder = "Save current chain as…";
@@ -551,7 +555,8 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
         commit();
       }
     });
-    foot.append(input, save);
+    saveRow.append(input, save);
+    foot.appendChild(saveRow);
     box.appendChild(foot);
     updateRunTicked();
   }

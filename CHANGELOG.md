@@ -82,7 +82,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   up to 92% of the window — a cap, not a height, so a chain of two rules does not
   come with half a screen of nothing under it. The group shelf can grow to 240px
   inside it, with a line under the last row so the rows scrolling beneath the
-  save field read as scrolling rather than as a fault.
+  save field read as scrolling rather than as a fault. The seams inside it are
+  tight — one form read top to bottom does not need the spacing of a page with
+  regions to tell apart — and the note about when the chain runs is a line of
+  text rather than a tinted box.
 - **A rule chain per job, and it runs as part of the job.** One chain shared by
   everything was wrong in a way that only shows in use: RENAMER wants a space
   turned into an underscore and FROM NAME wants exactly the opposite, so

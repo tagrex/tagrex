@@ -1556,18 +1556,25 @@ body:not(.show-checkbox) #tracks td.sel {
   flex: 0 0 auto;
   max-height: 150px;
   overflow-y: auto;
-  padding: var(--space-1);
+  /* No padding under the sticky save row: rows scrolled through it and showed
+     as a half-cut sliver below the field (#242). */
+  padding: var(--space-1) var(--space-1) 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--panel);
 }
 /* Rows scroll under this, so it has to read as a footer rather than as content
-   overlapping content (#241). */
-.groups-list .col-menu-foot {
+   overlapping content (#241) — and it is ONE box holding both rows, because
+   sticking each of them to the bottom put them in the same place (#242). */
+.groups-list .groups-foot {
   position: sticky;
   bottom: 0;
-  border-top: 1px solid var(--border);
   background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+.groups-list .groups-foot .col-menu-foot {
+  margin-top: 0;
+  border-top: 0;
 }
 /* The name is the row's action now, so it takes the width and shows it is one. */
 .groups-list .preset-apply {
@@ -4804,7 +4811,25 @@ td[data-field="year"],
      half a screen of nothing under them — the same waste the cap was raised to
      get rid of, from the other direction. */
   max-height: min(92vh, 960px);
-  gap: var(--space-3);
+  /* Tight (#242). This is one form read top to bottom, not a set of regions to
+     tell apart, and at the shared modal spacing an empty chain came out as more
+     air than substance. */
+  padding: var(--space-4);
+  gap: var(--space-2);
+}
+.panel-block.in-dialog {
+  gap: var(--space-2);
+  padding-bottom: 0;
+}
+.panel-block.in-dialog .gen-add {
+  padding-top: 0;
+}
+/* The note is a line of text, not a panel: it earns a tint, not a box. */
+.panel-block.in-dialog > #transform-context-note {
+  padding: 0 !important;
+  background: none;
+  border: 0;
+  color: var(--muted);
 }
 /* The dialog's own title names the job, so the block's heading would be a
    second one saying less, and the general hint about previews is answered by
