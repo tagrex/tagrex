@@ -769,6 +769,17 @@ pub struct TransformRuleDto {
     /// stay enabled.
     #[serde(default = "default_true")]
     pub enabled: bool,
+    /// What this step acts on, overriding the group's own scope (#250): a field's
+    /// storage key, `tags` for all of them, or `filename` / `fileext`. `None`
+    /// means "whatever the group says", which is every rule written before this
+    /// field existed and every rule that simply agrees with its group.
+    ///
+    /// Per RULE rather than per group because one cleanup routinely wants two
+    /// targets — a catalogue number upper-cased while the titles go to title
+    /// case — and a group-wide scope makes that two groups the user has to
+    /// remember to run in order.
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -1966,8 +1977,11 @@ impl App {
         // anything is previewed, not halfway through the file list.
         let chains = groups
             .iter()
-            .map(|group| Ok((group.scope.as_str(), build_chain(&group.rules)?)))
-            .collect::<Result<Vec<_>, AppError>>()?;
+            .map(build_segments)
+            .collect::<Result<Vec<_>, AppError>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         let mut changes = Vec::new();
         for path in paths {
@@ -1988,7 +2002,7 @@ impl App {
             let mut tags = track.tags.clone();
 
             for (scope, chain) in &chains {
-                match *scope {
+                match scope.as_str() {
                     "filename" => {
                         let next = chain.apply(&name);
                         if !next.trim().is_empty() {
@@ -2087,8 +2101,11 @@ impl App {
         // rule is an error before anything is revised.
         let chains = groups
             .iter()
-            .map(|group| Ok((group.scope.as_str(), build_chain(&group.rules)?)))
-            .collect::<Result<Vec<_>, AppError>>()?;
+            .map(build_segments)
+            .collect::<Result<Vec<_>, AppError>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
 
         let mut changes = Vec::new();
         for change in &plan.changes {
@@ -2113,7 +2130,7 @@ impl App {
 
             let mut tag_changes = change.tag_changes.clone();
             for (scope, chain) in &chains {
-                match *scope {
+                match scope.as_str() {
                     "filename" => {
                         let next = chain.apply(&name);
                         if !next.trim().is_empty() {
@@ -3845,6 +3862,8 @@ fn preset_rule(kind: &str, from: &str, to: &str, regex: bool, style: &str) -> Tr
         regex,
         whole_word: false,
         case_sensitive: false,
+        // A shipped preset's steps all act on what the preset says (#250).
+        scope: None,
         style: style.into(),
         enabled: true,
     }
@@ -4029,6 +4048,27 @@ pub fn builtin_action_groups() -> Vec<ActionGroupDto> {
 /// Turn the UI's rule list into a transform chain, rejecting a malformed rule
 /// rather than silently dropping it — a rule that quietly does nothing is worse
 /// than an error, because the preview would look like a no-op.
+/// A group as the sequence of scoped chains it actually runs as (#250).
+///
+/// A rule may name its own scope; consecutive rules that agree on one become a
+/// single chain, so a group whose rules all agree — every group written before
+/// per-rule scopes existed — is exactly one segment, the way it always was, and
+/// order is preserved either way.
+fn build_segments(group: &ActionGroupDto) -> Result<Vec<(String, TransformChain)>, AppError> {
+    let mut segments: Vec<(String, Vec<TransformRuleDto>)> = Vec::new();
+    for rule in &group.rules {
+        let scope = rule.scope.clone().unwrap_or_else(|| group.scope.clone());
+        match segments.last_mut() {
+            Some((last, rules)) if *last == scope => rules.push(rule.clone()),
+            _ => segments.push((scope, vec![rule.clone()])),
+        }
+    }
+    segments
+        .into_iter()
+        .map(|(scope, rules)| Ok((scope, build_chain(&rules)?)))
+        .collect()
+}
+
 fn build_chain(rules: &[TransformRuleDto]) -> Result<TransformChain, AppError> {
     let mut chain = TransformChain::default();
     for rule in rules {
@@ -5104,12 +5144,74 @@ mod tests {
             case_sensitive: false,
             style: style.into(),
             enabled,
+            scope: None,
         };
         // An enabled upper-case step plus a *disabled* title-case step: only the
         // enabled one runs, so the result is upper, not title.
         let chain =
             build_chain(&[rule("case", "upper", true), rule("case", "title", false)]).unwrap();
         assert_eq!(chain.apply("hello world"), "HELLO WORLD");
+    }
+
+    // #250: a rule may name its own target, so one chain can upper-case a
+    // catalogue number while title-casing everything else. Consecutive rules
+    // that agree collapse into one segment, and a group whose rules name nothing
+    // is the single segment it always was.
+    #[test]
+    fn build_segments_splits_a_group_where_its_rules_disagree() {
+        let rule = |style: &str, scope: Option<&str>| TransformRuleDto {
+            kind: "case".into(),
+            from: String::new(),
+            to: String::new(),
+            regex: false,
+            whole_word: false,
+            case_sensitive: false,
+            style: style.into(),
+            enabled: true,
+            scope: scope.map(str::to_string),
+        };
+        let group = |rules: Vec<TransformRuleDto>| ActionGroupDto {
+            name: String::new(),
+            scope: "tags".into(),
+            note: String::new(),
+            rules,
+        };
+
+        // Nothing named: one segment, carrying the group's own scope.
+        let plain = build_segments(&group(vec![rule("upper", None), rule("title", None)])).unwrap();
+        assert_eq!(plain.len(), 1);
+        assert_eq!(plain[0].0, "tags");
+
+        // Two targets in one chain: two segments, in the order written.
+        let mixed = build_segments(&group(vec![
+            rule("upper", Some("catalognumber")),
+            rule("title", None),
+        ]))
+        .unwrap();
+        assert_eq!(
+            mixed
+                .iter()
+                .map(|(scope, _)| scope.as_str())
+                .collect::<Vec<_>>(),
+            vec!["catalognumber", "tags"]
+        );
+
+        // Neighbours that agree are one chain, not two: the split follows the
+        // scope, not the rule count.
+        let runs = build_segments(&group(vec![
+            rule("upper", Some("catalognumber")),
+            rule("title", Some("catalognumber")),
+            rule("lower", Some("comment")),
+        ]))
+        .unwrap();
+        assert_eq!(
+            runs.iter()
+                .map(|(scope, _)| scope.as_str())
+                .collect::<Vec<_>>(),
+            vec!["catalognumber", "comment"]
+        );
+        // And the collapsed pair really is one chain: upper then title = title.
+        assert_eq!(runs[0].1.apply("as 5606"), "As 5606");
     }
 
     #[test]
@@ -6875,6 +6977,7 @@ mod tests {
             case_sensitive: false,
             style: String::new(),
             enabled: true,
+            scope: None,
         }
     }
 

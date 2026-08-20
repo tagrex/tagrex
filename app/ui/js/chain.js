@@ -13,6 +13,7 @@
 import { el, ico, placeFloating, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
+import { EXTENDED_FIELDS } from "./fields.js";
 import {
   actionGroups,
   builtinGroups,
@@ -84,6 +85,10 @@ function ruleForGroup(r) {
     case_sensitive: !!r.case_sensitive,
     style: r.style || "",
     enabled: r.enabled !== false,
+    // What this step acts on, when it acts on something other than what the
+    // chain says (#250). Absent means "whatever the chain says", which is every
+    // rule saved before this existed.
+    scope: r.scope || null,
   };
 }
 
@@ -93,6 +98,19 @@ const SCOPE_LABELS = {
   filename: "file name",
   fileext: "file extension",
 };
+
+// Every target a rule can name (#250): all the tag fields the app models, plus
+// the two parts of the file name. The backend matches a scope against a field's
+// storage key, so this reads the app's own field table rather than keeping a
+// second copy of it in step by hand.
+function scopeOptions() {
+  return [
+    ["tags", "All tag fields"],
+    ...EXTENDED_FIELDS,
+    ["filename", "File name"],
+    ["fileext", "File extension"],
+  ];
+}
 
 // One-line summary of a group for its tooltip.
 function groupSummary(group) {
@@ -125,6 +143,9 @@ function createRuleChain({ ids }) {
       case_sensitive: false,
       style: kind === "case" ? "title" : kind === "key" ? "camelot" : "",
       enabled: true,
+      // The row above the chain is what a NEW rule starts on (#250); from there
+      // the rule carries its own target.
+      scope: el(ids.scope).value,
     });
     render();
   }
@@ -232,7 +253,24 @@ function createRuleChain({ ids }) {
       remove.classList.add("rm");
       acts.append(remove);
 
-      head.append(grip, n, kind, spacer, acts);
+      // What this step acts on. Per rule, because one cleanup routinely wants two
+      // targets — a catalogue number upper-cased while the titles go to title
+      // case — and a chain-wide scope makes that two chains to run in order.
+      const scope = document.createElement("select");
+      scope.className = "rule-scope";
+      scope.title = "What this step acts on";
+      for (const [value, label] of scopeOptions()) {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = label;
+        scope.appendChild(opt);
+      }
+      scope.value = rule.scope || el(ids.scope).value;
+      scope.addEventListener("change", () => {
+        rule.scope = scope.value;
+      });
+
+      head.append(grip, n, kind, spacer, scope, acts);
       card.append(head);
 
       // ---- body (per-kind); diacritics is header-only ----

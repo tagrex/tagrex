@@ -12,6 +12,22 @@
 import { fileName, plural } from "./dom.js";
 import { parseVinylPosition } from "./vinyl.js";
 
+// A group as the sequence of scoped chains it runs as, mirroring the backend's
+// `build_segments` (#250): a rule may name its own target, and consecutive rules
+// that agree are one chain. Without this the mock would apply a mixed chain as
+// though every rule shared the group's scope, and a browser check of per-rule
+// scopes would pass while the real thing did something else.
+function mockSegments(group) {
+  const out = [];
+  for (const rule of group.rules || []) {
+    const scope = rule.scope || group.scope;
+    const last = out[out.length - 1];
+    if (last && last.scope === scope) last.rules.push(rule);
+    else out.push({ scope, rules: [rule] });
+  }
+  return out;
+}
+
 // Browser-only fake of the native player: a wall-clock timer advances position,
 // auto-advances to the queued `next` on end, and reports status — enough to
 // exercise the polling/gapless-feed UI without the rodio backend. Uses a short
@@ -442,16 +458,18 @@ function mockInvoke(cmd, args) {
           let ext = p.slice(p.lastIndexOf(".") + 1);
           const tags = { ...t.tags };
           for (const group of args.groups) {
-            if (group.scope === "filename") {
-              const next = mockApplyRules(name, group.rules);
-              if (next.trim()) name = next;
-            } else if (group.scope === "fileext") {
-              const next = mockApplyRules(ext, group.rules);
-              if (next.trim() && !/[/\\.]/.test(next)) ext = next;
-            } else {
-              for (const [field, value] of Object.entries(tags)) {
-                if (group.scope !== "tags" && group.scope !== field) continue;
-                tags[field] = mockApplyRules(value, group.rules);
+            for (const seg of mockSegments(group)) {
+              if (seg.scope === "filename") {
+                const next = mockApplyRules(name, seg.rules);
+                if (next.trim()) name = next;
+              } else if (seg.scope === "fileext") {
+                const next = mockApplyRules(ext, seg.rules);
+                if (next.trim() && !/[/\\.]/.test(next)) ext = next;
+              } else {
+                for (const [field, value] of Object.entries(tags)) {
+                  if (seg.scope !== "tags" && seg.scope !== field) continue;
+                  tags[field] = mockApplyRules(value, seg.rules);
+                }
               }
             }
           }
@@ -477,16 +495,18 @@ function mockInvoke(cmd, args) {
           let ext = proposed.slice(proposed.lastIndexOf(".") + 1);
           let tag_changes = (c.tag_changes || []).map((t) => ({ ...t }));
           for (const group of args.groups) {
-            if (group.scope === "filename") {
-              const next = mockApplyRules(name, group.rules);
-              if (next.trim()) name = next;
-            } else if (group.scope === "fileext") {
-              const next = mockApplyRules(ext, group.rules);
-              if (next.trim() && !/[/\.]/.test(next)) ext = next;
-            } else {
-              for (const t of tag_changes) {
-                if (group.scope !== "tags" && group.scope !== t.field) continue;
-                if (t.new != null) t.new = mockApplyRules(t.new, group.rules);
+            for (const seg of mockSegments(group)) {
+              if (seg.scope === "filename") {
+                const next = mockApplyRules(name, seg.rules);
+                if (next.trim()) name = next;
+              } else if (seg.scope === "fileext") {
+                const next = mockApplyRules(ext, seg.rules);
+                if (next.trim() && !/[/\.]/.test(next)) ext = next;
+              } else {
+                for (const t of tag_changes) {
+                  if (seg.scope !== "tags" && seg.scope !== t.field) continue;
+                  if (t.new != null) t.new = mockApplyRules(t.new, seg.rules);
+                }
               }
             }
           }

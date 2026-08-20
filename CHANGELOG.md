@@ -133,6 +133,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   tight — one form read top to bottom does not need the spacing of a page with
   regions to tell apart — and the note about when the chain runs is a line of
   text rather than a tinted box.
+- **Each rule aims at its own field.** The scope was a property of the whole
+  chain, so one chain had one target and "upper-case the catalogue number, lower
+  the titles" meant two chains — with the second one a saved group to remember
+  to run by hand. The target now belongs to the rule: every rule row picks one,
+  and the row above the chain is what a new rule starts on. Consecutive rules
+  that agree run as one chain, so a chain whose rules all name the same thing is
+  exactly what it was before, order preserved either way. Saved groups can hold
+  it too — the scope on a rule is optional and absent means "whatever the group
+  says", which is every group written until now. And the picker offers **every
+  modeled field** rather than ten of them: Catalogue #, BPM, Composer,
+  Publisher, ISRC, URL, Year, Track and the rest were always understood by the
+  runner, just never listed.
 - **A rule chain per job, and it runs as part of the job.** One chain shared by
   everything was wrong in a way that only shows in use: RENAMER wants a space
   turned into an underscore and FROM NAME wants exactly the opposite, so

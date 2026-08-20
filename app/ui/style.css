@@ -559,6 +559,20 @@ button.icon > svg {
   fill: var(--accent);
 }
 
+/* The target a step acts on, in its own head row (#250). Small and quiet: it is
+   a property of the rule, not a second thing to read before the rule's name. */
+.rule-scope {
+  flex: 0 0 auto;
+  max-width: 45%;
+  padding: 2px 20px 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background-color: var(--bg);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-2xs);
+}
+
 /* Rule-chain reorder icons sit inline in a dense rule header — keep them small
    rather than full control-height squares. */
 .rule-acts .icon {

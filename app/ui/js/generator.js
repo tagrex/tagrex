@@ -228,10 +228,12 @@ async function previewTransform() {
           plan: previewPlan,
           groups: [transformChain.asGroup()],
         })
-      : await invoke("preview_transform", {
+      : // Groups rather than the single-scope command (#250): a rule may name
+        // its own target, and `preview_transform` takes one scope for the whole
+        // chain — it would quietly apply rule 2's scope to rule 1.
+        await invoke("preview_transform_groups", {
           paths: selectedPaths(),
-          rules: transformChain.rules(),
-          scope: transformChain.getScope(),
+          groups: [transformChain.asGroup()],
         });
     stageRun(plan, [transformChain.getScope()], wasStaged);
     toast(
