@@ -358,6 +358,18 @@ body {
   background: var(--bg);
   font-size: var(--text-sm);
 }
+/* The box is the control — the two buttons inside it are borderless halves —
+   so focus belongs to the box (#253), the same arrangement the search field
+   has. Left to the halves, the shared ring drew itself around whichever one had
+   focus, inside the outline that is already the field. */
+.lib .path:has(:focus-visible) {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.lib .path .path-open:focus-visible,
+.lib .path .path-recent:focus-visible {
+  box-shadow: none;
+}
 .lib .path:hover {
   border-color: var(--border-strong, var(--border));
 }

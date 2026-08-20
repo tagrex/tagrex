@@ -107,6 +107,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the file table, the search results, the deduplicator and the rule chain alike:
   the least valuable sentence on screen, given the most room on it. It gets a
   line's worth now.
+- **The folder path takes focus as one control.** Sweeping for the shape behind
+  the search-field fix turned up the same arrangement in the top bar: the button
+  naming the open folder and the caret beside it are borderless halves of a box
+  that carries the border and the fill, so the shared focus ring drew itself
+  around whichever half had focus, inside the outline that is already the field.
+  The box takes the ring and the accent edge now, and its halves stop drawing
+  their own. The filter's two flag toggles and the List/Grid segments were
+  checked and left alone: those are separate controls sitting together, not
+  halves of one.
 - **The focus edge stopped leaking inside the search field.** The Discogs query
   is a composite — an input and the caret that opens recent queries, sharing one
   outline — and it draws focus as a whole. The accent edge added with the softer
