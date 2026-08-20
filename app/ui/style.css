@@ -1549,7 +1549,7 @@ body:not(.show-checkbox) #tracks td.sel {
    quiet inset panel, and caps the height so a long shelf of saved chains cannot
    push the run button out of the side column. */
 .groups-list {
-  max-height: 190px;
+  max-height: 150px;
   overflow-y: auto;
   padding: var(--space-1);
   border: 1px solid var(--border);
@@ -4787,19 +4787,33 @@ td[data-field="year"],
 .transform-dock {
   /* Sticky rather than merely last in the column: under a tall mode panel the
      foot of the side column is below the fold, and pinning something only to
-     have it appear off-screen reads as nothing having happened. */
+     have it appear off-screen reads as nothing having happened.
+
+     BOUNDED, and that is the load-bearing part (#235). Left to size itself it
+     took two thirds of the column and squeezed the mode panel down to its
+     heading — a tool pinned beside the work taking the work's own space. The
+     panel is the subject at any window height, so the dock gets at most a
+     third of the column and scrolls inside that. */
   position: sticky;
   bottom: 0;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  max-height: 34%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-top: 1px solid var(--border);
   background: var(--bg);
 }
 .transform-dock[hidden] {
   display: none;
 }
+/* One scroller for everything the dock holds, rather than a capped rule list
+   inside a capped dock inside a scrolling column. */
 .transform-dock > .panel-block {
   margin: 0;
   padding: 12px 14px;
+  min-height: 0;
+  overflow-y: auto;
 }
 /* Over the block's own heading line, which has room to spare at its right. */
 #transform-undock {
@@ -4816,11 +4830,13 @@ td[data-field="year"],
   background: var(--row-hover);
   color: var(--text);
 }
-/* Only the rule list scrolls, so a chain of a dozen rules cannot push the run
-   button off the bottom of the column. */
-.transform-dock #transform-rules {
-  overflow-y: auto;
-  max-height: 40vh;
+/* The run button stays put while the rest of the block scrolls under it: it is
+   the one thing in here you reach for after reading everything else. */
+.transform-dock .panel-actions {
+  position: sticky;
+  bottom: 0;
+  padding-top: var(--space-2);
+  background: var(--bg);
 }
 
 /* ---- placeholder reference (#148) -----------------------------------------
