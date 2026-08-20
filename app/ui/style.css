@@ -617,16 +617,20 @@ button.io > .ico,
 .tooltip {
   position: fixed;
   z-index: 200;
-  max-width: 260px;
-  padding: 4px 8px;
+  /* It WRAPS. Several of these titles are sentences, and a tooltip that cuts
+     its own text in half is worse than no tooltip: the half that goes is the
+     half that says what happens (#231). Nothing sits below it to push out of
+     place, so the only limit it needs is a comfortable line length. */
+  max-width: 280px;
+  padding: 5px 9px;
   border-radius: var(--radius-sm);
   background: var(--tip-bg);
   color: var(--tip-text);
   font-size: var(--text-xs);
-  line-height: 1.35;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: break-word;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
   pointer-events: none;
 }
