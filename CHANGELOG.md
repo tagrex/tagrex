@@ -58,23 +58,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **The transform chain pins to the side panel instead of floating over the
-  table.** Cleaning up a staged plan used to be: press the wand or **Clean up**
-  → a popover opens over the table → press **Groups** → a second popover opens
-  over the first → find the group, press **Load** → press **Clean up staged**;
-  and a click anywhere outside dismissed the lot. The popover also covered the
-  very rows being cleaned up and could not stay open while the table was
-  scrolled. The wand is a toggle now: the chain docks at the foot of the side
-  panel and stays there through mode switches, through staging, and across
-  restarts. **Clean up** on the plan bar pins it rather than opening anything.
-  In GENERATOR the block goes back to the panel that owns it — that mode *is*
-  the transform panel — and there is still exactly one of it, moved rather than
-  copied, so the two entry points cannot drift. A run no longer dismisses
-  anything: the result lands in full view with the rules that produced it still
-  on screen. It takes **at most a third of the side column** and scrolls inside
-  that: left to size itself it squeezed the panel above down to its heading in
-  anything but a maximised window, which is the one thing a tool pinned beside
-  the work must not do (#235).
+- **The rule chain is set up in a dialog of its own.** Reaching it used to be:
+  press the wand → a popover opens over the table → press **Groups** → a second
+  popover opens over the first → find the group, press **Load**; and a click
+  anywhere outside dismissed the lot. The popover also covered the very rows
+  about to change. The wand opens a dialog instead, named for the job whose
+  chain it is, with room for a dozen rules and the shelf to load them from; the
+  side panel keeps its space for the mode's own work. Leaving that job closes
+  the dialog rather than quietly retargeting what is being typed into it. In
+  GENERATOR the block stays in the panel that owns it — that mode *is* the
+  transform panel and has the room — and there is still exactly one of it, moved
+  rather than copied, so the entry points cannot drift. The button carries **a
+  dot while the job's chain has rules in it**, and the count in its tooltip:
+  the chain runs on its own now, so whether one will is answerable without
+  opening anything.
 - **A rule chain per job, and it runs as part of the job.** One chain shared by
   everything was wrong in a way that only shows in use: RENAMER wants a space
   turned into an underscore and FROM NAME wants exactly the opposite, so

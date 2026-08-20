@@ -27,8 +27,7 @@ import {
   setPreviewSource,
   tracks,
 } from "./state.js";
-import { saveTransformDocked, transformDocked } from "./prefs.js";
-import { setChainFor, setLiveChainSource, storedChainFor } from "./chains.js";
+import { chainFor, setChainFor, setLiveChainSource, storedChainFor } from "./chains.js";
 
 // ---- transformations (#34) ----
 // This panel's chain, over the tags and names already on disk. It lives for the
@@ -56,15 +55,15 @@ function overStagedPlan() {
 function refreshGenerator() {
   const count = selectedPaths().length;
   const staged = overStagedPlan();
-  // Docked, the chain has no button, so the note about acting on a staged plan
-  // would be describing a press that cannot happen here (#237).
-  const docked = !el("transform-dock").hidden;
+  // In the dialog the chain has no button, so the note about acting on a staged
+  // plan would be describing a press that cannot happen there (#237).
+  const inDialog = !el("transform-modal").hidden;
   el("transform-count").textContent = staged
     ? `— ${plural(previewPlan.changes.length, "staged file", "staged files")}`
     : count
       ? `— ${plural(count, "file", "files")}`
       : "";
-  el("transform-over-plan").hidden = !staged || docked;
+  el("transform-over-plan").hidden = !staged || inDialog;
   el("transform-preview").textContent = staged ? "Clean up staged" : "Preview changes";
   el("autonum-count").textContent = count ? `— ${count} selected` : "";
   el("vinyl-count").textContent = count ? `— ${count} selected` : "";
@@ -274,29 +273,25 @@ async function runTickedGroups(groups) {
   }
 }
 
-// ---- the chain, reachable from any mode (#149, #233) ----
+// ---- the chain, reachable from any mode (#149, #239) ----
 //
 // The cleanup a chain does is almost always cleanup after something done in
 // another mode — tags just read out of file names, a just-finished import — so
-// requiring a trip into GENERATOR to fix a case is backwards.
+// requiring a trip into GENERATOR to set one up is backwards.
 //
-// It used to travel into a popover over the table, which fought the work it was
-// for: it covered the rows being cleaned up, closed on any click outside, and
-// opened a second popover on top of itself for the groups. Now it is PINNED —
-// moved into `#transform-dock` at the foot of the side column, where it stays
-// until it is closed, through mode switches and through staging.
+// It has been three things: a popover over the table, which covered the rows it
+// was about to change; then a panel pinned to the side column, which took a
+// third of the room the mode's own panel needed. The same mistake in two sizes
+// — permanent space beside the work for something you configure once and then
+// never touch. It is a dialog now: the chain runs by itself as part of each
+// action (#237), so this is only where it is set up.
 //
-// The mechanism is unchanged and is the whole trick: `#transform-block` is
+// The mechanism has not changed and is the whole trick: `#transform-block` is
 // MOVED, not copied, so there is one chain, one set of elements and one set of
-// listeners, and no two entry points can drift. (FROM NAME's chain is a
-// different chain over different values — #144 — not a third entry point to
-// this one.)
-
-// Pinned by the user, which is not the same as "on screen right now": in
-// GENERATOR the block goes home to the panel that owns it, because that mode is
-// the transform panel and two visible copies is what the single instance exists
-// to prevent.
-let dockPinned = transformDocked();
+// listeners, and no two entry points can drift. In GENERATOR it stays in the
+// panel that owns it — that mode IS the transform panel and has the room.
+// (FROM NAME's chain is a different chain over different values — #144 — not a
+// third entry point to this one.)
 
 // Which job's chain the block is holding (#236). Null where a chain has no
 // business existing: EDITOR, where a value typed by hand must come out exactly
@@ -334,55 +329,82 @@ window.addEventListener("beforeunload", () => {
   if (shownContext) setChainFor(shownContext, transformChain.asGroup());
 });
 
-// Put the block where the current mode says it belongs, and show the dock only
-// when it is holding something. One function, called from everywhere, so the
-// button's state and the block's whereabouts cannot disagree.
-function syncTransformPlacement() {
-  const context = chainContext();
-  swapChainTo(context);
-  const dock = el("transform-dock");
-  const inGenerator = context === "generator";
-  const docked = dockPinned && !!context && !inGenerator;
-  if (docked) dock.append(el("transform-block"));
-  else el("transform-home").after(el("transform-block"));
-  dock.hidden = !docked;
-  // Offered only where a chain applies (#236): not in EDITOR, not in the modes
-  // that produce no values, and not in GENERATOR, where the block is already
-  // on screen and the button would pull it out of the panel it sits in.
-  el("transform-btn").hidden = !context || inGenerator;
-  el("transform-btn").setAttribute("aria-pressed", String(dockPinned));
-  // Docked, the chain has no run button of its own: the context's own action
-  // runs it (#237). In GENERATOR the block keeps its button, which is also the
-  // way to clean up a plan staged from somewhere with no chain of its own.
-  el("transform-preview").hidden = docked;
-  el("transform-dock-note").hidden = !docked;
-  if (docked) {
-    el("transform-dock-note").textContent = DOCK_NOTES[context];
-    // The side column scrolls, and the dock is at the foot of it: bring it into
-    // view rather than leaving the user to find what they just pinned.
-    dock.scrollIntoView({ block: "nearest" });
-    // The header counts the selection (or the staged plan); refreshGenerator
-    // only runs on entering the mode, so bring it up to date for where the
-    // block has just landed.
-    refreshGenerator();
-  }
-}
-
-// What the docked chain says about itself, since it has no button to say it.
-const DOCK_NOTES = {
+// What each job's chain says about itself in the dialog, since it has no button
+// of its own to say it.
+const CONTEXT_NOTES = {
   online: "Runs on the imported values when you import a release.",
   fromname: "Runs on the tags read out of the name when you press Preview tags.",
   renamer: "Runs on the new names when you preview a rename or a move.",
 };
+const CONTEXT_TITLES = {
+  online: "Transform — imported values",
+  fromname: "Transform — tags from the file name",
+  renamer: "Transform — new names",
+};
 
-function setTransformDocked(on) {
-  dockPinned = on;
-  saveTransformDocked(on);
-  syncTransformPlacement();
+function transformModalOpen() {
+  return !el("transform-modal").hidden;
 }
 
-function toggleTransformDock() {
-  setTransformDocked(!dockPinned);
+function openTransformModal() {
+  const context = chainContext();
+  if (!context || context === "generator") return;
+  el("transform-modal-title").textContent = CONTEXT_TITLES[context];
+  el("transform-context-note").textContent = CONTEXT_NOTES[context];
+  el("transform-context-note").hidden = false;
+  // No run button here: the context's own action runs the chain (#237).
+  el("transform-preview").hidden = true;
+  el("transform-modal-body").append(el("transform-block"));
+  el("transform-modal").hidden = false;
+  refreshGenerator();
+}
+
+function closeTransformModal() {
+  if (!transformModalOpen()) return;
+  // Whatever was typed belongs to the job it was typed for, written down before
+  // the block goes back to a panel that may be showing a different one.
+  if (shownContext) setChainFor(shownContext, transformChain.asGroup());
+  el("transform-modal").hidden = true;
+  el("transform-context-note").hidden = true;
+  el("transform-preview").hidden = false;
+  el("transform-home").after(el("transform-block"));
+  refreshTransformButton();
+}
+
+// Where the block belongs when no dialog holds it, and whether the button that
+// opens the dialog is offered at all.
+function syncTransformPlacement() {
+  const context = chainContext();
+  // The dialog edits the context it was opened for; leaving that context closes
+  // it rather than quietly retargeting what is being typed into it.
+  if (transformModalOpen() && context !== shownContext) {
+    closeTransformModal();
+  } else if (!transformModalOpen()) {
+    swapChainTo(context);
+    el("transform-home").after(el("transform-block"));
+  }
+  // Offered only where a chain applies (#236): not in EDITOR, not in the modes
+  // that produce no values, and not in GENERATOR, where the block is already on
+  // screen and the button would pull it out of the panel it sits in.
+  el("transform-btn").hidden = !context || context === "generator";
+  refreshTransformButton();
+}
+
+// The button carries what the dialog would otherwise have to be opened to learn
+// (#239): a dot while this job has rules, and how many in the tooltip. The
+// chain runs on its own now, so "is anything going to happen to my values?"
+// has to be answerable without opening anything.
+function refreshTransformButton() {
+  const btn = el("transform-btn");
+  const context = chainContext();
+  const count = context ? chainFor(context).rules.length : 0;
+  btn.classList.toggle("has-rules", count > 0);
+  btn.title = count
+    ? `${plural(count, "rule", "rules")} will run on what this panel produces — click to change`
+    : "Rules to run on what this panel produces — none set";
+  btn.setAttribute("aria-label", btn.title);
+  // The title is off the element while the pointer is on it (#230).
+  if (btn.dataset.tipText) btn.dataset.tipText = btn.title;
 }
 
 // ---- wire up ----
@@ -396,11 +418,17 @@ createGroupsMenu({
   inline: true,
 });
 el("transform-preview").addEventListener("click", previewTransform);
-el("transform-btn").addEventListener("click", toggleTransformDock);
-// The plan bar's entry point to the same chain (#142): Clean up pins it rather
-// than opening anything, and pins it whether or not it was pinned already —
-// pressing "clean this up" and getting nothing would be the wrong answer.
-el("transform-undock").addEventListener("click", () => setTransformDocked(false));
+el("transform-btn").addEventListener("click", () =>
+  transformModalOpen() ? closeTransformModal() : openTransformModal()
+);
+el("transform-modal-close").addEventListener("click", closeTransformModal);
+// Backdrop click and Escape, the way every other dialog here closes.
+el("transform-modal").addEventListener("click", (e) => {
+  if (e.target === el("transform-modal")) closeTransformModal();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && transformModalOpen()) closeTransformModal();
+});
 el("autonum-run").addEventListener("click", numberTracks);
 el("vinyl-split").addEventListener("click", splitVinylSides);
 // Rule reorder is wired per-card by the chain component via enablePointerReorder
@@ -408,6 +436,7 @@ el("vinyl-split").addEventListener("click", splitVinylSides);
 
 export {
   syncTransformPlacement,
+  refreshTransformButton,
   numberTracks,
   previewTransform,
   refreshGenerator,

@@ -442,18 +442,18 @@
         <!-- GENERATOR: an ordered chain of cleanup rules over tags or filenames. -->
         <section id="panel-generator" class="mode-panel" hidden>
           <!-- This block is not always here: the toolbar's Transform button
-               moves it into #transform-dock in the side panel and back, so the
-               chain can be reached from any mode without a second copy of it
-               existing (#149, #233). #transform-home marks where it belongs. -->
+               moves it into #transform-modal and back, so the chain can be set
+               up from any mode without a second copy of it existing (#149,
+               #239). #transform-home marks where it belongs. -->
           <div id="transform-home"></div>
           <div id="transform-block" class="panel-block">
             <h2>Transform <span id="transform-count" class="muted"></span></h2>
             <p class="hint muted" style="padding: 0">
               Rules run top to bottom. Nothing is written until you review the preview and press Apply.
             </p>
-            <!-- What the chain is about to run on, shown only while it is docked
-                 (#237), where it has no button of its own to say it. -->
-            <p id="transform-dock-note" class="hint inert-panel" style="padding: 6px 8px" hidden></p>
+            <!-- What the chain is about to run on, shown in the modal (#237),
+                 where it has no button of its own to say it. -->
+            <p id="transform-context-note" class="hint inert-panel" style="padding: 6px 8px" hidden></p>
             <!-- Shown only while a plan is staged (#142): the same chain, over
                  the values the plan proposes instead of the ones on disk. -->
             <p id="transform-over-plan" class="hint inert-panel" style="padding: 6px 8px" hidden>
@@ -611,13 +611,6 @@
           </div>
         </section>
 
-        <!-- Where the transform chain sits when it is pinned (#233). The block
-             itself is the GENERATOR panel's — one instance, moved here and back,
-             the same trick the popover used — so what is docked is never a
-             second copy that could drift from the first. -->
-        <div id="transform-dock" class="transform-dock" hidden>
-          <button id="transform-undock" class="icon" type="button" title="Close the transform panel" aria-label="Close the transform panel"><svg class="ico"><use href="#i-close"/></svg></button>
-        </div>
       </aside>
     </main>
 
@@ -766,6 +759,21 @@
 
     <!-- Confirm dialog (#102): a small modal for yes/no prompts (e.g. overwriting
          existing cover files). Driven by confirmDialog() in app.js. -->
+    <!-- Where the rule chain is SET UP (#239). It is configured rarely and runs
+         constantly, so it gets a room of its own rather than a share of the side
+         panel, which has its own job to do. The block inside is the GENERATOR
+         panel's — one instance, moved in and back, the same trick the popover
+         and the dock used — so what you edit here is never a second copy. -->
+    <div id="transform-modal" class="modal-backdrop" hidden>
+      <div class="modal transform-modal" role="dialog" aria-modal="true" aria-labelledby="transform-modal-title">
+        <div class="modal-head">
+          <h2 id="transform-modal-title">Transform</h2>
+          <button id="transform-modal-close" class="icon" type="button" title="Done" aria-label="Done"><svg class="ico"><use href="#i-close"/></svg></button>
+        </div>
+        <div id="transform-modal-body" class="transform-modal-body"></div>
+      </div>
+    </div>
+
     <div id="confirm-modal" class="modal-backdrop" hidden>
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-message">
         <p id="confirm-message" class="modal-msg"></p>

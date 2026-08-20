@@ -61,25 +61,6 @@ function applyCheckboxCol(on) {
   }
 }
 
-// Whether the transform chain is pinned to the side panel (#233). A display
-// choice like the ones above — where a panel sits, not what it does — so it
-// lives here and survives a restart, which is the point of pinning something.
-const TRANSFORM_DOCK_STORAGE_KEY = "tagrex.transformDock";
-function transformDocked() {
-  try {
-    return localStorage.getItem(TRANSFORM_DOCK_STORAGE_KEY) === "1";
-  } catch (e) {
-    return false;
-  }
-}
-function saveTransformDocked(on) {
-  try {
-    localStorage.setItem(TRANSFORM_DOCK_STORAGE_KEY, on ? "1" : "0");
-  } catch (e) {
-    /* localStorage unavailable — preference just won't persist */
-  }
-}
-
 // Filter mode prefs (#44): regex on/off and case sensitivity. Pure view choices,
 // persisted like the other display prefs. Read once at startup, then flipped by
 // the toolbar toggles.
@@ -259,8 +240,6 @@ export {
   applyValueFont,
   checkboxColEnabled,
   applyCheckboxCol,
-  transformDocked,
-  saveTransformDocked,
   regexModeEnabled,
   caseSensitiveEnabled,
   saveFilterMode,

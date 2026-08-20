@@ -4779,69 +4779,71 @@ td[data-field="year"],
   white-space: nowrap;
 }
 
-/* ---- transform dock (#149, #233) -------------------------------------------
-   Where the rule chain sits when it is pinned: the foot of the side column,
-   under whichever mode panel is up. It holds the GENERATOR panel's own
+/* ---- transform dialog (#149, #239) ---------------------------------------
+   Where the rule chain is set up. It holds the GENERATOR panel's own
    #transform-block, moved in and back out, so everything inside is already
-   styled by the panel rules — this is only the shell, and the line that says
-   the chain belongs to the app rather than to the panel above it.
+   styled by the panel rules — this is only the room it sits in.
 
-   It used to be a popover over the table, which covered the rows being cleaned
-   up and closed on any click outside. Pinned, it is beside the work instead of
-   on top of it, and the result of a run lands with the rules still on screen. */
-.transform-dock {
-  /* Sticky rather than merely last in the column: under a tall mode panel the
-     foot of the side column is below the fold, and pinning something only to
-     have it appear off-screen reads as nothing having happened.
-
-     BOUNDED, and that is the load-bearing part (#235). Left to size itself it
-     took two thirds of the column and squeezed the mode panel down to its
-     heading — a tool pinned beside the work taking the work's own space. The
-     panel is the subject at any window height, so the dock gets at most a
-     third of the column and scrolls inside that. */
-  position: sticky;
-  bottom: 0;
-  flex: 0 1 auto;
-  max-height: 34%;
+   A dialog rather than a popover or a docked panel, both of which it has been:
+   the chain runs by itself as part of each action now, so this is opened to
+   configure something and closed again, and while it is open it deserves the
+   space to show a chain of a dozen rules and the shelf to load them from. */
+.transform-modal {
+  max-width: 560px;
+  max-height: min(80vh, 720px);
+  gap: var(--space-3);
+}
+.modal-head {
   display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
+  align-items: center;
+  gap: var(--space-3);
 }
-.transform-dock[hidden] {
-  display: none;
-}
-/* One scroller for everything the dock holds, rather than a capped rule list
-   inside a capped dock inside a scrolling column. */
-.transform-dock > .panel-block {
+.modal-head h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
-  padding: 12px 14px;
-  min-height: 0;
-  overflow-y: auto;
+  font-size: var(--text-sm);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
-/* Over the block's own heading line, which has room to spare at its right. */
-#transform-undock {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 1;
+.modal-head .icon {
+  flex: 0 0 auto;
   border: 0;
   box-shadow: none;
   background: none;
   color: var(--muted);
 }
-#transform-undock:hover:not(:disabled) {
+.modal-head .icon:hover:not(:disabled) {
   background: var(--row-hover);
   color: var(--text);
 }
-/* The run button stays put while the rest of the block scrolls under it: it is
-   the one thing in here you reach for after reading everything else. */
-.transform-dock .panel-actions {
-  position: sticky;
-  bottom: 0;
-  padding-top: var(--space-2);
-  background: var(--bg);
+/* Only the chain scrolls; the heading and the close stay put. */
+.transform-modal-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+.transform-modal-body > .panel-block {
+  margin: 0;
+  padding: 0;
+  border-bottom: 0;
+}
+
+/* A dot on the button while this job's chain has rules in it (#239). The chain
+   runs on its own, so whether one is set has to be readable without opening
+   anything. */
+#transform-btn.has-rules::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+#transform-btn {
+  position: relative;
 }
 
 /* ---- placeholder reference (#148) -----------------------------------------
