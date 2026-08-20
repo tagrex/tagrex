@@ -355,6 +355,9 @@ body {
   overflow: hidden;
   padding: 6px 9px;
   border: none;
+  /* No border and no fill means the shared button shadow has nothing to sit
+     under and paints a hairline along the bottom edge instead (#228). */
+  box-shadow: none;
   background: none;
   color: var(--text);
   font: inherit;
@@ -367,6 +370,7 @@ body {
   align-items: center;
   padding: 0 6px;
   border: none;
+  box-shadow: none;
   background: none;
   color: var(--muted);
   cursor: pointer;
@@ -2043,6 +2047,9 @@ body.show-checkbox tr.playing td.sel {
   text-align: left;
   padding: 0;
   border: 0;
+  /* The title box spans the whole row, so the shared button shadow drew a
+     hairline the full width of it, right under the title (#228). */
+  box-shadow: none;
   background: none;
   font-family: var(--font-mono-bundled);
   cursor: pointer;
@@ -2296,6 +2303,7 @@ td.unreadable-note {
   flex: none;
   padding: 2px;
   border: 0;
+  box-shadow: none;
   border-radius: var(--radius-sm);
   background: none;
   color: var(--muted);
@@ -4855,6 +4863,7 @@ body.drag-active #drop-overlay {
   text-align: left;
   padding: var(--space-1) var(--space-2);
   border: 0;
+  box-shadow: none;
   border-radius: var(--radius-sm);
   background: none;
   color: var(--text);

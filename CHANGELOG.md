@@ -38,6 +38,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   player element, so the rule that flattened the transport buttons never reached
   it: a bordered, filled, rounded box on a bar of flat glyphs and small text.
   Same size, same glyph, same hover fill as the transport now.
+- **The hairline under the player's track title is gone.** It was never a border
+  or a divider: the shared button style ends with a small drop shadow, and every
+  rule that flattens a button stripped the border and the fill but not the
+  shadow — on a transparent, borderless box the only thing left for it to paint
+  is a 1px smudge along the bottom edge. The title box spans the whole row,
+  which is why it read as a line drawn from the title to just short of the time.
+  Sweeping the live interface for the same combination found 25 of them: the
+  folder path controls in the top bar, every padlock in the editor, and every
+  entry of both context menus. All reset, the way the icon buttons and the small
+  text buttons already were.
 
 ## [0.11.1] - 2026-08-20
 
