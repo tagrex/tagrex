@@ -3156,10 +3156,14 @@ td.unreadable-note {
 /* One line, not a panel. "Nothing here yet" is the least valuable thing on a
    screen and was taking 120px of it — a hairline box with a sentence in it says
    the same and leaves the room to the rules. */
-.rule-chain-empty {
+/* In the chain it stands in for the rule cards, so it lines up with them and
+   with the rows above and below (#246) rather than sitting inset (#254). */
+.empty.inert-panel.rule-chain-empty {
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
+  /* The corner of the rule cards it stands in for, like everything else in that
+     column (#254) — it was the one 4px box among 6px ones. */
+  border-radius: var(--radius-md);
   font-size: var(--text-xs);
 }
 .rule-chain-empty b {
@@ -4136,10 +4140,11 @@ button.primary:disabled {
 /* Empty state — a dashed, faintly-striped panel that says "nothing yet" without
    looking broken (opt in with .inert-panel). */
 .empty.inert-panel {
-  /* Flush with whatever it stands among: a margin of its own inset it from the
-     rows above and below, so the placeholder sat narrower than the controls it
-     was standing in for (#246). Its container's padding is what spaces it. */
-  margin: 0;
+  /* Standing alone in an area — the table, the search results, the duplicate
+     list — it needs room, or its dashed edge lands flat against the borders
+     around it (#254). Standing among controls it takes their width instead: see
+     the chain's own rule below. */
+  margin: var(--space-3);
   border: 1px dashed var(--border);
   /* The same corner as the rule cards and the controls it stands in for — it
      was the one rounder thing in the column (#246). */

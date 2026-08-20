@@ -92,6 +92,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   was previewing values that would never be written. It now goes through the
   same chain, by the same path the real plan takes, so what is under the pattern
   is what lands in the table.
+- **The table's placeholder has room again.** Lining that box up with its
+  neighbours took its margin away everywhere — right in the rule chain, where it
+  stands among full-width controls, wrong in the file table, where it stands
+  alone in an area and landed flat against three borders. It keeps its distance
+  where it stands alone and takes the rows' width where it stands among them.
+  Its corner matches them too: 4px among 6px cards was the one outlier in a
+  sweep of every border in the app — 6px for controls, 4px for the two small
+  filter toggles, 10px for large surfaces, 999px for the floating plan pill and
+  partial radii for the fused halves of the search field, all as intended.
 - **The empty-state box lines up with the rows around it.** It carried a margin
   of its own, so the dashed placeholder stood a few pixels narrower than the
   controls above and below it — a misalignment where a stand-in for those very
