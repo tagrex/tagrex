@@ -82,6 +82,11 @@
   --del: #dc2626;
   --row-hover: #eef1f5;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  /* The tooltip is the one surface that inverts: a dark bubble over a light UI
+     (#230). In dark it lifts off the background instead, because a near-black
+     bubble on a near-black window is not a bubble. */
+  --tip-bg: #1a1d23;
+  --tip-text: #ffffff;
 
   /* ---- design-system tokens (from the Claude Design pass, #76) ----
      Colour stays above; the rest is theme-independent and lives here once.
@@ -199,6 +204,8 @@
     --del: #f87171;
     --row-hover: #242832;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --tip-bg: #343a45;
+    --tip-text: #e6e8ec;
     /* Dark needs a much stronger row-selection tint than light to read on the
        near-black table. */
     --row-sel: color-mix(in srgb, var(--accent) 46%, var(--bg));
@@ -218,6 +225,8 @@
   --del: #f87171;
   --row-hover: #242832;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --tip-bg: #343a45;
+  --tip-text: #e6e8ec;
   /* Dark needs a much stronger row-selection tint than light to read on the
      near-black table. */
   --row-sel: color-mix(in srgb, var(--accent) 46%, var(--bg));
@@ -602,6 +611,29 @@ button.io > .ico,
   height: 14px;
 }
 
+/* The app's own tooltip (#230). Positioned by tooltip.js; dark in both themes
+   the way a tooltip is everywhere, small, and never wide enough to read as a
+   panel — one line of what a glyph would have said in words. */
+.tooltip {
+  position: fixed;
+  z-index: 200;
+  max-width: 260px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--tip-bg);
+  color: var(--tip-text);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+.tooltip[hidden] {
+  display: none;
+}
+
 /* Consistent thin scrollbars across every engine. All three Tauri webviews are
    WebKit/Chromium, so the ::-webkit-scrollbar pseudo covers them uniformly. */
 ::-webkit-scrollbar {
@@ -619,6 +651,34 @@ button.io > .ico,
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--muted);
+}
+/* The horizontal bar is a different animal from the vertical one: the file
+   table's runs the width of the window immediately above the status bar, in the
+   same colour as that bar's own top rule, and on a table only a little wider
+   than the window its thumb spans nearly the whole width — so it reads as a
+   second divider glued to the player rather than as a control (#229). Thinner,
+   lighter, and lifted off the bar by the table's transparent bottom border. It
+   stays visible: horizontal scroll is not obvious in a wide table, and an
+   auto-hiding bar would hide the only hint that there are more columns. */
+::-webkit-scrollbar:horizontal {
+  height: 9px;
+}
+::-webkit-scrollbar-thumb:horizontal {
+  border-width: 2.5px;
+  /* Plain value first, for an engine without color-mix. */
+  background: var(--border);
+  background: color-mix(in srgb, var(--border) 65%, var(--bg));
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:horizontal:hover {
+  background: var(--border);
+  background-clip: padding-box;
+}
+/* Lifts the horizontal bar off the status bar: with `box-sizing: border-box`
+   the scrollbar is laid inside the padding box, so a transparent bottom border
+   is a gap under it and costs the layout nothing. */
+.table-wrap {
+  border-bottom: 4px solid transparent;
 }
 
 /* Hide the engine-specific search clear glyph — the filter owns its own

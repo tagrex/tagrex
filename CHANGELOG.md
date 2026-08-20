@@ -31,6 +31,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   enforced — plus the cover, export and matching modules, and the frontend and
   audio parts of the stack.
 
+- **The view controls are glyphs, and the app draws its own tooltips.**
+  Browse…, Presets, Columns and Groups each carried a word beside their icon
+  while every neighbouring control in the same rows — refresh, collapse, undo,
+  settings, the transport — was a bare glyph, so the labelled four were the
+  widest things in the chrome and pulled the eye away from the button that
+  actually changes files. The words are gone from those four only: everything
+  that writes to disk keeps its label, because a control that touches files must
+  never be a glyph to guess at. **Browse…/Open kept its state without its
+  word** — the glyph is a folder while it offers to choose one and the import
+  arrow while it offers to open what you typed, and the tooltip says which in
+  words. The tooltip itself is new: the platform bubble takes about a second and
+  is drawn by the OS, which is too slow and too foreign behind a control that
+  has no other label, so this one is the app's own, appears after 400 ms, and
+  covers the whole chrome — the bars, the mode tabs and the panels — rather than
+  only the four buttons, since two tooltip styles in one row would be worse than
+  either. It stays off the table, where the native bubble suits the cells.
+- **The table's horizontal scrollbar stopped pretending to be a divider.** It
+  runs the width of the window immediately above the status bar, in the same
+  colour as that bar's own top rule, and on a table only a little wider than the
+  window its thumb spans nearly the whole width — which is why it read as a grey
+  strip belonging to the player rather than as a scrollbar. It is now thinner
+  than the vertical one (9px against 11), lighter, and lifted off the bar. Still
+  always visible: horizontal scroll is not obvious in a wide table, and an
+  auto-hiding bar would hide the only hint that there are more columns.
+
 ### Fixed
 
 - **The Play button in the status bar is flat like the rest of the player.** It

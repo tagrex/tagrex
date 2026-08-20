@@ -45,6 +45,7 @@ import { closeTransformPopover, refreshGenerator } from "./js/generator.js";
 import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
 import { initPlaceholderReference } from "./js/placeholders.js";
+import { initTooltips } from "./js/tooltip.js";
 import { isFieldLocked, loadFieldLocks, pushFieldLocks } from "./js/locks.js";
 import {
   cellSuggestKey,
@@ -1340,10 +1341,15 @@ function fitRootDisplay() {
 function updateLibAction() {
   const dirty = libraryIsDirty();
   const btn = el("lib-action");
-  el("lib-action-label").textContent = dirty ? "Open" : "Browse…";
+  // The button lost its word (#230), so the glyph is what carries the state:
+  // a folder to go and choose one, the import arrow to open what was typed.
+  el("lib-action-glyph").setAttribute("href", dirty ? "#i-import" : "#i-folder");
   btn.classList.toggle("opening", dirty);
   btn.title = dirty ? "Open the path you typed" : "Choose a folder to open";
   btn.setAttribute("aria-label", btn.title);
+  // The title is off the element while the pointer is on it; put the new one
+  // where the tooltip will find it rather than losing the change (#230).
+  if (btn.dataset.tipText) btn.dataset.tipText = btn.title;
   updateRefreshButton();
 }
 
@@ -2719,6 +2725,9 @@ syncFilterControls();
 // headers can name their placeholder without an await per header. The head is
 // already drawn by then, so it is redrawn once the names are available.
 initPlaceholderReference().then(renderTableHead);
+// The app's own tooltips over the chrome (#230), for the controls that are a
+// glyph and nothing else.
+initTooltips();
 
 // ---- dev surface (#143) ----
 // app.js is a module now, so nothing in it is global by accident. The

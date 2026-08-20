@@ -78,7 +78,7 @@
           <div id="root-recent-menu" class="col-menu" hidden></div>
         </div>
         <input id="root" type="text" placeholder="/path/to/music/library" spellcheck="false" hidden />
-        <button id="lib-action" class="io" title="Choose a folder to open"><svg class="ico"><use href="#i-folder"/></svg><span id="lib-action-label">Browse…</span></button>
+        <button id="lib-action" class="icon" title="Choose a folder to open" aria-label="Choose a folder to open"><svg class="ico"><use id="lib-action-glyph" href="#i-folder"/></svg></button>
         <!-- Re-read what is open (#212): the folder changes under the app —
              something dropped in, a track edited elsewhere — and reopening it
              through the folder chooser is several clicks for one idea. -->
@@ -135,13 +135,13 @@
           </div>
           <!-- Saved filter + sort presets (#44). Popover built by renderPresetsMenu. -->
           <div class="col-picker">
-            <button id="presets-btn" class="io" title="Save and re-apply filter + sort presets"><svg class="ico"><use href="#i-presets"/></svg>Presets</button>
+            <button id="presets-btn" class="icon" title="Save and re-apply filter + sort presets" aria-label="Filter and sort presets"><svg class="ico"><use href="#i-presets"/></svg></button>
             <div id="presets-menu" class="col-menu" hidden></div>
           </div>
           <!-- Configurable columns (#43): pick which tag fields show, and their
                order. The popover is built by renderColumnsMenu. -->
           <div class="col-picker">
-            <button id="columns-btn" class="io" title="Choose which columns to show"><svg class="ico"><use href="#i-columns"/></svg>Columns</button>
+            <button id="columns-btn" class="icon" title="Choose which columns to show" aria-label="Columns"><svg class="ico"><use href="#i-columns"/></svg></button>
             <div id="columns-menu" class="col-menu" hidden></div>
           </div>
           <!-- Clear tags, surfaced here so it doesn't require a trip into EDITOR.
@@ -495,7 +495,7 @@
             <div class="panel-actions">
               <!-- Named action groups (#57): save the current chain and re-run it. -->
               <div class="col-picker">
-                <button id="groups-btn" class="io" title="Save and re-run named action groups"><svg class="ico"><use href="#i-presets"/></svg>Groups</button>
+                <button id="groups-btn" class="icon" title="Save and re-run named action groups" aria-label="Action groups"><svg class="ico"><use href="#i-presets"/></svg></button>
                 <div id="groups-menu" class="col-menu" hidden></div>
               </div>
               <div class="spacer"></div>
@@ -669,6 +669,10 @@
     </footer>
 
     <div id="toast" class="toast" hidden></div>
+
+    <!-- The app's own tooltip (#230): one box, moved and filled by tooltip.js
+         from the `title` of whatever control the pointer is on. -->
+    <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
 
     <!-- Drag-and-drop cue (#127): a full-window overlay shown while files are
          dragged over the app. Toggled by body.drag-active from app.js. -->
