@@ -1549,6 +1549,11 @@ body:not(.show-checkbox) #tracks td.sel {
    quiet inset panel, and caps the height so a long shelf of saved chains cannot
    push the run button out of the side column. */
 .groups-list {
+  /* It scrolls, which in a flex column means it is free to shrink below its
+     own content — and short of room it did, down to ten pixels of padding with
+     the rows still inside it, reading as an unlabelled grey strip (#238). It
+     keeps its content height; the block around it is what scrolls. */
+  flex: 0 0 auto;
   max-height: 150px;
   overflow-y: auto;
   padding: var(--space-1);

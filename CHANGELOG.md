@@ -116,6 +116,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   name*, *Rename by mask* — with the full text on hover. The undo journal still
   records the whole description, which is where the mask is what tells you
   months later what a batch did.
+- **The group list stopped collapsing into an unlabelled grey strip.** In a
+  flex column an item that scrolls may shrink below its content, and short of
+  room this one did — down to ten pixels of padding with its rows still inside,
+  showing as a grey bar with nothing on it. It keeps its height now and the
+  block around it scrolls.
 - **The tooltip wraps instead of eating its own text.** It went out as one line
   with an ellipsis and a 260px cap, so every title longer than that was cut in
   half — "Transform the selected files' tags — the GENER…". On a control whose
