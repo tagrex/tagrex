@@ -1544,6 +1544,32 @@ body:not(.show-checkbox) #tracks td.sel {
 .preset-row {
   justify-content: space-between;
 }
+/* The group list inline in the transform block (#234) rather than in a popover:
+   the rows are the same rows, so this only replaces the floating shell with a
+   quiet inset panel, and caps the height so a long shelf of saved chains cannot
+   push the run button out of the side column. */
+.groups-list {
+  max-height: 190px;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.groups-list .col-menu-foot {
+  position: sticky;
+  bottom: 0;
+  background: var(--panel);
+}
+/* The name is the row's action now, so it takes the width and shows it is one. */
+.groups-list .preset-apply {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.groups-list .col-menu-row:hover {
+  background: var(--row-hover);
+}
 .preset-apply {
   flex: 1;
   text-align: left;
@@ -4748,36 +4774,53 @@ td[data-field="year"],
   white-space: nowrap;
 }
 
-/* ---- transform popover (#149) ---------------------------------------------
-   The toolbar's entry point to the rule chain. It holds the GENERATOR panel's
-   own #transform-block, moved in on open and back out on close, so everything
-   inside is already styled by the panel rules — this only provides the shell and
-   keeps a long chain from growing past the window. Fixed-positioned from JS,
-   like the placeholder reference, because the area under the toolbar scrolls. */
-.transform-pop {
-  position: fixed;
-  z-index: 95;
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-2);
+/* ---- transform dock (#149, #233) -------------------------------------------
+   Where the rule chain sits when it is pinned: the foot of the side column,
+   under whichever mode panel is up. It holds the GENERATOR panel's own
+   #transform-block, moved in and back out, so everything inside is already
+   styled by the panel rules — this is only the shell, and the line that says
+   the chain belongs to the app rather than to the panel above it.
+
+   It used to be a popover over the table, which covered the rows being cleaned
+   up and closed on any click outside. Pinned, it is beside the work instead of
+   on top of it, and the result of a run lands with the rules still on screen. */
+.transform-dock {
+  /* Sticky rather than merely last in the column: under a tall mode panel the
+     foot of the side column is below the fold, and pinning something only to
+     have it appear off-screen reads as nothing having happened. */
+  position: sticky;
+  bottom: 0;
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border);
   background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
-.transform-pop[hidden] {
+.transform-dock[hidden] {
   display: none;
 }
-.transform-pop > .panel-block {
-  min-height: 0;
+.transform-dock > .panel-block {
   margin: 0;
+  padding: 12px 14px;
 }
-/* Only the rule list scrolls. Putting the overflow here rather than on the
-   popover keeps the Groups menu — which opens from the row BELOW the list — out
-   of a scrolling container that would clip it. */
-.transform-pop #transform-rules {
+/* Over the block's own heading line, which has room to spare at its right. */
+#transform-undock {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  z-index: 1;
+  border: 0;
+  box-shadow: none;
+  background: none;
+  color: var(--muted);
+}
+#transform-undock:hover:not(:disabled) {
+  background: var(--row-hover);
+  color: var(--text);
+}
+/* Only the rule list scrolls, so a chain of a dozen rules cannot push the run
+   button off the bottom of the column. */
+.transform-dock #transform-rules {
   overflow-y: auto;
-  max-height: 46vh;
+  max-height: 40vh;
 }
 
 /* ---- placeholder reference (#148) -----------------------------------------

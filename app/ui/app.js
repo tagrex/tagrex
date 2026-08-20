@@ -41,7 +41,7 @@ import {
 } from "./js/columns.js";
 import { dropGroupKey, folderGroupLabel, groupKeyOf, groupLabel } from "./js/grouping.js";
 import { loadSavedToken, refreshReleaseMatches, searchBusy, searchPerPage, stopLoading } from "./js/online.js";
-import { closeTransformPopover, refreshGenerator } from "./js/generator.js";
+import { refreshGenerator, syncTransformPlacement } from "./js/generator.js";
 import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
 import { initPlaceholderReference } from "./js/placeholders.js";
@@ -1067,6 +1067,16 @@ function renderPreview(plan) {
 
 // Enter the in-table diff-state: build the path->change map, tick every changed
 // file for apply by default, show the change in the table, and float the bar.
+// The operation without the pattern it ran, but WITH whatever the backend
+// appended after it: `Tags from name: %artist% - %title% · cleaned up` is three
+// facts, and only the middle one is redundant here (#232).
+function shortPlanDescription(description) {
+  const [head, ...rest] = description.split(": ");
+  if (!rest.length) return description;
+  const marks = rest.join(": ").split(" · ").slice(1);
+  return [head, ...marks].join(" · ");
+}
+
 function enterDiffState() {
   setDiffByPath(new Map(previewPlan.changes.map((c) => [c.path, c])));
   setApplySelection(new Set(diffByPath.keys()));
@@ -1083,9 +1093,8 @@ function enterDiffState() {
   // the description shows and the whole of it is a hover away.
   const plan = el("ab-plan");
   const description = previewPlan.description || "";
-  const [operation] = description.split(": ");
-  plan.textContent = description ? ` · ${operation}` : "";
-  if (description && description !== operation) {
+  plan.textContent = description ? ` · ${shortPlanDescription(description)}` : "";
+  if (description && description !== shortPlanDescription(description)) {
     plan.title = description;
   } else {
     plan.removeAttribute("title");
@@ -1655,9 +1664,10 @@ const MODE_REFRESH = {
 
 function setMode(name) {
   setCurrentMode(name);
-  // The Transform popover borrows the GENERATOR panel's chain block (#149);
-  // give it back before any mode is shown, or GENERATOR opens without it.
-  closeTransformPopover();
+  // The dock borrows the GENERATOR panel's chain block (#149, #233); this puts
+  // it wherever the new mode says it belongs — back in that panel on the way
+  // into GENERATOR, into the dock on the way out of it if it is pinned.
+  syncTransformPlacement();
   // In GENERATOR the chain is already on screen, and the button would pull it
   // out of the panel it is sitting in — so there is nothing for it to do there.
   el("transform-btn").hidden = name === "generator";
@@ -2742,6 +2752,10 @@ initPlaceholderReference().then(renderTableHead);
 // The app's own tooltips over the chrome (#230), for the controls that are a
 // glyph and nothing else.
 initTooltips();
+// Put the transform chain where the saved preference says it belongs (#233):
+// nothing calls setMode at startup, so without this a pinned chain would come
+// back unpinned after a restart.
+syncTransformPlacement();
 
 // ---- dev surface (#143) ----
 // app.js is a module now, so nothing in it is global by accident. The

@@ -380,7 +380,11 @@ function createRuleChain({ ids }) {
 //
 // `onRun` is what the ticked groups are run through. Ticks are session-only and
 // private to this popover: a tick says "these, now", not a preference.
-function createGroupsMenu({ btn, menu, chain, onRun }) {
+// `inline` renders the list into the block itself rather than into a popover a
+// button opens (#234): the chain is pinned in the side panel now, so a floating
+// box over it — reached from a button inside another floating box, as it was —
+// buys nothing and costs two clicks.
+function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
   const tickedGroups = new Set();
 
   // Every group the checklist can offer, saved ones first — the order they run in.
@@ -426,9 +430,13 @@ function createGroupsMenu({ btn, menu, chain, onRun }) {
     renderAllGroupsMenus();
   }
 
-  // One checklist row (#137): a tick, the name with the scope it acts on, and
-  // Load. Built-ins get no Delete — they aren't the user's to remove — and carry
-  // their note in the tooltip instead of the bare summary.
+  // One checklist row (#137): a tick and the name with the scope it acts on.
+  // Clicking the name LOADS the group into the chain (#234) — that used to be a
+  // separate `Load` link beside a name that toggled the tick, which is three
+  // controls for two acts. The tick is still its own control, because ticking
+  // several and running them as one plan is a different act from loading one to
+  // look at it. Built-ins get no Delete — they aren't the user's to remove — and
+  // carry their note in the tooltip instead of the bare summary.
   function groupMenuRow(group) {
     const row = document.createElement("div");
     row.className = "col-menu-row preset-row";
@@ -450,27 +458,17 @@ function createGroupsMenu({ btn, menu, chain, onRun }) {
     scope.className = "group-scope";
     scope.textContent = SCOPE_LABELS[group.scope] || group.scope || "all tags";
     name.append(document.createTextNode(group.name), scope);
-    name.title = group.note ? `${group.note}\n${groupSummary(group)}` : groupSummary(group);
-    // The name is the checkbox's label, just a bigger target for it.
-    name.addEventListener("click", () => {
-      tick.checked = !tick.checked;
-      toggleTicked(group.name, tick.checked);
-    });
-
-    const load = document.createElement("button");
-    load.type = "button";
-    load.className = "text-btn group-load";
-    load.textContent = "Load";
-    load.title = group.builtin
-      ? "Load into the chain to edit — the built-in stays as shipped"
-      : "Load into the chain without running";
-    load.addEventListener("click", (e) => {
+    const summary = group.note ? `${group.note}\n${groupSummary(group)}` : groupSummary(group);
+    name.title = group.builtin
+      ? `${summary}\nClick to load into the chain — the built-in stays as shipped`
+      : `${summary}\nClick to load into the chain`;
+    name.addEventListener("click", (e) => {
       e.stopPropagation();
       chain.load(group);
-      el(menu).hidden = true;
+      if (!inline) el(menu).hidden = true;
     });
 
-    row.append(tick, name, load);
+    row.append(tick, name);
 
     if (!group.builtin) {
       const del = document.createElement("button");
@@ -522,7 +520,7 @@ function createGroupsMenu({ btn, menu, chain, onRun }) {
       runBtn.className = "text-btn";
       runBtn.title = "Preview the ticked groups, run in list order, as one plan";
       runBtn.addEventListener("click", () => {
-        box.hidden = true;
+        if (!inline) box.hidden = true;
         onRun(tickedInOrder());
       });
       runFoot.appendChild(runBtn);
@@ -558,44 +556,46 @@ function createGroupsMenu({ btn, menu, chain, onRun }) {
     updateRunTicked();
   }
 
-  // Placed from JS rather than by CSS (#160). This button is not always in the
-  // middle of a panel: it sits in FROM NAME's pinned footer, and inside the
-  // transform popover, which itself anchors on the floating diff bar — both near
-  // the bottom of the window, where a menu that only ever opens downward runs
-  // off the edge with most of itself out of reach.
-  function place() {
-    const box = el(menu);
-    box.classList.add("floating");
-    placeFloating(box, el(btn), { align: "right" });
-  }
-
-  // Toggle + outside-click close, the same as the presets menu.
-  el(btn).addEventListener("click", (e) => {
-    e.stopPropagation();
-    const box = el(menu);
-    if (box.hidden) render();
-    box.hidden = !box.hidden;
-    // After unhiding, so the box has a width to place by.
-    if (!box.hidden) place();
-  });
-  document.addEventListener("click", (e) => {
-    const box = el(menu);
-    if (!box.hidden && !box.contains(e.target) && !el(btn).contains(e.target)) {
-      box.hidden = true;
-    }
-  });
-  // Fixed positioning does not follow its button, and the panel behind it
-  // scrolls — so follow it by hand while the menu is open.
-  window.addEventListener("resize", () => {
-    if (!el(menu).hidden) place();
-  });
-  document.addEventListener(
-    "scroll",
-    () => {
+  if (inline) {
+    // Always on screen, so it is drawn once here and redrawn by
+    // renderAllGroupsMenus whenever the set of groups changes.
+    render();
+  } else {
+    // Placed from JS rather than by CSS (#160): a button near the bottom of the
+    // window opens a menu that would otherwise run off the edge downward.
+    const place = () => {
+      const box = el(menu);
+      box.classList.add("floating");
+      placeFloating(box, el(btn), { align: "right" });
+    };
+    // Toggle + outside-click close, the same as the presets menu.
+    el(btn).addEventListener("click", (e) => {
+      e.stopPropagation();
+      const box = el(menu);
+      if (box.hidden) render();
+      box.hidden = !box.hidden;
+      // After unhiding, so the box has a width to place by.
+      if (!box.hidden) place();
+    });
+    document.addEventListener("click", (e) => {
+      const box = el(menu);
+      if (!box.hidden && !box.contains(e.target) && !el(btn).contains(e.target)) {
+        box.hidden = true;
+      }
+    });
+    // Fixed positioning does not follow its button, and the panel behind it
+    // scrolls — so follow it by hand while the menu is open.
+    window.addEventListener("resize", () => {
       if (!el(menu).hidden) place();
-    },
-    true
-  );
+    });
+    document.addEventListener(
+      "scroll",
+      () => {
+        if (!el(menu).hidden) place();
+      },
+      true
+    );
+  }
 
   const api = {
     render,

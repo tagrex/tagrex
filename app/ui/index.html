@@ -157,7 +157,7 @@
                not mean leaving the mode. The popover is filled with the GENERATOR
                panel's own chain — the block is moved in and back out, so there is
                one chain and one implementation, not a copy (#149). -->
-          <button id="transform-btn" class="icon" title="Transform the selected files' tags — the GENERATOR rule chain, without leaving this mode" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
+          <button id="transform-btn" class="icon" aria-pressed="false" title="Transform the selected files' tags — pins the GENERATOR rule chain to the side panel" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
           <button id="clear-tags" class="icon" title="Clear text tags on the selected files (cover and DJ cue points are kept) — previewed before anything is written" aria-label="Clear text tags on the selected files"><svg class="ico"><use href="#i-eraser"/></svg></button>
         </div>
 
@@ -446,9 +446,9 @@
         <!-- GENERATOR: an ordered chain of cleanup rules over tags or filenames. -->
         <section id="panel-generator" class="mode-panel" hidden>
           <!-- This block is not always here: the toolbar's Transform button
-               moves it into #transform-pop and back, so the chain can be reached
-               from any mode without a second copy of it existing (#149).
-               #transform-home marks where it belongs. -->
+               moves it into #transform-dock in the side panel and back, so the
+               chain can be reached from any mode without a second copy of it
+               existing (#149, #233). #transform-home marks where it belongs. -->
           <div id="transform-home"></div>
           <div id="transform-block" class="panel-block">
             <h2>Transform <span id="transform-count" class="muted"></span></h2>
@@ -492,12 +492,13 @@
               </select>
               <button id="transform-add" class="btn">Add rule</button>
             </div>
+            <!-- Named action groups (#57), a list rather than a popover since
+                 #234: reaching a saved cleanup used to mean opening a second
+                 floating box over the first. Clicking a row loads it into the
+                 chain; the ticks are for composing several into one run. Filled
+                 by chain.js. -->
+            <div id="groups-menu" class="groups-list"></div>
             <div class="panel-actions">
-              <!-- Named action groups (#57): save the current chain and re-run it. -->
-              <div class="col-picker">
-                <button id="groups-btn" class="icon" title="Save and re-run named action groups" aria-label="Action groups"><svg class="ico"><use href="#i-presets"/></svg></button>
-                <div id="groups-menu" class="col-menu" hidden></div>
-              </div>
               <div class="spacer"></div>
               <button id="transform-preview" class="primary">Preview changes</button>
             </div>
@@ -610,6 +611,14 @@
             </div>
           </div>
         </section>
+
+        <!-- Where the transform chain sits when it is pinned (#233). The block
+             itself is the GENERATOR panel's — one instance, moved here and back,
+             the same trick the popover used — so what is docked is never a
+             second copy that could drift from the first. -->
+        <div id="transform-dock" class="transform-dock" hidden>
+          <button id="transform-undock" class="icon" type="button" title="Close the transform panel" aria-label="Close the transform panel"><svg class="ico"><use href="#i-close"/></svg></button>
+        </div>
       </aside>
     </main>
 
@@ -743,7 +752,6 @@
          panel's #transform-block in here, and closing puts it back, so there is
          exactly one chain with one set of listeners. Positioned from JS like the
          placeholder reference, since the toolbar sits above a scrolling area. -->
-    <div id="transform-pop" class="transform-pop" hidden role="dialog" aria-label="Transform"></div>
 
     <!-- Placeholder reference (#148): one popover shared by every mask input,
          opened from the ? button beside it and positioned against that button.

@@ -977,6 +977,28 @@ function mockInvoke(cmd, args) {
       return mockInvoke.state?.beatport
         ? Promise.resolve("mock-beatport-access-token")
         : Promise.reject("Not signed in to Beatport");
+    // A stand-in shelf, not a copy of the backend's (#234 needed the group list
+    // to be reachable in the browser at all). Two groups, with the shape the
+    // real ones have — name, scope, note, rules — which is what the list and the
+    // load path read.
+    case "builtin_action_groups":
+      return Promise.resolve([
+        {
+          name: "Standard values",
+          scope: "tags",
+          note: "Collapse runs of whitespace and trim the ends.",
+          rules: [
+            { kind: "replace", from: "\\s+", to: " ", regex: true, style: "" },
+            { kind: "replace", from: "^\\s+|\\s+$", to: "", regex: true, style: "" },
+          ],
+        },
+        {
+          name: "Lower case",
+          scope: "name",
+          note: "Lower-case the file name.",
+          rules: [{ kind: "case", from: "", to: "", regex: false, style: "lower" }],
+        },
+      ]);
     case "load_settings":
       return Promise.resolve(
         mockInvoke.state?.settings || {

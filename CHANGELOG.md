@@ -58,6 +58,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The transform chain pins to the side panel instead of floating over the
+  table.** Cleaning up a staged plan used to be: press the wand or **Clean up**
+  → a popover opens over the table → press **Groups** → a second popover opens
+  over the first → find the group, press **Load** → press **Clean up staged**;
+  and a click anywhere outside dismissed the lot. The popover also covered the
+  very rows being cleaned up and could not stay open while the table was
+  scrolled. The wand is a toggle now: the chain docks at the foot of the side
+  panel and stays there through mode switches, through staging, and across
+  restarts. **Clean up** on the plan bar pins it rather than opening anything.
+  In GENERATOR the block goes back to the panel that owns it — that mode *is*
+  the transform panel — and there is still exactly one of it, moved rather than
+  copied, so the two entry points cannot drift. A run no longer dismisses
+  anything: the result lands in full view with the rules that produced it still
+  on screen.
+- **The rule groups are a list in the block, not a popover over a popover.**
+  Every row carried three controls doing similar things — a tick, a name that
+  toggled the tick, and a **Load** link. Clicking the name now loads the group
+  into the chain, the link is gone, and the ticks stay for what they are for:
+  composing several groups into one plan with **Run N ticked**. Saving and
+  deleting are where they were.
 - **The staged-plan bar stays inside the window, and stops reciting the mask.**
   The pill is centred on the table and was as wide as its contents demanded, so
   in a narrow window half of it hung off the left edge with no way to bring it

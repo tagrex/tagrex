@@ -10,7 +10,7 @@
 // chain reads the files. With a plan staged it reads THE PLAN — the values it
 // proposes — and gives back a revised plan, so producing values and cleaning
 // them up stay one Apply and one undo entry instead of two.
-import { el, placeFloating, plural, toast } from "./dom.js";
+import { el, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { createGroupsMenu, createRuleChain, ruleForGroup } from "./chain.js";
@@ -18,6 +18,7 @@ import { currentFieldValue } from "./editor.js";
 import { groupKeyOf } from "./grouping.js";
 import { parseVinylPosition } from "./vinyl.js";
 import {
+  currentMode,
   groupBy,
   edits,
   previewPlan,
@@ -26,6 +27,7 @@ import {
   setPreviewSource,
   tracks,
 } from "./state.js";
+import { saveTransformDocked, transformDocked } from "./prefs.js";
 
 // ---- transformations (#34) ----
 // This panel's chain, over the tags and names already on disk. It lives for the
@@ -81,9 +83,9 @@ function stageRun(plan, scopes, wasStaged) {
   } else if (renames) {
     setPreviewSource("rename");
   }
-  // The result lands on the table, which the popover sits over (#149). An
-  // error leaves it open instead, so the chain can be fixed where it is.
-  closeTransformPopover();
+  // Nothing to dismiss any more: the chain is pinned beside the table rather
+  // than floating over it (#233), so the result lands in full view with the
+  // rules that produced it still on screen to adjust.
   hooks.renderPreview(plan);
 }
 
@@ -268,110 +270,84 @@ async function runTickedGroups(groups) {
   }
 }
 
-// ---- the chain, reachable from any mode (#149) ----
+// ---- the chain, reachable from any mode (#149, #233) ----
 //
 // The cleanup a chain does is almost always cleanup after something done in
 // another mode — tags just read out of file names, a just-finished import — so
 // requiring a trip into GENERATOR to fix a case is backwards.
 //
-// The popover is filled by MOVING `#transform-block` out of the GENERATOR panel
-// and putting it back on close. That is the whole trick: there is one chain,
-// one set of elements and one set of listeners, so the two entry points cannot
-// drift, and the chain's renderer neither knows nor cares where the block
-// currently lives. (FROM NAME's chain is a different chain over different
-// values — #144 — not a third entry point to this one.)
-
-function transformPopoverOpen() {
-  return !el("transform-pop").hidden;
-}
-
-// Which button the popover is currently anchored to — the toolbar wand, or the
-// diff bar's Clean up (#142). Remembered so a window resize re-places it where
-// it was opened.
-let transformAnchor = "transform-btn";
-
-// Place the popover against its anchor button, clamped to the window. Fixed
-// rather than absolute for the same reason as the placeholder reference: the
-// area below the toolbar scrolls and would clip it.
+// It used to travel into a popover over the table, which fought the work it was
+// for: it covered the rows being cleaned up, closed on any click outside, and
+// opened a second popover on top of itself for the groups. Now it is PINNED —
+// moved into `#transform-dock` at the foot of the side column, where it stays
+// until it is closed, through mode switches and through staging.
 //
-// Below the anchor when there is room, above it when there is not — the diff
-// bar floats near the bottom of the table, where "below" is off-screen.
-function placeTransformPopover() {
-  placeFloating(el("transform-pop"), el(transformAnchor), {
-    width: Math.min(420, window.innerWidth - 16),
-  });
+// The mechanism is unchanged and is the whole trick: `#transform-block` is
+// MOVED, not copied, so there is one chain, one set of elements and one set of
+// listeners, and no two entry points can drift. (FROM NAME's chain is a
+// different chain over different values — #144 — not a third entry point to
+// this one.)
+
+// Pinned by the user, which is not the same as "on screen right now": in
+// GENERATOR the block goes home to the panel that owns it, because that mode is
+// the transform panel and two visible copies is what the single instance exists
+// to prevent.
+let dockPinned = transformDocked();
+
+// Put the block where the current mode says it belongs, and show the dock only
+// when it is holding something. One function, called from everywhere, so the
+// button's state and the block's whereabouts cannot disagree.
+function syncTransformPlacement() {
+  const dock = el("transform-dock");
+  const inGenerator = currentMode === "generator";
+  const docked = dockPinned && !inGenerator;
+  if (docked) dock.append(el("transform-block"));
+  else el("transform-home").after(el("transform-block"));
+  dock.hidden = !docked;
+  el("transform-btn").setAttribute("aria-pressed", String(dockPinned));
+  // The side column scrolls, and the dock is at the foot of it: bring it into
+  // view rather than leaving the user to find what they just pinned.
+  if (docked) dock.scrollIntoView({ block: "nearest" });
+  // The header counts the selection (or the staged plan) and the button says
+  // which of the two it will act on; refreshGenerator only runs on entering the
+  // mode, so bring them up to date for wherever the block has just landed.
+  if (docked) refreshGenerator();
 }
 
-function openTransformPopover(anchor = "transform-btn") {
-  transformAnchor = anchor;
-  const pop = el("transform-pop");
-  pop.appendChild(el("transform-block"));
-  pop.hidden = false;
-  // The block's header counts the selection (or the staged plan) and its button
-  // says which of the two it will act on, and refreshGenerator only runs on
-  // entering the mode — so bring them up to date for where we actually are.
-  refreshGenerator();
-  placeTransformPopover();
+function setTransformDocked(on) {
+  dockPinned = on;
+  saveTransformDocked(on);
+  syncTransformPlacement();
 }
 
-function closeTransformPopover() {
-  if (!transformPopoverOpen()) return;
-  // Back into the GENERATOR panel, at its marked position, so that panel is
-  // whole again whether or not the user ever opens the mode.
-  el("transform-home").after(el("transform-block"));
-  el("transform-pop").hidden = true;
-}
-
-function toggleTransformPopover(anchor = "transform-btn") {
-  // A second click on the OTHER button re-anchors rather than closing: the two
-  // are entry points to one popover, not two toggles.
-  if (transformPopoverOpen() && transformAnchor === anchor) closeTransformPopover();
-  else openTransformPopover(anchor);
+function toggleTransformDock() {
+  setTransformDocked(!dockPinned);
 }
 
 // ---- wire up ----
-// The Groups popover over this panel's chain: ticks and Run ticked, because
-// several groups composing into one plan is what this mode is for (#137).
+// The group list inside this panel's chain block (#234): ticks and Run ticked,
+// because several groups composing into one plan is what this mode is for
+// (#137), and a click on a name to load one.
 createGroupsMenu({
-  btn: "groups-btn",
   menu: "groups-menu",
   chain: transformChain,
   onRun: runTickedGroups,
+  inline: true,
 });
 el("transform-preview").addEventListener("click", previewTransform);
-el("transform-btn").addEventListener("click", (e) => {
-  e.stopPropagation();
-  toggleTransformPopover();
-});
-// The diff bar's second entry point to the same popover (#142).
-el("diff-cleanup").addEventListener("click", (e) => {
-  e.stopPropagation();
-  toggleTransformPopover("diff-cleanup");
-});
-// Dismissal: anywhere outside, or Escape. The Groups popover nested inside opens
-// over the block, so a click landing in it must not count as "outside".
-document.addEventListener("click", (e) => {
-  if (!transformPopoverOpen()) return;
-  if (e.target.closest?.("#transform-pop, #transform-btn, #diff-cleanup")) return;
-  closeTransformPopover();
-});
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && transformPopoverOpen()) {
-    const anchor = transformAnchor;
-    closeTransformPopover();
-    el(anchor).focus();
-  }
-});
-window.addEventListener("resize", () => {
-  if (transformPopoverOpen()) placeTransformPopover();
-});
+el("transform-btn").addEventListener("click", toggleTransformDock);
+// The plan bar's entry point to the same chain (#142): Clean up pins it rather
+// than opening anything, and pins it whether or not it was pinned already —
+// pressing "clean this up" and getting nothing would be the wrong answer.
+el("diff-cleanup").addEventListener("click", () => setTransformDocked(true));
+el("transform-undock").addEventListener("click", () => setTransformDocked(false));
 el("autonum-run").addEventListener("click", numberTracks);
 el("vinyl-split").addEventListener("click", splitVinylSides);
 // Rule reorder is wired per-card by the chain component via enablePointerReorder
 // (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 
 export {
-  closeTransformPopover,
+  syncTransformPlacement,
   numberTracks,
   previewTransform,
   refreshGenerator,
