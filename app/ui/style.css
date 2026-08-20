@@ -4111,7 +4111,10 @@ button.primary:disabled {
 /* Empty state — a dashed, faintly-striped panel that says "nothing yet" without
    looking broken (opt in with .inert-panel). */
 .empty.inert-panel {
-  margin: var(--space-2);
+  /* Flush with whatever it stands among: a margin of its own inset it from the
+     rows above and below, so the placeholder sat narrower than the controls it
+     was standing in for (#246). Its container's padding is what spaces it. */
+  margin: 0;
   border: 1px dashed var(--border);
   border-radius: var(--radius-lg);
   /* No stripes (#245). The motif is the app's "inert" texture — cover well,

@@ -72,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dot while the job's chain has rules in it**, and the count in its tooltip:
   the chain runs on its own now, so whether one will is answerable without
   opening anything.
+- **The empty-state box lines up with the rows around it.** It carried a margin
+  of its own, so the dashed placeholder stood a few pixels narrower than the
+  controls above and below it — a misalignment where a stand-in for those very
+  controls should match them.
 - **Empty states lost their diagonal stripes.** The inert motif behind one line
   of text was busier than the sentence in front of it, and heavier again in the
   dark theme; the dashed edge says "placeholder" on its own. The stripes stay
