@@ -1728,9 +1728,17 @@ body:not(.show-checkbox) #tracks td.sel {
    (#200). On the field alone it followed the field's contour — square at the
    seam, two pixels of accent over the caret's edge — and split one control in
    two; the caret's own button ring (#76) did the same from the other side. */
+/* The composite owns the whole focus indicator: the ring around the pair, and
+   the accent edge on BOTH halves rather than on whichever one has focus (#252).
+   Left to the focused child, that edge showed through as a green sliver one line
+   inside the ring — two indicators for one field, one of them a fragment. */
 .query:has(:focus-visible) {
   border-radius: var(--radius-md);
   box-shadow: var(--ring);
+}
+.query:has(:focus-visible) input[type="text"],
+.query:has(:focus-visible) .query-presets {
+  border-color: var(--accent);
 }
 .query input[type="text"]:focus-visible,
 .query .query-presets:focus-visible {
