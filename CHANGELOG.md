@@ -92,6 +92,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   was previewing values that would never be written. It now goes through the
   same chain, by the same path the real plan takes, so what is under the pattern
   is what lands in the table.
+- **Key notation stopped eating titles.** The mode after a note letter was
+  matched with `starts_with`, so anything beginning with *min* or *maj* counted
+  as a whole key: **A Minor Detail** became `8A` and **A Major Reason** became
+  `11B`. Harmless while the rule only ever ran on the Key field, and not
+  harmless now that a chain can be aimed at every tag field. The mode must be
+  one of the spellings the step actually models — nothing, `m`, `min`, `minor`,
+  `maj`, `major` — and anything else means this is not a key. `Am`, `A min`,
+  `A-minor` and `A major` are unaffected. The other rules were swept for the
+  same shape and are clean: removing diacritics works off an explicit Latin
+  table, so Cyrillic `Ё` and `Й` keep their marks; transliteration produces
+  Latin from Cyrillic and cannot mix scripts; the case exceptions are a curated
+  list that deliberately leaves out single-letter roman numerals.
 - **Transliterate to Cyrillic decides once per value.** Requiring a trace of
   romanization left exactly one word converted in an English title —
   `la_буш_-_music_from_the_temple_of_house` — because `sh` is both an English

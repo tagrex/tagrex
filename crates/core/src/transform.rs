@@ -778,13 +778,15 @@ fn parse_musical(input: &str) -> Option<Key> {
         .filter(|c| !c.is_whitespace() && *c != '-')
         .flat_map(char::to_lowercase)
         .collect();
-    let minor = if mode.is_empty() || mode.starts_with("maj") {
-        false
-    } else if mode == "m" || mode.starts_with("min") {
-        true
-    } else {
-        // Unknown trailing text (e.g. "A7", "Ddim") — not a key we model.
-        return None;
+    // Exactly the spellings this step models, not a prefix of them (#260):
+    // `starts_with` made "A Minor Detail" a key and replaced a title with `8A`.
+    // A chain can run on every tag field now, so "unrecognised" has to mean
+    // unrecognised.
+    let minor = match mode.as_str() {
+        "" | "maj" | "major" => false,
+        "m" | "min" | "minor" => true,
+        // Anything else — "A7", "Ddim", "Minor Detail" — is not a key we model.
+        _ => return None,
     };
     Some(Key { pitch, minor })
 }
@@ -1166,5 +1168,22 @@ mod tests {
         assert_eq!(camelot.apply("13A"), "13A"); // out of the 1..=12 range
                                                  // Already-Camelot input is idempotent.
         assert_eq!(camelot.apply("8A"), "8A");
+    }
+
+    #[test]
+    fn key_does_not_eat_a_title_that_starts_like_one() {
+        // #260: the mode was matched with `starts_with`, so anything beginning
+        // with min/maj after a note letter parsed as a key — and a chain run
+        // over every tag field replaced a title with a four-character code.
+        let camelot = KeyNotation::new(KeyStyle::Camelot);
+        assert_eq!(camelot.apply("A Minor Detail"), "A Minor Detail");
+        assert_eq!(camelot.apply("A Major Reason"), "A Major Reason");
+        assert_eq!(camelot.apply("Bb Minority Report"), "Bb Minority Report");
+        // The spellings it does model still work, spaced, hyphenated or not.
+        assert_eq!(camelot.apply("Am"), "8A");
+        assert_eq!(camelot.apply("A min"), "8A");
+        assert_eq!(camelot.apply("A-minor"), "8A");
+        assert_eq!(camelot.apply("A major"), "11B");
+        assert_eq!(camelot.apply("A"), "11B");
     }
 }
