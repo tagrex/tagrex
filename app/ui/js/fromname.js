@@ -11,10 +11,16 @@
 // preview bar like everything else.
 import { el, escapeHtml, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
-import { chainHasRules, runChainOverPlan } from "./chains.js";
+import { chainHasRules, onChainChanged, runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
 import { columnLabel } from "./columns.js";
-import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
+import {
+  previewPlan,
+  previewSource,
+  selectedPaths,
+  setPreviewPlan,
+  setPreviewSource,
+} from "./state.js";
 
 // The pattern is the user's working state for the panel, not a backend setting,
 // so it lives in localStorage beside the other persisted panel prefs.
@@ -148,3 +154,12 @@ el("from-name-mask").addEventListener("input", () => {
 loadFromNamePrefs();
 
 export { previewTagsFromName, refreshNameProbe, scheduleNameProbe };
+
+// Changing the chain changes what this panel would produce, so it says so at
+// once (#248): the read-out always, and the staged plan too when the one on the
+// table came from here — re-running is exactly what pressing the button again
+// would do, which is what the user would otherwise have to remember.
+onChainChanged("fromname", () => {
+  refreshNameProbe();
+  if (previewSource === "fromname" && previewPlan?.changes.length) previewTagsFromName();
+});

@@ -72,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dot while the job's chain has rules in it**, and the count in its tooltip:
   the chain runs on its own now, so whether one will is answerable without
   opening anything.
+- **Changing a chain shows its effect at once.** Set a rule, close the dialog,
+  and the panel that owns that chain catches up without another press: FROM NAME
+  re-reads the line-up under its pattern, and a plan already staged from FROM
+  NAME or RENAMER is re-run — RENAMER has no read-out of its own, its staged
+  diff is the example. Re-running is exactly what pressing the button again
+  would do, which is what you would otherwise have to remember.
 - **The FROM NAME read-out shows what the button will actually produce.** The
   live line-up under the pattern showed the raw extraction — `the_x_factor`,
   `desert_rain` — while the chain that turns underscores into spaces and

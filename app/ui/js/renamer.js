@@ -10,9 +10,15 @@
 // choosing it is what authorizes the backend to write there.
 import { el, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
-import { runChainOverPlan } from "./chains.js";
+import { onChainChanged, runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
-import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
+import {
+  previewPlan,
+  previewSource,
+  selectedPaths,
+  setPreviewPlan,
+  setPreviewSource,
+} from "./state.js";
 
 // The destination and mode are working state for the panel, not backend
 // settings — and re-picking the same library folder every session is exactly
@@ -24,7 +30,13 @@ const MOVE_PRUNE_STORAGE_KEY = "tagrex.movePrune";
 let moveMode = "move";
 
 // Rename by mask (#37): render each selected file's new name from its tags.
+// Which of this panel's two previews was last run, so a chain change can redo
+// the same one rather than guessing (#248). Both stage a plan whose source is
+// "rename", which is all the shared state records.
+let lastPreview = null;
+
 async function previewRename() {
+  lastPreview = previewRename;
   const paths = selectedPaths();
   if (paths.length === 0) {
     toast("Select at least one track", true);
@@ -47,6 +59,7 @@ async function previewRename() {
 // Builds the plan and shows it in the usual preview view, so the move is
 // applied (and undone) through exactly the same path as a rename.
 async function previewMove() {
+  lastPreview = previewMove;
   const paths = selectedPaths();
   if (paths.length === 0) {
     toast("Select the tracks to move first", true);
@@ -146,3 +159,9 @@ el("move-prune").addEventListener("change", () =>
 el("move-dest").value = readStored(MOVE_DEST_STORAGE_KEY) || "";
 el("move-prune").checked = !!readStored(MOVE_PRUNE_STORAGE_KEY);
 setMoveMode(readStored(MOVE_MODE_STORAGE_KEY) === "copy" ? "copy" : "move");
+
+// RENAMER has no read-out under its pattern: the staged diff IS its example, so
+// a chain change redoes the preview that produced it (#248).
+onChainChanged("renamer", () => {
+  if (previewSource === "rename" && previewPlan?.changes.length) lastPreview?.();
+});

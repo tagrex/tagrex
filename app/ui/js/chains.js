@@ -62,6 +62,19 @@ function persist() {
   }
 }
 
+// What to redo when a context's chain changes (#248). The panels register their
+// own "show me again" — the read-out under a pattern, the staged plan that came
+// from this very context — because changing a rule and then having to press the
+// button again to see it is the two-step this whole design got rid of.
+const listeners = new Map();
+function onChainChanged(context, fn) {
+  if (!listeners.has(context)) listeners.set(context, []);
+  listeners.get(context).push(fn);
+}
+function notifyChainChanged(context) {
+  for (const fn of listeners.get(context) || []) fn();
+}
+
 // The chain a context holds, or an empty one. Never null: every caller wants
 // something with `.rules`.
 function chainFor(context) {
@@ -117,6 +130,8 @@ async function runChainOverPlan(plan, context) {
 
 export {
   CHAIN_CONTEXTS,
+  onChainChanged,
+  notifyChainChanged,
   chainFor,
   storedChainFor,
   setChainFor,

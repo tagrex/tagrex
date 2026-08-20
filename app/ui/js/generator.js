@@ -27,7 +27,13 @@ import {
   setPreviewSource,
   tracks,
 } from "./state.js";
-import { chainFor, setChainFor, setLiveChainSource, storedChainFor } from "./chains.js";
+import {
+  chainFor,
+  notifyChainChanged,
+  setChainFor,
+  setLiveChainSource,
+  storedChainFor,
+} from "./chains.js";
 
 // ---- transformations (#34) ----
 // This panel's chain, over the tags and names already on disk. It lives for the
@@ -371,6 +377,10 @@ function closeTransformModal() {
   el("transform-block").classList.remove("in-dialog");
   el("transform-home").after(el("transform-block"));
   refreshTransformButton();
+  // Whatever this context shows as its example — the read-out under a pattern,
+  // a plan already staged from here — shows the new chain now, without the
+  // button being pressed again (#248).
+  if (shownContext) notifyChainChanged(shownContext);
 }
 
 // Where the block belongs when no dialog holds it, and whether the button that
