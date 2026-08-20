@@ -1855,7 +1855,11 @@ body.show-checkbox tr.playing td.sel {
    slightly different widths — the repeat button carries a superscript and is
    wider than the rest — which is a lot of furniture for what is one row of
    transport glyphs. Equal squares, and a fill only under the pointer. */
-#player .icon {
+/* `#sb-play` is the same control in the same bar — the player's toggle while
+   the row is down — so it is flat for the same reason, and is only outside
+   `#player` because it has to outlive it (#226). */
+#player .icon,
+#sb-play {
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
@@ -1866,10 +1870,13 @@ body.show-checkbox tr.playing td.sel {
   color: var(--text);
 }
 #player .icon:hover:not(:disabled),
-#player .icon:focus-visible {
+#player .icon:focus-visible,
+#sb-play:hover:not(:disabled),
+#sb-play:focus-visible {
   background: var(--row-hover);
 }
-#player .icon > svg {
+#player .icon > svg,
+#sb-play > svg {
   width: 16px;
   height: 16px;
 }

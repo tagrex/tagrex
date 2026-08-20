@@ -20,6 +20,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   between the two ID3v2 revisions — was missing from the page entirely and now
   has a paragraph. The checklist gained the status line, so it moves with the
   version from here on.
+- **`docs/architecture.md` describes the program that exists.** It was written
+  before any code did and still read that way, so its predictions had gone
+  stale: the duplicate finder and the "exotic" formats had come off the deferred
+  list, scripting had arrived along the predicted line as saved chains plus a
+  mask function language, the provider list was one short, and four of the five
+  implementation steps were done. It also gained the two invariants a
+  contributor needs before adding anything — a mask calling a function is
+  render-only, and every plan returns through the one gate where field locks are
+  enforced — plus the cover, export and matching modules, and the frontend and
+  audio parts of the stack.
+
+### Fixed
+
+- **The Play button in the status bar is flat like the rest of the player.** It
+  is the player's own toggle while the row is down, but it sits outside the
+  player element, so the rule that flattened the transport buttons never reached
+  it: a bordered, filled, rounded box on a bar of flat glyphs and small text.
+  Same size, same glyph, same hover fill as the transport now.
 
 ## [0.11.1] - 2026-08-20
 

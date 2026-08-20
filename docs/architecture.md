@@ -1,8 +1,10 @@
 # TagRex architecture
 
-This document fixes the module boundaries and the reasoning behind them before
-any code exists. It is the yardstick for future design decisions and the first
-thing a contributor should read.
+This document fixes the module boundaries and the reasoning behind them. It was
+written before any code existed and is kept current as the code catches up with
+it: what follows is the shape of the program as it stands, with the reasoning
+that produced it. It is the yardstick for design decisions and the first thing a
+contributor should read. Per-change history is in `CHANGELOG.md`, not here.
 
 ## The one idea everything follows from
 
@@ -29,11 +31,14 @@ the pipeline. This is an invariant, not a preference.
 
 | Module | Responsibility | Notes |
 | --- | --- | --- |
-| Tag engine | Read/write ID3v2.3/2.4, Vorbis Comments, MP4 atoms | Backed by [lofty](https://github.com/Serial-ATA/lofty-rs); no hand-written parsers |
+| Tag engine | Read/write ID3v2.3/2.4, ID3v1, APE, Vorbis Comments, MP4 atoms | Backed by [lofty](https://github.com/Serial-ATA/lofty-rs); no hand-written parsers. Writes go through the concrete tag type, so frames the app has no field for — cue points, ratings, ReplayGain — survive a round-trip. A file can carry several blocks; which one is read and written is reported, and tags can be converted from one kind to another |
 | Scanner and table model | Async directory scan, virtualized list, multi-select | Must stay responsive at 50k+ files |
-| Mask engine | One grammar, two directions: generate (tags → filename) and parse (filename → tags) | A single implementation for both directions is mandatory — divergent placeholder behavior between rename and import is the worst class of bug this tool can have |
+| Mask engine | One grammar, two directions: generate (tags → filename) and parse (filename → tags), plus a function library over both | A single implementation for both directions is mandatory — divergent placeholder behavior between rename and import is the worst class of bug this tool can have. The one deliberate exception: **a mask that calls a function is render-only**, because substitution is invertible and `$upper` is not |
 | Transform pipeline | Case conversion, find/replace, regex, trimming | Composable chain of steps over fields; used by masks, manual edits, and provider post-processing (e.g. stripping Discogs `Artist (3)` disambiguation) |
-| Transaction pipeline | Compile plans, render previews, apply, journal | See "Undo journal" below |
+| Transaction pipeline | Compile plans, render previews, apply, journal | See "Undo journal" below. Every plan the backend builds returns through **one gate** (`App::plan`), which is where field locks are enforced — an operation written later is covered without its author having to know the gate exists, and the preview cannot promise a change that apply will not make |
+| Matching | Score a release candidate against the files in hand | Content-based, plus exact ISRC matching; shared by every provider so a new source inherits it |
+| Cover art | Fetch, embed, export, resize, `folder.jpg` | A cover change is a change in the plan like any other, so it previews and undoes like one |
+| Export | Playlists, CSV, HTML, XML, mask-based reports | Read-only by construction: writes go into the opened folder, never into the audio files |
 
 ### Plugins (module boundary now, dynamic loading maybe later)
 
@@ -62,7 +67,10 @@ Planned plugin families:
 
 - **Metadata sources.** Discogs first (personal user token, 60 req/min is
   plenty for tagging), MusicBrainz second (no token, better for non-electronic
-  music). Bandcamp and others can follow as contributions.
+  music), Beatport third (digital electronic releases, where it carries the
+  catalogue, key and BPM the others do not). Each is its own workspace member
+  behind the trait; adding one touches no core code, which is the whole point of
+  the boundary. Others can follow as contributions.
 - **Cover sources.** Fetch, embed, export.
 - **Exporters.** Playlists, CSV, text reports.
 
@@ -72,13 +80,19 @@ Planned plugin families:
   automation-first taggers; the first versions prioritize manual control over
   automagic. Also drags in a Chromaprint dependency.
 - **ReplayGain.** Audio analysis, not metadata editing. Different world.
-- **Scripting / actions**, as the established taggers offer them. Deferred, but
-  not ignored: the
-  transform pipeline is designed as a composable chain precisely so that
-  scripting later becomes *serialization of chains into saved presets*, not a
-  new subsystem.
-- **Duplicate finder, exotic formats** (APE, WavPack, ASF). lofty supports the
-  formats, enabling them is cheap, but they earn no UI priority yet.
+- **Scripting / actions**, as the established taggers offer them. This is the
+  one on this list that has largely happened, and along the predicted line: the
+  transform pipeline was designed as a composable chain precisely so that
+  scripting would become *serialization of chains into saved presets* rather
+  than a new subsystem, and it did — chains are saved as named action groups and
+  re-run as one plan. The mask grammar grew the other half, a function language
+  over the placeholders. What is still deferred is a general scripting language
+  with control flow and variables, and the case for it is weaker now.
+
+**No longer deferred** (kept here because the reasoning is what the list is
+for): the **duplicate finder** is a mode of its own, and the **exotic formats**
+turned out to be as cheap as predicted — APE, WavPack, Musepack, Monkey's Audio,
+Speex and the rest are read and written.
 
 ## Undo journal
 
@@ -101,16 +115,29 @@ editor fails.
   already done elsewhere.
 - **Shell:** Tauri. One codebase for Windows, macOS (including Apple Silicon),
   and Linux; small binaries; the Rust core runs in-process.
+- **Frontend:** static HTML, CSS and ES modules under `app/ui`, served straight
+  to the webview. No npm, no framework and no build step — a change to the
+  interface is a file edit and a reload, and the UI can be opened in an ordinary
+  browser against a mock of the command layer to develop it without the shell.
+- **Audio:** rodio over symphonia, for the preview player. Decoding earns its
+  place twice: playback, and the loudness envelope the seek bar draws. Analysis
+  beyond that — ReplayGain — is still out of scope.
 
 ## Implementation order
 
-1. Core without any network: scanner → table → masks → preview → apply →
-   undo. Formats: MP3, FLAC, M4A. This alone is already a usable tool — a
-   full-featured batch tagger minus the online lookups.
-2. `MetadataProvider` trait + Discogs provider (personal token).
-3. MusicBrainz provider.
-4. Covers and exporters.
-5. Revisit the deferred list.
+Steps 1–4 are done and shipped; the order is kept because it is the argument for
+why the parts were built in that sequence, and it held.
+
+1. ~~Core without any network: scanner → table → masks → preview → apply →
+   undo. Formats: MP3, FLAC, M4A.~~ This alone was already a usable tool — a
+   full-featured batch tagger minus the online lookups, which is what the first
+   releases were.
+2. ~~`MetadataProvider` trait + Discogs provider (personal token).~~
+3. ~~MusicBrainz provider.~~
+4. ~~Covers and exporters.~~
+5. Revisit the deferred list — in progress: the duplicate finder and the extra
+   formats came off it, scripting arrived as chains and mask functions, and
+   AcoustID and ReplayGain are still where they were.
 
 ## Prior art and positioning
 
