@@ -370,7 +370,7 @@ function mockInvoke(cmd, args) {
           return rename_to === p ? null : { path: p, rename_to, tag_changes: [] };
         })
         .filter(Boolean);
-      return Promise.resolve({ description: "Rename by mask", changes });
+      return Promise.resolve({ description: `Rename by mask: ${args.mask}`, changes });
     }
     case "probe_tags_from_name": {
       const subject = mockNameSubject(args.path, args.mask);
@@ -395,7 +395,7 @@ function mockInvoke(cmd, args) {
           return tag_changes.length ? { path: p, rename_to: null, tag_changes } : null;
         })
         .filter(Boolean);
-      return Promise.resolve({ description: "Tags from name", changes });
+      return Promise.resolve({ description: `Tags from name: ${args.mask}`, changes });
     }
     case "preview_transform": {
       // Mirrors the backend closely enough to exercise the dialog: literal

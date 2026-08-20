@@ -1110,6 +1110,11 @@ body.diffing #tracks tbody tr.staged td.sel {
   display: flex;
   align-items: center;
   gap: var(--space-3);
+  /* Centred on a pill as wide as its contents: at a narrow window that put half
+     of it outside the left edge, with no way to scroll it back (#232). Capped
+     to the table's width, and what gives way is the plan description — the
+     count, the toggle and the three gate buttons all have to stay readable. */
+  max-width: calc(100% - 2 * var(--space-5));
   z-index: 20;
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
   background: var(--bg);
@@ -1128,9 +1133,21 @@ body.diffing #tracks tbody tr.staged td.sel {
   gap: var(--space-2);
   white-space: nowrap;
 }
+/* The one part of the pill allowed to give way, and it gives way from the right
+   — where the plan description is — so the count survives to the last (#232).
+   Deliberately NOT a flex container: `0` and ` to apply` would become separate
+   anonymous items and the space between them would be trimmed. */
 .diff-actionbar .ab-count {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: var(--text-xs);
   white-space: nowrap;
+}
+.diff-actionbar .btn,
+.diff-actionbar .toggle-old,
+.diff-actionbar .ab-sep {
+  flex: 0 0 auto;
 }
 .diff-actionbar .ab-count b {
   color: var(--accent-ink);

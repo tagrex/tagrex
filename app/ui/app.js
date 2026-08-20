@@ -1075,7 +1075,21 @@ function enterDiffState() {
   el("tracks").classList.remove("show-old");
   showView("files"); // never diff over the dedup view
   renderTracks();
-  el("ab-plan").textContent = previewPlan.description ? ` · ${previewPlan.description}` : "";
+  // The pill names the OPERATION, not the pattern behind it (#232). A mask can
+  // be a hundred characters and it was typed a few centimetres above this bar,
+  // so spelling it out here is the longest thing on screen saying the least —
+  // while in the undo journal, which is where the description is stored, it is
+  // the very thing that tells you months later what a batch did. So the head of
+  // the description shows and the whole of it is a hover away.
+  const plan = el("ab-plan");
+  const description = previewPlan.description || "";
+  const [operation] = description.split(": ");
+  plan.textContent = description ? ` · ${operation}` : "";
+  if (description && description !== operation) {
+    plan.title = description;
+  } else {
+    plan.removeAttribute("title");
+  }
   renderLockedSkips();
   el("diff-actionbar").hidden = false;
   updateDiffBar();

@@ -58,6 +58,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The staged-plan bar stays inside the window, and stops reciting the mask.**
+  The pill is centred on the table and was as wide as its contents demanded, so
+  in a narrow window half of it hung off the left edge with no way to bring it
+  back. It is now capped to the table's width, and what gives way is the plan
+  description — the count, the Show-old toggle and the three gate buttons keep
+  their full size at any width. The description itself was the whole pattern:
+  `Tags from name: %albumartist%_-_%album%_(%catalognumber%)…`, the longest
+  thing on screen saying the least, a few centimetres under the field where that
+  pattern had just been typed. The bar now names the operation — *Tags from
+  name*, *Rename by mask* — with the full text on hover. The undo journal still
+  records the whole description, which is where the mask is what tells you
+  months later what a batch did.
 - **The tooltip wraps instead of eating its own text.** It went out as one line
   with an ellipsis and a 260px cap, so every title longer than that was cut in
   half — "Transform the selected files' tags — the GENER…". On a control whose
