@@ -4114,7 +4114,11 @@ button.primary:disabled {
   margin: var(--space-2);
   border: 1px dashed var(--border);
   border-radius: var(--radius-lg);
-  background: var(--inert-stripes-soft);
+  /* No stripes (#245). The motif is the app's "inert" texture — cover well,
+     disabled controls, skeletons — and behind one line of text it was busier
+     than the sentence it sat under, more so in the dark theme. The dashed edge
+     is enough to say "placeholder"; the fill was saying it twice. */
+  background: none;
 }
 
 /* Skeleton loader — the same stripes, sliding, while a fetch is in progress. */

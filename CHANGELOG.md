@@ -72,6 +72,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dot while the job's chain has rules in it**, and the count in its tooltip:
   the chain runs on its own now, so whether one will is answerable without
   opening anything.
+- **Empty states lost their diagonal stripes.** The inert motif behind one line
+  of text was busier than the sentence in front of it, and heavier again in the
+  dark theme; the dashed edge says "placeholder" on its own. The stripes stay
+  where the texture earns its keep — the cover well, disabled controls, and the
+  skeleton loaders, where the movement is the point.
 - **Empty states are a line, not a panel — everywhere.** "Nothing here yet" had
   24px of padding inside a striped box with another 10px of margin around it, in
   the file table, the search results, the deduplicator and the rule chain alike:
