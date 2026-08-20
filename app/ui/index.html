@@ -97,7 +97,7 @@
          Table is the subject (noun), each tab is a verb applied to it. -->
     <nav class="modebar">
       <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="tagger" title="Edit tags — from Discogs, by hand, and cover art" aria-label="TAGGER"><svg class="ico"><use href="#i-tag"/></svg><span class="lbl">TAGGER</span></button>
+        <button class="mode-tab active" data-mode="tagger" title="Edit tags — from an online source, by hand, and cover art" aria-label="TAGGER"><svg class="ico"><use href="#i-tag"/></svg><span class="lbl">TAGGER</span></button>
         <button class="mode-tab" data-mode="renamer" title="Rename files and reorganize them into folders" aria-label="RENAMER"><svg class="ico"><use href="#i-rename"/></svg><span class="lbl">RENAMER</span></button>
         <button class="mode-tab" data-mode="generator" title="Generate and clean up tag/filename values" aria-label="GENERATOR"><svg class="ico"><use href="#i-wand"/></svg><span class="lbl">GENERATOR</span></button>
         <button class="mode-tab" data-mode="deduplicator" title="Find likely duplicate files in the library" aria-label="DEDUPLICATOR"><svg class="ico"><use href="#i-dedup"/></svg><span class="lbl">DEDUPLICATOR</span></button>
@@ -280,7 +280,8 @@
             <button class="subtab" data-subtab="filename" type="button">FROM NAME</button>
           </div>
 
-          <!-- ONLINE: Discogs search. The head is pinned; only the results scroll. -->
+          <!-- ONLINE: search a metadata source. The head is pinned; only the
+               results scroll. -->
           <div id="subtab-online" class="subtab-panel online">
             <div class="online-head">
               <div class="online-head-row">
@@ -347,7 +348,7 @@
               <div id="release-more" class="release-more" hidden>
                 <button id="load-more" type="button">Load more results</button>
               </div>
-              <p id="discogs-empty" class="empty inert-panel">Search Discogs to see releases.</p>
+              <p id="discogs-empty" class="empty inert-panel">Search the selected source to see releases.</p>
             </div>
           </div>
 

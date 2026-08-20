@@ -92,6 +92,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   was previewing values that would never be written. It now goes through the
   same chain, by the same path the real plan takes, so what is under the pattern
   is what lands in the table.
+- **Three places stopped saying Discogs when the source is something else.**
+  The empty state under the results read *"Search Discogs to see releases."*
+  with MusicBrainz selected two rows above it; the TAGGER tab's tooltip named
+  one of the three sources; and a staged import was described as `Import Discogs
+  release` whatever it came from — which put the wrong source in the plan bar
+  and in the undo journal, where the description is what tells you months later
+  what a batch did. The first two are now generic, and the plan names the source
+  it actually used. Where the provider *is* the subject — its token field, the
+  shipped `Discogs cleanup` preset, the `Discogs Release ID` frame — the name
+  stays.
 - **The table's placeholder has room again.** Lining that box up with its
   neighbours took its margin away everywhere — right in the rule chain, where it
   stands among full-width controls, wrong in the file table, where it stands

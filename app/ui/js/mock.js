@@ -1181,7 +1181,17 @@ function mockInvoke(cmd, args) {
         }
         return { path: p, rename_to: null, tag_changes };
       });
-      return Promise.resolve({ description: "Import Discogs release", changes });
+      // Named for the source the selection came from, as the backend does (#255).
+      const src = args.selection?.source;
+      const label =
+        src === "musicbrainz"
+          ? "Import MusicBrainz release"
+          : src === "beatport"
+            ? "Import Beatport release"
+            : src === "discogs"
+              ? "Import Discogs release"
+              : "Import release";
+      return Promise.resolve({ description: label, changes });
     }
     default:
       return Promise.reject(`unknown command: ${cmd}`);

@@ -3530,7 +3530,11 @@ impl App {
                 });
             }
         }
-        Ok(self.plan("Import Discogs release".to_string(), changes, false))
+        Ok(self.plan(
+            import_description(selection.source.as_deref()),
+            changes,
+            false,
+        ))
     }
 }
 
@@ -3600,6 +3604,19 @@ fn collect_folder_extras(
 /// has no standard tag, so a matching `DISCOGS_RELEASE_ID` custom field is used.
 /// A `Custom` field round-trips as a TXXX frame / Vorbis comment on every
 /// format, and the table groups on whichever is present.
+/// What an import calls itself (#255). The source is part of the answer, and
+/// this description outlives the preview: it is what the undo journal shows
+/// months later, where "which of the three did this come from" is exactly the
+/// question. An unknown or absent source says nothing rather than guessing.
+fn import_description(source: Option<&str>) -> String {
+    match source {
+        Some("discogs") => "Import Discogs release".to_string(),
+        Some("musicbrainz") => "Import MusicBrainz release".to_string(),
+        Some("beatport") => "Import Beatport release".to_string(),
+        _ => "Import release".to_string(),
+    }
+}
+
 fn release_id_field(source: Option<&str>) -> TagField {
     match source {
         Some("musicbrainz") => TagField::Custom("MUSICBRAINZ_ALBUMID".to_string()),
