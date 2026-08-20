@@ -45,7 +45,6 @@ const transformChain = createRuleChain({
     empty: "transform-empty",
     kind: "transform-kind",
     add: "transform-add",
-    scope: "transform-scope",
   },
 });
 
@@ -235,7 +234,7 @@ async function previewTransform() {
           paths: selectedPaths(),
           groups: [transformChain.asGroup()],
         });
-    stageRun(plan, [transformChain.getScope()], wasStaged);
+    stageRun(plan, transformChain.getScopes(), wasStaged);
     toast(
       plan.changes.length
         ? `Previewing ${plural(plan.changes.length, "file", "files")} — click Apply`

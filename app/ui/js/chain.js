@@ -143,9 +143,10 @@ function createRuleChain({ ids }) {
       case_sensitive: false,
       style: kind === "case" ? "title" : kind === "key" ? "camelot" : "",
       enabled: true,
-      // The row above the chain is what a NEW rule starts on (#250); from there
-      // the rule carries its own target.
-      scope: el(ids.scope).value,
+      // Where the last rule aims (#251). A chain is usually a run of steps over
+      // one field, so inheriting costs one choice for the whole run — and when
+      // it is wrong it is wrong in the row you are already looking at.
+      scope: rules.length ? rules[rules.length - 1].scope || "tags" : "tags",
     });
     render();
   }
@@ -265,7 +266,17 @@ function createRuleChain({ ids }) {
         opt.textContent = label;
         scope.appendChild(opt);
       }
-      scope.value = rule.scope || el(ids.scope).value;
+      scope.value = rule.scope || "tags";
+      // A group may name something this picker doesn't list — a field added
+      // later, or one this build doesn't model. Keep it rather than silently
+      // re-aiming the rule at every tag.
+      if (scope.value !== (rule.scope || "tags")) {
+        const kept = document.createElement("option");
+        kept.value = rule.scope;
+        kept.textContent = rule.scope;
+        scope.appendChild(kept);
+        scope.value = rule.scope;
+      }
       scope.addEventListener("change", () => {
         rule.scope = scope.value;
       });
@@ -388,19 +399,30 @@ function createRuleChain({ ids }) {
     get length() {
       return rules.length;
     },
-    getScope: () => el(ids.scope).value,
-    setScope(value) {
-      if (value) el(ids.scope).value = value;
-    },
+    // What the chain aims at, taken from its rules: they each carry a target
+    // now, so there is no chain-wide one to read (#251). Used to decide whether
+    // a run produced renames or tag edits.
+    getScopes: () => [...new Set(rules.map((r) => r.scope || "tags"))],
     // The chain as the rules the backend takes.
     rules: () => rules,
     // The chain as a one-off action group — how both the saved-group runner and
     // FROM NAME's cleanup want it.
-    asGroup: (name = "") => ({ name, scope: el(ids.scope).value, rules: rules.map(ruleForGroup) }),
+    // Every rule carries its own target, so the group-level scope is only the
+    // fallback for a rule that names none — which, out of this chain, never
+    // happens. It stays in the shape because that is what the backend and every
+    // saved group expect.
+    asGroup: (name = "") => ({ name, scope: "tags", rules: rules.map(ruleForGroup) }),
     // Load a group's steps + scope into the live chain (fresh ids for reorder).
+    // Loading a group MATERIALIZES each rule's target (#251): a group written
+    // before per-rule scopes carries one scope for all of them, and the chain
+    // has nowhere to keep that — so each rule takes it as its own, which is
+    // exactly what the backend would have done with it.
     load(group) {
-      rules = (group.rules || []).map((r) => ({ id: ++ruleIdCounter, ...ruleForGroup(r) }));
-      chain.setScope(group.scope);
+      rules = (group.rules || []).map((r) => ({
+        id: ++ruleIdCounter,
+        ...ruleForGroup(r),
+        scope: r.scope || group.scope || "tags",
+      }));
       render();
     },
   };

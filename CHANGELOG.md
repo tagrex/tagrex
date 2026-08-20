@@ -133,6 +133,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   tight — one form read top to bottom does not need the spacing of a page with
   regions to tell apart — and the note about when the chain runs is a line of
   text rather than a tinted box.
+- **The chain-level scope row is gone.** With the target on every rule it had
+  one job left — setting what the next rule starts on — which is a labelled row
+  for a default you can change in the rule's own row a second later. A new rule
+  inherits from the rule above it instead, so a run of steps over one field
+  still costs one choice. Loading a saved group now writes its group-level
+  target onto each of its rules, since there is nowhere else to keep it, and a
+  scope this build doesn't list stays on the rule rather than being silently
+  re-aimed at every tag.
 - **Each rule aims at its own field.** The scope was a property of the whole
   chain, so one chain had one target and "upper-case the catalogue number, lower
   the titles" meant two chains — with the second one a saved group to remember

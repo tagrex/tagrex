@@ -2271,15 +2271,6 @@ body.show-checkbox tr.playing td.sel {
 .export-row select {
   padding-right: 24px; /* room for the #115 caret */
 }
-/* Sized to its longest option rather than to the panel (#243). A 500px control
-   for "All tag fields" was a wide target for a narrow choice, and the menu that
-   opened from it — sized to its own content — came out visibly narrower than
-   the thing that had opened it. */
-#transform-scope {
-  flex: 0 1 auto;
-  width: auto;
-  max-width: 100%;
-}
 
 /* ---- grouping ---- */
 .group-ctl {

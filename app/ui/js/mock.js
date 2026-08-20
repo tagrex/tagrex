@@ -1014,7 +1014,7 @@ function mockInvoke(cmd, args) {
         },
         {
           name: "Lower case",
-          scope: "name",
+          scope: "filename",
           note: "Lower-case the file name.",
           rules: [{ kind: "case", from: "", to: "", regex: false, style: "lower" }],
         },
