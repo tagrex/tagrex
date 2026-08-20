@@ -1561,9 +1561,12 @@ body:not(.show-checkbox) #tracks td.sel {
   border-radius: var(--radius-md);
   background: var(--panel);
 }
+/* Rows scroll under this, so it has to read as a footer rather than as content
+   overlapping content (#241). */
 .groups-list .col-menu-foot {
   position: sticky;
   bottom: 0;
+  border-top: 1px solid var(--border);
   background: var(--panel);
 }
 /* The name is the row's action now, so it takes the width and shows it is one. */
@@ -3105,7 +3108,6 @@ td.unreadable-note {
   margin: 0;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  text-align: left;
   font-size: var(--text-xs);
 }
 .rule-chain-empty b {
@@ -4797,11 +4799,11 @@ td[data-field="year"],
    space to show a chain of a dozen rules and the shelf to load them from. */
 .transform-modal {
   max-width: 620px;
-  /* As tall as the window sensibly allows: what is in here — a chain and the
-     shelf to load it from — is all content, and a dialog that shows four rules
-     when there is room for twelve is chrome pretending to be a dialog. */
+  /* A CAP, not a height (#241): as tall as the chain needs, up to what the
+     window allows. Setting both made every dialog 92vh, so two rules came with
+     half a screen of nothing under them — the same waste the cap was raised to
+     get rid of, from the other direction. */
   max-height: min(92vh, 960px);
-  height: min(92vh, 960px);
   gap: var(--space-3);
 }
 /* The dialog's own title names the job, so the block's heading would be a
