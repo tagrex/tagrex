@@ -4859,9 +4859,19 @@ td[data-field="year"],
 .panel-block.in-dialog > .hint.muted {
   display: none;
 }
-/* Room to load from, now that there is height to spare. */
+/* No cap of its own in here (#244). The dialog already has one — the window —
+   and a second, smaller cap inside it made the shelf you pick from a four-row
+   scrolling window while the dialog itself had room to spare. The list takes
+   its full height, the dialog grows to fit, and if that ever reaches the window
+   the body scrolls as ONE column instead of two nested scroll areas. */
 .transform-modal .groups-list {
-  max-height: 240px;
+  max-height: none;
+  overflow: visible;
+}
+/* Which makes its footer the dialog's, sticking to the bottom of the body that
+   scrolls rather than to a list that no longer does. */
+.transform-modal .groups-list .groups-foot {
+  position: static;
 }
 .modal-head {
   display: flex;
