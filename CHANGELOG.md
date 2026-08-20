@@ -92,6 +92,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   was previewing values that would never be written. It now goes through the
   same chain, by the same path the real plan takes, so what is under the pattern
   is what lands in the table.
+- **Transliterate to Cyrillic stopped mangling English text.** Run over tags
+  read from an English file name it turned `desert rain` into `десерт раин` and
+  left `music` and `house` in Latin — every bit of it the documented behaviour,
+  because the rule asked only whether a word *could* be read back and most short
+  English words can. It now asks whether the word *looks* romanized, by the
+  traces the forward direction leaves for sounds Latin has no letter for — `zh
+  kh ts ch sh shch yu ya yo iy yy` — so English text is left alone. The cost is
+  stated rather than hidden: a romanized word made only of plain letters (`dom`,
+  `Kino`, `na`) has nothing to recognise it by and is left alone too.
+  Under-converting can be fixed by hand; a mangled library cannot.
 - **A chain can be emptied in one go, and its kind picker stopped stretching.**
   Starting over meant one × per rule, each re-rendering and renumbering what was
   left; **Clear rules** sits beside Add rule and appears only when there is

@@ -375,6 +375,16 @@ fn cyrillic_to_latin(ch: char) -> Option<&'static str> {
 ///   come out of the forward table, so a word containing one was never Cyrillic
 ///   -- `Jazz` and `The` stay themselves instead of becoming `Jазз` and `Тхе`.
 ///   Mixed-script mangling is the failure people actually notice.
+/// * **And a word must LOOK romanized** (#258). The rule above only asks whether
+///   a word *could* be read back, and most short English words could: pointed at
+///   an English title it turned `desert rain` into `десерт раин` and left
+///   `music` and `house` alone, which is the same mixed-script mangling one step
+///   up. So a word is converted only when it carries a trace of Russian
+///   romanization -- `zh kh ts ch sh shch yu ya yo iy yy` -- which is what the
+///   forward direction produces for sounds Latin has no letter for. The cost is
+///   stated rather than hidden: a romanized word made only of plain letters
+///   (`dom`, `mir`, `Kino`, `na`) has nothing to recognise it by and is left
+///   alone. Under-converting is recoverable by hand; mangling a library is not.
 /// * **What the forward direction threw away stays thrown away.** `ъ` and `ь`
 ///   romanize to nothing, so `Ильич` -> `Ilich` -> `Илич`; `й` and `ы` both
 ///   romanize to `y`, which comes back as `й`. A round trip is not the identity
@@ -392,9 +402,26 @@ impl TransformStep for Untransliterate {
 
     fn apply(&self, input: &str) -> String {
         map_words(input, |word| {
+            if !looks_romanized(word) {
+                return word.to_string();
+            }
             latin_to_cyrillic_word(word).unwrap_or_else(|| word.to_string())
         })
     }
+}
+
+/// Sequences the forward romanization produces for sounds Latin has no single
+/// letter for. A word carrying one plausibly came from Cyrillic; a word carrying
+/// none is indistinguishable from ordinary Latin text and is left alone (#258).
+const ROMANIZATION_MARKERS: &[&str] = &[
+    "shch", "zh", "kh", "ts", "ch", "sh", "yu", "ya", "yo", "iy", "yy",
+];
+
+fn looks_romanized(word: &str) -> bool {
+    let lower = word.to_lowercase();
+    ROMANIZATION_MARKERS
+        .iter()
+        .any(|marker| lower.contains(marker))
 }
 
 /// Latin runs, longest first — order is the whole algorithm, so this stays one
@@ -939,9 +966,29 @@ mod tests {
         let step = Untransliterate;
         assert_eq!(step.apply("Pyotr"), "Пётр");
         assert_eq!(step.apply("borshch"), "борщ");
-        assert_eq!(step.apply("Tsoy"), "Цой");
         // Digraph before letter: `ts` is ц, not т + с.
-        assert_eq!(step.apply("Kino"), "Кино");
+        assert_eq!(step.apply("Tsoy"), "Цой");
+        // ...and a word with nothing to recognise it by is left alone (#258),
+        // even though every one of its letters could be read back.
+        assert_eq!(step.apply("Kino"), "Kino");
+    }
+
+    #[test]
+    fn untransliterate_leaves_text_that_does_not_look_romanized() {
+        // The reported case (#258): pointed at an English title, the per-word
+        // guard alone converted whatever happened to be readable and left the
+        // rest, which is mixed-script mangling one level up.
+        let step = Untransliterate;
+        assert_eq!(step.apply("desert rain"), "desert rain");
+        assert_eq!(
+            step.apply("music from the temple of house"),
+            "music from the temple of house"
+        );
+        assert_eq!(step.apply("various"), "various");
+        // What the markers are for: a word that carries one still converts.
+        assert_eq!(step.apply("Ilich"), "Илич");
+        assert_eq!(step.apply("Zhuk"), "Жук");
+        assert_eq!(step.apply("ulitsa"), "улица");
     }
 
     #[test]
@@ -952,8 +999,9 @@ mod tests {
         let step = Untransliterate;
         assert_eq!(step.apply("Jazz"), "Jazz");
         assert_eq!(step.apply("The Quick Fox"), "The Quick Fox");
-        // Its neighbours are still converted -- the guard is per word.
-        assert_eq!(step.apply("Jazz na ulitse"), "Jazz на улице");
+        // Its neighbours are still converted -- the guard is per word. `na` has
+        // no marker of its own and stays too (#258).
+        assert_eq!(step.apply("Jazz na ulitse"), "Jazz na улице");
     }
 
     #[test]
@@ -981,7 +1029,8 @@ mod tests {
     #[test]
     fn untransliterate_passes_digits_and_punctuation_through() {
         let step = Untransliterate;
-        assert_eq!(step.apply("dom-2"), "дом-2");
+        // Digits and the hyphen neither block the word nor come back changed.
+        assert_eq!(step.apply("dozhd-2"), "дожд-2");
         assert_eq!(step.apply("Пётр"), "Пётр");
     }
 
