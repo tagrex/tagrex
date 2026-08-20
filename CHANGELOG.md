@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-08-20
+
 ### Fixed
 
 - **The Windows build works again.** Asking for the trash crate without its
