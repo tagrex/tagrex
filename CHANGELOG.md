@@ -72,6 +72,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dot while the job's chain has rules in it**, and the count in its tooltip:
   the chain runs on its own now, so whether one will is answerable without
   opening anything.
+- **Empty states are a line, not a panel — everywhere.** "Nothing here yet" had
+  24px of padding inside a striped box with another 10px of margin around it, in
+  the file table, the search results, the deduplicator and the rule chain alike:
+  the least valuable sentence on screen, given the most room on it. It gets a
+  line's worth now.
+- **The scope select is as wide as what it holds.** `Apply to` stretched to the
+  full width of the panel while its longest option is *All tag fields* — 505px
+  of control for a 110px value, with the menu it opens sized to its own content
+  and so visibly narrower than the thing that opened it. And the focus ring it
+  wore is softer: two solid pixels of accent around a control that already has a
+  border read as a slab, so the halo is translucent — it keeps its hue over a
+  panel, a row or the table, in both themes — while the control's own border
+  goes full accent, which is what makes the focus unmistakable.
 - **The transform dialog spends its height on the chain.** It opened with two
   headings for one thing — the dialog's, naming the job, and the block's own
   saying less — followed by a general line about previews that the line under it

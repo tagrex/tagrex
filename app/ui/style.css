@@ -151,7 +151,14 @@
      (#135). --ring for free-standing controls, --ring-inset for clipped table
      cells/rows. */
   --ring-width: 2px;
+  /* Softened against the control's own border, which goes full accent on focus:
+     two solid pixels of accent around an already-bordered control read as a slab
+     on a UI this light (#243). Mixed with TRANSPARENT rather than with the
+     background, so the halo keeps its hue over a panel, a row or the table, and
+     in the dark theme as well. Plain accent first, for an engine without
+     color-mix. */
   --ring-color: var(--accent);
+  --ring-color: color-mix(in srgb, var(--accent) 45%, transparent);
   --ring: 0 0 0 var(--ring-width) var(--ring-color);
   --ring-inset: inset 0 0 0 var(--ring-width) var(--ring-color);
 
@@ -1765,8 +1772,12 @@ body:not(.show-checkbox) #tracks td.sel {
   font-size: var(--text-xs);
 }
 
+/* One line saying nothing is here yet. It gets a line's worth of room (#243):
+   it used to take 24px of padding inside a striped box with another 10px of
+   margin around it, in the table, the search results, the deduplicator and the
+   rule chain alike. */
 .empty {
-  padding: 24px 14px;
+  padding: 10px 14px;
   color: var(--muted);
   text-align: center;
 }
@@ -2245,6 +2256,15 @@ body.show-checkbox tr.playing td.sel {
 }
 .export-row select {
   padding-right: 24px; /* room for the #115 caret */
+}
+/* Sized to its longest option rather than to the panel (#243). A 500px control
+   for "All tag fields" was a wide target for a narrow choice, and the menu that
+   opened from it — sized to its own content — came out visibly narrower than
+   the thing that had opened it. */
+#transform-scope {
+  flex: 0 1 auto;
+  width: auto;
+  max-width: 100%;
 }
 
 /* ---- grouping ---- */
@@ -4034,6 +4054,7 @@ input[type="password"]:focus-visible,
 input[type="search"]:focus-visible,
 select:focus-visible {
   outline: none;
+  border-color: var(--accent);
   box-shadow: var(--ring);
 }
 
@@ -4090,7 +4111,7 @@ button.primary:disabled {
 /* Empty state — a dashed, faintly-striped panel that says "nothing yet" without
    looking broken (opt in with .inert-panel). */
 .empty.inert-panel {
-  margin: var(--space-4);
+  margin: var(--space-2);
   border: 1px dashed var(--border);
   border-radius: var(--radius-lg);
   background: var(--inert-stripes-soft);
