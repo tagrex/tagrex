@@ -51,3 +51,29 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+  # A second job that only compiles, on Windows (#223). A dependency can be
+  # wrong for that platform alone — a feature flag it needs, a `cfg(windows)`
+  # block that stopped building — while this workflow stays green, and until
+  # this job existed the first sign of it was the release workflow failing on a
+  # tag, which is after the release is published. Deliberately not a bundle
+  # build: the release workflow packages the installers, this only has to prove
+  # the code compiles.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace

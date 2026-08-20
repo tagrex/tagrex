@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   where the module is not built, and CI builds only Linux, so the first sign of
   it was the 0.11.0 release build failing on both Windows targets. The apartment
   mode is now asked for by name.
+- **CI compiles for Windows now.** The break above was a dependency wrong for
+  one platform only, and nothing looked at that platform until a tag was pushed
+  — which is after a release is published. A second job runs clippy and the
+  tests on a Windows runner on every push. Not a bundle build: the release
+  workflow packages the installers, this only has to prove the code compiles.
 
 ## [0.11.0] - 2026-08-20
 
