@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A release page says what changed.** Every release so far was a list of files
+  and nothing else: the body was empty on 0.10.0 through 0.12.0, while
+  `CHANGELOG.md` carried a written section for each of them. The release
+  workflow takes the body from that section — the words it was written in,
+  rather than a generated list of commit subjects — and the four that went out
+  without one have been filled in.
+
 ## [0.12.0] - 2026-08-20
 
 ### Changed

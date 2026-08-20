@@ -89,11 +89,33 @@ jobs:
             target/release/bundle/**/*.deb
             target/release/bundle/**/*.rpm
 
+      # The release page's text is the changelog's own section for this version
+      # (#261). The file already says what changed, in the words it was written
+      # in; without this the most visible page in the project is a list of files
+      # and nothing else. `shell: bash` because this runs on the Windows runners
+      # too, where the default shell is PowerShell.
+      - name: Take the release notes from the changelog
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v heading="## [$version]" '
+            index($0, heading) == 1 { inside = 1; next }
+            inside && /^## \[/ { exit }
+            inside { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          # A version with no section says so, rather than the page silently
+          # going out empty again.
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "See CHANGELOG.md for what changed in $version." > RELEASE_NOTES.md
+          fi
+
       # On a version tag, also attach the bundles to the GitHub Release.
       - name: Attach to release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v3
         with:
+          body_path: RELEASE_NOTES.md
           files: |
             target/release/bundle/**/*.dmg
             target/release/bundle/**/*.exe
