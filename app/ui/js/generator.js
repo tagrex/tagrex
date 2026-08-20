@@ -354,6 +354,7 @@ function openTransformModal() {
   el("transform-context-note").hidden = false;
   // No run button here: the context's own action runs the chain (#237).
   el("transform-preview").hidden = true;
+  el("transform-block").classList.add("in-dialog");
   el("transform-modal-body").append(el("transform-block"));
   el("transform-modal").hidden = false;
   refreshGenerator();
@@ -367,6 +368,7 @@ function closeTransformModal() {
   el("transform-modal").hidden = true;
   el("transform-context-note").hidden = true;
   el("transform-preview").hidden = false;
+  el("transform-block").classList.remove("in-dialog");
   el("transform-home").after(el("transform-block"));
   refreshTransformButton();
 }

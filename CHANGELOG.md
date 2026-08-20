@@ -72,6 +72,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dot while the job's chain has rules in it**, and the count in its tooltip:
   the chain runs on its own now, so whether one will is answerable without
   opening anything.
+- **The transform dialog spends its height on the chain.** It opened with two
+  headings for one thing — the dialog's, naming the job, and the block's own
+  saying less — followed by a general line about previews that the line under it
+  already answered precisely. An empty chain then showed a 120px striped panel
+  to say *nothing here yet*: the least valuable sentence on screen given the
+  most room on it. The second heading and the redundant hint are gone, "no rules
+  yet" is one quiet line, and the dialog now takes the height the window allows
+  — measured at 92% of it, against 80% before, with the group shelf free to grow
+  to 240px inside.
 - **A rule chain per job, and it runs as part of the job.** One chain shared by
   everything was wrong in a way that only shows in use: RENAMER wants a space
   turned into an underscore and FROM NAME wants exactly the opposite, so

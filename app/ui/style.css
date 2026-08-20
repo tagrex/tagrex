@@ -3098,8 +3098,15 @@ td.unreadable-note {
 .gen-add select {
   flex: 1;
 }
+/* One line, not a panel. "Nothing here yet" is the least valuable thing on a
+   screen and was taking 120px of it — a hairline box with a sentence in it says
+   the same and leaves the room to the rules. */
 .rule-chain-empty {
-  margin: var(--space-1) 0;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  font-size: var(--text-xs);
 }
 .rule-chain-empty b {
   color: var(--accent-ink);
@@ -4789,9 +4796,24 @@ td[data-field="year"],
    configure something and closed again, and while it is open it deserves the
    space to show a chain of a dozen rules and the shelf to load them from. */
 .transform-modal {
-  max-width: 560px;
-  max-height: min(80vh, 720px);
+  max-width: 620px;
+  /* As tall as the window sensibly allows: what is in here — a chain and the
+     shelf to load it from — is all content, and a dialog that shows four rules
+     when there is room for twelve is chrome pretending to be a dialog. */
+  max-height: min(92vh, 960px);
+  height: min(92vh, 960px);
   gap: var(--space-3);
+}
+/* The dialog's own title names the job, so the block's heading would be a
+   second one saying less, and the general hint about previews is answered by
+   the line below it that says exactly when this chain runs. */
+.panel-block.in-dialog > h2,
+.panel-block.in-dialog > .hint.muted {
+  display: none;
+}
+/* Room to load from, now that there is height to spare. */
+.transform-modal .groups-list {
+  max-height: 240px;
 }
 .modal-head {
   display: flex;
