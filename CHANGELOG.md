@@ -72,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dot while the job's chain has rules in it**, and the count in its tooltip:
   the chain runs on its own now, so whether one will is answerable without
   opening anything.
+- **The name being parsed is a field of its own.** It sat on the first line of
+  the same box as the values read out of it, in the same size and colour, so the
+  subject of the operation and its result looked like one list — with the
+  longest and least structured line in that list being the one that was not a
+  result at all. It now sits above them in its own field, the way the pattern it
+  is matched against sits above it.
 - **Changing a chain shows its effect at once.** Set a rule, close the dialog,
   and the panel that owns that chain catches up without another press: FROM NAME
   re-reads the line-up under its pattern, and a plan already staged from FROM

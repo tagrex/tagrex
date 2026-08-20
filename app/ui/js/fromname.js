@@ -109,7 +109,7 @@ async function refreshNameProbe() {
   if (!box) return;
   const path = selectedPaths()[0];
   if (!path) {
-    box.innerHTML = `<div class="probe-miss">Select a track to see what the pattern reads.</div>`;
+    box.innerHTML = `<div class="probe-fields"><div class="probe-miss">Select a track to see what the pattern reads.</div></div>`;
     return;
   }
   try {
@@ -117,9 +117,12 @@ async function refreshNameProbe() {
       mask: el("from-name-mask").value,
       path,
     });
+    // The name being read sits in a field of its own, above the values (#249):
+    // it is the SUBJECT of the operation, not one of its results, and inside
+    // the same list it read as the longest and least structured result there.
     const subject = `<div class="probe-subject">${escapeHtml(probe.subject)}</div>`;
     if (!probe.matched || probe.fields.length === 0) {
-      box.innerHTML = `${subject}<div class="probe-miss">This name doesn't fit the pattern.</div>`;
+      box.innerHTML = `${subject}<div class="probe-fields"><div class="probe-miss">This name doesn't fit the pattern.</div></div>`;
       return;
     }
     const rows = (await throughChain(path, probe.fields))
@@ -128,10 +131,10 @@ async function refreshNameProbe() {
           `<div class="probe-row"><span class="probe-field">${escapeHtml(columnLabel(field))}</span><span class="probe-value">${escapeHtml(value)}</span></div>`,
       )
       .join("");
-    box.innerHTML = subject + rows;
+    box.innerHTML = `${subject}<div class="probe-fields">${rows}</div>`;
   } catch (e) {
     // A pattern that can't parse at all — say so where the result would be.
-    box.innerHTML = `<div class="probe-miss">${escapeHtml(String(e))}</div>`;
+    box.innerHTML = `<div class="probe-fields"><div class="probe-miss">${escapeHtml(String(e))}</div></div>`;
   }
 }
 

@@ -4291,7 +4291,15 @@ td[data-field="year"],
    separator in the pattern — so it reads as a file name (mono), with the
    extracted pairs under it. Field names are chrome (sans), values are data
    (mono), the same split the release card uses. */
+/* Two fields, not one list (#249): what is being read, and what came out of it.
+   The wrapper only stacks them — the border and the fill belong to each. */
 .probe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+.probe-fields {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -4299,10 +4307,15 @@ td[data-field="year"],
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg);
-  font-size: var(--text-xs);
 }
 
+/* The subject reads as the field it is: the name this pattern is being matched
+   against, sitting above the result the way the pattern sits above it. */
 .probe-subject {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
   font-family: var(--font-mono-bundled);
   color: var(--muted);
   overflow-wrap: anywhere;
