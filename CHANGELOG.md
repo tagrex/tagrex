@@ -71,7 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the transform panel — and there is still exactly one of it, moved rather than
   copied, so the two entry points cannot drift. A run no longer dismisses
   anything: the result lands in full view with the rules that produced it still
-  on screen.
+  on screen. It takes **at most a third of the side column** and scrolls inside
+  that: left to size itself it squeezed the panel above down to its heading in
+  anything but a maximised window, which is the one thing a tool pinned beside
+  the work must not do (#235).
 - **The rule groups are a list in the block, not a popover over a popover.**
   Every row carried three controls doing similar things — a tick, a name that
   toggled the tick, and a **Load** link. Clicking the name now loads the group
