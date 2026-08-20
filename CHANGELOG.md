@@ -72,10 +72,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   dot while the job's chain has rules in it**, and the count in its tooltip:
   the chain runs on its own now, so whether one will is answerable without
   opening anything.
+- **The FROM NAME read-out shows what the button will actually produce.** The
+  live line-up under the pattern showed the raw extraction — `the_x_factor`,
+  `desert_rain` — while the chain that turns underscores into spaces and
+  title-cases them sat right there waiting to run. That was fine when the chain
+  was a separate press; since it runs as part of **Preview tags**, the read-out
+  was previewing values that would never be written. It now goes through the
+  same chain, by the same path the real plan takes, so what is under the pattern
+  is what lands in the table.
 - **The empty-state box lines up with the rows around it.** It carried a margin
   of its own, so the dashed placeholder stood a few pixels narrower than the
   controls above and below it — a misalignment where a stand-in for those very
-  controls should match them.
+  controls should match them. Its corners match them now too, instead of being
+  the one rounder thing in the column.
 - **Empty states lost their diagonal stripes.** The inert motif behind one line
   of text was busier than the sentence in front of it, and heavier again in the
   dark theme; the dashed edge says "placeholder" on its own. The stripes stay

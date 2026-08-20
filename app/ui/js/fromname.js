@@ -11,7 +11,7 @@
 // preview bar like everything else.
 import { el, escapeHtml, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
-import { runChainOverPlan } from "./chains.js";
+import { chainHasRules, runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
 import { columnLabel } from "./columns.js";
 import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
@@ -71,6 +71,29 @@ async function previewTagsFromName() {
   }
 }
 
+// The read-out has to show what the BUTTON would produce, not what the mask
+// alone reads (#247): since the chain runs as part of Preview tags (#237),
+// showing the raw extraction would be previewing values that will never be
+// written. The extracted fields go through this context's chain the same way
+// the real plan does — as a one-file plan, so there is one implementation of
+// "what the chain does to these values", not a second one here.
+async function throughChain(path, fields) {
+  if (!chainHasRules("fromname") || !fields.length) return fields;
+  const plan = {
+    description: "",
+    changes: [
+      {
+        path,
+        rename_to: null,
+        tag_changes: fields.map(([field, value]) => ({ field, old: null, new: value })),
+      },
+    ],
+  };
+  const out = await runChainOverPlan(plan, "fromname");
+  const changed = out?.changes?.[0]?.tag_changes;
+  return changed ? changed.map((t) => [t.field, t.new ?? ""]) : fields;
+}
+
 // The live read-out under the pattern box: what the mask pulls out of the first
 // selected file, tags-on-disk irrelevant. Extraction stays in Rust — one
 // grammar, one implementation (mask.rs) — so this is a per-keystroke round trip,
@@ -93,7 +116,7 @@ async function refreshNameProbe() {
       box.innerHTML = `${subject}<div class="probe-miss">This name doesn't fit the pattern.</div>`;
       return;
     }
-    const rows = probe.fields
+    const rows = (await throughChain(path, probe.fields))
       .map(
         ([field, value]) =>
           `<div class="probe-row"><span class="probe-field">${escapeHtml(columnLabel(field))}</span><span class="probe-value">${escapeHtml(value)}</span></div>`,

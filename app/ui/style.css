@@ -4116,7 +4116,9 @@ button.primary:disabled {
      was standing in for (#246). Its container's padding is what spaces it. */
   margin: 0;
   border: 1px dashed var(--border);
-  border-radius: var(--radius-lg);
+  /* The same corner as the rule cards and the controls it stands in for — it
+     was the one rounder thing in the column (#246). */
+  border-radius: var(--radius-md);
   /* No stripes (#245). The motif is the app's "inert" texture — cover well,
      disabled controls, skeletons — and behind one line of text it was busier
      than the sentence it sat under, more so in the dark theme. The dashed edge
