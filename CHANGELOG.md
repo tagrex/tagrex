@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The README says what version this is, and what the app can actually do.**
+  The status line on the front page read `Status: 0.3.x` while the release was
+  0.11.1 — the release checklist names the three files the version has to agree
+  in and the README was not one of them, so eight minor versions went past it.
+  It now tracks the release, and two claims under **Not yet** that had shipped
+  long ago are gone: reading tags back out of a file name, which has been a
+  TAGGER sub-tab for many releases, and multi-value fields. The tag block work
+  — which containers a file carries, dropping one, converting between kinds and
+  between the two ID3v2 revisions — was missing from the page entirely and now
+  has a paragraph. The checklist gained the status line, so it moves with the
+  version from here on.
+
 ## [0.11.1] - 2026-08-20
 
 ### Fixed

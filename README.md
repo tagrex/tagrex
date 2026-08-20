@@ -15,10 +15,11 @@
 
 ---
 
-> **Status: 0.3.x.** Usable day to day: table editing, rename masks, text
-> transforms, online lookups, cover art, duplicate detection, exports, and a
-> transactional undo journal. Not 1.0, so expect rough edges — bug reports and
-> feedback are welcome. How to use it is in the
+> **Status: 0.11.x.** Usable day to day: table editing, rename masks with a
+> function language, tags read back out of file names, text transforms, online
+> lookups, cover art, tag block conversion, duplicate detection, exports, a
+> preview player, and a transactional undo journal. Not 1.0, so expect rough
+> edges — bug reports and feedback are welcome. How to use it is in the
 > [user guide](docs/guide/README.md); the design is written up in
 > [docs/architecture.md](docs/architecture.md); user-visible changes are in
 > [CHANGELOG.md](CHANGELOG.md).
@@ -64,7 +65,9 @@ ago and forgot would be worse than none.
 - **TAGGER** — edit tags by hand, or pull them from Discogs (personal token) or
   MusicBrainz. Paged search, release cards with cover browser and tracklist,
   content-based candidate matching plus exact ISRC matching, auto-align and
-  auto-numbering on import.
+  auto-numbering on import. A **FROM NAME** sub-tab runs a mask the other way
+  round — the file's own name read back into tags, with `%skip%` for the junk
+  that maps to nothing and a live read-out of what the pattern is pulling out.
 - **RENAMER** — rename files and reorganize them into folders from a mask
   (`%artist% - %title%`), with conditional `[...]` sections, zero-padding,
   `%field:width%` and the function language below. Folder moves create and clean
@@ -92,6 +95,14 @@ render-only: substitution is invertible in both directions and `$upper` is not.
 Every mask input carries a `?` that lists the whole library, argument by
 argument.
 
+**Tag blocks are visible and changeable.** One file can carry several answers
+to the same question — an ID3v2 block and a stale ID3v1 one — which is why a
+track can read differently in two programs. A Tag types column and a line in
+the editor name what a file holds and which block is being read and written;
+a spare block can be dropped; and the tags can be converted to another kind of
+block, or an ID3v2 one moved between 2.3 and 2.4, which restamps the header and
+keeps every frame rather than rebuilding it. All staged, all undoable.
+
 **Cover art** — fetch from a provider, embed, export, resize on embed, save
 `folder.jpg` next to the tracks, or drag an image onto the window.
 
@@ -114,11 +125,7 @@ for typography still being trialled.
 
 ## Not yet
 
-- **Parsing tags out of filenames.** The mask grammar is bidirectional in the
-  core and `%skip%` exists for it, but only the render direction (tags →
-  filename) is exposed in the UI.
-- **Lyrics**, multi-value fields, AcoustID fingerprinting, CUE import/export,
-  and a multilingual UI.
+- **Lyrics**, AcoustID fingerprinting, CUE import/export, and a multilingual UI.
 
 ## Motivation
 
