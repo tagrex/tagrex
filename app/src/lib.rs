@@ -4708,7 +4708,13 @@ mod tests {
             cleaned.changes[0]
                 .sidecar_renames
                 .iter()
-                .map(|(_, to)| to.rsplit('/').next().unwrap().to_string())
+                .map(|(_, to)| {
+                    std::path::Path::new(to)
+                        .file_name()
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned()
+                })
                 .collect::<Vec<_>>(),
             vec!["autechre - gantz graf.lrc"],
             "the sidecar must follow the revised name, not the staged one"
@@ -7334,7 +7340,8 @@ mod tests {
             plan.changes[0].rename_to.as_deref(),
             Some(
                 dir.0
-                    .join("1996 - La Bush/Plastic - Sexy Groove.flac")
+                    .join("1996 - La Bush")
+                    .join("Plastic - Sexy Groove.flac")
                     .to_string_lossy()
                     .as_ref()
             )
@@ -7371,7 +7378,8 @@ mod tests {
             plan.changes[0].rename_to.as_deref(),
             Some(
                 dir.0
-                    .join("Various - La Bush (1996)/101. The X Factor - Desert Rain.flac")
+                    .join("Various - La Bush (1996)")
+                    .join("101. The X Factor - Desert Rain.flac")
                     .to_string_lossy()
                     .as_ref()
             )
@@ -7389,7 +7397,7 @@ mod tests {
 
         // A backslash pattern (natural on Windows, and what an imported config
         // carries) must describe folders, not become part of a file name.
-        let expected = dir.0.join("La Bush/Plastic - Sexy Groove.flac");
+        let expected = dir.0.join("La Bush").join("Plastic - Sexy Groove.flac");
         for pattern in ["%album%/%artist% - %title%", "%album%\\%artist% - %title%"] {
             let plan = app
                 .preview_move(pattern, std::slice::from_ref(&track), None, false, false)

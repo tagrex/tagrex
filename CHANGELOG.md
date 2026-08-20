@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   — which is after a release is published. A second job runs clippy and the
   tests on a Windows runner on every push. Not a bundle build: the release
   workflow packages the installers, this only has to prove the code compiles.
+- **Four tests no longer assume a POSIX path separator.** The first Windows run
+  found them: three built an expected path as one `join` of `"folder/name.flac"`,
+  where the `/` stays literal on Windows while the code under test joins
+  components and produces `\`, and one took a file name off a path by splitting
+  on `/`. The expectations were wrong, not the behaviour — the pattern that has
+  to accept either separator passed. Test-only; nothing shipped changes.
 
 ## [0.11.0] - 2026-08-20
 
