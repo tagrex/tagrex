@@ -385,7 +385,7 @@ function createRuleChain({ ids }) {
         const note = document.createElement("span");
         note.className = "rule-note";
         note.textContent =
-          "Latin → Russian Cyrillic, for tags that arrived romanized. A word is converted only when it carries a trace of that romanization (zh, kh, ts, ch, sh, yu, ya…), so English text is left alone — and so is a romanized word with nothing to recognise it by (dom, Kino). ъ/ь can't be recovered and й/ы both come back as й.";
+          "Latin → Russian Cyrillic, for tags that arrived romanized. The whole value converts or none of it does: it needs a trace of romanization (zh, kh, ts, ch, sh, yu, ya…) and nothing in it that was never Cyrillic (q, w, x, a bare c/h/j). So English text is left alone, and so are values mixing the two languages (Zhuk remix). ъ/ь can't be recovered and й/ы both come back as й.";
         b.append(note);
         card.append(b);
       }

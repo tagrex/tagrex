@@ -375,16 +375,18 @@ fn cyrillic_to_latin(ch: char) -> Option<&'static str> {
 ///   come out of the forward table, so a word containing one was never Cyrillic
 ///   -- `Jazz` and `The` stay themselves instead of becoming `Jазз` and `Тхе`.
 ///   Mixed-script mangling is the failure people actually notice.
-/// * **And a word must LOOK romanized** (#258). The rule above only asks whether
-///   a word *could* be read back, and most short English words could: pointed at
-///   an English title it turned `desert rain` into `десерт раин` and left
-///   `music` and `house` alone, which is the same mixed-script mangling one step
-///   up. So a word is converted only when it carries a trace of Russian
-///   romanization -- `zh kh ts ch sh shch yu ya yo iy yy` -- which is what the
-///   forward direction produces for sounds Latin has no letter for. The cost is
-///   stated rather than hidden: a romanized word made only of plain letters
-///   (`dom`, `mir`, `Kino`, `na`) has nothing to recognise it by and is left
-///   alone. Under-converting is recoverable by hand; mangling a library is not.
+/// * **And the decision is made once for the whole value** (#258, #259). Asking
+///   only whether a word *could* be read back converts most short English words:
+///   `desert rain` became `десерт раин`. Asking each word whether it *looks*
+///   romanized still converts `bush`, because `sh` is both an English digraph
+///   and the romanization of ш. So the value is judged as a whole — see
+///   [`value_looks_romanized`] — and every word converts or none does. Mixed
+///   script is the failure people notice, and it cannot be ruled out one word at
+///   a time.
+/// * The cost is stated rather than hidden: a value mixing the languages, like
+///   `Zhuk remix`, is left whole instead of half-converted, and a romanized value
+///   with no trace to recognise it by (`dom`, `Kino`) is left alone.
+///   Under-converting is recoverable by hand; mangling a library is not.
 /// * **What the forward direction threw away stays thrown away.** `ъ` and `ь`
 ///   romanize to nothing, so `Ильич` -> `Ilich` -> `Илич`; `й` and `ы` both
 ///   romanize to `y`, which comes back as `й`. A round trip is not the identity
@@ -401,13 +403,56 @@ impl TransformStep for Untransliterate {
     }
 
     fn apply(&self, input: &str) -> String {
+        if !value_looks_romanized(input) {
+            return input.to_string();
+        }
         map_words(input, |word| {
-            if !looks_romanized(word) {
-                return word.to_string();
-            }
             latin_to_cyrillic_word(word).unwrap_or_else(|| word.to_string())
         })
     }
+}
+
+/// Whether a whole value is worth reading back as Cyrillic (#259).
+///
+/// Two conditions, and both are about the value rather than the word:
+///
+/// * **Nothing in it is provably not Cyrillic.** One word carrying `q`, `w`,
+///   `x` or a bare `c`, `h`, `j` — `music`, `house`, `remix` — says this text is
+///   Latin that was always Latin, and the words around it are its neighbours,
+///   not romanizations that happen to sit nearby.
+/// * **Something in it looks romanized.** At least one word carries a trace the
+///   forward direction leaves for a sound Latin has no letter for.
+///
+/// Deciding once per value is the point. Deciding per word is what produced
+/// `la буш - music from the temple of house`: `bush` reads back as `буш` and
+/// there is nothing in that word alone to say it should not. The cost is a value
+/// mixing the two languages — `Zhuk remix` — which is now left whole rather than
+/// half-converted; that is the same answer, chosen deliberately.
+fn value_looks_romanized(input: &str) -> bool {
+    let mut any_marker = false;
+    let mut word = String::new();
+    let mut ok = true;
+    let check = |word: &str, any_marker: &mut bool, ok: &mut bool| {
+        if word.is_empty() {
+            return;
+        }
+        if latin_to_cyrillic_word(word).is_none() {
+            *ok = false;
+        }
+        if looks_romanized(word) {
+            *any_marker = true;
+        }
+    };
+    for ch in input.chars() {
+        if ch.is_alphanumeric() || ch == '\'' {
+            word.push(ch);
+        } else {
+            check(&word, &mut any_marker, &mut ok);
+            word.clear();
+        }
+    }
+    check(&word, &mut any_marker, &mut ok);
+    ok && any_marker
 }
 
 /// Sequences the forward romanization produces for sounds Latin has no single
@@ -985,10 +1030,29 @@ mod tests {
             "music from the temple of house"
         );
         assert_eq!(step.apply("various"), "various");
-        // What the markers are for: a word that carries one still converts.
+        // What the markers are for: a value that carries one still converts.
         assert_eq!(step.apply("Ilich"), "Илич");
         assert_eq!(step.apply("Zhuk"), "Жук");
         assert_eq!(step.apply("ulitsa"), "улица");
+    }
+
+    #[test]
+    fn untransliterate_decides_once_for_the_whole_value() {
+        // #259, the reported case: `bush` reads back as `буш` and nothing in
+        // that word alone says it should not — but `music` and `house` in the
+        // same value were never Cyrillic, which settles it for all of them.
+        let step = Untransliterate;
+        assert_eq!(
+            step.apply("la_bush_-_music_from_the_temple_of_house"),
+            "la_bush_-_music_from_the_temple_of_house"
+        );
+        // With nothing in the value to contradict it, every word converts —
+        // including the ones with no trace of their own, which is what makes a
+        // real romanization come back whole instead of half-Latin.
+        assert_eq!(step.apply("Masha i Medved"), "Маша и Медвед");
+        // And the cost, deliberately: a value mixing the two languages is left
+        // whole rather than half-converted.
+        assert_eq!(step.apply("Zhuk remix"), "Zhuk remix");
     }
 
     #[test]
@@ -999,9 +1063,10 @@ mod tests {
         let step = Untransliterate;
         assert_eq!(step.apply("Jazz"), "Jazz");
         assert_eq!(step.apply("The Quick Fox"), "The Quick Fox");
-        // Its neighbours are still converted -- the guard is per word. `na` has
-        // no marker of its own and stays too (#258).
-        assert_eq!(step.apply("Jazz na ulitse"), "Jazz na улице");
+        // And it takes the value with it (#259): one word that was never
+        // Cyrillic says the whole value is Latin, so its neighbours are left
+        // alone too rather than half the line coming back in another script.
+        assert_eq!(step.apply("Jazz na ulitse"), "Jazz na ulitse");
     }
 
     #[test]

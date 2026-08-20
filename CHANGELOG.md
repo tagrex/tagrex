@@ -92,6 +92,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   was previewing values that would never be written. It now goes through the
   same chain, by the same path the real plan takes, so what is under the pattern
   is what lands in the table.
+- **Transliterate to Cyrillic decides once per value.** Requiring a trace of
+  romanization left exactly one word converted in an English title —
+  `la_буш_-_music_from_the_temple_of_house` — because `sh` is both an English
+  digraph and the romanization of ш, and nothing *in that word* can say which.
+  The value can: `music` and `house` were never Cyrillic, so the line is Latin
+  that was always Latin. Now the whole value converts or none of it does, which
+  also means a real romanization comes back whole — `Masha i Medved` converts
+  including the words with no trace of their own, where before they would have
+  stayed Latin. The cost, the same answer from the other side: a value mixing
+  the two languages (`Zhuk remix`) is left whole rather than half-converted.
 - **Transliterate to Cyrillic stopped mangling English text.** Run over tags
   read from an English file name it turned `desert rain` into `десерт раин` and
   left `music` and `house` in Latin — every bit of it the documented behaviour,
