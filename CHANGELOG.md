@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The tooltip wraps instead of eating its own text.** It went out as one line
+  with an ellipsis and a 260px cap, so every title longer than that was cut in
+  half — "Transform the selected files' tags — the GENER…". On a control whose
+  only label is its glyph the tooltip is the whole explanation, and the half
+  that went was the half saying what the button does. Up to 280px and as many
+  lines as the sentence needs; nothing sits below a tooltip to be pushed out of
+  place.
 - **The Play button in the status bar is flat like the rest of the player.** It
   is the player's own toggle while the row is down, but it sits outside the
   player element, so the rule that flattened the transport buttons never reached
