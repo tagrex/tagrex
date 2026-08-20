@@ -172,6 +172,8 @@ function createRuleChain({ ids }) {
     const body = el(ids.rules);
     body.innerHTML = "";
     el(ids.empty).hidden = rules.length > 0;
+    // Nothing to clear, nothing to offer (#257).
+    if (ids.clear && el(ids.clear)) el(ids.clear).hidden = rules.length === 0;
 
     rules.forEach((rule, index) => {
       const card = document.createElement("div");
@@ -392,10 +394,19 @@ function createRuleChain({ ids }) {
     });
   }
 
+  // Empty the chain in one act. Offered only when there is something to empty,
+  // which is why the button's visibility is the renderer's job (#257).
+  function clearRules() {
+    if (!rules.length) return;
+    rules = [];
+    render();
+  }
+
   const chain = {
     ids,
     render,
     addRule,
+    clearRules,
     get length() {
       return rules.length;
     },
@@ -428,6 +439,7 @@ function createRuleChain({ ids }) {
   };
 
   el(ids.add).addEventListener("click", addRule);
+  if (ids.clear && el(ids.clear)) el(ids.clear).addEventListener("click", clearRules);
   return chain;
 }
 

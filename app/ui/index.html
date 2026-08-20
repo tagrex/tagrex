@@ -154,10 +154,10 @@
           <!-- The transform chain, surfaced here for the same reason as Clear
                tags below: the mess it cleans up is made in another mode. After
                reading tags out of file names in TAGGER, fixing their case should
-               not mean leaving the mode. The popover is filled with the GENERATOR
+               not mean leaving the mode. The dialog is filled with the GENERATOR
                panel's own chain — the block is moved in and back out, so there is
                one chain and one implementation, not a copy (#149). -->
-          <button id="transform-btn" class="icon" aria-pressed="false" title="Rules to run on what this panel produces — pins them to the side panel" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
+          <button id="transform-btn" class="icon" title="Rules to run on what this panel produces" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
           <button id="clear-tags" class="icon" title="Clear text tags on the selected files (cover and DJ cue points are kept) — previewed before anything is written" aria-label="Clear text tags on the selected files"><svg class="ico"><use href="#i-eraser"/></svg></button>
         </div>
 
@@ -430,7 +430,7 @@
                 disc 1, track 01. A name that doesn't fit the pattern is left alone; %side% can't
                 be read back, and a value the field can't hold (a vinyl A1 as a track number) is
                 flagged in the preview instead of being written. Values come out as the name spells
-                them — tidy them up with <b>Clean up</b> on the preview bar.
+                them; the rules under the wand above tidy them up as part of the same press.
               </p>
             </div></div>
             <div class="panel-actions from-name-actions">
@@ -476,6 +476,10 @@
                 <option value="key">Key notation</option>
               </select>
               <button id="transform-add" class="btn">Add rule</button>
+              <div class="spacer"></div>
+              <!-- Emptying a chain by hand is one × per rule (#257); this is the
+                   whole chain at once. Hidden while there is nothing to clear. -->
+              <button id="transform-clear" class="btn" hidden title="Remove every rule from this chain">Clear rules</button>
             </div>
             <!-- Named action groups (#57), a list rather than a popover since
                  #234: reaching a saved cleanup used to mean opening a second

@@ -45,6 +45,7 @@ const transformChain = createRuleChain({
     empty: "transform-empty",
     kind: "transform-kind",
     add: "transform-add",
+    clear: "transform-clear",
   },
 });
 

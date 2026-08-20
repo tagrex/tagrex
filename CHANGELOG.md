@@ -92,6 +92,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   was previewing values that would never be written. It now goes through the
   same chain, by the same path the real plan takes, so what is under the pattern
   is what lands in the table.
+- **A chain can be emptied in one go, and its kind picker stopped stretching.**
+  Starting over meant one × per rule, each re-rendering and renumbering what was
+  left; **Clear rules** sits beside Add rule and appears only when there is
+  something to clear. The picker beside it was `flex: 1` and ran the width of
+  the block for an option needing a third of it — measured at 156px sized to its
+  longest kind, against a 560px row.
+- **Two texts that outlived what they described.** The FROM NAME help ended with
+  "tidy them up with **Clean up** on the preview bar" — a button that no longer
+  exists, for a step that is no longer separate — and the wand's tooltip in the
+  markup still said it pinned the rules to the side panel. Every other hint and
+  all 47 tooltips were checked against what is on screen and name something that
+  exists.
 - **Three places stopped saying Discogs when the source is something else.**
   The empty state under the results read *"Search Discogs to see releases."*
   with MusicBrainz selected two rows above it; the TAGGER tab's tooltip named
