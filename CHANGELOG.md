@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-20
+
 ### Changed
 
 - **The README says what version this is, and what the app can actually do.**

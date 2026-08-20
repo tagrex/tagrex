@@ -15,7 +15,7 @@
 
 ---
 
-> **Status: 0.11.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.12.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
 > preview player, and a transactional undo journal. Not 1.0, so expect rough
@@ -75,7 +75,17 @@ ago and forgot would be worse than none.
   covers…) travel with the track.
 - **GENERATOR** — text transforms: case conversion, find/replace, remove
   diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key
-  notation. Chains can be saved as named action groups and re-run as one plan.
+  notation. Every rule names the field it acts on, so one chain can upper-case a
+  catalogue number while title-casing the titles, and chains can be saved as
+  named action groups and re-run as one plan.
+
+**Cleanup is part of the job, not a second step.** Importing a release, reading
+tags out of a file name and renaming each carry a rule chain of their own —
+set up in a dialog behind the wand, remembered between runs — and it runs as
+part of that panel's own button: one press, one plan, one undo entry. The
+targets differ enough that sharing one chain was the bug: RENAMER usually wants
+a space turned into an underscore and FROM NAME wants exactly the opposite. The
+tag editor has none on purpose — a value typed by hand comes out as typed.
 - **DEDUPLICATOR** — read-only scan for likely duplicates by a chosen criterion.
 - **EXPORTER** — M3U playlists, CSV, HTML, XML, and mask-based reports.
 
