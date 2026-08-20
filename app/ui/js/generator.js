@@ -28,6 +28,7 @@ import {
   tracks,
 } from "./state.js";
 import { saveTransformDocked, transformDocked } from "./prefs.js";
+import { setChainFor, setLiveChainSource, storedChainFor } from "./chains.js";
 
 // ---- transformations (#34) ----
 // This panel's chain, over the tags and names already on disk. It lives for the
@@ -55,12 +56,15 @@ function overStagedPlan() {
 function refreshGenerator() {
   const count = selectedPaths().length;
   const staged = overStagedPlan();
+  // Docked, the chain has no button, so the note about acting on a staged plan
+  // would be describing a press that cannot happen here (#237).
+  const docked = !el("transform-dock").hidden;
   el("transform-count").textContent = staged
     ? `— ${plural(previewPlan.changes.length, "staged file", "staged files")}`
     : count
       ? `— ${plural(count, "file", "files")}`
       : "";
-  el("transform-over-plan").hidden = !staged;
+  el("transform-over-plan").hidden = !staged || docked;
   el("transform-preview").textContent = staged ? "Clean up staged" : "Preview changes";
   el("autonum-count").textContent = count ? `— ${count} selected` : "";
   el("vinyl-count").textContent = count ? `— ${count} selected` : "";
@@ -294,25 +298,82 @@ async function runTickedGroups(groups) {
 // to prevent.
 let dockPinned = transformDocked();
 
+// Which job's chain the block is holding (#236). Null where a chain has no
+// business existing: EDITOR, where a value typed by hand must come out exactly
+// as typed, and the modes that produce no values at all.
+function chainContext() {
+  if (currentMode === "generator") return "generator";
+  if (currentMode === "renamer") return "renamer";
+  if (currentMode !== "tagger") return null;
+  const sub = document.querySelector(".subtab.active")?.dataset.subtab;
+  if (sub === "filename") return "fromname";
+  if (sub === "online") return "online";
+  return null;
+}
+
+// The context whose chain is in the block right now, so a switch knows what it
+// is putting away.
+let shownContext = null;
+
+// Put the current chain away and take the incoming one out. The block's DOM is
+// the one live chain there is, so this is what makes four chains out of it.
+function swapChainTo(context) {
+  if (context === shownContext) return;
+  if (shownContext) setChainFor(shownContext, transformChain.asGroup());
+  shownContext = context;
+  if (context) transformChain.load(storedChainFor(context));
+}
+
+// So a plan built anywhere can run the chain of its own context without asking
+// this module whether that context happens to be on screen.
+setLiveChainSource(() =>
+  shownContext ? { context: shownContext, chain: transformChain.asGroup() } : null
+);
+// A chain typed and never switched away from would otherwise be lost on quit.
+window.addEventListener("beforeunload", () => {
+  if (shownContext) setChainFor(shownContext, transformChain.asGroup());
+});
+
 // Put the block where the current mode says it belongs, and show the dock only
 // when it is holding something. One function, called from everywhere, so the
 // button's state and the block's whereabouts cannot disagree.
 function syncTransformPlacement() {
+  const context = chainContext();
+  swapChainTo(context);
   const dock = el("transform-dock");
-  const inGenerator = currentMode === "generator";
-  const docked = dockPinned && !inGenerator;
+  const inGenerator = context === "generator";
+  const docked = dockPinned && !!context && !inGenerator;
   if (docked) dock.append(el("transform-block"));
   else el("transform-home").after(el("transform-block"));
   dock.hidden = !docked;
+  // Offered only where a chain applies (#236): not in EDITOR, not in the modes
+  // that produce no values, and not in GENERATOR, where the block is already
+  // on screen and the button would pull it out of the panel it sits in.
+  el("transform-btn").hidden = !context || inGenerator;
   el("transform-btn").setAttribute("aria-pressed", String(dockPinned));
-  // The side column scrolls, and the dock is at the foot of it: bring it into
-  // view rather than leaving the user to find what they just pinned.
-  if (docked) dock.scrollIntoView({ block: "nearest" });
-  // The header counts the selection (or the staged plan) and the button says
-  // which of the two it will act on; refreshGenerator only runs on entering the
-  // mode, so bring them up to date for wherever the block has just landed.
-  if (docked) refreshGenerator();
+  // Docked, the chain has no run button of its own: the context's own action
+  // runs it (#237). In GENERATOR the block keeps its button, which is also the
+  // way to clean up a plan staged from somewhere with no chain of its own.
+  el("transform-preview").hidden = docked;
+  el("transform-dock-note").hidden = !docked;
+  if (docked) {
+    el("transform-dock-note").textContent = DOCK_NOTES[context];
+    // The side column scrolls, and the dock is at the foot of it: bring it into
+    // view rather than leaving the user to find what they just pinned.
+    dock.scrollIntoView({ block: "nearest" });
+    // The header counts the selection (or the staged plan); refreshGenerator
+    // only runs on entering the mode, so bring it up to date for where the
+    // block has just landed.
+    refreshGenerator();
+  }
 }
+
+// What the docked chain says about itself, since it has no button to say it.
+const DOCK_NOTES = {
+  online: "Runs on the imported values when you import a release.",
+  fromname: "Runs on the tags read out of the name when you press Preview tags.",
+  renamer: "Runs on the new names when you preview a rename or a move.",
+};
 
 function setTransformDocked(on) {
   dockPinned = on;
@@ -339,7 +400,6 @@ el("transform-btn").addEventListener("click", toggleTransformDock);
 // The plan bar's entry point to the same chain (#142): Clean up pins it rather
 // than opening anything, and pins it whether or not it was pinned already —
 // pressing "clean this up" and getting nothing would be the wrong answer.
-el("diff-cleanup").addEventListener("click", () => setTransformDocked(true));
 el("transform-undock").addEventListener("click", () => setTransformDocked(false));
 el("autonum-run").addEventListener("click", numberTracks);
 el("vinyl-split").addEventListener("click", splitVinylSides);

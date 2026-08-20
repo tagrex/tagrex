@@ -1667,10 +1667,9 @@ function setMode(name) {
   // The dock borrows the GENERATOR panel's chain block (#149, #233); this puts
   // it wherever the new mode says it belongs — back in that panel on the way
   // into GENERATOR, into the dock on the way out of it if it is pinned.
+  // Which also decides whether the wand is offered at all: the chain belongs to
+  // some jobs and not others (#236).
   syncTransformPlacement();
-  // In GENERATOR the chain is already on screen, and the button would pull it
-  // out of the panel it is sitting in — so there is nothing for it to do there.
-  el("transform-btn").hidden = name === "generator";
   document.querySelectorAll(".mode-tab").forEach((tab) => {
     tab.classList.toggle("active", tab.dataset.mode === name);
   });
@@ -1983,6 +1982,9 @@ function setSubtab(name) {
   // The probe is only computed while it's on screen; opening the tab is when it
   // has to catch up with the current selection and pattern.
   if (name === "filename") refreshNameProbe();
+  // Each sub-tab is its own chain context — ONLINE and FROM NAME have one,
+  // EDITOR deliberately has none (#236).
+  syncTransformPlacement();
 }
 document.querySelectorAll(".subtab").forEach((tab) => {
   tab.addEventListener("click", () => setSubtab(tab.dataset.subtab));

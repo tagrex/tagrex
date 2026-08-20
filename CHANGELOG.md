@@ -75,6 +75,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   that: left to size itself it squeezed the panel above down to its heading in
   anything but a maximised window, which is the one thing a tool pinned beside
   the work must not do (#235).
+- **A rule chain per job, and it runs as part of the job.** One chain shared by
+  everything was wrong in a way that only shows in use: RENAMER wants a space
+  turned into an underscore and FROM NAME wants exactly the opposite, so
+  whichever was set last quietly ruined the other. Four jobs now have a chain of
+  their own — importing a release, reading tags out of a name, renaming, and the
+  general-purpose one in GENERATOR — and each persists, so it is set up once.
+  **EDITOR has none on purpose**: a value typed by hand must come out as typed,
+  alternating capitals and all, and the wand is not offered there or in the
+  modes that produce no values. The saved groups stay global, because a shelf
+  you load from should not depend on where you stand.
+- **One press instead of two.** Getting cleaned-up tags out of a file name meant
+  pressing **Preview tags** and then remembering to press **Clean up staged** —
+  and forgetting the second gave you the raw values with no error to say so. The
+  context's own action now runs its own chain over the plan it just built: the
+  tags then FROM NAME's rules, the new names then RENAMER's, the provider's
+  values then ONLINE's *before* they reach the edit buffer — which is where the
+  shipped **Discogs cleanup** group was always meant to be used. One press, one
+  Apply, one undo entry; an empty chain changes nothing. The docked block lost
+  its run button and the plan bar lost **Clean up**, both of which existed only
+  for the second press. A plan staged from somewhere with no chain of its own —
+  a hand edit, a cover change — is still cleaned in GENERATOR, whose button
+  retargets to a staged plan when there is one. A failing chain gives back the
+  plan it was handed rather than nothing.
 - **The rule groups are a list in the block, not a popover over a popover.**
   Every row carried three controls doing similar things — a tick, a name that
   toggled the tick, and a **Load** link. Clicking the name now loads the group

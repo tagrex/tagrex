@@ -157,7 +157,7 @@
                not mean leaving the mode. The popover is filled with the GENERATOR
                panel's own chain — the block is moved in and back out, so there is
                one chain and one implementation, not a copy (#149). -->
-          <button id="transform-btn" class="icon" aria-pressed="false" title="Transform the selected files' tags — pins the GENERATOR rule chain to the side panel" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
+          <button id="transform-btn" class="icon" aria-pressed="false" title="Rules to run on what this panel produces — pins them to the side panel" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
           <button id="clear-tags" class="icon" title="Clear text tags on the selected files (cover and DJ cue points are kept) — previewed before anything is written" aria-label="Clear text tags on the selected files"><svg class="ico"><use href="#i-eraser"/></svg></button>
         </div>
 
@@ -201,10 +201,6 @@
           <span class="ab-sep"></span>
           <label class="toggle-old" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="diff-show-old" /> Show old values</label>
           <span class="ab-sep"></span>
-          <!-- Clean up the staged values before they are written (#142): opens
-               the same rule chain the wand button does, which acts on the plan
-               rather than on the files while one is staged. -->
-          <button id="diff-cleanup" class="btn" title="Run a rule chain over the staged values — one plan, one undo entry"><svg class="ico"><use href="#i-wand"/></svg>Clean up</button>
           <button id="diff-discard" class="btn">Discard</button>
           <button id="diff-apply" class="btn primary" disabled>Apply</button>
         </div>
@@ -455,6 +451,9 @@
             <p class="hint muted" style="padding: 0">
               Rules run top to bottom. Nothing is written until you review the preview and press Apply.
             </p>
+            <!-- What the chain is about to run on, shown only while it is docked
+                 (#237), where it has no button of its own to say it. -->
+            <p id="transform-dock-note" class="hint inert-panel" style="padding: 6px 8px" hidden></p>
             <!-- Shown only while a plan is staged (#142): the same chain, over
                  the values the plan proposes instead of the ones on disk. -->
             <p id="transform-over-plan" class="hint inert-panel" style="padding: 6px 8px" hidden>

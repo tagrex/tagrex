@@ -10,6 +10,7 @@
 // choosing it is what authorizes the backend to write there.
 import { el, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
+import { runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
 import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
 
@@ -30,7 +31,11 @@ async function previewRename() {
     return;
   }
   try {
-    setPreviewPlan(await invoke("preview_rename", { mask: el("mask").value, paths }));
+    // RENAMER's own chain runs on the names this just produced (#237) — where a
+    // space becoming an underscore is the usual wish, and exactly the wish that
+    // must not reach the tags FROM NAME reads.
+    const named = await invoke("preview_rename", { mask: el("mask").value, paths });
+    setPreviewPlan(await runChainOverPlan(named, "renamer"));
     setPreviewSource("rename");
     hooks.renderPreview(previewPlan);
   } catch (e) {
@@ -49,15 +54,14 @@ async function previewMove() {
   }
   const copy = moveMode === "copy";
   try {
-    setPreviewPlan(
-      await invoke("preview_move", {
-        mask: el("move-mask").value,
-        paths,
-        destination: el("move-dest").value || null,
-        copy,
-        pruneEmptyDirs: el("move-prune").checked,
-      })
-    );
+    const moved = await invoke("preview_move", {
+      mask: el("move-mask").value,
+      paths,
+      destination: el("move-dest").value || null,
+      copy,
+      pruneEmptyDirs: el("move-prune").checked,
+    });
+    setPreviewPlan(await runChainOverPlan(moved, "renamer"));
     setPreviewSource("rename");
     hooks.renderPreview(previewPlan);
     toast(

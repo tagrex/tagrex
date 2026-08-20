@@ -7,6 +7,7 @@
 // stages goes through the ordinary preview/apply/undo path.
 import { confirmDialog, el, escapeHtml, fileName, ico, placeFloating, plural, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
+import { runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
 import { fmtTime } from "./player.js";
 import { refreshFieldEditor } from "./editor.js";
@@ -1219,11 +1220,16 @@ async function importRelease(card) {
     media_type: mediaTagValue(release.format),
   };
   try {
-    const plan = await invoke("preview_import", {
+    const imported = await invoke("preview_import", {
       paths,
       selection,
       vinylSidesToDisc: el("import-vinyl-disc").checked,
     });
+    // ONLINE's chain runs on what the provider gave, before any of it reaches
+    // the edit buffer (#237). This is where the shipped "Discogs cleanup" group
+    // was always meant to be used: trusting a source is not the same as taking
+    // its disambiguators verbatim.
+    const plan = await runChainOverPlan(imported, "online");
     // Merge into the pending-edits buffer; a field the user already edited by
     // hand wins (we don't overwrite an existing entry).
     let merged = 0;

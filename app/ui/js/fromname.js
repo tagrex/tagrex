@@ -11,6 +11,7 @@
 // preview bar like everything else.
 import { el, escapeHtml, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
+import { runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
 import { columnLabel } from "./columns.js";
 import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
@@ -47,10 +48,15 @@ async function previewTagsFromName() {
     return;
   }
   try {
-    const plan = await invoke("preview_tags_from_name", {
+    const raw = await invoke("preview_tags_from_name", {
       mask: el("from-name-mask").value,
       paths,
     });
+    // The chain for THIS job runs as part of the press (#237). Reading tags out
+    // of a name and tidying what comes out is one intention — an underscore
+    // becomes a space, a lower-cased name becomes a title — and making it two
+    // presses only meant forgetting the second one.
+    const plan = await runChainOverPlan(raw, "fromname");
     // Distinguish "nothing to do" from a silent no-op: with this feature an
     // empty plan usually means the pattern doesn't fit the names.
     if (plan.changes.length === 0) {
