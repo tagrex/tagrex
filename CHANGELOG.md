@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   entries live under 0.5.1's heading in the current file and its page was
   filled from the file as it stood at its own tag — leaving 0.5.1's page the
   one fix it actually shipped, instead of the two repeating each other.
+- **0.5.0 has a section again.** The file went from `[0.5.1]` straight to
+  `[0.4.0]`: when 0.5.1 was cut, 0.5.0's heading was renamed to the new number
+  instead of a new section being opened above it, so a whole release — a third
+  metadata source, the tempo and label write fixes — was filed under the patch
+  that followed it, and 0.5.0 itself had no record at all. The two are split
+  back apart, each holding what it shipped. Every version's section and its
+  release page now say the same thing. The other twelve tags were checked for
+  the same mistake and are clean.
 
 ## [0.12.0] - 2026-08-20
 
@@ -981,6 +989,8 @@ with the app.
   alone — a DJ tool's `KEY` may be Camelot where the standard frame is musical,
   so folding those would silently discard one of the two. Any other custom field
   round-trips exactly as before. (#171)
+
+## [0.5.0] - 2026-08-15
 
 ### Added
 
