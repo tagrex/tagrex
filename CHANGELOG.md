@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   workflow takes the body from that section — the words it was written in,
   rather than a generated list of commit subjects — and the four that went out
   without one have been filled in.
+- **The other thirteen release pages say what changed too.** Filling in the
+  bodies stopped at the four newest, so every release from 0.1.0 to 0.9.0 was
+  still a list of files while `CHANGELOG.md` held a written section for each.
+  All of them now carry that section. 0.5.0 needed its own handling: its
+  heading had been renamed rather than superseded when 0.5.1 was cut, so its
+  entries live under 0.5.1's heading in the current file and its page was
+  filled from the file as it stood at its own tag — leaving 0.5.1's page the
+  one fix it actually shipped, instead of the two repeating each other.
 
 ## [0.12.0] - 2026-08-20
 
