@@ -1689,10 +1689,50 @@ fn write_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), Ta
     }
 
     if let Some(original) = read_id3v2(path, container, tag_only_options())? {
+        // Lyrics reach the model through the custom-field catch-all, under the
+        // frame's own name — so the model holds the text and nothing else, while
+        // `USLT` is identified by a language and a description it has no room
+        // for. Written from the model alone the frame goes out as `XXX`,
+        // "undefined", *beside* the one the file already had, and a file that
+        // said `eng` ends up stating its lyrics twice, one of them stale (#264).
+        // The two descriptors come off the file's own frame, so the value the
+        // model carries lands in it instead of next to it.
+        let owned_lyrics = original
+            .unsync_text()
+            .last()
+            .map(|lyrics| (lyrics.language, lyrics.description.to_string()));
+        if let Some((language, description)) = &owned_lyrics {
+            // Here, before the carry loop, what the model wrote is still the
+            // only lyrics frame in `updated` — after it, the file's other
+            // languages are in here too and must keep their own descriptors.
+            updated.retain_mut(|frame| {
+                if let Frame::UnsynchronizedText(lyrics) = frame {
+                    lyrics.language = *language;
+                    lyrics.description = description.clone().into();
+                }
+                true
+            });
+        }
         for frame in &original {
-            if !is_model_text_frame(frame) {
-                updated.insert(frame.clone());
+            if is_model_text_frame(frame) {
+                continue;
             }
+            // Lyrics in any other language are lyrics the model never saw —
+            // `unsync_text().last()` is the one the read kept, since a second
+            // value for one field overwrites the first. Those carry over
+            // untouched, like everything else the model has no room for; the
+            // one it did read has just been written from the model.
+            if let Frame::UnsynchronizedText(lyrics) = frame {
+                let owned = owned_lyrics
+                    .as_ref()
+                    .is_some_and(|(language, description)| {
+                        *language == lyrics.language && *description == lyrics.description
+                    });
+                if owned {
+                    continue;
+                }
+            }
+            updated.insert(frame.clone());
         }
     }
     updated.save_to_path(path, id3_write_options())?;

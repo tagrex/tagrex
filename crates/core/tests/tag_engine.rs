@@ -1682,3 +1682,208 @@ fn removing_a_block_leaves_the_others_alone_and_undo_puts_it_back() {
         Some("Stale Title")
     );
 }
+
+/// Every unsynchronized-lyrics frame in the file, as (language, description,
+/// text). Lyrics have no field of their own — they reach the model through the
+/// custom-field catch-all — so what has to be pinned is the frame count as much
+/// as the value: a duplicate reads back fine and still leaves the file saying
+/// the same thing twice (#264).
+fn lyrics_frames(path: &PathBuf) -> Vec<(String, String, String)> {
+    use lofty::config::ParseOptions;
+    use lofty::file::AudioFile;
+    use lofty::id3::v2::Frame;
+    use lofty::mpeg::MpegFile;
+
+    let mut file = std::fs::File::open(path).unwrap();
+    let mp3 = MpegFile::read_from(&mut file, ParseOptions::new()).unwrap();
+    mp3.id3v2()
+        .map(|tag| {
+            tag.clone()
+                .into_iter()
+                .filter_map(|frame| match frame {
+                    Frame::UnsynchronizedText(lyrics) => Some((
+                        String::from_utf8_lossy(&lyrics.language).into_owned(),
+                        lyrics.description.to_string(),
+                        lyrics.content.to_string(),
+                    )),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Seed an MP3 with one `USLT` frame and an artist, and hand back its path.
+fn mp3_with_lyrics(name: &str, text: &str) -> PathBuf {
+    use lofty::config::WriteOptions;
+    use lofty::id3::v2::{Frame, Id3v2Tag, UnsynchronizedTextFrame};
+    use lofty::prelude::{Accessor, TagExt};
+    use lofty::TextEncoding;
+
+    let path =
+        std::env::temp_dir().join(format!("tagrex-lyrics-{name}-{}.mp3", std::process::id()));
+    std::fs::write(&path, minimal_mp3()).unwrap();
+
+    let mut seeded = Id3v2Tag::new();
+    seeded.set_artist("Original".to_string());
+    seeded.insert(Frame::UnsynchronizedText(UnsynchronizedTextFrame::new(
+        TextEncoding::UTF8,
+        *b"eng",
+        String::new(),
+        text.to_string(),
+    )));
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+    path
+}
+
+#[test]
+fn writing_an_unrelated_field_leaves_the_lyrics_frame_alone() {
+    let path = mp3_with_lyrics("untouched", "line one\nline two");
+    assert_eq!(lyrics_frames(&path).len(), 1, "seeding failed");
+
+    let mut file = TagEngine::read(&path).unwrap();
+    file.tags.insert(TagField::Title, "New title".into());
+    TagEngine::write(&file).unwrap();
+
+    assert_eq!(
+        lyrics_frames(&path),
+        vec![(
+            "eng".to_string(),
+            String::new(),
+            "line one\nline two".to_string()
+        )],
+        "a save that never touched the lyrics must leave exactly the frame the file had"
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn edited_lyrics_reach_the_file_in_the_frame_it_had() {
+    let path = mp3_with_lyrics("edited", "line one\nline two");
+
+    let mut file = TagEngine::read(&path).unwrap();
+    assert_eq!(
+        file.tags.get(&TagField::Custom("USLT".to_string())),
+        Some(&"line one\nline two".to_string()),
+        "lyrics should read into the model as a custom field"
+    );
+    file.tags.insert(
+        TagField::Custom("USLT".to_string()),
+        "edited\nlyrics".into(),
+    );
+    TagEngine::write(&file).unwrap();
+
+    assert_eq!(
+        lyrics_frames(&path),
+        vec![(
+            "eng".to_string(),
+            String::new(),
+            "edited\nlyrics".to_string()
+        )],
+        "the edit belongs in the frame the value came from, keeping its language"
+    );
+    assert_eq!(
+        TagEngine::read(&path)
+            .unwrap()
+            .tags
+            .get(&TagField::Custom("USLT".to_string())),
+        Some(&"edited\nlyrics".to_string())
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn repeated_saves_do_not_accumulate_lyrics_frames() {
+    let path = mp3_with_lyrics("repeated", "line one");
+    for _ in 0..3 {
+        let file = TagEngine::read(&path).unwrap();
+        TagEngine::write(&file).unwrap();
+    }
+    assert_eq!(lyrics_frames(&path).len(), 1);
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn lyrics_in_another_language_are_left_where_they_are() {
+    use lofty::config::WriteOptions;
+    use lofty::id3::v2::{Frame, Id3v2Tag, UnsynchronizedTextFrame};
+    use lofty::prelude::TagExt;
+    use lofty::TextEncoding;
+
+    let path = std::env::temp_dir().join(format!("tagrex-lyrics-two-{}.mp3", std::process::id()));
+    std::fs::write(&path, minimal_mp3()).unwrap();
+
+    let mut seeded = Id3v2Tag::new();
+    for (language, text) in [(b"deu", "zeile eins"), (b"eng", "line one")] {
+        seeded.insert(Frame::UnsynchronizedText(UnsynchronizedTextFrame::new(
+            TextEncoding::UTF8,
+            *language,
+            String::new(),
+            text.to_string(),
+        )));
+    }
+    seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+    assert_eq!(lyrics_frames(&path).len(), 2, "seeding failed");
+
+    // The model can hold one value per field, so it reads the last of the two —
+    // the other is lyrics it never saw, and editing the one it has must not
+    // take the other down with it.
+    let mut file = TagEngine::read(&path).unwrap();
+    assert_eq!(
+        file.tags.get(&TagField::Custom("USLT".to_string())),
+        Some(&"line one".to_string())
+    );
+    file.tags
+        .insert(TagField::Custom("USLT".to_string()), "line two".into());
+    TagEngine::write(&file).unwrap();
+
+    let mut frames = lyrics_frames(&path);
+    frames.sort();
+    assert_eq!(
+        frames,
+        vec![
+            ("deu".to_string(), String::new(), "zeile eins".to_string()),
+            ("eng".to_string(), String::new(), "line two".to_string()),
+        ]
+    );
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn vorbis_lyrics_round_trip_as_a_custom_field() {
+    let path = temp_flac_path("lyrics");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    let mut file = TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags: BTreeMap::new(),
+    };
+    file.tags.insert(TagField::Artist, "Original".into());
+    file.tags.insert(
+        TagField::Custom("LYRICS".to_string()),
+        "line one\nline two".into(),
+    );
+    TagEngine::write(&file).unwrap();
+
+    let read = TagEngine::read(&path).unwrap();
+    assert_eq!(
+        read.tags.get(&TagField::Custom("LYRICS".to_string())),
+        Some(&"line one\nline two".to_string())
+    );
+
+    let mut edited = read;
+    edited
+        .tags
+        .insert(TagField::Custom("LYRICS".to_string()), "edited".into());
+    TagEngine::write(&edited).unwrap();
+    assert_eq!(
+        TagEngine::read(&path)
+            .unwrap()
+            .tags
+            .get(&TagField::Custom("LYRICS".to_string())),
+        Some(&"edited".to_string()),
+        "the Vorbis side has no carry loop to duplicate the value — pin that it stays that way"
+    );
+    let _ = std::fs::remove_file(&path);
+}

@@ -31,6 +31,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   back apart, each holding what it shipped. Every version's section and its
   release page now say the same thing. The other twelve tags were checked for
   the same mistake and are clean.
+- **A file with lyrics keeps one copy of them, and an edit reaches it.** Lyrics
+  have no field of their own — they arrive through the custom-field catch-all,
+  under the frame's own name — so the model held the text while the language
+  and description that identify an ID3v2 lyrics frame stayed behind. Every save
+  wrote a second frame under `XXX`, "undefined", beside the one the file already
+  had, and left the original in place: the file stated its lyrics twice, and
+  which of the two a reader saw was luck. Typing into the field changed only the
+  new copy. The value now lands in the file's own frame, keeping the language it
+  was written with, and lyrics in a language the model never read are left where
+  they are.
 
 ## [0.12.0] - 2026-08-20
 
