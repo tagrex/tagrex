@@ -18,6 +18,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.12.0] - 2026-08-20
 
+This release is about the rule chains. They belong to the job now — importing a
+release, reading tags out of a file name, renaming, and the general-purpose one
+in GENERATOR each carry their own — and each runs as part of that panel's own
+button instead of being a second press to remember. Every rule names the field
+it acts on, so one chain can upper-case a catalogue number while title-casing
+the titles, and the whole thing is set up in a dialog rather than in a panel
+that took a third of the side column.
+
+Two transform steps were fixed against the data they get pointed at rather than
+the data they were written for: reading a romanization back into Cyrillic now
+judges a value as a whole instead of turning an English title into half-Cyrillic
+mush, and the key rule no longer reads *A Minor Detail* as a key and replaces it
+with `8A`. The rest is the interface catching up with itself — the preview
+player, the app's own tooltips in place of the platform's, and a long tail of
+alignment, spacing and focus corrections — and the documentation catching up
+with the app.
+
 ### Changed
 
 - **The README says what version this is, and what the app can actually do.**
