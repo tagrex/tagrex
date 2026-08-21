@@ -7,6 +7,7 @@
 // (#133) — an image can't be "opened", so where it lands doesn't matter.
 import { hooks } from "./hooks.js";
 import { embedCoverFromPath } from "./cover.js";
+import { invoke } from "./invoke.js";
 
 // ---- drag-and-drop onto the window to open folders/files (#127) ----
 // Tauri v2 intercepts OS file drops (dragDropEnabled) and re-emits them as
@@ -60,3 +61,31 @@ function isImagePath(p) {
     hooks.openDrop(Array.from(e.dataTransfer.files).map((f) => f.name));
   });
 })();
+
+// ---- folders the OS hands over, rather than the window (#51) ----
+// A folder picked with "Open With", dropped on the Dock icon or passed to a
+// second launch reaches the backend, not the webview — as an Apple Event on
+// macOS, as an argument everywhere else. Either way it ends up in the same
+// place a drop does, so the paths are opened by the same call.
+//
+// The backend queues them and only nudges, because the hand-over can happen
+// before this listener exists; draining is what makes the two paths safe to
+// have both — whichever asks first gets the paths, and the other gets nothing.
+async function openHandedOverPaths() {
+  try {
+    const paths = await invoke("take_launch_paths");
+    if (paths && paths.length) await hooks.openDrop(paths);
+  } catch {
+    // Nothing was waiting, or there is no backend to ask (browser dev).
+  }
+}
+
+// Called once from the startup sequence, after `hooks.openDrop` is wired. The
+// listener goes on before the queue is drained, not after: registering it is
+// itself async, and a hand-over that lands in between would nudge nobody and
+// then find the queue already emptied.
+export async function initLaunchOpen() {
+  const event = window.__TAURI__ && window.__TAURI__.event;
+  if (event) await event.listen("tagrex://open-paths", openHandedOverPaths);
+  await openHandedOverPaths();
+}

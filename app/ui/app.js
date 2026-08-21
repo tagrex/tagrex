@@ -6,7 +6,7 @@ import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
-import "./js/dragdrop.js";
+import { initLaunchOpen } from "./js/dragdrop.js";
 import "./js/tablegestures.js";
 import "./js/renamer.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
@@ -2754,6 +2754,10 @@ initPlaceholderReference().then(renderTableHead);
 // The app's own tooltips over the chrome (#230), for the controls that are a
 // glyph and nothing else.
 initTooltips();
+// Open whatever the OS handed the app on the way in (#51) — a folder from
+// "Open With", from the Dock icon, or from a second launch. After the hooks
+// above, since it opens through the same one a drop does.
+initLaunchOpen();
 // Put the transform chain where the saved preference says it belongs (#233):
 // nothing calls setMode at startup, so without this a pinned chain would come
 // back unpinned after a restart.

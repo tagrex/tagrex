@@ -31,6 +31,42 @@ type AppState = Mutex<Option<App>>;
 /// what makes the throttle a single cadence per source.
 type ProviderState = Mutex<ProviderHub>;
 
+/// Paths the OS handed the app, waiting for the frontend to come and take them
+/// (#51). Opening one is the frontend's job — it is the same "open these paths"
+/// the drop handler already does — but the hand-over can arrive before there is
+/// a webview to tell, so it queues here instead.
+type PendingOpen = Mutex<Vec<PathBuf>>;
+
+/// The nudge that says [`PendingOpen`] is not empty. Deliberately payload-free:
+/// the paths travel in the queue and the frontend drains it, so an event that
+/// fires before the listener exists costs nothing — the startup drain picks the
+/// same paths up.
+const OPEN_PATHS_EVENT: &str = "tagrex://open-paths";
+
+/// The paths in a command line. Windows and Linux hand a folder over as an
+/// argument; macOS does not, and passes `-psn_…` of its own when Finder starts
+/// the app, so anything that is not a path that exists is not ours.
+fn paths_from_args<I>(args: I) -> Vec<PathBuf>
+where
+    I: IntoIterator<Item = std::ffi::OsString>,
+{
+    args.into_iter()
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .collect()
+}
+
+/// Queue `paths` for the frontend and tell it they are there.
+fn hand_over_paths(app: &tauri::AppHandle, paths: Vec<PathBuf>) {
+    if paths.is_empty() {
+        return;
+    }
+    app.state::<PendingOpen>().lock().unwrap().extend(paths);
+    // A window that isn't listening yet is not a problem: what matters is in
+    // the queue, and the frontend drains it on startup as well.
+    let _ = tauri::Emitter::emit(app, OPEN_PATHS_EVENT, ());
+}
+
 fn with_app<T>(
     state: &State<AppState>,
     f: impl FnOnce(&App) -> Result<T, String>,
@@ -85,6 +121,19 @@ fn open_drop(
     opened.apply_settings(&read_settings(&app));
     *state.lock().unwrap() = Some(opened);
     Ok(result)
+}
+
+/// Take the paths the OS handed the app, if any (#51).
+///
+/// Draining rather than reading is what keeps the two sides from opening the
+/// same folder twice: the frontend asks once at startup and again on every
+/// nudge, and whichever call arrives first is the one that gets them.
+#[tauri::command]
+fn take_launch_paths(pending: State<PendingOpen>) -> Vec<String> {
+    std::mem::take(&mut *pending.lock().unwrap())
+        .into_iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect()
 }
 
 #[tauri::command]
@@ -991,11 +1040,29 @@ fn save_settings(
 }
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    // Windows and Linux start a second process for a second launch; the folder
+    // it was given belongs in the window that is already open (#51). macOS
+    // routes it to the running instance itself, as the Apple Event below.
+    #[cfg(any(windows, target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+        // `argv` is the whole command line, the executable included.
+        hand_over_paths(
+            app,
+            paths_from_args(argv.into_iter().skip(1).map(Into::into)),
+        );
+    }));
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState::default())
         .manage(ProviderState::default())
+        // What the app was started with, waiting for the frontend to ask (#51).
+        .manage(PendingOpen::new(paths_from_args(
+            std::env::args_os().skip(1),
+        )))
         .setup(|app| {
             // The provider hub exists from startup, before any library is
             // opened (#166), so it takes the saved network settings here rather
@@ -1071,15 +1138,50 @@ fn main() {
             render_column,
             preview_transform_groups,
             preview_transform_over_plan,
-            player_status
+            player_status,
+            take_launch_paths
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app, _event| {
+            // macOS does not pass an opened folder as an argument. A double
+            // click, an "Open With", a folder dropped on the Dock icon and a
+            // second `open` of the bundle all arrive here, as one Apple Event
+            // delivered to the running instance (#51).
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                let paths = urls
+                    .iter()
+                    .filter_map(|url| url.to_file_path().ok())
+                    .collect();
+                hand_over_paths(_app, paths);
+            }
+        });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::release_url;
+    use super::{paths_from_args, release_url};
+
+    #[test]
+    fn a_command_line_yields_the_paths_in_it_and_nothing_else() {
+        let dir = std::env::temp_dir().join(format!("tagrex-launch-args-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // What Finder adds when it starts the app is not a folder, and neither
+        // is a path that is not there.
+        let argv = [
+            "-psn_0_774163".to_string(),
+            dir.to_string_lossy().into_owned(),
+            dir.join("no-such-folder").to_string_lossy().into_owned(),
+        ];
+        assert_eq!(
+            paths_from_args(argv.into_iter().map(Into::into)),
+            vec![dir.clone()]
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn builds_provider_release_urls() {

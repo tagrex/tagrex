@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A folder can be handed to TagRex by the file manager.** Dropping one on the
+  open window has worked for a while; starting the app *with* one did not —
+  Finder's **Open With**, the Dock icon, a folder dropped on the executable, a
+  second launch. All of them now open that folder, through the same path a drop
+  takes. macOS does not pass it as an argument, which is what made this look
+  like a command-line feature: a double click arrives as an Apple Event, so
+  both routes are handled, and the bundle declares the association it needs to
+  appear in **Open With** at all. Folders are what TagRex asks to open; for
+  audio files it registers as a secondary handler only, so it never takes the
+  double-click away from whatever plays them. A second launch on Windows and
+  Linux loads its folder into the window that is already open instead of
+  starting another copy — on macOS the system already does that.
+
 ### Fixed
 
 - **A release page says what changed.** Every release so far was a list of files

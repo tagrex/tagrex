@@ -54,6 +54,14 @@ trash = { version = "5.2.6", default-features = false, features = [
     "coinit_apartmentthreaded",
 ] }
 
+# A second launch hands its folder to the window that is already open instead of
+# starting another copy (#51). Windows and Linux only: on macOS the OS does this
+# itself — a second `open` of the bundle goes to the running instance as the
+# same Apple Event a double-click sends, which is what `RunEvent::Opened`
+# receives.
+[target.'cfg(any(windows, target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = "2"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 # GUI shell: main.rs is the Tauri entry point (commands forward to the App

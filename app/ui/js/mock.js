@@ -317,6 +317,9 @@ function mockInvoke(cmd, args) {
         data_base64:
           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
       });
+    // Nothing hands paths to a browser tab (#51).
+    case "take_launch_paths":
+      return Promise.resolve([]);
     case "open_drop": {
       // Mirror the backend resolver enough to exercise both modes + grouping:
       // a path with no file extension is treated as a folder, everything else a
