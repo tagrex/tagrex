@@ -14,7 +14,7 @@ import {
 } from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
-import { applyStaticText } from "./js/i18n.js";
+import { applyStaticText, t as tr, tn } from "./js/i18n.js";
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
@@ -2230,10 +2230,10 @@ function syncSelectionUI() {
 // DOM even while hidden); the full panel refresh still happens on mode entry.
 function updatePanelCounts() {
   const count = selectedPaths().length;
-  el("transform-count").textContent = count ? `— ${plural(count, "file", "files")}` : "";
-  el("autonum-count").textContent = count ? `— ${count} selected` : "";
-  el("vinyl-count").textContent = count ? `— ${count} selected` : "";
-  el("export-count").textContent = count ? `— ${plural(count, "track", "tracks")}` : "";
+  el("transform-count").textContent = count ? `— ${tn("unit.file", count)}` : "";
+  el("autonum-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
+  el("vinyl-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
+  el("export-count").textContent = count ? `— ${tn("unit.track", count)}` : "";
 }
 
 function selectRow(tr, e) {

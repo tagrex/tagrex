@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   5 треков without any call site knowing how many forms a language has. EXPORTER
   is translated in full as the first panel; everything else still reads English
   and will follow.
+- **RENAMER, GENERATOR and DEDUPLICATOR speak Russian too.** Their headings,
+  hints, controls, tooltips and messages join EXPORTER in the catalogues —
+  including the counts in the panel headings, which now agree properly:
+  «3 файла», «5 файлов», «21 файл».
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a

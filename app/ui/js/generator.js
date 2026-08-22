@@ -10,7 +10,8 @@
 // chain reads the files. With a plan staged it reads THE PLAN — the values it
 // proposes — and gives back a revised plan, so producing values and cleaning
 // them up stay one Apply and one undo entry instead of two.
-import { el, plural, toast } from "./dom.js";
+import { el, toast } from "./dom.js";
+import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { createGroupsMenu, createRuleChain, ruleForGroup } from "./chain.js";
@@ -65,14 +66,16 @@ function refreshGenerator() {
   // plan would be describing a press that cannot happen there (#237).
   const inDialog = !el("transform-modal").hidden;
   el("transform-count").textContent = staged
-    ? `— ${plural(previewPlan.changes.length, "staged file", "staged files")}`
+    ? `— ${tn("count.stagedFiles", previewPlan.changes.length)}`
     : count
-      ? `— ${plural(count, "file", "files")}`
+      ? `— ${tn("unit.file", count)}`
       : "";
   el("transform-over-plan").hidden = !staged || inDialog;
-  el("transform-preview").textContent = staged ? "Clean up staged" : "Preview changes";
-  el("autonum-count").textContent = count ? `— ${count} selected` : "";
-  el("vinyl-count").textContent = count ? `— ${count} selected` : "";
+  el("transform-preview").textContent = t(
+    staged ? "generator.cleanUpStaged" : "generator.previewChanges"
+  );
+  el("autonum-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
+  el("vinyl-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
   transformChain.render();
 }
 
@@ -100,10 +103,10 @@ function stageRun(plan, scopes, wasStaged) {
 
 // What a run reports when it changed nothing — the staged case has its own
 // wording, since "the selection" is not what it looked at.
-function nothingChanged(wasStaged, subject) {
-  return wasStaged
-    ? `${subject} change nothing in the staged plan`
-    : `${subject} change nothing on the selection`;
+function nothingChanged(wasStaged, subjectKey) {
+  return t(wasStaged ? "toast.nothingChangedStaged" : "toast.nothingChangedSelection", {
+    subject: t(subjectKey),
+  });
 }
 
 // ---- auto-number selected tracks (#39) ----
@@ -179,7 +182,10 @@ async function numberTracks() {
   }
   hooks.renderTracks();
   await hooks.previewEdits();
-  toast(`Numbered ${plural(assigned.length, "track", "tracks")}${perGroup ? " (restarted per group)" : ""}`);
+  toast(
+    t("toast.numbered", { tracks: tn("unit.track", assigned.length) }) +
+      (perGroup ? t("toast.numbered.perGroup") : "")
+  );
 }
 
 
@@ -210,7 +216,7 @@ async function splitVinylSides() {
   }
   hooks.renderTracks();
   await hooks.previewEdits();
-  toast(`Split ${plural(changed, "vinyl position", "vinyl positions")} into track + disc`);
+  toast(t("toast.splitSides", { positions: tn("unit.vinylPosition", changed) }));
 }
 
 async function previewTransform() {
@@ -238,8 +244,8 @@ async function previewTransform() {
     stageRun(plan, transformChain.getScopes(), wasStaged);
     toast(
       plan.changes.length
-        ? `Previewing ${plural(plan.changes.length, "file", "files")} — click Apply`
-        : nothingChanged(wasStaged, "These rules"),
+        ? t("toast.previewing", { files: tn("unit.file", plan.changes.length) })
+        : nothingChanged(wasStaged, "subject.theseRules"),
       plan.changes.length === 0
     );
   } catch (e) {
@@ -272,8 +278,8 @@ async function runTickedGroups(groups) {
     stageRun(plan, groups.map((g) => g.scope), wasStaged);
     toast(
       plan.changes.length
-        ? `Previewing ${plural(plan.changes.length, "file", "files")} — click Apply`
-        : nothingChanged(wasStaged, "These groups"),
+        ? t("toast.previewing", { files: tn("unit.file", plan.changes.length) })
+        : nothingChanged(wasStaged, "subject.theseGroups"),
       plan.changes.length === 0
     );
   } catch (e) {
@@ -414,8 +420,8 @@ function refreshTransformButton() {
   const count = context ? chainFor(context).rules.length : 0;
   btn.classList.toggle("has-rules", count > 0);
   btn.title = count
-    ? `${plural(count, "rule", "rules")} will run on what this panel produces — click to change`
-    : "Rules to run on what this panel produces — none set";
+    ? t("generator.chainBtn.some", { rules: tn("unit.rule", count) })
+    : t("generator.chainBtn.none");
   btn.setAttribute("aria-label", btn.title);
   // The title is off the element while the pointer is on it (#230).
   if (btn.dataset.tipText) btn.dataset.tipText = btn.title;

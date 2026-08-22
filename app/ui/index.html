@@ -213,12 +213,12 @@
         <!-- RENAMER: rename by mask + reorganize into folders. -->
         <section id="panel-renamer" class="mode-panel" hidden>
           <div class="panel-block">
-            <h2>Rename by mask</h2>
+            <h2 data-i18n="renamer.heading">Rename by mask</h2>
             <div class="mask-row">
               <input id="mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
-              <button class="icon ph-btn" type="button" data-ph-target="mask" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              <button class="icon ph-btn" type="button" data-ph-target="mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
             </div>
-            <p class="hint muted">
+            <p class="hint muted" data-i18n="renamer.maskHint" data-i18n-html>
               The <b>?</b> button lists every placeholder — tags, the file itself
               (%filename%, %foldername%) and its technical properties (%_bitrate%, %_length%) —
               and inserts one at the caret. Wrap optional parts in [brackets]: dropped whole when
@@ -228,45 +228,45 @@
             </p>
             <div class="panel-actions">
               <div class="spacer"></div>
-              <button id="preview" class="primary" disabled>Preview rename</button>
+              <button id="preview" class="primary" disabled data-i18n="renamer.previewRename">Preview rename</button>
             </div>
           </div>
 
           <div class="panel-block">
-            <h2>Reorganize into folders</h2>
-            <p class="hint muted">
+            <h2 data-i18n="renamer.reorganize">Reorganize into folders</h2>
+            <p class="hint muted" data-i18n="renamer.moveHint" data-i18n-html>
               Use <code>/</code> (or <code>\</code>) to separate folders. Optional parts go in
               [brackets] and vanish when empty. Tag values can't introduce a folder, only separators
               in the pattern do.
             </p>
             <label class="export-row"
-              >Pattern
+              ><span data-i18n="renamer.pattern">Pattern</span>
               <input id="move-mask" type="text" spellcheck="false" value="%albumartist%/%year% - %album%/%track% - %title%" />
-              <button class="icon ph-btn" type="button" data-ph-target="move-mask" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              <button class="icon ph-btn" type="button" data-ph-target="move-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
             </label>
             <!-- Destination (#153): the folder the pattern is built under. Empty
                  means the opened library, which is what this always did. A folder
                  outside it is what makes the tag-then-file workflow possible, and
                  picking it here is what authorizes writing there. -->
             <label class="export-row"
-              >Into
-              <input id="move-dest" type="text" spellcheck="false" placeholder="the opened library" readonly />
-              <button id="move-dest-pick" class="btn" type="button" title="Choose a destination folder">Choose…</button>
-              <button id="move-dest-clear" class="icon" type="button" title="Back to the opened library" aria-label="Back to the opened library"><svg class="ico"><use href="#i-close"/></svg></button>
+              ><span data-i18n="renamer.into">Into</span>
+              <input id="move-dest" type="text" spellcheck="false" data-i18n-placeholder="renamer.intoPlaceholder" placeholder="the opened library" readonly />
+              <button id="move-dest-pick" class="btn" type="button" data-i18n-title="renamer.chooseTitle" title="Choose a destination folder" data-i18n="renamer.choose">Choose…</button>
+              <button id="move-dest-clear" class="icon" type="button" data-i18n-title="renamer.backToLibrary" title="Back to the opened library" data-i18n-aria-label="renamer.backToLibrary" aria-label="Back to the opened library"><svg class="ico"><use href="#i-close"/></svg></button>
             </label>
             <div class="export-row move-mode-row">
-              <span>Files</span>
-              <div class="seg" id="move-mode" role="tablist" aria-label="Move or copy">
-                <button class="seg-btn active" type="button" data-move-mode="move">Move</button>
-                <button class="seg-btn" type="button" data-move-mode="copy">Copy</button>
+              <span data-i18n="renamer.files">Files</span>
+              <div class="seg" id="move-mode" role="tablist" data-i18n-aria-label="renamer.moveOrCopy" aria-label="Move or copy">
+                <button class="seg-btn active" type="button" data-move-mode="move" data-i18n="renamer.move">Move</button>
+                <button class="seg-btn" type="button" data-move-mode="copy" data-i18n="renamer.copy">Copy</button>
               </div>
-              <label class="rule-flag" title="Remove folders this move leaves empty. Undo puts them back.">
-                <input id="move-prune" type="checkbox" />tidy up empty folders
+              <label class="rule-flag" data-i18n-title="renamer.pruneTitle" title="Remove folders this move leaves empty. Undo puts them back.">
+                <input id="move-prune" type="checkbox" /><span data-i18n="renamer.prune">tidy up empty folders</span>
               </label>
             </div>
             <div class="panel-actions">
               <div class="spacer"></div>
-              <button id="move-preview" class="primary">Preview move</button>
+              <button id="move-preview" class="primary" data-i18n="renamer.previewMove">Preview move</button>
             </div>
           </div>
         </section>
@@ -448,8 +448,8 @@
                #239). #transform-home marks where it belongs. -->
           <div id="transform-home"></div>
           <div id="transform-block" class="panel-block">
-            <h2>Transform <span id="transform-count" class="muted"></span></h2>
-            <p class="hint muted" style="padding: 0">
+            <h2><span data-i18n="generator.transform">Transform</span> <span id="transform-count" class="muted"></span></h2>
+            <p class="hint muted" style="padding: 0" data-i18n="generator.transformHint">
               Rules run top to bottom. Nothing is written until you review the preview and press Apply.
             </p>
             <!-- What the chain is about to run on, shown in the modal (#237),
@@ -457,29 +457,29 @@
             <p id="transform-context-note" class="hint inert-panel" style="padding: 6px 8px" hidden></p>
             <!-- Shown only while a plan is staged (#142): the same chain, over
                  the values the plan proposes instead of the ones on disk. -->
-            <p id="transform-over-plan" class="hint inert-panel" style="padding: 6px 8px" hidden>
+            <p id="transform-over-plan" class="hint inert-panel" style="padding: 6px 8px" hidden data-i18n="generator.overPlan">
               Acting on the staged changes, not on the files — the result replaces the plan, so it
               stays one Apply and one undo entry.
             </p>
             <!-- Drag-reorderable rule cards are built by renderTransformRules. -->
             <div id="transform-rules" class="rule-chain"></div>
-            <p id="transform-empty" class="empty inert-panel rule-chain-empty" hidden>
+            <p id="transform-empty" class="empty inert-panel rule-chain-empty" hidden data-i18n="generator.noRules" data-i18n-html>
               No rules yet — pick a kind and <b>Add rule</b> to start a chain.
             </p>
             <div class="gen-add">
               <select id="transform-kind">
-                <option value="replace">Find and replace</option>
-                <option value="case">Change case</option>
-                <option value="diacritics">Remove diacritics</option>
-                <option value="transliterate">Transliterate to Latin</option>
-                <option value="untransliterate">Transliterate to Cyrillic</option>
-                <option value="key">Key notation</option>
+                <option value="replace" data-i18n="rule.replace">Find and replace</option>
+                <option value="case" data-i18n="rule.case">Change case</option>
+                <option value="diacritics" data-i18n="rule.diacritics">Remove diacritics</option>
+                <option value="transliterate" data-i18n="rule.transliterate">Transliterate to Latin</option>
+                <option value="untransliterate" data-i18n="rule.untransliterate">Transliterate to Cyrillic</option>
+                <option value="key" data-i18n="rule.key">Key notation</option>
               </select>
-              <button id="transform-add" class="btn">Add rule</button>
+              <button id="transform-add" class="btn" data-i18n="generator.addRule">Add rule</button>
               <div class="spacer"></div>
               <!-- Emptying a chain by hand is one × per rule (#257); this is the
                    whole chain at once. Hidden while there is nothing to clear. -->
-              <button id="transform-clear" class="btn" hidden title="Remove every rule from this chain">Clear rules</button>
+              <button id="transform-clear" class="btn" hidden data-i18n-title="generator.clearRulesTitle" title="Remove every rule from this chain" data-i18n="generator.clearRules">Clear rules</button>
             </div>
             <!-- Named action groups (#57), a list rather than a popover since
                  #234: reaching a saved cleanup used to mean opening a second
@@ -489,37 +489,37 @@
             <div id="groups-menu" class="groups-list"></div>
             <div class="panel-actions">
               <div class="spacer"></div>
-              <button id="transform-preview" class="primary">Preview changes</button>
+              <button id="transform-preview" class="primary" data-i18n="generator.previewChanges">Preview changes</button>
             </div>
           </div>
 
           <!-- Auto-number (#39): fill TrackNumber 1..N across the selection in
                mapping order, staged through the pending-edits preview/apply/undo. -->
           <div class="panel-block">
-            <h2>Number tracks <span id="autonum-count" class="muted"></span></h2>
-            <p class="hint muted" style="padding: 0">
+            <h2><span data-i18n="generator.numberTracks">Number tracks</span> <span id="autonum-count" class="muted"></span></h2>
+            <p class="hint muted" style="padding: 0" data-i18n="generator.numberHint">
               Fill track numbers across the selected files in table order. Staged to the preview — nothing is written until you Apply.
             </p>
             <div class="export-row">
-              <label for="autonum-start">Start at</label>
+              <label for="autonum-start" data-i18n="generator.startAt">Start at</label>
               <input id="autonum-start" type="number" min="0" step="1" value="1" />
-              <label for="autonum-disc">Disc #</label>
-              <input id="autonum-disc" type="text" placeholder="leave blank to skip" spellcheck="false" />
+              <label for="autonum-disc" data-i18n="generator.discNo">Disc #</label>
+              <input id="autonum-disc" type="text" data-i18n-placeholder="generator.discPlaceholder" placeholder="leave blank to skip" spellcheck="false" />
             </div>
             <div class="rule-flags autonum-flags">
-              <label class="rule-flag" title="Also write the track total (the count of numbered files) to every file">
-                <input id="autonum-total" type="checkbox" />track total
+              <label class="rule-flag" data-i18n-title="generator.trackTotalTitle" title="Also write the track total (the count of numbered files) to every file">
+                <input id="autonum-total" type="checkbox" /><span data-i18n="generator.trackTotal">track total</span>
               </label>
-              <label class="rule-flag" title="Restart at the start value for each group when a grouping is active">
-                <input id="autonum-per-group" type="checkbox" />restart per group
+              <label class="rule-flag" data-i18n-title="generator.perGroupTitle" title="Restart at the start value for each group when a grouping is active">
+                <input id="autonum-per-group" type="checkbox" /><span data-i18n="generator.perGroup">restart per group</span>
               </label>
-              <label class="rule-flag" title="Leave non-numeric positions like vinyl sides (A1, B2) untouched instead of renumbering them">
-                <input id="autonum-keep-sides" type="checkbox" checked />keep vinyl sides
+              <label class="rule-flag" data-i18n-title="generator.keepSidesTitle" title="Leave non-numeric positions like vinyl sides (A1, B2) untouched instead of renumbering them">
+                <input id="autonum-keep-sides" type="checkbox" checked /><span data-i18n="generator.keepSides">keep vinyl sides</span>
               </label>
             </div>
             <div class="panel-actions">
               <div class="spacer"></div>
-              <button id="autonum-run" class="primary">Number tracks</button>
+              <button id="autonum-run" class="primary" data-i18n="generator.numberRun">Number tracks</button>
             </div>
           </div>
 
@@ -528,13 +528,13 @@
                (side A -> disc 1, B -> disc 2, ...), since the side letter can't
                live in the integer track-number tag. Staged like the rest. -->
           <div class="panel-block">
-            <h2>Vinyl sides <span id="vinyl-count" class="muted"></span></h2>
-            <p class="hint muted" style="padding: 0">
+            <h2><span data-i18n="generator.vinylSides">Vinyl sides</span> <span id="vinyl-count" class="muted"></span></h2>
+            <p class="hint muted" style="padding: 0" data-i18n="generator.vinylHint" data-i18n-html>
               Split a vinyl-side track value (<b>A1</b>, <b>B2</b>) into track + disc: side A → disc 1, B → disc 2, … Only rows with a side letter change.
             </p>
             <div class="panel-actions">
               <div class="spacer"></div>
-              <button id="vinyl-split" class="primary">Split side → disc</button>
+              <button id="vinyl-split" class="primary" data-i18n="generator.splitSide">Split side → disc</button>
             </div>
           </div>
         </section>
@@ -544,26 +544,26 @@
              results take over the main area (#duplicates-view). -->
         <section id="panel-deduplicator" class="mode-panel" hidden>
           <div class="panel-block">
-            <h2>Find duplicates</h2>
-            <p class="hint muted" style="padding: 0">
+            <h2 data-i18n="dedup.heading">Find duplicates</h2>
+            <p class="hint muted" style="padding: 0" data-i18n="dedup.hint">
               Scan the whole library for likely duplicate files by a chosen key. Read-only —
               nothing is ever changed.
             </p>
             <label class="export-row"
-              >By
-              <select id="dup-criterion" title="How to decide two files are duplicates">
-                <option value="artist_title">Artist + Title</option>
-                <option value="album_track">Album + Track</option>
-                <option value="duration">Duration</option>
-                <option value="size">File size</option>
-                <option value="hash">Identical bytes</option>
+              ><span data-i18n="dedup.by">By</span>
+              <select id="dup-criterion" data-i18n-title="dedup.criterion.title" title="How to decide two files are duplicates">
+                <option value="artist_title" data-i18n="dedup.criterion.artistTitle">Artist + Title</option>
+                <option value="album_track" data-i18n="dedup.criterion.albumTrack">Album + Track</option>
+                <option value="duration" data-i18n="dedup.criterion.duration">Duration</option>
+                <option value="size" data-i18n="dedup.criterion.size">File size</option>
+                <option value="hash" data-i18n="dedup.criterion.hash">Identical bytes</option>
               </select>
             </label>
             <div class="panel-actions">
               <div class="spacer"></div>
-              <button id="dup-scan" class="primary">Scan library</button>
+              <button id="dup-scan" class="primary" data-i18n="dedup.scan">Scan library</button>
             </div>
-            <p class="ro-note"><svg class="ico"><use href="#i-lock"/></svg> Read-only — nothing is changed.</p>
+            <p class="ro-note"><svg class="ico"><use href="#i-lock"/></svg> <span data-i18n="dedup.readonly">Read-only — nothing is changed.</span></p>
           </div>
         </section>
 
@@ -597,7 +597,7 @@
             <div class="exp-mask" id="export-mask-row">
               <label for="export-mask" data-i18n="exporter.mask">Mask</label>
               <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
-              <button class="icon ph-btn" type="button" data-ph-target="export-mask" data-i18n-title="exporter.mask.placeholders" title="Placeholders" data-i18n-aria-label="exporter.mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              <button class="icon ph-btn" type="button" data-ph-target="export-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
             </div>
             <div class="exp-row">
               <label for="export-name" id="export-name-label">File name</label>
