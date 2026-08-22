@@ -7857,6 +7857,17 @@ mod tests {
         assert_eq!(report, "Plastic - Sexy Groove\nB.B.E. - Seven Days\n");
     }
 
+    /// An exported file with its path separators read as `/`.
+    ///
+    /// A relative entry path carries the platform's own separator, so a test
+    /// spelling one out would assert `a/b.flac` on ubuntu and `a\\b.flac` on
+    /// Windows. What these tests are about is which tracks landed in which
+    /// playlist and that the path stayed relative — not which slash it is
+    /// written with, which is undecided and filed as #265.
+    fn with_slashes(body: &str) -> String {
+        body.replace('\\', "/")
+    }
+
     #[test]
     fn exports_one_playlist_per_folder() {
         let dir = TempDir::new("export-per-folder");
@@ -7873,7 +7884,7 @@ mod tests {
         assert!(written[0].ends_with("Ambient.m3u"), "{written:?}");
         assert!(written[1].ends_with("House.m3u"), "{written:?}");
 
-        let ambient = std::fs::read_to_string(dir.0.join("Ambient.m3u")).unwrap();
+        let ambient = with_slashes(&std::fs::read_to_string(dir.0.join("Ambient.m3u")).unwrap());
         assert_eq!(ambient.lines().filter(|l| l.ends_with(".flac")).count(), 2);
         // Entry paths stay relative to the library root, which is where the
         // playlist itself was written.
@@ -7929,7 +7940,7 @@ mod tests {
             .export_playlists(&[a, b], "album", "%album%.m3u")
             .unwrap();
         assert_eq!(written.len(), 1);
-        let list = std::fs::read_to_string(dir.0.join("La Bush.m3u")).unwrap();
+        let list = with_slashes(&std::fs::read_to_string(dir.0.join("La Bush.m3u")).unwrap());
         assert!(list.contains("\none/a.flac\n"), "{list}");
         assert!(list.contains("\ntwo/b.flac\n"), "{list}");
     }
