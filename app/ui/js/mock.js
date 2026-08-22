@@ -845,6 +845,7 @@ function mockInvoke(cmd, args) {
       );
     }
     case "export_playlist":
+    case "export_cue":
     case "export_csv":
     case "export_html":
     case "export_xml":

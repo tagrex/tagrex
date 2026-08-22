@@ -434,6 +434,19 @@ fn export_playlist(
 }
 
 #[tauri::command]
+fn export_cue(
+    state: State<AppState>,
+    paths: Vec<String>,
+    file_name: String,
+) -> Result<String, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.export_cue(&paths, &file_name)
+            .map_err(|e| e.to_string())
+    })
+}
+
+#[tauri::command]
 fn export_csv(
     state: State<AppState>,
     paths: Vec<String>,
@@ -1103,6 +1116,7 @@ fn main() {
             tag_block_targets,
             preview_clear_tags,
             export_playlist,
+            export_cue,
             export_csv,
             export_report,
             export_html,

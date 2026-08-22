@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
+  CSV, HTML, XML and the mask report: the selection becomes one sheet with a
+  `FILE` per track, each starting at `INDEX 01 00:00:00`, which is the shape a
+  folder of separate tracks takes. Paths are relative to the sheet, the way the
+  playlist's already were. Tracks are numbered by their position rather than by
+  their track tag, since the format requires them to ascend and a selection can
+  hold gaps or repeats. The `ISRC` line is written only when the field really
+  holds one — real files keep catalogue numbers and notes in there, and that
+  command takes a bare code, so an unchecked value would spill across the line.
+
 ## [0.13.0] - 2026-08-22
 
 This release opens the app from outside itself. A folder can be handed to TagRex

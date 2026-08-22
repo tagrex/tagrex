@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use base64::Engine as _;
-use tagrex_core::export::{self, PlaylistTrack};
+use tagrex_core::export::{self, CueTrack, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::{FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
@@ -2955,6 +2955,20 @@ impl App {
         Ok(self.library_root.join(name))
     }
 
+    /// How an exported file refers to a track: relative to the library root when
+    /// the track sits inside it — which keeps the export portable, since it is
+    /// written into that root — and absolute when it does not.
+    fn path_from_export(root: &Path, path: &Path) -> String {
+        std::fs::canonicalize(path)
+            .ok()
+            .and_then(|abs| {
+                abs.strip_prefix(root)
+                    .ok()
+                    .map(|rel| rel.to_string_lossy().into_owned())
+            })
+            .unwrap_or_else(|| path.to_string_lossy().into_owned())
+    }
+
     /// Export `paths` as an extended M3U playlist written into the library root.
     /// Entry paths are relative to the playlist when the track sits inside the
     /// library (portable), absolute otherwise. Read-only for the audio files.
@@ -2966,14 +2980,7 @@ impl App {
             .filter_map(|path| {
                 let track = TagEngine::read(path).ok()?;
                 let duration = TagEngine::read_duration(path).unwrap_or_default();
-                let display = std::fs::canonicalize(path)
-                    .ok()
-                    .and_then(|abs| {
-                        abs.strip_prefix(&root)
-                            .ok()
-                            .map(|rel| rel.to_string_lossy().into_owned())
-                    })
-                    .unwrap_or_else(|| path.to_string_lossy().into_owned());
+                let display = Self::path_from_export(&root, path);
                 let file_stem = path
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
@@ -3000,6 +3007,27 @@ impl App {
             })
             .collect();
         std::fs::write(&target, export::m3u(&entries))?;
+        Ok(target.to_string_lossy().into_owned())
+    }
+
+    /// Export `paths` as a CUE sheet into the library root (#66).
+    ///
+    /// One `FILE` per track — the shape a folder of separate tracks takes; see
+    /// [`export::cue`] for why the continuous-mix shape is not written here.
+    pub fn export_cue(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
+        let target = self.export_target(file_name)?;
+        let root = std::fs::canonicalize(&self.library_root)?;
+        let entries: Vec<CueTrack> = paths
+            .iter()
+            .filter_map(|path| {
+                let track = TagEngine::read(path).ok()?;
+                Some(CueTrack {
+                    path: Self::path_from_export(&root, path),
+                    tags: track.tags,
+                })
+            })
+            .collect();
+        std::fs::write(&target, export::cue(&entries))?;
         Ok(target.to_string_lossy().into_owned())
     }
 
@@ -7706,6 +7734,28 @@ mod tests {
             .unwrap();
         let report = std::fs::read_to_string(dir.0.join("report.txt")).unwrap();
         assert_eq!(report, "Plastic - Sexy Groove\nB.B.E. - Seven Days\n");
+    }
+
+    #[test]
+    fn exports_a_cue_sheet_of_the_selection() {
+        let dir = TempDir::new("export-cue");
+        let a = dir.tagged_flac("a.flac", "Plastic", "Sexy Groove");
+        let b = dir.tagged_flac("b.flac", "B.B.E.", "Seven Days");
+        let app = open_app(&dir);
+
+        let written = app.export_cue(&[a, b], "tracks.cue").unwrap();
+        assert_eq!(written, dir.0.join("tracks.cue").to_string_lossy());
+        let cue = std::fs::read_to_string(dir.0.join("tracks.cue")).unwrap();
+
+        // The FILE path is relative to the sheet, which is written into the
+        // library root — the same rule the playlist follows.
+        assert!(cue.contains("FILE \"a.flac\" WAVE\n"), "{cue}");
+        assert!(cue.contains("FILE \"b.flac\" WAVE\n"), "{cue}");
+        assert!(cue.contains("  TRACK 01 AUDIO\n"));
+        assert!(cue.contains("  TRACK 02 AUDIO\n"));
+        assert!(cue.contains("    PERFORMER \"Plastic\"\n"));
+        assert!(cue.contains("    TITLE \"Seven Days\"\n"));
+        assert_eq!(cue.matches("INDEX 01 00:00:00").count(), 2);
     }
 
     #[test]

@@ -36,6 +36,134 @@ pub fn m3u(tracks: &[PlaylistTrack]) -> String {
     out
 }
 
+/// One entry in a CUE sheet.
+pub struct CueTrack {
+    /// Written verbatim into the `FILE` line, so the caller decides whether it
+    /// is relative to the sheet or absolute — the same contract as
+    /// [`PlaylistTrack::path`].
+    pub path: String,
+    /// The track's tags, read the way the other exporters read them.
+    pub tags: TagMap,
+}
+
+/// A CUE sheet describing `tracks` as separate files: one `FILE` per track,
+/// each starting at `INDEX 01 00:00:00` (#66).
+///
+/// That is the shape a folder of individual tracks takes — which is what the
+/// file list holds. The other shape a CUE can have, one `FILE` with offsets
+/// into it, describes a single continuous mix; writing one would mean deciding
+/// where each track begins inside that mix, which is an audio question rather
+/// than a metadata one.
+///
+/// Tracks are numbered by their position in the sheet, not by their track tag:
+/// `TRACK` numbers have to ascend from 01, while a selection can hold gaps,
+/// repeats, or no track numbers at all. The format specifies at most 99 of
+/// them; a longer selection is still written out in full, since dropping
+/// tracks from an export is worse than a sheet a strict reader may refuse.
+pub fn cue(tracks: &[CueTrack]) -> String {
+    let mut out = String::new();
+
+    // The disc-level statements come off the first track: a CUE sheet describes
+    // one release, and that is the only place the album's own fields are.
+    if let Some(first) = tracks.first() {
+        for (command, field) in [("REM GENRE", TagField::Genre), ("REM DATE", TagField::Year)] {
+            if let Some(value) = first.tags.get(&field).filter(|value| !value.is_empty()) {
+                out.push_str(&format!("{command} {}\n", cue_quoted(value)));
+            }
+        }
+        // The album artist where there is one; a compilation's per-track
+        // performers still say who is on each track below.
+        let performer = first
+            .tags
+            .get(&TagField::AlbumArtist)
+            .or_else(|| first.tags.get(&TagField::Artist));
+        if let Some(value) = performer.filter(|value| !value.is_empty()) {
+            out.push_str(&format!("PERFORMER {}\n", cue_quoted(value)));
+        }
+        if let Some(value) = first.tags.get(&TagField::Album).filter(|v| !v.is_empty()) {
+            out.push_str(&format!("TITLE {}\n", cue_quoted(value)));
+        }
+    }
+
+    for (index, track) in tracks.iter().enumerate() {
+        out.push_str(&format!(
+            "FILE {} {}\n",
+            cue_quoted(&track.path),
+            cue_file_type(&track.path)
+        ));
+        out.push_str(&format!("  TRACK {:02} AUDIO\n", index + 1));
+        // Fall back to the file name so an untagged track is still identifiable
+        // in a player, the way the playlist exporter does.
+        let title = track
+            .tags
+            .get(&TagField::Title)
+            .filter(|value| !value.is_empty())
+            .cloned()
+            .unwrap_or_else(|| cue_file_stem(&track.path));
+        out.push_str(&format!("    TITLE {}\n", cue_quoted(&title)));
+        if let Some(value) = track.tags.get(&TagField::Artist).filter(|v| !v.is_empty()) {
+            out.push_str(&format!("    PERFORMER {}\n", cue_quoted(value)));
+        }
+        // `ISRC` is a command of its own in the format, not a `REM` — and it
+        // takes a bare code, so a field holding something else would spill
+        // across the line as extra tokens. Only a real one is written.
+        if let Some(code) = track.tags.get(&TagField::Isrc).and_then(|v| cue_isrc(v)) {
+            out.push_str(&format!("    ISRC {code}\n"));
+        }
+        out.push_str("    INDEX 01 00:00:00\n");
+    }
+    out
+}
+
+/// The value as an ISRC the format will accept, or `None`.
+///
+/// Files carry all sorts of things in the ISRC field — a catalogue number, a
+/// note, a fragment of one — and a CUE `ISRC` command is a bare token, so an
+/// unchecked value would put stray words on the line where the reader expects
+/// the code to end. The structure is fixed and short enough to just check:
+/// two letters of country, three of registrant, then a two-digit year and a
+/// five-digit designation. The customary dashes between those parts are not
+/// part of the code and come out.
+fn cue_isrc(value: &str) -> Option<String> {
+    let code: String = value.replace('-', "").to_ascii_uppercase();
+    let bytes = code.as_bytes();
+    let shaped = bytes.len() == 12
+        && bytes[..2].iter().all(u8::is_ascii_alphabetic)
+        && bytes[2..5].iter().all(u8::is_ascii_alphanumeric)
+        && bytes[5..].iter().all(u8::is_ascii_digit);
+    shaped.then_some(code)
+}
+
+/// A CUE string: quoted, because a value with a space in it is otherwise two
+/// tokens. The format gives no way to escape a quote inside one, so an embedded
+/// `"` becomes `'` rather than ending the string early.
+fn cue_quoted(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "'"))
+}
+
+/// The `FILE` type token. The format names only `BINARY`, `MOTOROLA`, `AIFF`,
+/// `WAVE` and `MP3`; FLAC, Opus and the rest have no token of their own and are
+/// conventionally written as `WAVE`, which readers treat as "decode it".
+fn cue_file_type(path: &str) -> &'static str {
+    let extension = path
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_ascii_lowercase())
+        .unwrap_or_default();
+    match extension.as_str() {
+        "mp3" => "MP3",
+        "aif" | "aiff" | "aifc" => "AIFF",
+        _ => "WAVE",
+    }
+}
+
+/// The file name without its extension, for a track with no title.
+fn cue_file_stem(path: &str) -> String {
+    let name = path.rsplit(['/', '\\']).next().unwrap_or(path);
+    name.rsplit_once('.')
+        .map_or(name, |(stem, _)| stem)
+        .to_string()
+}
+
 /// Columns written by [`csv`], in order.
 const CSV_COLUMNS: [(&str, Option<TagField>); 11] = [
     ("File", None),
@@ -297,6 +425,89 @@ mod tests {
              #EXTINF:-1,Radio\n\
              02 - b.mp3\n"
         );
+    }
+
+    fn cue_track(path: &str, pairs: &[(TagField, &str)]) -> CueTrack {
+        let mut tags = TagMap::new();
+        for (field, value) in pairs {
+            tags.insert(field.clone(), (*value).to_string());
+        }
+        CueTrack {
+            path: path.to_string(),
+            tags,
+        }
+    }
+
+    #[test]
+    fn cue_describes_one_file_per_track() {
+        let out = cue(&[
+            cue_track(
+                "01 - a.mp3",
+                &[
+                    (TagField::Genre, "Deep House"),
+                    (TagField::Year, "1996"),
+                    (TagField::Album, "La Bush"),
+                    (TagField::AlbumArtist, "Various"),
+                    (TagField::Artist, "Plastic"),
+                    (TagField::Title, "Sexy Groove"),
+                    (TagField::Isrc, "BEP059600123"),
+                ],
+            ),
+            // No title: the file name stands in. No artist, no ISRC: those
+            // lines are absent rather than empty.
+            cue_track("sub/02 - b.flac", &[]),
+        ]);
+        assert_eq!(
+            out,
+            "REM GENRE \"Deep House\"\n\
+             REM DATE \"1996\"\n\
+             PERFORMER \"Various\"\n\
+             TITLE \"La Bush\"\n\
+             FILE \"01 - a.mp3\" MP3\n\
+             \u{20}\u{20}TRACK 01 AUDIO\n\
+             \u{20}\u{20}\u{20}\u{20}TITLE \"Sexy Groove\"\n\
+             \u{20}\u{20}\u{20}\u{20}PERFORMER \"Plastic\"\n\
+             \u{20}\u{20}\u{20}\u{20}ISRC BEP059600123\n\
+             \u{20}\u{20}\u{20}\u{20}INDEX 01 00:00:00\n\
+             FILE \"sub/02 - b.flac\" WAVE\n\
+             \u{20}\u{20}TRACK 02 AUDIO\n\
+             \u{20}\u{20}\u{20}\u{20}TITLE \"02 - b\"\n\
+             \u{20}\u{20}\u{20}\u{20}INDEX 01 00:00:00\n"
+        );
+    }
+
+    #[test]
+    fn cue_writes_an_isrc_only_when_the_field_holds_one() {
+        // Dashes are notation, not part of the code, and the case is fixed.
+        let good = cue(&[cue_track("a.mp3", &[(TagField::Isrc, "be-p05-96-00123")])]);
+        assert!(good.contains("    ISRC BEP059600123\n"), "{good}");
+
+        // What a real file turned out to hold: a catalogue number with a space
+        // in it. Written bare it would put two stray tokens on the line.
+        let junk = cue(&[cue_track("a.mp3", &[(TagField::Isrc, "006215-2 Clu")])]);
+        assert!(!junk.contains("ISRC"), "{junk}");
+    }
+
+    #[test]
+    fn cue_numbers_by_position_and_never_ends_a_string_early() {
+        // Track tags of 7 and 3: the sheet still counts 01, 02, because CUE
+        // track numbers have to ascend.
+        let out = cue(&[
+            cue_track("a.wav", &[(TagField::TrackNumber, "7")]),
+            cue_track(
+                "b.aiff",
+                &[
+                    (TagField::TrackNumber, "3"),
+                    (TagField::Title, "He said \"hi\""),
+                ],
+            ),
+        ]);
+        assert!(out.contains("  TRACK 01 AUDIO\n"));
+        assert!(out.contains("  TRACK 02 AUDIO\n"));
+        assert!(out.contains("FILE \"a.wav\" WAVE\n"));
+        assert!(out.contains("FILE \"b.aiff\" AIFF\n"));
+        // No escape exists for a quote inside a CUE string, so it is replaced.
+        assert!(out.contains("TITLE \"He said 'hi'\"\n"));
     }
 
     #[test]

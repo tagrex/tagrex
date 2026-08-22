@@ -1,6 +1,6 @@
 // The exporters (#19, #143 split them out of app.js).
 //
-// Playlist, CSV, HTML, XML and the mask report. All read-only: they build a
+// Playlist, CUE, CSV, HTML, XML and the mask report. All read-only: they build a
 // file in the opened library and deliberately bypass the change pipeline, since
 // nothing about the tracks themselves is touched.
 import { el, fileName, plural, toast } from "./dom.js";
@@ -11,6 +11,7 @@ import { selectedPaths } from "./state.js";
 // only accepts a bare file name and writes into the opened library.
 const EXPORT_DEFAULTS = {
   playlist: "playlist.m3u",
+  cue: "tracks.cue",
   csv: "tags.csv",
   html: "tags.html",
   xml: "tags.xml",
@@ -20,6 +21,7 @@ const EXPORT_DEFAULTS = {
 // control (allows <b> emphasis, so set via innerHTML).
 const EXPORT_HINTS = {
   playlist: "An <b>.m3u</b> playlist of the selected tracks, in table order.",
+  cue: "A <b>.cue</b> sheet — one <b>FILE</b> per track, numbered in table order.",
   csv: "One <b>row per track</b> with the tag columns — opens in any spreadsheet.",
   html: "A self-contained <b>HTML table</b> of the tag columns — opens in any browser.",
   xml: "An <b>XML document</b> — one element per tag, for scripts and other tools.",
@@ -68,6 +70,8 @@ async function runExport() {
     let written;
     if (kind === "playlist") {
       written = await invoke("export_playlist", { paths, fileName: outName });
+    } else if (kind === "cue") {
+      written = await invoke("export_cue", { paths, fileName: outName });
     } else if (kind === "csv") {
       written = await invoke("export_csv", { paths, fileName: outName });
     } else if (kind === "html") {
