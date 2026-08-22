@@ -844,6 +844,9 @@ function mockInvoke(cmd, args) {
         })
       );
     }
+    // One file per group; the mock just says how many it would have written.
+    case "export_playlists":
+      return Promise.resolve(["/library/one.m3u", "/library/two.m3u"]);
     case "export_playlist":
     case "export_cue":
     case "export_csv":

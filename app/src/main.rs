@@ -433,6 +433,21 @@ fn export_playlist(
     })
 }
 
+/// One playlist per folder or per album (#62). Returns every file written.
+#[tauri::command]
+fn export_playlists(
+    state: State<AppState>,
+    paths: Vec<String>,
+    grouping: String,
+    name_mask: String,
+) -> Result<Vec<String>, String> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.export_playlists(&paths, &grouping, &name_mask)
+            .map_err(|e| e.to_string())
+    })
+}
+
 #[tauri::command]
 fn export_cue(
     state: State<AppState>,
@@ -1116,6 +1131,7 @@ fn main() {
             tag_block_targets,
             preview_clear_tags,
             export_playlist,
+            export_playlists,
             export_cue,
             export_csv,
             export_report,

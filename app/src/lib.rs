@@ -15,7 +15,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -2975,12 +2975,19 @@ impl App {
     pub fn export_playlist(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
         let target = self.export_target(file_name)?;
         let root = std::fs::canonicalize(&self.library_root)?;
-        let entries: Vec<PlaylistTrack> = paths
+        let entries = Self::playlist_entries(&root, paths);
+        std::fs::write(&target, export::m3u(&entries))?;
+        Ok(target.to_string_lossy().into_owned())
+    }
+
+    /// The playlist entries for `paths`, in the order given.
+    fn playlist_entries(root: &Path, paths: &[PathBuf]) -> Vec<PlaylistTrack> {
+        paths
             .iter()
             .filter_map(|path| {
                 let track = TagEngine::read(path).ok()?;
                 let duration = TagEngine::read_duration(path).unwrap_or_default();
-                let display = Self::path_from_export(&root, path);
+                let display = Self::path_from_export(root, path);
                 let file_stem = path
                     .file_name()
                     .map(|name| name.to_string_lossy().into_owned())
@@ -3005,9 +3012,121 @@ impl App {
                     },
                 })
             })
-            .collect();
-        std::fs::write(&target, export::m3u(&entries))?;
-        Ok(target.to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// Export `paths` as one playlist per group instead of one for the whole
+    /// selection (#62): `grouping` is `folder` (the folder a track sits in) or
+    /// `album` (its album tag), and `name_mask` is rendered per group — against
+    /// its first track — to name the file.
+    ///
+    /// The files land in the library root like every other export, rather than
+    /// inside the folders they describe: an export writes into the one place
+    /// the user chose to open, and a per-folder playlist scattered across a
+    /// library is harder to undo than one place full of them. Entry paths stay
+    /// relative to the root, so the playlists remain portable together with it.
+    ///
+    /// Returns what was written, in the order the groups were first seen —
+    /// which is the order the selection was in.
+    pub fn export_playlists(
+        &self,
+        paths: &[PathBuf],
+        grouping: &str,
+        name_mask: &str,
+    ) -> Result<Vec<String>, AppError> {
+        let by_album = match grouping {
+            "album" => true,
+            "folder" => false,
+            other => return Err(AppError::UnknownGrouping(other.to_string())),
+        };
+        let mask = Mask::parse(name_mask)?;
+        let root = std::fs::canonicalize(&self.library_root)?;
+
+        // Grouped in encounter order: a playlist set should come out in the
+        // order the table was in, which a hash map alone would not preserve.
+        let mut order: Vec<String> = Vec::new();
+        let mut groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
+        for path in paths {
+            let Ok(track) = TagEngine::read(path) else {
+                continue;
+            };
+            let key = if by_album {
+                track
+                    .tags
+                    .get(&TagField::Album)
+                    .cloned()
+                    .unwrap_or_default()
+            } else {
+                path.parent()
+                    .map(|parent| parent.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            };
+            if !groups.contains_key(&key) {
+                order.push(key.clone());
+            }
+            groups.entry(key).or_default().push(path.clone());
+        }
+
+        let mut written = Vec::new();
+        let mut taken: HashSet<String> = HashSet::new();
+        for key in order {
+            let members = &groups[&key];
+            let name = self.playlist_name(&mask, &members[0], &mut taken)?;
+            let target = self.export_target(&name)?;
+            let entries = Self::playlist_entries(&root, members);
+            std::fs::write(&target, export::m3u(&entries))?;
+            written.push(target.to_string_lossy().into_owned());
+        }
+        Ok(written)
+    }
+
+    /// The file name for one group's playlist: the mask rendered against the
+    /// group's first track.
+    ///
+    /// Two groups can render the same name — two albums called *Greatest Hits*,
+    /// a mask that names nothing the groups differ in — and the second one
+    /// silently overwriting the first would lose an export the user asked for,
+    /// so a repeat is numbered instead. A mask that renders to nothing at all
+    /// (the album tag is empty) falls back to the track's folder, which is the
+    /// one name every group has.
+    fn playlist_name(
+        &self,
+        mask: &Mask,
+        first: &Path,
+        taken: &mut HashSet<String>,
+    ) -> Result<String, AppError> {
+        let rendered = match TagEngine::read(first) {
+            Ok(track) => {
+                let file = FileContext::read(mask, &track);
+                mask.render_with(&export::lenient_tags(&track.tags), &file)
+                    .unwrap_or_default()
+            }
+            Err(_) => String::new(),
+        };
+        // The mask carries the extension when it has one — `%album%.m3u` — and
+        // an album that renders to nothing leaves just `.m3u`, which is an
+        // extension with no name rather than a file called that.
+        let rendered = rendered.trim();
+        let (stem, extension) = match rendered.rsplit_once('.') {
+            Some((stem, extension)) if !extension.is_empty() => (stem.trim(), extension),
+            _ => (rendered.trim_end_matches('.'), "m3u"),
+        };
+        let stem = if stem.is_empty() {
+            first
+                .parent()
+                .and_then(|parent| parent.file_name())
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "playlist".to_string())
+        } else {
+            stem.to_string()
+        };
+        let mut name = format!("{stem}.{extension}");
+        let mut nth = 2;
+        while !taken.insert(name.clone()) {
+            name = format!("{stem} ({nth}).{extension}");
+            nth += 1;
+        }
+        Ok(name)
     }
 
     /// Export `paths` as a CUE sheet into the library root (#66).
@@ -4473,6 +4592,8 @@ pub enum AppError {
     InvalidFileName(String),
     #[error("unknown transformation: {0}")]
     UnknownTransform(String),
+    #[error("unknown playlist grouping: {0}")]
+    UnknownGrouping(String),
     #[error("unknown tag block: {0}")]
     UnknownTagBlock(String),
     #[error("a {format} file cannot carry a {kind} tag")]
@@ -7734,6 +7855,94 @@ mod tests {
             .unwrap();
         let report = std::fs::read_to_string(dir.0.join("report.txt")).unwrap();
         assert_eq!(report, "Plastic - Sexy Groove\nB.B.E. - Seven Days\n");
+    }
+
+    #[test]
+    fn exports_one_playlist_per_folder() {
+        let dir = TempDir::new("export-per-folder");
+        let a = dir.tagged_flac_at("Ambient/a.flac", "Plastic", "Sexy Groove");
+        let b = dir.tagged_flac_at("Ambient/b.flac", "B.B.E.", "Seven Days");
+        let c = dir.tagged_flac_at("House/c.flac", "U-Hi", "Feel It");
+        let app = open_app(&dir);
+
+        let written = app
+            .export_playlists(&[a, b, c], "folder", "%foldername%.m3u")
+            .unwrap();
+        assert_eq!(written.len(), 2);
+        // In the order the selection was in, not the order a hash map gives.
+        assert!(written[0].ends_with("Ambient.m3u"), "{written:?}");
+        assert!(written[1].ends_with("House.m3u"), "{written:?}");
+
+        let ambient = std::fs::read_to_string(dir.0.join("Ambient.m3u")).unwrap();
+        assert_eq!(ambient.lines().filter(|l| l.ends_with(".flac")).count(), 2);
+        // Entry paths stay relative to the library root, which is where the
+        // playlist itself was written.
+        assert!(ambient.contains("\nAmbient/a.flac\n"), "{ambient}");
+        let house = std::fs::read_to_string(dir.0.join("House.m3u")).unwrap();
+        assert_eq!(house.lines().filter(|l| l.ends_with(".flac")).count(), 1);
+    }
+
+    #[test]
+    fn a_repeated_playlist_name_is_numbered_instead_of_overwriting() {
+        let dir = TempDir::new("export-per-album");
+        // Grouped by folder but named by album: two folders carrying the same
+        // album render the same name, and a third has no album at all — which
+        // falls back to its folder.
+        let a = dir.tagged_flac_at("one/a.flac", "A", "a");
+        let b = dir.tagged_flac_at("two/b.flac", "B", "b");
+        let c = dir.tagged_flac_at("three/c.flac", "C", "c");
+        for (path, album) in [(&a, "Greatest Hits"), (&b, "Greatest Hits")] {
+            let mut track = TagEngine::read(path).unwrap();
+            track.tags.insert(TagField::Album, album.to_string());
+            TagEngine::write(&track).unwrap();
+        }
+
+        let app = open_app(&dir);
+        let written = app
+            .export_playlists(&[a, b, c], "folder", "%album%.m3u")
+            .unwrap();
+        assert_eq!(written.len(), 3);
+        assert!(written[0].ends_with("Greatest Hits.m3u"), "{written:?}");
+        assert!(written[1].ends_with("Greatest Hits (2).m3u"), "{written:?}");
+        // Nothing to render: the folder names it rather than writing ".m3u".
+        assert!(written[2].ends_with("three.m3u"), "{written:?}");
+        for path in &written {
+            assert!(std::path::Path::new(path).exists());
+        }
+    }
+
+    #[test]
+    fn grouping_by_album_ignores_which_folder_a_track_sits_in() {
+        let dir = TempDir::new("export-album-grouping");
+        let a = dir.tagged_flac_at("one/a.flac", "A", "a");
+        let b = dir.tagged_flac_at("two/b.flac", "B", "b");
+        // One album, two folders — the point of grouping by album rather than
+        // by where the files happen to live.
+        for path in [&a, &b] {
+            let mut track = TagEngine::read(path).unwrap();
+            track.tags.insert(TagField::Album, "La Bush".to_string());
+            TagEngine::write(&track).unwrap();
+        }
+        let app = open_app(&dir);
+
+        let written = app
+            .export_playlists(&[a, b], "album", "%album%.m3u")
+            .unwrap();
+        assert_eq!(written.len(), 1);
+        let list = std::fs::read_to_string(dir.0.join("La Bush.m3u")).unwrap();
+        assert!(list.contains("\none/a.flac\n"), "{list}");
+        assert!(list.contains("\ntwo/b.flac\n"), "{list}");
+    }
+
+    #[test]
+    fn a_playlist_grouping_the_app_does_not_know_is_an_error() {
+        let dir = TempDir::new("export-bad-grouping");
+        let a = dir.tagged_flac("a.flac", "A", "a");
+        let app = open_app(&dir);
+        assert!(matches!(
+            app.export_playlists(&[a], "artist", "%album%.m3u"),
+            Err(AppError::UnknownGrouping(_))
+        ));
     }
 
     #[test]

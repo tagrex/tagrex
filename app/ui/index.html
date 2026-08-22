@@ -584,6 +584,15 @@
               </div>
               <p class="exp-format-hint" id="export-hint"></p>
             </div>
+            <!-- Split row reveals only for the playlist format (#62). -->
+            <div class="exp-mask" id="export-split-row">
+              <label for="export-split">One per</label>
+              <select id="export-split">
+                <option value="">Selection</option>
+                <option value="folder">Folder</option>
+                <option value="album">Album</option>
+              </select>
+            </div>
             <!-- Mask row reveals only for the report format. -->
             <div class="exp-mask" id="export-mask-row">
               <label for="export-mask">Mask</label>
@@ -591,7 +600,7 @@
               <button class="icon ph-btn" type="button" data-ph-target="export-mask" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
             </div>
             <div class="exp-row">
-              <label for="export-name">File name</label>
+              <label for="export-name" id="export-name-label">File name</label>
               <input id="export-name" type="text" spellcheck="false" />
             </div>
             <p class="exp-note"><b>Read-only.</b> Written into the opened library folder — your audio files are not modified.</p>

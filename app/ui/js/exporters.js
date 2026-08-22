@@ -28,6 +28,15 @@ const EXPORT_HINTS = {
   report: "Each track rendered through the <b>mask</b> below, one line apiece.",
 };
 let exportKind = "playlist";
+// "" writes one playlist for the whole selection (what it always did); "folder"
+// and "album" write one apiece and turn the name field into a mask (#62).
+let exportSplit = "";
+
+// Default name mask per grouping, and the labels the name field takes on.
+const SPLIT_DEFAULTS = {
+  folder: "%foldername%.m3u",
+  album: "%album%.m3u",
+};
 
 // Refresh the EXPORTER panel for the current selection (called on entering the
 // mode). Reflects the current format; only fills the file name when it's empty,
@@ -36,7 +45,14 @@ function refreshExporter() {
   const count = selectedPaths().length;
   el("export-count").textContent = count ? `— ${plural(count, "track", "tracks")}` : "";
   reflectExportKind();
-  if (!el("export-name").value) el("export-name").value = EXPORT_DEFAULTS[exportKind];
+  if (!el("export-name").value) el("export-name").value = exportName();
+}
+
+// The default for the current format and grouping: a file name, or a mask that
+// names one file per group.
+function exportName() {
+  if (exportKind === "playlist" && exportSplit) return SPLIT_DEFAULTS[exportSplit];
+  return EXPORT_DEFAULTS[exportKind];
 }
 
 // Mirror the current format onto the segmented control, the swapping hint, and
@@ -46,7 +62,14 @@ function reflectExportKind() {
     .querySelectorAll(".seg-btn")
     .forEach((b) => b.classList.toggle("active", b.dataset.fmt === exportKind));
   el("export-mask-row").classList.toggle("show", exportKind === "report");
-  el("export-hint").innerHTML = EXPORT_HINTS[exportKind];
+  el("export-split-row").classList.toggle("show", exportKind === "playlist");
+  // Splitting turns the file name into a mask rendered per group, so the field
+  // says which of the two it is rather than leaving the difference implicit.
+  const splitting = exportKind === "playlist" && exportSplit;
+  el("export-name-label").textContent = splitting ? "Name mask" : "File name";
+  el("export-hint").innerHTML = splitting
+    ? "One <b>.m3u</b> per " + exportSplit + ", named by the mask below."
+    : EXPORT_HINTS[exportKind];
 }
 
 // Switch format (from the segmented control): reflect it and reset the file name
@@ -54,7 +77,14 @@ function reflectExportKind() {
 function setExportKind(kind) {
   exportKind = kind;
   reflectExportKind();
-  el("export-name").value = EXPORT_DEFAULTS[kind];
+  el("export-name").value = exportName();
+}
+
+// Switch grouping (from the select): same deal, the name field follows.
+function setExportSplit(split) {
+  exportSplit = split;
+  reflectExportKind();
+  el("export-name").value = exportName();
 }
 
 async function runExport() {
@@ -68,6 +98,15 @@ async function runExport() {
   const outName = el("export-name").value.trim();
   try {
     let written;
+    if (kind === "playlist" && exportSplit) {
+      const files = await invoke("export_playlists", {
+        paths,
+        grouping: exportSplit,
+        nameMask: outName,
+      });
+      toast(`Exported ${plural(files.length, "playlist", "playlists")}`);
+      return;
+    }
     if (kind === "playlist") {
       written = await invoke("export_playlist", { paths, fileName: outName });
     } else if (kind === "cue") {
@@ -92,5 +131,6 @@ async function runExport() {
 }
 
 el("export-run").addEventListener("click", runExport);
+el("export-split").addEventListener("change", (e) => setExportSplit(e.target.value));
 
 export { refreshExporter, setExportKind };

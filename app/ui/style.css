@@ -3255,6 +3255,16 @@ td.unreadable-note {
   font-size: var(--text-xs);
   color: var(--muted);
 }
+/* Width and type size only: the base `select` rule already carries the border,
+   the radius and the app's own caret (#115). Restating `background` here would
+   reset the caret's repeat and size while its image survives from the
+   theme rules, tiling it across the box. */
+.exp-mask select {
+  width: 100%;
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+
 .exp-mask input {
   width: 100%;
   min-width: 0;

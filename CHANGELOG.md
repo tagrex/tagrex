@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   hold gaps or repeats. The `ISRC` line is written only when the field really
   holds one — real files keep catalogue numbers and notes in there, and that
   command takes a bare code, so an unchecked value would spill across the line.
+- **One playlist per folder, or per album.** EXPORTER's playlist format gains a
+  **One per** choice: leave it at *Selection* for the single list it always
+  wrote, or pick *Folder* or *Album* to get one apiece. The file-name field
+  becomes a name mask when you do — `%foldername%.m3u`, `%album%.m3u`, or
+  anything else the mask language renders — and the files land in the library
+  root beside every other export, with entry paths still relative to it. Two
+  groups that render the same name get numbered rather than one overwriting the
+  other, and a mask that renders to nothing falls back to the folder's name.
 
 ## [0.13.0] - 2026-08-22
 
