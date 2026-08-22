@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   hints, controls, tooltips and messages join EXPORTER in the catalogues —
   including the counts in the panel headings, which now agree properly:
   «3 файла», «5 файлов», «21 файл».
+- **TAGGER speaks Russian, and so do the field names.** Its three sub-tabs —
+  ONLINE, EDITOR, FROM NAME — join the rest, and with them the tag field names
+  themselves: the table headers, the column picker, the grouping menu and the
+  field editor all read Исполнитель, Название, Альбом, and rename together when
+  the language changes.
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a

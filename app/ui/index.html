@@ -274,10 +274,10 @@
         <!-- TAGGER: tags from two angles — ONLINE (a metadata source) and EDITOR
              (hand-edit fields + cover). Sub-tabs keep the panel uncluttered. -->
         <section id="panel-tagger" class="mode-panel">
-          <div class="subtabs" role="tablist" aria-label="Tagging mode">
-            <button class="subtab active" data-subtab="online" type="button">ONLINE</button>
-            <button class="subtab" data-subtab="editor" type="button">EDITOR</button>
-            <button class="subtab" data-subtab="filename" type="button">FROM NAME</button>
+          <div class="subtabs" role="tablist" data-i18n-aria-label="tagger.mode" aria-label="Tagging mode">
+            <button class="subtab active" data-subtab="online" type="button" data-i18n="tagger.online">ONLINE</button>
+            <button class="subtab" data-subtab="editor" type="button" data-i18n="tagger.editor">EDITOR</button>
+            <button class="subtab" data-subtab="filename" type="button" data-i18n="tagger.fromName">FROM NAME</button>
           </div>
 
           <!-- ONLINE: search a metadata source. The head is pinned; only the
@@ -286,8 +286,8 @@
             <div class="online-head">
               <div class="online-head-row">
                 <label class="source-label"
-                  >Source
-                  <select id="online-source" title="Metadata source">
+                  ><span data-i18n="online.source">Source</span>
+                  <select id="online-source" data-i18n-title="online.sourceTitle" title="Metadata source">
                     <option value="discogs">Discogs</option>
                     <option value="musicbrainz">MusicBrainz</option>
                     <option value="beatport">Beatport</option>
@@ -296,12 +296,12 @@
                 <div class="spacer"></div>
                 <!-- Media-type filter (#103) sits on the source row, level with
                      the provider selector. -->
-                <select id="search-format" title="Filter results by media type">
-                  <option value="">All media</option>
+                <select id="search-format" data-i18n-title="online.mediaFilter" title="Filter results by media type">
+                  <option value="" data-i18n="online.allMedia">All media</option>
                   <option value="CD">CD</option>
-                  <option value="Vinyl">Vinyl</option>
+                  <option value="Vinyl" data-i18n="media.vinyl">Vinyl</option>
                   <option value="LP">LP</option>
-                  <option value="File">File</option>
+                  <option value="File" data-i18n="media.file">File</option>
                 </select>
               </div>
               <div class="mask-row">
@@ -311,13 +311,13 @@
                      text it would search for, so picking one is picking a
                      query, not a mode. -->
                 <div id="query-box" class="query">
-                  <input id="discogs-query" type="text" placeholder="artist / album / catalog no." spellcheck="false" />
-                  <button id="query-presets" class="query-presets" type="button" title="Queries this selection can build" aria-label="Queries this selection can build"><svg class="ico"><use href="#i-caret-down"/></svg></button>
+                  <input id="discogs-query" type="text" data-i18n-placeholder="online.queryPlaceholder" placeholder="artist / album / catalog no." spellcheck="false" />
+                  <button id="query-presets" class="query-presets" type="button" data-i18n-title="online.presets" title="Queries this selection can build" data-i18n-aria-label="online.presets" aria-label="Queries this selection can build"><svg class="ico"><use href="#i-caret-down"/></svg></button>
                   <div id="query-preset-menu" class="col-menu" hidden></div>
                 </div>
                 <!-- One toggling button (#111): a magnifier that searches, and
                      while a search is working becomes a Stop square. -->
-                <button id="discogs-search" class="icon search-toggle" title="Search" aria-label="Search">
+                <button id="discogs-search" class="icon search-toggle" data-i18n-title="online.search" title="Search" data-i18n-aria-label="online.search" aria-label="Search">
                   <svg class="glyph glyph-search" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.3" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="10.3" y1="10.3" x2="14" y2="14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
                   <svg class="glyph glyph-stop" viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1" fill="currentColor"/></svg>
                 </button>
@@ -325,19 +325,19 @@
               <div class="release-toolbar" id="release-toolbar" hidden>
                 <span class="hint muted" id="release-found">Found 0 entries</span>
                 <div class="spacer"></div>
-                <label class="hint muted" title="On import, map a vinyl side (A1/B2) to the disc number: side A → disc 1, B → disc 2, …">
-                  <input id="import-vinyl-disc" type="checkbox" /> Vinyl side → disc
+                <label class="hint muted" data-i18n-title="online.vinylDiscTitle" title="On import, map a vinyl side (A1/B2) to the disc number: side A → disc 1, B → disc 2, …">
+                  <input id="import-vinyl-disc" type="checkbox" /> <span data-i18n="online.vinylDisc">Vinyl side → disc</span>
                 </label>
-                <label class="hint muted per-page">Show
-                  <select id="search-per-page" title="Results per page">
+                <label class="hint muted per-page"><span data-i18n="online.show">Show</span>
+                  <select id="search-per-page" data-i18n-title="online.perPage" title="Results per page">
                     <option value="5" selected>5</option>
                     <option value="10">10</option>
                     <option value="15">15</option>
                   </select>
                 </label>
-                <div class="seg" id="release-layout" role="tablist" aria-label="Layout">
-                  <button class="seg-btn active" data-layout="list"><svg class="ico"><use href="#i-list"/></svg>List</button>
-                  <button class="seg-btn" data-layout="grid"><svg class="ico"><use href="#i-grid"/></svg>Grid</button>
+                <div class="seg" id="release-layout" role="tablist" data-i18n-aria-label="online.layout" aria-label="Layout">
+                  <button class="seg-btn active" data-layout="list"><svg class="ico"><use href="#i-list"/></svg><span data-i18n="online.list">List</span></button>
+                  <button class="seg-btn" data-layout="grid"><svg class="ico"><use href="#i-grid"/></svg><span data-i18n="online.grid">Grid</span></button>
                 </div>
               </div>
             </div>
@@ -346,9 +346,9 @@
                    lazily; import is per-card. -->
               <div id="release-list" class="release-list"></div>
               <div id="release-more" class="release-more" hidden>
-                <button id="load-more" type="button">Load more results</button>
+                <button id="load-more" type="button" data-i18n="online.loadMore">Load more results</button>
               </div>
-              <p id="discogs-empty" class="empty inert-panel">Search the selected source to see releases.</p>
+              <p id="discogs-empty" class="empty inert-panel" data-i18n="online.empty">Search the selected source to see releases.</p>
             </div>
           </div>
 
@@ -358,8 +358,8 @@
           <div id="subtab-editor" class="subtab-panel editor" hidden>
             <div class="editor-scroll">
               <div class="panel-block">
-                <h2>Tag fields <span id="fields-count" class="muted"></span></h2>
-                <p class="hint muted" style="padding: 0">
+                <h2><span data-i18n="editor.tagFields">Tag fields</span> <span id="fields-count" class="muted"></span></h2>
+                <p class="hint muted" style="padding: 0" data-i18n="editor.fieldsHint" data-i18n-html>
                   Only fields you change are written; a field whose value differs across the selection
                   shows <em>&lt;multiple values&gt;</em> and is left alone unless you type in it.
                 </p>
@@ -375,19 +375,19 @@
                      button that expands into one compact inline row on demand,
                      rather than always occupying two lines. -->
                 <div class="fe-add">
-                  <button id="fields-add-toggle" class="fe-add-toggle" type="button"><svg class="ico"><use href="#i-plus"/></svg>Add field</button>
+                  <button id="fields-add-toggle" class="fe-add-toggle" type="button"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="editor.addField">Add field</span></button>
                   <div id="fields-add-row" class="fe-add-row" hidden>
-                    <input id="fields-new-name" class="fe-add-name" type="text" placeholder="field name" list="fields-known" autocomplete="off" spellcheck="false" />
-                    <input id="fields-new-value" class="fe-add-value" type="text" placeholder="value" spellcheck="false" />
-                    <button id="fields-add" class="icon fe-add-ok" type="button" title="Add field" aria-label="Add field"><svg class="ico"><use href="#i-check"/></svg></button>
-                    <button id="fields-add-cancel" class="icon" type="button" title="Cancel" aria-label="Cancel"><svg class="ico"><use href="#i-close"/></svg></button>
+                    <input id="fields-new-name" class="fe-add-name" type="text" data-i18n-placeholder="editor.fieldName" placeholder="field name" list="fields-known" autocomplete="off" spellcheck="false" />
+                    <input id="fields-new-value" class="fe-add-value" type="text" data-i18n-placeholder="editor.fieldValue" placeholder="value" spellcheck="false" />
+                    <button id="fields-add" class="icon fe-add-ok" type="button" data-i18n-title="editor.addField" title="Add field" data-i18n-aria-label="editor.addField" aria-label="Add field"><svg class="ico"><use href="#i-check"/></svg></button>
+                    <button id="fields-add-cancel" class="icon" type="button" data-i18n-title="action.cancel" title="Cancel" data-i18n-aria-label="action.cancel" aria-label="Cancel"><svg class="ico"><use href="#i-close"/></svg></button>
                   </div>
                   <datalist id="fields-known"></datalist>
                 </div>
               </div>
 
               <div class="panel-block">
-                <h2>Cover art</h2>
+                <h2 data-i18n="editor.coverArt">Cover art</h2>
                 <!-- The cover well (thumbnail + state + actions + drop target) is
                      built by renderCoverWell for the current selection. -->
                 <div id="cover-well"></div>
@@ -401,9 +401,9 @@
 
             <!-- Pinned footer: primary tag-field actions, always visible. -->
             <div class="panel-actions editor-actions">
-              <button id="fields-clear" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo.">Clear tags</button>
+              <button id="fields-clear" data-i18n-title="editor.clearTagsTitle" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo." data-i18n="editor.clearTags">Clear tags</button>
               <div class="spacer"></div>
-              <button id="fields-apply" class="primary">Stage field changes</button>
+              <button id="fields-apply" class="primary" data-i18n="editor.stageFields">Stage field changes</button>
             </div>
           </div>
 
@@ -411,17 +411,17 @@
                file's own name read back into tags. -->
           <div id="subtab-filename" class="subtab-panel from-name" hidden>
             <div class="from-name-scroll"><div class="panel-block">
-              <h2>Tags from the file name</h2>
+              <h2 data-i18n="fromName.heading">Tags from the file name</h2>
               <div class="mask-row">
                 <input id="from-name-mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
-                <button class="icon ph-btn" type="button" data-ph-target="from-name-mask" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+                <button class="icon ph-btn" type="button" data-ph-target="from-name-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
               </div>
               <!-- Live read-out of what the pattern pulls out of the current
                    row, so the mask can be tuned without staging a plan. The
                    values are raw (#159): cleaning them up is a chain over the
                    staged plan, and there is no plan while a pattern is typed. -->
               <div id="from-name-probe" class="probe"></div>
-              <p class="hint muted">
+              <p class="hint muted" data-i18n="fromName.hint" data-i18n-html>
                 The same placeholders RENAMER uses, read the other way. Add <code>/</code> (or
                 <code>\</code>) to reach into the folders — <code>%albumartist%/%album%/%track% -
                 %title%</code> — and one folder level is matched per separator. Wrap optional parts
@@ -435,7 +435,7 @@
             </div></div>
             <div class="panel-actions from-name-actions">
               <div class="spacer"></div>
-              <button id="from-name-preview" class="primary">Preview tags</button>
+              <button id="from-name-preview" class="primary" data-i18n="fromName.preview">Preview tags</button>
             </div>
           </div>
         </section>

@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 // The field catalogue (#143 split it out of app.js).
 //
 // Which tag fields the UI knows about and what they are called: the modeled
@@ -65,8 +67,24 @@ const VIRTUAL_COLUMNS = [
   ["tagtypes", "Tag types"],
 ];
 
+// The display name for a field or virtual column (#50).
+//
+// The English labels above stay where they are: they are the fallback and they
+// document the list. What a user sees comes from the catalogue under
+// `field.<key>`, so the table header, the column picker, grouping and the field
+// editor all rename together with the interface. An unknown key answers itself,
+// which is what a raw custom frame should show.
+function fieldLabel(key) {
+  const catalogued = t(`field.${key}`);
+  if (catalogued !== `field.${key}`) return catalogued;
+  const known =
+    EXTENDED_FIELDS.find(([field]) => field === key) ||
+    VIRTUAL_COLUMNS.find(([field]) => field === key);
+  return known ? known[1] : key;
+}
+
 // Group key for a track that belongs to no dropped folder (a loose dropped
 // file, #127). Not a valid absolute path, so it can't collide with a folder key.
 const DROP_LOOSE_KEY = "::loose::";
 
-export { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS, DROP_LOOSE_KEY };
+export { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS, DROP_LOOSE_KEY, fieldLabel };

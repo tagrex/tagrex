@@ -4,7 +4,8 @@
 // in `tracks[].tags` — this exposes the rest, including custom ones. Edits are
 // staged into the shared buffer and previewed with everything else, so nothing
 // here writes.
-import { confirmDialog, el, escapeHtml, ico, plural, toast } from "./dom.js";
+import { confirmDialog, el, escapeHtml, ico, toast } from "./dom.js";
+import { list, t as tr, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import {
   edits,
@@ -16,7 +17,7 @@ import {
   trackAt,
   tracks,
 } from "./state.js";
-import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS } from "./fields.js";
+import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, fieldLabel as catalogueLabel } from "./fields.js";
 import { isFieldLocked, lockButton } from "./locks.js";
 import { hooks } from "./hooks.js";
 
@@ -39,7 +40,7 @@ function currentFieldValue(path, key) {
 function refreshFieldEditor() {
   const paths = selectedPaths();
   stagedFields = new Map();
-  el("fields-count").textContent = paths.length ? `— ${plural(paths.length, "file", "files")}` : "";
+  el("fields-count").textContent = paths.length ? `— ${tn("unit.file", paths.length)}` : "";
   renderTagBlocks(paths);
   closeAddField(); // collapse the add-field row back to its idle affordance
   populateKnownFields();
@@ -64,7 +65,7 @@ function renderTagBlocks(paths) {
   // Counted per FILE, not per distinct wording: two files telling the same
   // story are two files, and a set of strings cannot say so.
   let files = 0;
-  const wordings = new Set();
+  const wordings = new Map();
   // The blocks that could be stripped, keyed by kind so two files carrying the
   // same spare block offer one button, not two.
   const strippable = new Map();
@@ -79,7 +80,13 @@ function renderTagBlocks(paths) {
     if (blocks.length < 2) continue;
     files++;
     const rest = blocks.filter((b) => b !== read);
-    wordings.add(`${read.label} — also ${rest.map((b) => b.label).join(" and ")}`);
+    // The parts, not a sentence: the sentence is built from the catalogue at
+    // render time, and the key is only here to tell one combination from
+    // another (#50).
+    wordings.set(`${read.label}|${rest.map((b) => b.label).join(",")}`, {
+      read: read.label,
+      rest: rest.map((b) => b.label),
+    });
     for (const block of rest) {
       const entry = strippable.get(block.kind) || { label: block.label, files: 0 };
       entry.files++;
@@ -99,15 +106,17 @@ function renderTagBlocks(paths) {
       .map((path) => (trackAt(path)?.tag_blocks || [])[0])
       .find(Boolean);
     line.textContent =
-      readKinds.size === 1 ? `Carrying ${only.label}` : "Carrying one tag block each";
+      readKinds.size === 1
+        ? tr("blocks.carrying", { block: only.label })
+        : tr("blocks.carryingEach");
   } else if (wordings.size === 1) {
-    const only = [...wordings][0];
+    const only = [...wordings.values()][0];
     line.textContent =
       files === 1
-        ? `Reading ${only.replace(" — also ", " — this file also carries ")}`
-        : `Reading ${only}, on all ${files} of them`;
+        ? tr("blocks.readingOne", { read: only.read, rest: list(only.rest) })
+        : tr("blocks.readingAll", { read: only.read, rest: list(only.rest), files });
   } else {
-    line.textContent = `${files} of the selected files carry more than one tag block`;
+    line.textContent = tr("blocks.several", { files });
   }
   renderBlockStrippers(line, strippable);
   renderConvertButton(line, readKinds);
@@ -123,11 +132,11 @@ function renderBlockStrippers(line, strippable) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "text-btn";
-    button.textContent = `Remove ${label}`;
+    button.textContent = tr("blocks.remove", { block: label });
     button.title =
       files === 1
-        ? `Strip the ${label} block, leaving the rest of the file alone`
-        : `Strip the ${label} block from ${plural(files, "file", "files")}, leaving the rest alone`;
+        ? tr("blocks.removeTitleOne", { block: label })
+        : tr("blocks.removeTitleMany", { block: label, files: tn("unit.file", files) });
     button.addEventListener("click", () => previewRemoveTagBlock(kind, label));
     line.append(" ", button);
   }
@@ -143,13 +152,13 @@ function renderBlockStrippers(line, strippable) {
 async function previewRemoveTagBlock(kind, label) {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast(`Select the tracks whose ${label} tag to remove first`, true);
+    toast(tr("toast.blocks.selectFirst", { block: label }), true);
     return;
   }
   try {
     const plan = await invoke("preview_remove_tag_block", { paths, kind });
     if (plan.changes.length === 0) {
-      toast(`None of the selected files carry a ${label} tag`);
+      toast(tr("toast.blocks.noneCarry", { block: label }));
       return;
     }
     const inexact = plan.changes.some((change) =>
@@ -157,17 +166,18 @@ async function previewRemoveTagBlock(kind, label) {
     );
     if (inexact) {
       const ok = await confirmDialog(
-        `Undo rebuilds a ${label} block from its text and pictures. Anything else it holds — ` +
-          `cue points, ratings, player-specific frames — would not come back. ` +
-          `Remove it from ${plural(plan.changes.length, "file", "files")}?`,
-        "Remove"
+        tr("blocks.removeConfirm", {
+          block: label,
+          files: tn("unit.file", plan.changes.length),
+        }),
+        tr("action.remove")
       );
       if (!ok) return;
     }
     setPreviewPlan(plan);
     setPreviewSource("blocks");
     hooks.renderPreview(previewPlan);
-    toast(`Previewing ${label} removal on ${plural(plan.changes.length, "file", "files")}`);
+    toast(tr("toast.blocks.previewRemoval", { block: label, files: tn("unit.file", plan.changes.length) }));
   } catch (e) {
     toast(String(e), true);
   }
@@ -183,7 +193,7 @@ function renderConvertButton(line, readKinds) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "text-btn";
-  button.textContent = "Convert…";
+  button.textContent = tr("blocks.convert");
   if (readKinds.size > 1) {
     button.disabled = true;
     button.title = "The selected files read from different tag blocks — convert them separately";
@@ -214,7 +224,7 @@ async function openConvertPicker(from) {
     return;
   }
   if (!targets.kinds.length) {
-    toast("These files have no tag block kind in common", true);
+    toast(tr("toast.blocks.noCommonKind"), true);
     return;
   }
 
@@ -242,19 +252,19 @@ async function openConvertPicker(from) {
   const go = document.createElement("button");
   go.type = "button";
   go.className = "text-btn";
-  go.textContent = "Preview";
+  go.textContent = tr("action.preview");
   go.addEventListener("click", () =>
     previewConvertTagBlock(from, kindSelect.value, revisionSelect.hidden ? null : revisionSelect.value)
   );
   const cancel = document.createElement("button");
   cancel.type = "button";
   cancel.className = "text-btn";
-  cancel.textContent = "Cancel";
+  cancel.textContent = tr("action.cancel");
   cancel.addEventListener("click", closeConvertPicker);
 
   const label = document.createElement("span");
   label.className = "muted";
-  label.textContent = "Write these tags as";
+  label.textContent = tr("blocks.writeAs");
   box.append(label, kindSelect, revisionSelect, go, cancel);
 }
 
@@ -266,7 +276,7 @@ function fieldLabel(key) {
     const name = key.slice(7);
     return KNOWN_CUSTOM_LABELS[name] || name;
   }
-  return (EXTENDED_FIELDS.find(([field]) => field === key) || [key, key])[1];
+  return catalogueLabel(key);
 }
 
 // Preview a conversion, through the normal preview/apply/undo path.
@@ -281,7 +291,7 @@ async function previewConvertTagBlock(from, to, revision) {
   try {
     const plan = await invoke("preview_convert_tag_block", { paths, from, to, revision });
     if (plan.changes.length === 0) {
-      toast("None of the selected files carry that tag block");
+      toast(tr("toast.blocks.noneCarryThat"));
       return;
     }
     // Switching an ID3v2 block between 2.3 and 2.4 restamps the header and
@@ -302,8 +312,8 @@ async function previewConvertTagBlock(from, to, revision) {
       }
       const parts = [];
       if (lostFields.size) parts.push([...lostFields].map(fieldLabel).sort().join(", "));
-      if (lostPictures) parts.push(plural(lostPictures, "embedded image", "embedded images"));
-      const drops = parts.length ? ` It has no room for ${parts.join(" and ")}.` : "";
+      if (lostPictures) parts.push(tn("unit.embeddedImage", lostPictures));
+      const drops = parts.length ? " " + tr("blocks.noRoomFor", { what: list(parts) }) : "";
       // Whether every block this touches can be put back exactly. An ID3v2
       // block is journaled as bytes (#206), so undo restores it frame for
       // frame; anything else is rebuilt from what the app can read, and what it
@@ -313,11 +323,12 @@ async function previewConvertTagBlock(from, to, revision) {
         (change.block_changes || []).every((block) => block.exact)
       );
       const ok = await confirmDialog(
-        `This rebuilds the block from the values the app can read.${drops} Anything it cannot read — ` +
-          `cue points, ratings, player-specific frames — would not come across. ` +
-          (undoable ? "Undo puts the original block back." : "Undo cannot bring those back.") +
-          ` Convert ${plural(plan.changes.length, "file", "files")}?`,
-        "Convert"
+        tr("blocks.convertConfirm", {
+          drops,
+          undo: tr(undoable ? "blocks.convertUndoable" : "blocks.convertNotUndoable"),
+          files: tn("unit.file", plan.changes.length),
+        }),
+        tr("action.convert")
       );
       if (!ok) return;
     }
@@ -325,7 +336,7 @@ async function previewConvertTagBlock(from, to, revision) {
     setPreviewPlan(plan);
     setPreviewSource("blocks");
     hooks.renderPreview(previewPlan);
-    toast(`Previewing ${plan.description.toLowerCase()} on ${plural(plan.changes.length, "file", "files")}`);
+    toast(tr("toast.previewingWhat", { what: plan.description.toLowerCase(), files: tn("unit.file", plan.changes.length) }));
   } catch (e) {
     toast(String(e), true);
   }
@@ -375,8 +386,8 @@ const EDITOR_CORE_KEYS = ["artist", "title", "album", "albumartist", "track", "t
 const EDITOR_CORE_LAYOUT = [
   {
     duo: [
-      { pair: ["track", "tracktotal"], label: "Track" },
-      { pair: ["disc", "disctotal"], label: "Disc" },
+      { pair: ["track", "tracktotal"], key: "track" },
+      { pair: ["disc", "disctotal"], key: "disc" },
     ],
   },
   { key: "artist" },
@@ -435,16 +446,17 @@ function renderFieldEditor(paths) {
     }
   }
 
-  const labelOf = new Map(EXTENDED_FIELDS);
   const coreRows = EDITOR_CORE_LAYOUT.map((r) =>
-    r.duo ? { duo: r.duo } : { key: r.key, label: labelOf.get(r.key) }
+    r.duo
+      ? { duo: r.duo.map((d) => ({ ...d, label: catalogueLabel(d.key) })) }
+      : { key: r.key, label: catalogueLabel(r.key) }
   );
 
   // Standard = the known extended fields, plus any custom keys we can name
   // (promoted, appended after the curated ones and sorted by label). The raw
   // rest — technical frames with no friendly name — drop into Advanced (#136).
   const standardRows = EXTENDED_FIELDS.filter(([key]) => !EDITOR_CORE_KEYS.includes(key)).map(
-    ([key, label]) => ({ key, label })
+    ([key]) => ({ key, label: catalogueLabel(key) })
   );
   const promoted = [];
   const advancedRows = [];
@@ -457,10 +469,11 @@ function renderFieldEditor(paths) {
   promoted.sort((a, b) => a.label.localeCompare(b.label));
   standardRows.push(...promoted);
 
-  body.appendChild(fieldGroup("Core", coreRows, paths, "core"));
-  body.appendChild(fieldGroup("Standard", standardRows, paths, "standard"));
+  body.appendChild(fieldGroup(tr("editor.group.core"), coreRows, paths, "core"));
+  body.appendChild(fieldGroup(tr("editor.group.standard"), standardRows, paths, "standard"));
   // Only surface Advanced when there are raw keys to show.
-  if (advancedRows.length) body.appendChild(fieldGroup("Advanced", advancedRows, paths, "advanced"));
+  if (advancedRows.length)
+    body.appendChild(fieldGroup(tr("editor.group.advanced"), advancedRows, paths, "advanced"));
 }
 
 // Build one field group (a header + its rows). `kind` is "core" (always open),
@@ -539,7 +552,7 @@ function fieldRow(key, label, paths) {
   if (shared === null) {
     row.classList.add("multiple");
     input.classList.add("multiple");
-    input.placeholder = "<multiple values>";
+    input.placeholder = tr("editor.multipleValues");
   } else {
     input.value = shared;
   }
@@ -675,12 +688,12 @@ function fieldDuoRow(pairs, paths) {
 function addCustomField() {
   const name = el("fields-new-name").value.trim();
   if (!name) {
-    toast("Name the custom field first", true);
+    toast(tr("toast.editor.nameField"), true);
     return;
   }
   const key = name.startsWith("custom:") ? name : `custom:${name}`;
   stagedFields.set(key, el("fields-new-value").value);
-  toast(`Staged custom field "${name}" — press Stage changes to apply`);
+  toast(tr("toast.editor.stagedCustom", { name }));
   // Keep the row open and refocus the name so several fields add in a row (#114).
   el("fields-new-name").value = "";
   el("fields-new-value").value = "";
@@ -692,11 +705,11 @@ function addCustomField() {
 async function applyFieldEditor() {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks to edit first", true);
+    toast(tr("toast.editor.selectFirst"), true);
     return;
   }
   if (stagedFields.size === 0) {
-    toast("No field changes to stage");
+    toast(tr("toast.editor.nothingToStage"));
     return;
   }
   let changed = 0;
@@ -719,8 +732,11 @@ async function applyFieldEditor() {
   await hooks.previewEdits();
   toast(
     changed
-      ? `Staged ${plural(stagedFields.size, "field", "fields")} across ${plural(paths.length, "file", "files")}`
-      : "Nothing changed"
+      ? tr("toast.editor.staged", {
+          fields: tn("unit.field", stagedFields.size),
+          files: tn("unit.file", paths.length),
+        })
+      : tr("toast.nothingChanged")
   );
 }
 

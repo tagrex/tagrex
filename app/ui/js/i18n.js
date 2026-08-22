@@ -77,6 +77,15 @@ export function tn(key, n, vars) {
   return fill(form || key, { n, ...vars });
 }
 
+// "A and B" / "A, B and C" — in the active language, which is not the same
+// glue everywhere and not always a comma. `Intl.ListFormat` knows; a `join`
+// here would be English syntax hidden inside a helper.
+const LIST_FORMATS = {};
+export function list(items) {
+  if (!LIST_FORMATS[lang]) LIST_FORMATS[lang] = new Intl.ListFormat(lang, { type: "conjunction" });
+  return LIST_FORMATS[lang].format(items);
+}
+
 // The language in use — a resolved catalogue name, never "auto".
 export function currentLang() {
   return lang;

@@ -8,7 +8,8 @@
 import { el, escapeHtml, ico, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
-import { EXTENDED_FIELDS, VIRTUAL_COLUMNS } from "./fields.js";
+import { EXTENDED_FIELDS, VIRTUAL_COLUMNS, fieldLabel } from "./fields.js";
+import { t } from "./i18n.js";
 import { isFieldLocked } from "./locks.js";
 import { placeholderToken } from "./placeholders.js";
 import { groupByPref, saveGroupBy } from "./prefs.js";
@@ -50,12 +51,10 @@ function allColumnKeys() {
 }
 
 function columnLabel(key) {
-  if (key === "file") return "File";
+  if (key === "file") return t("column.file");
   const custom = customColumnOf(key);
   if (custom) return custom.name;
-  const found =
-    EXTENDED_FIELDS.find(([k]) => k === key) || VIRTUAL_COLUMNS.find(([k]) => k === key);
-  return found ? found[1] : key;
+  return fieldLabel(key);
 }
 
 // Build the "Group by" options (#43): the fixed groupings (Folder, Release id)
@@ -71,11 +70,10 @@ const GROUP_COMMON = ["", "folder", "release", "artist", "album", "albumartist"]
 // tag value). This one names a grouping KEY for the menu/tooltip.
 function groupKeyLabel(value) {
   if (value === "") return "None";
-  if (value === "folder") return "Folder";
-  if (value === "release") return "Release id";
-  if (value === "drop") return "By drop";
-  const field = EXTENDED_FIELDS.find(([key]) => key === value);
-  return field ? field[1] : value;
+  if (value === "folder") return t("group.folder");
+  if (value === "release") return t("group.release");
+  if (value === "drop") return t("group.drop");
+  return fieldLabel(value);
 }
 
 function populateGroupMenu() {
