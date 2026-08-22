@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A message stops repeating the path the window is already showing.** Opening
+  a folder raised a toast carrying the whole absolute path — two lines of it,
+  three quarters of the width — while the path field above the table had just
+  been filled with the same string and keeps showing it. The messages that
+  named a path name the folder now, which takes the widest of them from 802 to
+  183 pixels and back onto one line. The box is capped rather than free to
+  claim 80% of the window, and it runs at the size of the chrome around it
+  instead of carrying the largest type in the interface; a long error still
+  wraps and stays whole, since a message worth reading is worth its second
+  line.
+
 - **An exported playlist survives being copied to another machine.** Entry
   paths were written with the platform's own separator, so a playlist or CUE
   sheet produced on Windows said `Ambient\a.flac` and stopped resolving the

@@ -26,6 +26,15 @@ export function fileName(path) {
   return parts[parts.length - 1];
 }
 
+// The last segment of a folder path, whether or not it ends in a separator —
+// `fileName` alone answers "" for `/music/album/` (#267). A path with no
+// segment to take, the filesystem root, keeps what it had: a message naming
+// nothing at all is worse than one naming a slash.
+export function folderName(path) {
+  const trimmed = String(path).replace(/[\\/]+$/, "");
+  return fileName(trimmed) || String(path);
+}
+
 export function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({
     "&": "&amp;",

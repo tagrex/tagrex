@@ -1,7 +1,17 @@
 "use strict";
 
 import { TAURI, invoke } from "./js/invoke.js";
-import { el, toast, fileName, escapeHtml, ico, confirmDialog, placeFloating, plural } from "./js/dom.js";
+import {
+  el,
+  toast,
+  fileName,
+  folderName,
+  escapeHtml,
+  ico,
+  confirmDialog,
+  placeFloating,
+  plural,
+} from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
 import { hooks } from "./js/hooks.js";
@@ -1431,7 +1441,9 @@ async function refreshLibrary() {
     const dropped = goneFromEdits.length
       ? `, ${plural(goneFromEdits.length, "pending edit", "pending edits")} dropped`
       : "";
-    toast(`Re-read ${openedRoot} — ${plural(fresh.length, "track", "tracks")}, ${change}${dropped}`);
+    toast(
+      `Re-read ${folderName(openedRoot)} — ${plural(fresh.length, "track", "tracks")}, ${change}${dropped}`
+    );
   } catch (e) {
     toast(String(e), true);
   } finally {
@@ -1484,7 +1496,7 @@ async function openLibrary() {
     // that keeps suggesting something unopenable is worse than a short one.
     if (recentRoots().includes(root)) {
       forgetRoot(root);
-      toast(`${root} is no longer there — removed from recent folders`, true);
+      toast(`${folderName(root)} is no longer there — removed from recent folders`, true);
       return;
     }
     toast(String(e), true);
@@ -1538,7 +1550,10 @@ async function afterOpen(label) {
   showView("files");
   showPlayerBar();
   await refreshHistory();
-  toast(`Opened ${label} — ${plural(tracks.length, "track", "tracks")}`);
+  // The folder's own name, not the path to it: the path field above the table
+  // is already showing that, and spelling it out again is most of the toast
+  // (#267).
+  toast(`Opened ${folderName(label)} — ${plural(tracks.length, "track", "tracks")}`);
 }
 
 // Open a drag-and-drop of `paths` (#127). The backend resolves a lone folder to

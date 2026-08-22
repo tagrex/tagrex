@@ -1867,7 +1867,13 @@ tr.drop-below td {
   padding: 9px 16px;
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  max-width: 80%;
+  /* A message that has stopped naming a path is one short line, so the cap is
+     a bound rather than a target — 80% alone let a transient message claim
+     nearly the whole window (#267). */
+  max-width: min(560px, 80%);
+  /* The chrome around it runs at --text-xs; the most short-lived thing on
+     screen should not carry the largest type in the interface. */
+  font-size: var(--text-xs);
   z-index: 30;
 }
 
