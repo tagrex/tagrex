@@ -15,7 +15,7 @@
 
 ---
 
-> **Status: 0.12.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.13.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
 > preview player, and a transactional undo journal. Not 1.0, so expect rough
@@ -37,6 +37,10 @@ Builds are on the [Releases](https://github.com/tagrex/tagrex/releases) page.
 Intel Macs are not built — Apple Silicon only.
 
 ## What it does
+
+**A folder is the library.** Point TagRex at one and it recurses: type or browse
+to the path, drop the folder on the window, or hand it over from the file
+manager — **Open With**, the Dock icon, or the command line.
 
 **The table is the subject.** Files load into a spreadsheet-style table with
 configurable tag columns, grouping by any modeled field, filtering (substring or
@@ -135,7 +139,7 @@ for typography still being trialled.
 
 ## Not yet
 
-- **Lyrics**, AcoustID fingerprinting, CUE import/export, and a multilingual UI.
+- **AcoustID** fingerprinting, **CUE export**, and a **multilingual UI**.
 
 ## Motivation
 
@@ -161,6 +165,12 @@ and Linux.
   playback history.
 - **Not an audio processor.** No format conversion, no ReplayGain analysis
   (at least initially — see the architecture doc for what is deferred).
+- **Not a lyrics editor.** Lyrics a file already carries read and write like any
+  other tag field, but there is no multi-line editor for them and no batch
+  import — that is a listening feature, and this is a tool for metadata in bulk.
+- **Not a CUE splitter.** Importing a CUE sheet only pays off if the continuous
+  mix it describes is cut into tracks, which is an audio operation rather than a
+  metadata one. Writing a CUE *out* of a file list is a different matter.
 
 ## Build from source
 

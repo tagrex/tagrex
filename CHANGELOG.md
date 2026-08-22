@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-22
+
+This release opens the app from outside itself. A folder can be handed to TagRex
+by the file manager — Finder's **Open With**, the Dock icon, a folder dropped on
+the executable, a second launch — where before it could only be typed in, browsed
+to, or dropped on a window that was already up. That needed a file association
+the bundle had never declared, and on macOS an Apple Event rather than the
+command line this had always been described as.
+
+The correctness fix underneath matters more to anyone whose files carry lyrics:
+every save wrote a second `USLT` frame beside the one the file already had, so a
+file stated its lyrics twice and typing into the field reached only the copy a
+reader might not pick. It writes one frame now, in the language the file used.
+The rest is the project's own record catching up — a release page takes its text
+from this file instead of going out as a list of downloads, the seventeen that
+had already shipped were filled in, and 0.5.0 has a section again after its
+heading was renamed away when 0.5.1 was cut.
+
 ### Added
 
 - **A folder can be handed to TagRex by the file manager.** Dropping one on the
