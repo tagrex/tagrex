@@ -27,6 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   groups that render the same name get numbered rather than one overwriting the
   other, and a mask that renders to nothing falls back to the folder's name.
 
+### Fixed
+
+- **An exported playlist survives being copied to another machine.** Entry
+  paths were written with the platform's own separator, so a playlist or CUE
+  sheet produced on Windows said `Ambient\a.flac` and stopped resolving the
+  moment the folder travelled to a Mac or a Linux box — which is the whole
+  point of the entry being relative. Every exported relative path is written
+  with `/` now, which resolves in both directions. A file name that genuinely
+  contains a backslash — legal on Unix — keeps it, since the segments are
+  joined rather than the string patched. Absolute paths, written when a track
+  lives outside the opened library, keep the platform's spelling: that entry
+  does not travel anywhere, and rewriting it would only break it at home too.
+
 ## [0.13.0] - 2026-08-22
 
 This release opens the app from outside itself. A folder can be handed to TagRex

@@ -2958,13 +2958,29 @@ impl App {
     /// How an exported file refers to a track: relative to the library root when
     /// the track sits inside it — which keeps the export portable, since it is
     /// written into that root — and absolute when it does not.
+    ///
+    /// The relative form is written with `/` on every platform (#265). A
+    /// relative entry exists so the export can travel with the folder it
+    /// describes, and a playlist written on Windows with `Ambient\a.flac` in it
+    /// stops resolving the moment that folder is copied to a Mac; `/` resolves
+    /// in both directions. The segments are joined rather than the string being
+    /// patched, because on Unix a backslash is an ordinary character in a file
+    /// name and rewriting it would invent a folder that does not exist.
+    ///
+    /// The absolute fallback is left exactly as the platform spells it: that
+    /// path does not travel anywhere in the first place, and a Windows one
+    /// rewritten with `/` would only stop working at home as well.
     fn path_from_export(root: &Path, path: &Path) -> String {
         std::fs::canonicalize(path)
             .ok()
             .and_then(|abs| {
-                abs.strip_prefix(root)
-                    .ok()
-                    .map(|rel| rel.to_string_lossy().into_owned())
+                abs.strip_prefix(root).ok().map(|relative| {
+                    relative
+                        .components()
+                        .map(|segment| segment.as_os_str().to_string_lossy())
+                        .collect::<Vec<_>>()
+                        .join("/")
+                })
             })
             .unwrap_or_else(|| path.to_string_lossy().into_owned())
     }
@@ -7857,15 +7873,44 @@ mod tests {
         assert_eq!(report, "Plastic - Sexy Groove\nB.B.E. - Seven Days\n");
     }
 
-    /// An exported file with its path separators read as `/`.
-    ///
-    /// A relative entry path carries the platform's own separator, so a test
-    /// spelling one out would assert `a/b.flac` on ubuntu and `a\\b.flac` on
-    /// Windows. What these tests are about is which tracks landed in which
-    /// playlist and that the path stayed relative — not which slash it is
-    /// written with, which is undecided and filed as #265.
-    fn with_slashes(body: &str) -> String {
-        body.replace('\\', "/")
+    #[test]
+    fn an_exported_relative_path_is_written_with_forward_slashes() {
+        let dir = TempDir::new("export-separators");
+        let track = dir.tagged_flac_at("Ambient/deep/a.flac", "A", "a");
+        let app = open_app(&dir);
+
+        app.export_playlist(std::slice::from_ref(&track), "list.m3u")
+            .unwrap();
+        let list = std::fs::read_to_string(dir.0.join("list.m3u")).unwrap();
+        // Two segments deep, so this says something on Windows too, where the
+        // platform would otherwise spell it `Ambient\deep\a.flac` (#265).
+        assert!(list.contains("\nAmbient/deep/a.flac\n"), "{list}");
+        assert!(
+            !list.contains('\\'),
+            "no platform separator survives: {list}"
+        );
+
+        // The CUE exporter shares the rule.
+        app.export_cue(&[track], "tracks.cue").unwrap();
+        let cue = std::fs::read_to_string(dir.0.join("tracks.cue")).unwrap();
+        assert!(cue.contains("FILE \"Ambient/deep/a.flac\" WAVE\n"), "{cue}");
+    }
+
+    /// Unix only: Windows has no such file to make, since it forbids the
+    /// character in a name outright.
+    #[test]
+    #[cfg(not(windows))]
+    fn a_backslash_in_a_file_name_is_not_turned_into_a_folder() {
+        let dir = TempDir::new("export-backslash-name");
+        let track = dir.tagged_flac("weird\\name.flac", "A", "a");
+        let app = open_app(&dir);
+
+        app.export_playlist(&[track], "list.m3u").unwrap();
+        let list = std::fs::read_to_string(dir.0.join("list.m3u")).unwrap();
+        // One segment, and it keeps the character the file actually has —
+        // which patching the string rather than joining the segments would
+        // have quietly turned into a path.
+        assert!(list.contains("\nweird\\name.flac\n"), "{list}");
     }
 
     #[test]
@@ -7884,7 +7929,7 @@ mod tests {
         assert!(written[0].ends_with("Ambient.m3u"), "{written:?}");
         assert!(written[1].ends_with("House.m3u"), "{written:?}");
 
-        let ambient = with_slashes(&std::fs::read_to_string(dir.0.join("Ambient.m3u")).unwrap());
+        let ambient = std::fs::read_to_string(dir.0.join("Ambient.m3u")).unwrap();
         assert_eq!(ambient.lines().filter(|l| l.ends_with(".flac")).count(), 2);
         // Entry paths stay relative to the library root, which is where the
         // playlist itself was written.
@@ -7940,7 +7985,7 @@ mod tests {
             .export_playlists(&[a, b], "album", "%album%.m3u")
             .unwrap();
         assert_eq!(written.len(), 1);
-        let list = with_slashes(&std::fs::read_to_string(dir.0.join("La Bush.m3u")).unwrap());
+        let list = std::fs::read_to_string(dir.0.join("La Bush.m3u")).unwrap();
         assert!(list.contains("\none/a.flac\n"), "{list}");
         assert!(list.contains("\ntwo/b.flac\n"), "{list}");
     }
