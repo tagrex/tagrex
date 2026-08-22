@@ -569,44 +569,44 @@
 
         <section id="panel-exporter" class="mode-panel" hidden>
           <div class="panel-block">
-            <h2>Export <span id="export-count" class="muted"></span></h2>
+            <h2><span data-i18n="exporter.heading">Export</span> <span id="export-count" class="muted"></span></h2>
             <!-- Format as a segmented control (3 formats, all worth showing) with
                  a single per-format hint that swaps with the selection. -->
             <div class="exp-format">
-              <span class="exp-format-label">Format</span>
-              <div class="exp-seg" id="export-kind" role="tablist" aria-label="Export format">
-                <button class="seg-btn active" type="button" data-fmt="playlist">Playlist</button>
-                <button class="seg-btn" type="button" data-fmt="cue">CUE</button>
-                <button class="seg-btn" type="button" data-fmt="csv">CSV</button>
-                <button class="seg-btn" type="button" data-fmt="html">HTML</button>
-                <button class="seg-btn" type="button" data-fmt="xml">XML</button>
-                <button class="seg-btn" type="button" data-fmt="report">Report</button>
+              <span class="exp-format-label" data-i18n="exporter.format">Format</span>
+              <div class="exp-seg" id="export-kind" role="tablist" data-i18n-aria-label="exporter.format.aria" aria-label="Export format">
+                <button class="seg-btn active" type="button" data-fmt="playlist" data-i18n="exporter.format.playlist">Playlist</button>
+                <button class="seg-btn" type="button" data-fmt="cue" data-i18n="exporter.format.cue">CUE</button>
+                <button class="seg-btn" type="button" data-fmt="csv" data-i18n="exporter.format.csv">CSV</button>
+                <button class="seg-btn" type="button" data-fmt="html" data-i18n="exporter.format.html">HTML</button>
+                <button class="seg-btn" type="button" data-fmt="xml" data-i18n="exporter.format.xml">XML</button>
+                <button class="seg-btn" type="button" data-fmt="report" data-i18n="exporter.format.report">Report</button>
               </div>
               <p class="exp-format-hint" id="export-hint"></p>
             </div>
             <!-- Split row reveals only for the playlist format (#62). -->
             <div class="exp-mask" id="export-split-row">
-              <label for="export-split">One per</label>
+              <label for="export-split" data-i18n="exporter.split">One per</label>
               <select id="export-split">
-                <option value="">Selection</option>
-                <option value="folder">Folder</option>
-                <option value="album">Album</option>
+                <option value="" data-i18n="exporter.split.selection">Selection</option>
+                <option value="folder" data-i18n="exporter.split.folder">Folder</option>
+                <option value="album" data-i18n="exporter.split.album">Album</option>
               </select>
             </div>
             <!-- Mask row reveals only for the report format. -->
             <div class="exp-mask" id="export-mask-row">
-              <label for="export-mask">Mask</label>
+              <label for="export-mask" data-i18n="exporter.mask">Mask</label>
               <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
-              <button class="icon ph-btn" type="button" data-ph-target="export-mask" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              <button class="icon ph-btn" type="button" data-ph-target="export-mask" data-i18n-title="exporter.mask.placeholders" title="Placeholders" data-i18n-aria-label="exporter.mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
             </div>
             <div class="exp-row">
               <label for="export-name" id="export-name-label">File name</label>
               <input id="export-name" type="text" spellcheck="false" />
             </div>
-            <p class="exp-note"><b>Read-only.</b> Written into the opened library folder — your audio files are not modified.</p>
+            <p class="exp-note" data-i18n="exporter.note" data-i18n-html><b>Read-only.</b> Written into the opened library folder — your audio files are not modified.</p>
             <div class="panel-actions">
               <div class="spacer"></div>
-              <button id="export-run" class="primary">Export</button>
+              <button id="export-run" class="primary" data-i18n="exporter.run">Export</button>
             </div>
           </div>
         </section>
@@ -928,6 +928,15 @@
 
           <div class="settings-group">
             <h3>Display</h3>
+            <div class="settings-row">
+              <label data-i18n="settings.language">Language</label>
+              <div class="seg" id="set-lang" role="tablist" data-i18n-aria-label="settings.language.aria" aria-label="Interface language">
+                <button class="seg-btn" type="button" data-lang-mode="auto" data-i18n="settings.language.auto">Auto</button>
+                <button class="seg-btn" type="button" data-lang-mode="en" data-i18n="settings.language.en">English</button>
+                <button class="seg-btn" type="button" data-lang-mode="ru" data-i18n="settings.language.ru">Русский</button>
+              </div>
+            </div>
+            <p class="settings-hint" data-i18n="settings.language.hint">Auto follows your system language. A language the app has no catalogue for falls back to English.</p>
             <div class="settings-row">
               <label>Theme</label>
               <div class="seg" id="set-theme" role="tablist" aria-label="Theme">

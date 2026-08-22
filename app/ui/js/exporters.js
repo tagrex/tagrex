@@ -3,9 +3,10 @@
 // Playlist, CUE, CSV, HTML, XML and the mask report. All read-only: they build a
 // file in the opened library and deliberately bypass the change pipeline, since
 // nothing about the tracks themselves is touched.
-import { el, fileName, plural, toast } from "./dom.js";
+import { el, fileName, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { selectedPaths } from "./state.js";
+import { t, tn } from "./i18n.js";
 
 // Default output name per export kind; the user can override it. The backend
 // only accepts a bare file name and writes into the opened library.
@@ -17,16 +18,13 @@ const EXPORT_DEFAULTS = {
   xml: "tags.xml",
   report: "report.txt",
 };
-// One-line "what it produces" hint per format, swapped under the segmented
-// control (allows <b> emphasis, so set via innerHTML).
-const EXPORT_HINTS = {
-  playlist: "An <b>.m3u</b> playlist of the selected tracks, in table order.",
-  cue: "A <b>.cue</b> sheet — one <b>FILE</b> per track, numbered in table order.",
-  csv: "One <b>row per track</b> with the tag columns — opens in any spreadsheet.",
-  html: "A self-contained <b>HTML table</b> of the tag columns — opens in any browser.",
-  xml: "An <b>XML document</b> — one element per tag, for scripts and other tools.",
-  report: "Each track rendered through the <b>mask</b> below, one line apiece.",
-};
+// The hint under the segmented control is looked up per format rather than
+// held in a table here (#50): the text belongs to the catalogue, and reading it
+// at render time is what makes a language switch take effect without a reload.
+// The values carry <b> emphasis, hence innerHTML — from the catalogue only.
+function exportHint(kind) {
+  return t(`exporter.hint.${kind}`);
+}
 let exportKind = "playlist";
 // "" writes one playlist for the whole selection (what it always did); "folder"
 // and "album" write one apiece and turn the name field into a mask (#62).
@@ -43,7 +41,7 @@ const SPLIT_DEFAULTS = {
 // so a name the user typed survives a mode switch.
 function refreshExporter() {
   const count = selectedPaths().length;
-  el("export-count").textContent = count ? `— ${plural(count, "track", "tracks")}` : "";
+  el("export-count").textContent = count ? `— ${tn("unit.track", count)}` : "";
   reflectExportKind();
   if (!el("export-name").value) el("export-name").value = exportName();
 }
@@ -66,10 +64,10 @@ function reflectExportKind() {
   // Splitting turns the file name into a mask rendered per group, so the field
   // says which of the two it is rather than leaving the difference implicit.
   const splitting = exportKind === "playlist" && exportSplit;
-  el("export-name-label").textContent = splitting ? "Name mask" : "File name";
+  el("export-name-label").textContent = t(splitting ? "exporter.nameMask" : "exporter.name");
   el("export-hint").innerHTML = splitting
-    ? "One <b>.m3u</b> per " + exportSplit + ", named by the mask below."
-    : EXPORT_HINTS[exportKind];
+    ? t("exporter.hint.split", { grouping: t(`exporter.grouping.${exportSplit}`) })
+    : exportHint(exportKind);
 }
 
 // Switch format (from the segmented control): reflect it and reset the file name
@@ -90,7 +88,7 @@ function setExportSplit(split) {
 async function runExport() {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks to export first", true);
+    toast(t("toast.export.selectFirst"), true);
     return;
   }
   const kind = exportKind;
@@ -104,7 +102,7 @@ async function runExport() {
         grouping: exportSplit,
         nameMask: outName,
       });
-      toast(`Exported ${plural(files.length, "playlist", "playlists")}`);
+      toast(t("toast.export.playlists", { playlists: tn("unit.playlist", files.length) }));
       return;
     }
     if (kind === "playlist") {
@@ -124,7 +122,12 @@ async function runExport() {
         fileName: outName,
       });
     }
-    toast(`Exported ${plural(paths.length, "track", "tracks")} to ${fileName(written)}`);
+    toast(
+      t("toast.export.done", {
+        tracks: tn("unit.track", paths.length),
+        file: fileName(written),
+      })
+    );
   } catch (e) {
     toast(String(e), true);
   }

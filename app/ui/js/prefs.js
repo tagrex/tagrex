@@ -209,6 +209,48 @@ prefersDarkMq.addEventListener("change", () => {
 // Apply as early as app.js runs, before the settings sheet is ever opened.
 applyTheme(themeMode());
 
+// Interface language (#50): Auto (follow the OS) / English / Russian. Shaped
+// exactly like the theme above and for the same reason — it is a display
+// preference that has to be resolved before the first paint, and a round trip
+// to the backend for it would show English for a frame and then swap.
+// `settings.json` stays out of it until something in the backend needs to know.
+const LANG_STORAGE_KEY = "tagrex.lang";
+const LANG_MODES = ["auto", "en", "ru"];
+// The languages there are catalogues for. "auto" resolves into one of these.
+const LANGUAGES = ["en", "ru"];
+
+function langMode() {
+  try {
+    const saved = localStorage.getItem(LANG_STORAGE_KEY);
+    return LANG_MODES.includes(saved) ? saved : "auto";
+  } catch (e) {
+    return "auto";
+  }
+}
+
+// The catalogue a mode resolves to. Auto takes the browser/OS languages in
+// order of preference and picks the first one there is a catalogue for —
+// matching on the base tag, so `ru-RU` finds `ru`. English otherwise.
+function resolveLang(mode) {
+  if (LANGUAGES.includes(mode)) return mode;
+  const preferred = navigator.languages && navigator.languages.length
+    ? navigator.languages
+    : [navigator.language || "en"];
+  for (const tag of preferred) {
+    const base = String(tag).toLowerCase().split("-")[0];
+    if (LANGUAGES.includes(base)) return base;
+  }
+  return "en";
+}
+
+function saveLangMode(mode) {
+  try {
+    localStorage.setItem(LANG_STORAGE_KEY, mode);
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
 // Grouping is purely a view concern (#20): "" | "folder" | "artist" | "album".
 // It regroups rows visually but never reorders the `tracks` array, so the file
 // order used by mapping (rename masks, Discogs import) is unaffected. Collapsed
@@ -257,6 +299,11 @@ export {
   VALUE_FONTS,
   THEME_MODES,
   themeMode,
+  LANG_MODES,
+  LANGUAGES,
+  langMode,
+  resolveLang,
+  saveLangMode,
   applyTheme,
   resolveTheme,
   groupByPref,

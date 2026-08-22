@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The interface can speak Russian, starting with EXPORTER.** Settings ›
+  Display gains a **Language** control — Auto, English, Русский — beside the
+  theme, and it switches live. The machinery is in place for the rest of the
+  app: strings live in per-language catalogues, a missing entry falls back to
+  English rather than showing a blank or an identifier, and counts are worded
+  through the language's own plural rules, so Russian gets 1 трек / 2 трека /
+  5 треков without any call site knowing how many forms a language has. EXPORTER
+  is translated in full as the first panel; everything else still reads English
+  and will follow.
+
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a
   `FILE` per track, each starting at `INDEX 01 00:00:00`, which is the shape a

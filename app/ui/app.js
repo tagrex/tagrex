@@ -14,6 +14,7 @@ import {
 } from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
+import { applyStaticText } from "./js/i18n.js";
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
@@ -86,6 +87,9 @@ Object.assign(hooks, {
   renderTableHead,
   revealPath,
   navigablePaths: () => navPaths,
+  // A language change repaints the static markup itself; the open panel builds
+  // some of its own text, so it is asked to draw again (#50).
+  retranslate: () => (MODE_REFRESH[currentMode] || (() => {}))(),
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
 import {
@@ -2766,6 +2770,9 @@ syncFilterControls();
 // headers can name their placeholder without an await per header. The head is
 // already drawn by then, so it is redrawn once the names are available.
 initPlaceholderReference().then(renderTableHead);
+// Put the interface into the chosen language before anything else paints (#50).
+// Early, because the panels below read their own labels back out of the DOM.
+applyStaticText();
 // The app's own tooltips over the chrome (#230), for the controls that are a
 // glyph and nothing else.
 initTooltips();

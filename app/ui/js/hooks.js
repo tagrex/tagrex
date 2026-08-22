@@ -32,4 +32,8 @@ export const hooks = {
   // folder hides — what the rows themselves answered before the table was
   // windowed (#189).
   navigablePaths: () => [],
+  // Redraw whatever the open panel builds at runtime after a language change
+  // (#50). The static markup is repainted by `applyStaticText`; this is for the
+  // strings a panel writes itself — hints, counts, swapped labels.
+  retranslate: () => {},
 };

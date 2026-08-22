@@ -6,6 +6,8 @@
 // writes the whole thing back — `save_settings` overwrites settings.json with
 // what it is given, so the saved snapshot is spread rather than replaced.
 import { el, ico, toast } from "./dom.js";
+import { setLanguage } from "./i18n.js";
+import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
 import { actionGroups, savedSettings, setSavedSettings } from "./state.js";
@@ -21,6 +23,7 @@ import {
   badgeFont,
   checkboxColEnabled,
   tableFontPx,
+  langMode,
   themeMode,
   tracklistFontPx,
   valueFont,
@@ -51,6 +54,17 @@ function setImportCoverChoice(choice) {
   el("set-import-cover")
     .querySelectorAll(".seg-btn")
     .forEach((b) => b.classList.toggle("active", b.dataset.importCover === choice));
+}
+
+// Reflect + apply a language choice (#50). Live, like the theme: the static
+// text is repainted by `setLanguage` itself, and the panel on screen is asked
+// to redraw the parts it builds at runtime — its hints and counts — so the
+// switch shows behind the sheet rather than at the next navigation.
+function setLanguageChoice(mode) {
+  el("set-lang")
+    .querySelectorAll("[data-lang-mode]")
+    .forEach((b) => b.classList.toggle("active", b.dataset.langMode === mode));
+  setLanguage(mode, () => hooks.retranslate());
 }
 
 // Reflect + apply a theme choice from the segmented control (live, like the font
@@ -286,6 +300,7 @@ async function openSettings() {
   }
   // Display prefs live in localStorage, not the backend settings.
   setThemeChoice(themeMode());
+  setLanguageChoice(langMode());
   el("set-checkbox-col").checked = checkboxColEnabled();
   setValueFontChoice(valueFont());
   el("set-table-font").value = tableFontPx();
@@ -371,6 +386,10 @@ el("set-id3").addEventListener("click", (e) => {
 el("set-import-cover").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-import-cover]");
   if (btn) setImportCoverChoice(btn.dataset.importCover);
+});
+el("set-lang").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-lang-mode]");
+  if (btn) setLanguageChoice(btn.dataset.langMode);
 });
 // Theme is a live control — switch immediately on click.
 el("set-theme").addEventListener("click", (e) => {
