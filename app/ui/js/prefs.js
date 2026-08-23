@@ -209,15 +209,16 @@ prefersDarkMq.addEventListener("change", () => {
 // Apply as early as app.js runs, before the settings sheet is ever opened.
 applyTheme(themeMode());
 
-// Interface language (#50): Auto (follow the OS) / English / Russian. Shaped
-// exactly like the theme above and for the same reason — it is a display
-// preference that has to be resolved before the first paint, and a round trip
-// to the backend for it would show English for a frame and then swap.
-// `settings.json` stays out of it until something in the backend needs to know.
+// Interface language (#50, #269): Auto (follow the OS) / English / Russian /
+// Ukrainian. Shaped exactly like the theme above and for the same reason — it
+// is a display preference that has to be resolved before the first paint, and
+// a round trip to the backend for it would show English for a frame and then
+// swap. `settings.json` stays out of it until something in the backend needs
+// to know.
 const LANG_STORAGE_KEY = "tagrex.lang";
-const LANG_MODES = ["auto", "en", "ru"];
+const LANG_MODES = ["auto", "en", "ru", "uk"];
 // The languages there are catalogues for. "auto" resolves into one of these.
-const LANGUAGES = ["en", "ru"];
+const LANGUAGES = ["en", "ru", "uk"];
 
 function langMode() {
   try {

@@ -668,6 +668,7 @@ export const en = {
   "settings.language.auto": "Auto",
   "settings.language.en": "English",
   "settings.language.ru": "Русский",
+  "settings.language.uk": "Українська",
   "settings.language.hint":
     "Auto follows your system language. A language the app has no catalogue for falls back to English.",
 };

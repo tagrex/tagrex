@@ -1,4 +1,4 @@
-//! Every code the backend can emit has to exist in both interface catalogues
+//! Every code the backend can emit has to exist in every interface catalogue
 //! (#268).
 //!
 //! The two sides cannot see each other: the codes are Rust string literals, the
@@ -6,7 +6,7 @@
 //! with no entry falls back to English, which is the designed behaviour for a
 //! *newer backend talking to an older frontend* — but inside one build it just
 //! means someone added a message and forgot half of it, and the fallback would
-//! hide that until a Russian user hit the error.
+//! hide that until a user on a translated language hit the error.
 //!
 //! So this reads the sources as text. Crude, deliberately: the alternative is a
 //! hand-kept list of codes, which is one more thing to forget to update.
@@ -16,6 +16,25 @@ use std::path::{Path, PathBuf};
 
 fn crate_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+/// Every catalogue in the directory, by its language code — read rather than
+/// listed, so adding a language does not also mean remembering to add it here
+/// (#269). English is left out: it is the side the others are checked against.
+fn other_catalogues() -> Vec<(String, PathBuf)> {
+    let dir = crate_dir().join("ui/js/i18n");
+    let mut found: Vec<_> = std::fs::read_dir(&dir)
+        .expect("read the catalogue directory")
+        .map(|entry| entry.expect("read a catalogue entry").path())
+        .filter(|path| path.extension().is_some_and(|ext| ext == "js"))
+        .filter_map(|path| {
+            let code = path.file_stem()?.to_str()?.to_string();
+            (code != "en").then_some((code, path))
+        })
+        .collect();
+    found.sort();
+    assert!(!found.is_empty(), "no catalogue besides en.js in {dir:?}");
+    found
 }
 
 /// Every `"error.…"` / `"plan.…"` literal in the command layer.
@@ -68,11 +87,12 @@ fn placeholder_codes() -> BTreeSet<String> {
 }
 
 #[test]
-fn every_backend_code_is_in_both_catalogues() {
+fn every_backend_code_is_in_every_catalogue() {
     let mut codes = codes_in_rust();
     codes.extend(placeholder_codes());
-    for language in ["en", "ru"] {
-        let path = crate_dir().join(format!("ui/js/i18n/{language}.js"));
+    let mut catalogues = other_catalogues();
+    catalogues.push(("en".to_string(), crate_dir().join("ui/js/i18n/en.js")));
+    for (language, path) in catalogues {
         let keys = keys_in_catalogue(&path);
         let missing: Vec<_> = codes.difference(&keys).collect();
         assert!(
@@ -82,18 +102,23 @@ fn every_backend_code_is_in_both_catalogues() {
     }
 }
 
-/// The other direction, for the two catalogues against each other: a key in one
-/// and not the other is a half-finished translation, and English falling back
+/// The other direction, every translation against English: a key in one and
+/// not the other is a half-finished translation, and English falling back
 /// silently is exactly what makes it easy to miss.
 #[test]
 fn the_catalogues_hold_the_same_keys() {
     let en = keys_in_catalogue(&crate_dir().join("ui/js/i18n/en.js"));
-    let ru = keys_in_catalogue(&crate_dir().join("ui/js/i18n/ru.js"));
-    let only_en: Vec<_> = en.difference(&ru).collect();
-    let only_ru: Vec<_> = ru.difference(&en).collect();
-    assert!(
-        only_en.is_empty(),
-        "not translated into Russian: {only_en:?}"
-    );
-    assert!(only_ru.is_empty(), "in ru.js but not in en.js: {only_ru:?}");
+    for (language, path) in other_catalogues() {
+        let keys = keys_in_catalogue(&path);
+        let untranslated: Vec<_> = en.difference(&keys).collect();
+        let unknown: Vec<_> = keys.difference(&en).collect();
+        assert!(
+            untranslated.is_empty(),
+            "not in {language}.js: {untranslated:?}"
+        );
+        assert!(
+            unknown.is_empty(),
+            "in {language}.js but not in en.js: {unknown:?}"
+        );
+    }
 }

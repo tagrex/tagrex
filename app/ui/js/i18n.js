@@ -1,10 +1,10 @@
 // Interface strings (#50).
 //
-// Two catalogues, no build step: `en` is the source of truth and every other
-// language falls back to it key by key, so a partial translation shows English
-// where it has nothing rather than a blank or a raw identifier. A key that is
-// in no catalogue renders as itself — visible on screen, which is how a typo
-// gets found.
+// No build step: `en` is the source of truth and every other language falls
+// back to it key by key, so a partial translation shows English where it has
+// nothing rather than a blank or a raw identifier. A key that is in no
+// catalogue renders as itself — visible on screen, which is how a typo gets
+// found.
 //
 // The language is resolved once, at module load, from the saved preference
 // (see `prefs.js`, where it sits beside the theme for the same reason: both
@@ -13,9 +13,10 @@
 // language up the next time it renders.
 import { en } from "./i18n/en.js";
 import { ru } from "./i18n/ru.js";
+import { uk } from "./i18n/uk.js";
 import { langMode, resolveLang, saveLangMode } from "./prefs.js";
 
-const CATALOGUES = { en, ru };
+const CATALOGUES = { en, ru, uk };
 
 let lang = resolveLang(langMode());
 

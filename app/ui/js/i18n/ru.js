@@ -667,6 +667,7 @@ export const ru = {
   "settings.language.auto": "Авто",
   "settings.language.en": "English",
   "settings.language.ru": "Русский",
+  "settings.language.uk": "Українська",
   "settings.language.hint":
     "Авто следует языку системы. Язык, для которого нет каталога, откатывается на английский.",
 };

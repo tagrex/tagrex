@@ -58,6 +58,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the translated text. A function keeps its signature, which is grammar rather
   than prose. With this the interface is Russian end to end: nothing a user
   reads is composed in English any more.
+- **The interface speaks Ukrainian.** A third catalogue joins English and
+  Russian — all 636 keys, from the panel headings to the placeholder reference
+  and the failures composed in Rust — and Settings › Display gains
+  **Українська** beside them. Auto picks it up from a system set to Ukrainian.
+  Counts go through the language's own rules, so it reads 1 трек / 2 треки /
+  5 треків. The test that keeps the catalogues in step now reads the catalogue
+  directory instead of naming the languages, so a fourth one is checked without
+  the test having to be edited.
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a
