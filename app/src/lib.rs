@@ -4611,10 +4611,19 @@ pub struct PlaceholderDto {
     /// Ready to insert, as it is written in a pattern — `%catalognumber%` for a
     /// placeholder, `$upper()` for a function (#73).
     pub token: String,
+    /// The bare name. An identifier, not prose — it is what goes between the
+    /// percent signs, so it is the same in every language.
     pub name: String,
+    /// The English explanation, and the fallback for `code`.
     pub description: String,
-    /// Section heading: Tags / File / Technical / Special.
+    /// Catalogue key for that explanation (#268), e.g. `placeholder.tag.artist`.
+    #[serde(default)]
+    pub code: String,
+    /// Section heading in English: Tags / File / Technical / Special.
     pub group: String,
+    /// Catalogue key for the heading, e.g. `placeholder.group.tag`.
+    #[serde(default)]
+    pub group_code: String,
     pub render: bool,
     pub extract: bool,
 }
@@ -4632,7 +4641,11 @@ pub fn mask_placeholders() -> Vec<PlaceholderDto> {
             token: doc.token,
             name: doc.name.to_string(),
             description: doc.description.to_string(),
+            // Grouped into the key so a function and a tag that happen to share
+            // a name cannot land on the same entry (#268).
+            code: format!("placeholder.{}.{}", doc.group.key(), doc.name),
             group: doc.group.label().to_string(),
+            group_code: format!("placeholder.group.{}", doc.group.key()),
             render: doc.render,
             extract: doc.extract,
         })

@@ -54,9 +54,23 @@ fn keys_in_catalogue(path: &Path) -> BTreeSet<String> {
     keys
 }
 
+/// The placeholder reference builds its codes with `format!`, so the text scan
+/// cannot see them — it asks the function instead, which is the stronger check
+/// of the two anyway: these are the codes that will actually be sent.
+fn placeholder_codes() -> BTreeSet<String> {
+    let mut codes = BTreeSet::new();
+    for entry in tagrex::mask_placeholders() {
+        codes.insert(entry.code);
+        codes.insert(entry.group_code);
+    }
+    assert!(codes.len() > 40, "the reference looks empty: {codes:?}");
+    codes
+}
+
 #[test]
 fn every_backend_code_is_in_both_catalogues() {
-    let codes = codes_in_rust();
+    let mut codes = codes_in_rust();
+    codes.extend(placeholder_codes());
     for language in ["en", "ru"] {
         let path = crate_dir().join(format!("ui/js/i18n/{language}.js"));
         let keys = keys_in_catalogue(&path);

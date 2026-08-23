@@ -52,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (the operating system, the tag backend, SQLite) the class is translated and
   the detail stays in the words its author wrote, which is what a bug report
   needs.
+- **The placeholder reference reads in your language.** The help behind the
+  **?** beside every mask field — what each of the 78 placeholders and functions
+  does, and the headings they sit under — is translated, and the filter searches
+  the translated text. A function keeps its signature, which is grammar rather
+  than prose. With this the interface is Russian end to end: nothing a user
+  reads is composed in English any more.
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a

@@ -10,7 +10,7 @@
 // The list comes from the backend (`mask_placeholders`), which builds it off the
 // same tables the parser reads. A name shown here parses, by construction.
 import { el, escapeHtml } from "./dom.js";
-import { t } from "./i18n.js";
+import { t, tOr } from "./i18n.js";
 import { invoke } from "./invoke.js";
 
 // Fetched once and kept: the grammar can't change while the app runs, and the
@@ -27,17 +27,20 @@ async function catalogue() {
 
 // The grammar isn't placeholders, but it's the other half of what someone
 // staring at a pattern box needs, and there is nowhere else to put it.
-const GRAMMAR = [
-  ["%field:2%", "Pad a number to a width — %track:3% gives 007"],
-  ["[ … ]", "Optional section: dropped whole when everything inside is empty"],
-  ["$name(…)", "Call a function; arguments are patterns too, and calls nest"],
-  ["/", "Folder separator, where a pattern builds a path"],
-  ["'%'", "Quote a reserved character — % [ ] , — literally"],
-];
+// The grammar rows are the frontend's own — no backend sends them — so they
+// live in the catalogue like any other interface text.
+const GRAMMAR = ["width", "section", "call", "separator", "quote"];
 
 function directionNote(entry) {
   if (entry.render && entry.extract) return "";
-  return entry.render ? "name only" : "read only";
+  return t(entry.render ? "ph.nameOnly" : "ph.readOnly");
+}
+
+// What a placeholder does, in the chosen language (#268). The backend sends a
+// catalogue key beside the English it composed; a key this build has never seen
+// — a newer backend against an older frontend — falls back to that English.
+function describe(entry) {
+  return tOr(entry.code, entry.description);
 }
 
 function rows(entries) {
@@ -45,7 +48,7 @@ function rows(entries) {
     .map(
       (entry) => `<button type="button" class="ph-row" data-token="${escapeHtml(entry.token)}">
         <span class="ph-token">${escapeHtml(entry.token)}</span>
-        <span class="ph-desc">${escapeHtml(entry.description)}</span>
+        <span class="ph-desc">${escapeHtml(describe(entry))}</span>
         ${directionNote(entry) ? `<span class="ph-dir">${directionNote(entry)}</span>` : ""}
       </button>`,
     )
@@ -58,7 +61,7 @@ function render(entries, filter) {
     ? entries.filter(
         (entry) =>
           entry.name.toLowerCase().includes(needle) ||
-          entry.description.toLowerCase().includes(needle),
+          describe(entry).toLowerCase().includes(needle),
       )
     : entries;
   const body = el("ph-body");
@@ -71,17 +74,18 @@ function render(entries, filter) {
   const groups = [];
   for (const entry of matching) {
     const last = groups[groups.length - 1];
-    if (last && last.name === entry.group) last.entries.push(entry);
-    else groups.push({ name: entry.group, entries: [entry] });
+    const name = tOr(entry.group_code, entry.group);
+    if (last && last.name === name) last.entries.push(entry);
+    else groups.push({ name, entries: [entry] });
   }
   const grammar = needle
     ? ""
     : `<div class="ph-group">
-        <div class="ph-group-name">Grammar</div>
+        <div class="ph-group-name">${escapeHtml(t("ph.grammar"))}</div>
         ${GRAMMAR.map(
-          ([token, description]) => `<div class="ph-row ph-row-static">
-            <span class="ph-token">${escapeHtml(token)}</span>
-            <span class="ph-desc">${escapeHtml(description)}</span>
+          (rule) => `<div class="ph-row ph-row-static">
+            <span class="ph-token">${escapeHtml(t(`ph.grammar.${rule}.token`))}</span>
+            <span class="ph-desc">${escapeHtml(t(`ph.grammar.${rule}`))}</span>
           </div>`,
         ).join("")}
       </div>`;

@@ -86,6 +86,15 @@ export function list(items) {
   return LIST_FORMATS[lang].format(items);
 }
 
+// The catalogue's text for `key`, or `fallback` when it has none — for the
+// places where the backend sends a key *and* the English it composed, so an
+// older frontend against a newer backend shows a sentence rather than an
+// identifier (#268).
+export function tOr(key, fallback) {
+  if (!key || !Object.prototype.hasOwnProperty.call(en, key)) return fallback;
+  return t(key);
+}
+
 // A message the backend composed as a code and its values (#268), rendered in
 // the current language: `{ code, args, count }`, where `count` is present only
 // when the wording turns on a number.

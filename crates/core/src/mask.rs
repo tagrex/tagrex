@@ -1111,6 +1111,21 @@ pub enum PlaceholderGroup {
 }
 
 impl PlaceholderGroup {
+    /// A stable name for the group, for the interface to key a translation off
+    /// (#268). Separate from [`label`](Self::label), which is the English and
+    /// changes when the wording does.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Tag => "tag",
+            Self::File => "file",
+            Self::Technical => "technical",
+            Self::Special => "special",
+            Self::Function => "function",
+            Self::Logic => "logic",
+            Self::Math => "math",
+        }
+    }
+
     pub fn label(self) -> &'static str {
         match self {
             Self::Tag => "Tags",

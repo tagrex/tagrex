@@ -936,14 +936,30 @@ function mockInvoke(cmd, args) {
           // consecutive runs, so splitting them draws the heading twice (#202).
           ["if2", "$if2(x,fallback) — x, or fallback when x is empty", "Logic", true, false, "$if2(,)"],
           ["div", "$div(a,b) — a divided by b, empty when b is 0", "Math", true, false, "$div(,)"],
-        ].map(([name, description, group, render, extract, token]) => ({
-          token: token ?? `%${name}%`,
-          name,
-          description,
-          group,
-          render,
-          extract,
-        }))
+        ].map(([name, description, group, render, extract, token]) => {
+          // The backend sends the catalogue keys beside the English (#268); the
+          // mock builds them the same way so the popover's translated path is
+          // the one the browser exercises.
+          const groupKey = {
+            Tags: "tag",
+            File: "file",
+            Technical: "technical",
+            Special: "special",
+            Functions: "function",
+            Logic: "logic",
+            Math: "math",
+          }[group];
+          return {
+            token: token ?? `%${name}%`,
+            name,
+            description,
+            code: `placeholder.${groupKey}.${name}`,
+            group,
+            group_code: `placeholder.group.${groupKey}`,
+            render,
+            extract,
+          };
+        })
       );
     // The import-field catalogue (#152). A trimmed stand-in — enough rows,
     // including the two-key release-id one, to drive the settings section.
