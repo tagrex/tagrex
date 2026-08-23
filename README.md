@@ -15,10 +15,11 @@
 
 ---
 
-> **Status: 0.13.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.14.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
-> preview player, and a transactional undo journal. Not 1.0, so expect rough
+> preview player, a transactional undo journal, and an interface that speaks
+> English, Ukrainian and Russian. Not 1.0, so expect rough
 > edges — bug reports and feedback are welcome. How to use it is in the
 > [user guide](docs/guide/README.md); the design is written up in
 > [docs/architecture.md](docs/architecture.md); user-visible changes are in
@@ -91,7 +92,9 @@ targets differ enough that sharing one chain was the bug: RENAMER usually wants
 a space turned into an underscore and FROM NAME wants exactly the opposite. The
 tag editor has none on purpose — a value typed by hand comes out as typed.
 - **DEDUPLICATOR** — read-only scan for likely duplicates by a chosen criterion.
-- **EXPORTER** — M3U playlists, CSV, HTML, XML, and mask-based reports.
+- **EXPORTER** — M3U playlists, CUE sheets, CSV, HTML, XML, and mask-based
+  reports. A playlist can come out as one list, or one per folder or album with
+  the file names rendered from a mask.
 
 **A mask is a small expression language.** Placeholders are only the start:
 `$name(arg,arg)` calls wrap them, arguments are patterns in their own right so
@@ -133,13 +136,14 @@ rather than being stored verbatim, with a `MediaType` tag, a render-only
 Musepack, Monkey's Audio, WavPack. ID3v2 writes go through the concrete tag type
 so DJ cue points, ratings and ReplayGain frames survive a round-trip.
 
-**Comfort** — light/dark/auto themes, a bundled IBM Plex type set so text renders
-identically on every OS, adjustable table density, and a Settings › LAB section
-for typography still being trialled.
+**Comfort** — an interface in English, Українська or Русский (or whichever of
+them your system asks for), light/dark/auto themes, a bundled IBM Plex type set
+so text renders identically on every OS, adjustable table density, and a
+Settings › LAB section for typography still being trialled.
 
 ## Not yet
 
-- **AcoustID** fingerprinting, **CUE export**, and a **multilingual UI**.
+- **AcoustID** fingerprinting.
 
 ## Motivation
 

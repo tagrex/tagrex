@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-08-23
+
+This release is about the words. The interface no longer speaks only English:
+strings live in per-language catalogues that Russian and Ukrainian fill in
+full, and the text the backend composes — every failure, every plan
+description, the whole placeholder reference — now travels as a code and its
+values, so it reads in the language of the day rather than the one it was
+written in. EXPORTER gained range alongside it: a CUE sheet out of the file
+list, and a playlist that can come out one per folder or per album. Two fixes
+close the release — a message that stopped repeating the path already on
+screen, and exported paths that now survive being carried to another platform.
+
 ### Added
 
 - **The interface can speak Russian, starting with EXPORTER.** Settings ›
