@@ -6,7 +6,7 @@
 // writes the whole thing back — `save_settings` overwrites settings.json with
 // what it is given, so the saved snapshot is spread rather than replaced.
 import { el, ico, toast } from "./dom.js";
-import { setLanguage } from "./i18n.js";
+import { setLanguage, t } from "./i18n.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
@@ -132,7 +132,7 @@ function prioItem(key) {
   const grip = document.createElement("span");
   grip.className = "prio-grip";
   grip.innerHTML = ico("grip");
-  grip.title = "Drag to reorder";
+  grip.title = t("action.dragToReorder");
   enablePointerReorder(grip, li, el("set-prio"), ".prio-item", (dragged, target, below) => {
     const order = readPriority.filter((k) => k !== dragged);
     let to = order.indexOf(target);
@@ -245,7 +245,7 @@ async function refreshBeatportAccount() {
 async function beatportSignIn() {
   const btn = el("beatport-signin");
   btn.disabled = true;
-  el("beatport-account").textContent = "Waiting for the Beatport window…";
+  el("beatport-account").textContent = t("settings.beatport.waiting");
   try {
     const username = await invoke("beatport_login", {});
     toast(username ? `Signed in to Beatport as ${username}` : "Signed in to Beatport");
@@ -260,7 +260,7 @@ async function beatportSignIn() {
 async function beatportSignOut() {
   try {
     await invoke("beatport_logout", {});
-    toast("Signed out of Beatport");
+    toast(t("toast.settings.signedOut"));
   } catch (e) {
     toast(String(e), true);
   }
@@ -353,7 +353,7 @@ async function saveSettings() {
     await invoke("save_settings", { settings });
     updateSettingsDot();
     closeSettings();
-    toast("Settings saved");
+    toast(t("toast.settings.saved"));
   } catch (e) {
     toast(String(e), true);
   }

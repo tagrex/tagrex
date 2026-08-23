@@ -5,7 +5,8 @@
 // browser, the query presets that build a search string from the selection, and
 // the import that merges a release onto the selected files. Everything it
 // stages goes through the ordinary preview/apply/undo path.
-import { confirmDialog, el, escapeHtml, fileName, ico, placeFloating, plural, toast } from "./dom.js";
+import { confirmDialog, el, escapeHtml, fileName, ico, placeFloating, toast } from "./dom.js";
+import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
@@ -90,7 +91,7 @@ function stopLoading() {
   loadingResults = false;
   prefetching = false;
   updateLoadMoreUi();
-  toast("Stopped loading results");
+  toast(t("toast.online.stopped"));
 }
 
 // The credential the given source needs (#162). Discogs takes the personal
@@ -114,11 +115,11 @@ async function runSearch(reset) {
   const query = el("discogs-query").value.trim();
   // Only Discogs needs a token; MusicBrainz is unauthenticated (#33).
   if (source === "discogs" && !token) {
-    toast("Enter your Discogs token", true);
+    toast(t("toast.online.needToken"), true);
     return;
   }
   if (source === "beatport" && !token) {
-    toast("Sign in to Beatport in Settings", true);
+    toast(t("toast.online.needBeatport"), true);
     return;
   }
   // Remember the token locally so it's prefilled next time — the Discogs one
@@ -222,8 +223,8 @@ function countLabel(id) {
   const release = releaseCache.get(id);
   if (!release) return "— tracks";
   const discs = discCount(release);
-  const tracks = plural(release.tracks.length, "track", "tracks");
-  return discs > 1 ? `${tracks} · ${plural(discs, "disc", "discs")}` : tracks;
+  const tracks = tn("unit.track", release.tracks.length);
+  return discs > 1 ? `${tracks} · ${tn("unit.disc", discs)}` : tracks;
 }
 
 // Highest disc number across track positions ("2-1" -> disc 2); 1 if unmarked.
@@ -294,7 +295,9 @@ function renderReleaseList() {
   el("release-toolbar").hidden = releaseCandidates.length === 0;
   // The whole phrase, not just the number: "Found 1 entries" was the same
   // disagreement as the card counts (#167).
-  el("release-found").textContent = `Found ${plural(releaseCandidates.length, "entry", "entries")}`;
+  el("release-found").textContent = t("online.found", {
+    entries: tn("unit.entry", releaseCandidates.length),
+  });
   el("discogs-empty").hidden = releaseCandidates.length > 0;
   if (releaseCandidates.length === 0) {
     el("discogs-empty").textContent = "No releases found.";
@@ -1053,11 +1056,14 @@ function matchByLength(card) {
   disarmCard(card);
   const dropped = release.tracks.length - matchedPairs.length;
   const notes = [];
-  if (ambiguous.size) notes.push(`${plural(ambiguous.size, "track", "tracks")} the same length, left alone`);
-  if (dropped > 0) notes.push(`${plural(dropped, "release track", "release tracks")} left out`);
+  if (ambiguous.size)
+    notes.push(t("match.sameLength", { tracks: tn("unit.track", ambiguous.size) }));
+  if (dropped > 0) notes.push(t("match.leftOut", { tracks: tn("unit.releaseTrack", dropped) }));
   toast(
-    `Matched ${matchedPairs.length}/${plural(paths.length, "file", "files")} by length — reordered to line up` +
-      (notes.length ? ` (${notes.join(", ")})` : ""),
+    t("toast.match.byLength", {
+      matched: matchedPairs.length,
+      files: tn("unit.file", paths.length),
+    }) + (notes.length ? ` (${notes.join(", ")})` : ""),
   );
 }
 
@@ -1101,21 +1107,34 @@ async function autoMatchToRelease(card) {
     armLengthMatch(card);
     const byIsrc = hits.filter((m) => m.by_isrc).length;
     // Surface *why* — an ISRC match is exact, worth calling out (#54).
-    const isrcNote = byIsrc ? ` (${byIsrc} exact by ISRC)` : "";
+    const isrcNote = byIsrc ? " " + t("match.byIsrc", { count: byIsrc }) : "";
     // Say when the release carries tracks this folder doesn't, so the ticks
     // that just went off are not a surprise.
     const dropped = release.tracks.length - matched;
-    const droppedNote = matched && dropped > 0 ? `, ${plural(dropped, "release track", "release tracks")} left out` : "";
+    const droppedNote =
+      matched && dropped > 0
+        ? ", " + t("match.leftOut", { tracks: tn("unit.releaseTrack", dropped) })
+        : "";
     // The names decided; the lengths still get to say whether they agree (#192).
     const verdict = matched ? lengthVerdict(release, matchedPairs) : { off: 0, suggestsOther: false };
     const lengthNote = verdict.off
-      ? `. ${plural(verdict.off, "length disagrees", "lengths disagree")} by up to ${gapLabel(verdict.worst)}` +
-        (verdict.suggestsOther ? " — press again to match by length" : "")
+      ? ". " +
+        t("match.lengthsDisagree", {
+          lengths: tn("unit.lengthDisagrees", verdict.off),
+          gap: gapLabel(verdict.worst),
+        }) +
+        (verdict.suggestsOther ? t("match.pressAgain") : "")
       : "";
     toast(
       matched
-        ? `Matched ${matched}/${plural(paths.length, "file", "files")}${isrcNote} — reordered to line up${droppedNote}${lengthNote}`
-        : "No confident matches — leaving the order alone",
+        ? t("toast.match.byName", {
+            matched,
+            files: tn("unit.file", paths.length),
+            isrc: isrcNote,
+            dropped: droppedNote,
+            lengths: lengthNote,
+          })
+        : t("toast.match.none"),
       matched === 0 || verdict.off > 0,
     );
   } catch (e) {
@@ -1126,12 +1145,12 @@ async function autoMatchToRelease(card) {
 async function embedCoverFrom(card) {
   const cover = coverCache.get(card.dataset.id);
   if (!cover) {
-    toast("This release has no cover to embed", true);
+    toast(t("toast.online.noCover"), true);
     return;
   }
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
+    toast(t("toast.cover.selectEmbed"), true);
     return;
   }
   try {
@@ -1140,7 +1159,7 @@ async function embedCoverFrom(card) {
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing cover on ${plural(previewPlan.changes.length, "file", "files")} — click Apply`
+        ? t("toast.online.previewCover", { files: tn("unit.file", previewPlan.changes.length) })
         : "Selected files already have this cover",
     );
   } catch (e) {
@@ -1157,12 +1176,12 @@ async function saveReleaseImages(card, all) {
   const release = releaseCache.get(id);
   const images = (release && release.images) || [];
   if (!images.length) {
-    toast("This release has no images to save", true);
+    toast(t("toast.online.noImages"), true);
     return;
   }
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks to save the images next to first", true);
+    toast(t("toast.online.selectSaveImages"), true);
     return;
   }
   const urls = all ? images.map((i) => i.url) : [images[0].url];
@@ -1178,7 +1197,7 @@ async function saveReleaseImages(card, all) {
       if (!ok) return;
       res = await invoke("save_release_images", { ...args, overwrite: true });
     }
-    toast(`Saved ${plural(res.written.length, "image", "images")} next to the tracks`);
+    toast(t("toast.online.savedImages", { images: tn("unit.image", res.written.length) }));
   } catch (e) {
     toast(String(e), true);
   }
@@ -1187,7 +1206,7 @@ async function saveReleaseImages(card, all) {
 async function importRelease(card) {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks to import onto first", true);
+    toast(t("toast.online.selectImport"), true);
     return;
   }
   const release = releaseCache.get(card.dataset.id);
@@ -1264,11 +1283,14 @@ async function importRelease(card) {
     // says nothing — this line is the only place a few hundred KB about to be
     // written gets announced (#207).
     const covered = (previewPlan?.changes || []).filter((c) => c.cover_change).length;
-    const coverNote = covered ? `, cover on ${plural(covered, "file", "files")}` : "";
+    const coverNote = covered ? ", " + t("import.coverOn", { files: tn("unit.file", covered) }) : "";
     toast(
       merged || covered
-        ? `Merged ${plural(merged, "field change", "field changes")} from Discogs into pending edits${coverNote}`
-        : "Nothing new to import from this release",
+        ? t("toast.import.merged", {
+            changes: tn("unit.fieldChange", merged),
+            cover: coverNote,
+          })
+        : t("toast.import.nothingNew"),
     );
   } catch (e) {
     toast(String(e), true);

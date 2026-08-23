@@ -32,6 +32,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   menus, the dialogs and the whole settings sheet. `plural()` — two English
   forms and no way to ask for a third — is gone from every module that shows a
   count to a person.
+- **The interface is Russian end to end.** Cover art, the online source with
+  its search and matching report, the columns menu, the rule chain, the player
+  and the settings actions were the last of it — 471 keys, English and Russian
+  in step. What still answers in English is the text composed in Rust: the
+  errors, the placeholder reference and the plan descriptions, filed as its own
+  work.
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a

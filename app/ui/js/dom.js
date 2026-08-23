@@ -17,6 +17,12 @@ export function toast(message, isError) {
 
 // "1 track" / "2 tracks" (#167). A count and its noun, agreeing — writing the
 // noun inline is what produced "1 tracks" on every single-track release.
+//
+// Nothing a user reads goes through this any more: it offers two forms and no
+// way to ask for a third, which is why a Russian heading read "3 file" (#50).
+// Interface text uses `tn` from i18n.js. What is left here is the browser mock,
+// which stands in for the *backend* — the plan descriptions it fakes are
+// composed in Rust and are English there too, until #268 changes that.
 export function plural(count, one, many) {
   return `${count} ${count === 1 ? one : many}`;
 }

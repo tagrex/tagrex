@@ -10,7 +10,7 @@ import { selectedPaths } from "./state.js";
 
 async function runDuplicateScan() {
   const criterion = el("dup-criterion").value;
-  el("dup-summary").textContent = "Scanning…";
+  el("dup-summary").textContent = t("dedup.scanning");
   el("dup-results").innerHTML = "";
   try {
     const groups = await invoke("find_duplicates", { criterion });
@@ -45,7 +45,7 @@ function mmss(secs) {
 function refreshDeduplicator() {
   const results = el("dup-results");
   if (!results.querySelector("table, .empty")) {
-    results.innerHTML = `<p class="empty inert-panel">Pick a key in the panel and <b>Scan the library</b> to find duplicates.</p>`;
+    results.innerHTML = `<p class="empty inert-panel">${t("dedup.pickKey")}</p>`;
   }
 }
 

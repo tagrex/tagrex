@@ -10,6 +10,7 @@
 // The list comes from the backend (`mask_placeholders`), which builds it off the
 // same tables the parser reads. A name shown here parses, by construction.
 import { el, escapeHtml } from "./dom.js";
+import { t } from "./i18n.js";
 import { invoke } from "./invoke.js";
 
 // Fetched once and kept: the grammar can't change while the app runs, and the
@@ -62,7 +63,7 @@ function render(entries, filter) {
     : entries;
   const body = el("ph-body");
   if (!matching.length) {
-    body.innerHTML = `<p class="ph-empty muted">Nothing matches “${escapeHtml(filter)}”.</p>`;
+    body.innerHTML = `<p class="ph-empty muted">${escapeHtml(t("ph.noMatch", { filter }))}</p>`;
     return;
   }
   // Group order follows the backend's order rather than a set here, so the

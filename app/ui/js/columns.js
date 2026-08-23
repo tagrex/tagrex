@@ -277,7 +277,7 @@ function closeColumnEditor() {
 async function commitColumnEditor() {
   const pattern = el("colmask-pattern").value.trim();
   if (!pattern) {
-    toast("A column needs a pattern", true);
+    toast(t("toast.columns.needPattern"), true);
     return;
   }
   // Check the pattern before storing it, so a typo is reported once, here,
@@ -599,7 +599,7 @@ function renderColumnsMenu() {
   if (hidden.length) {
     const sep = document.createElement("div");
     sep.className = "col-menu-sep";
-    sep.textContent = "Hidden";
+    sep.textContent = t("columns.hidden");
     menu.appendChild(sep);
     for (const key of hidden) menu.appendChild(colMenuRow(key, false));
   }
@@ -616,8 +616,8 @@ function renderColumnsMenu() {
   const add = document.createElement("button");
   add.type = "button";
   add.className = "text-btn";
-  add.textContent = "Add column…";
-  add.title = "A column whose value is a mask, rendered per row";
+  add.textContent = t("columns.add");
+  add.title = t("columns.addTitle");
   add.addEventListener("click", () => {
     menu.hidden = true;
     openColumnEditor(null);
@@ -632,8 +632,8 @@ function renderColumnsMenu() {
   const fit = document.createElement("button");
   fit.type = "button";
   fit.className = "text-btn";
-  fit.textContent = "Fit to content";
-  fit.title = "Size every column to its widest value (double-click a column edge for one)";
+  fit.textContent = t("columns.fit");
+  fit.title = t("columns.fitTitle");
   fit.addEventListener("click", () => {
     menu.hidden = true;
     fitAllColumns();
@@ -650,8 +650,8 @@ function renderColumnsMenu() {
   autoBox.addEventListener("change", () => setAutofit(autoBox.checked));
   const autoLabel = document.createElement("span");
   autoLabel.className = "col-menu-label";
-  autoLabel.textContent = "Autofit by content";
-  autoRow.title = "Keep columns sized to their content as the table changes";
+  autoLabel.textContent = t("columns.autofit");
+  autoRow.title = t("columns.autofitTitle");
   autoRow.append(autoBox, autoLabel);
   fitFoot.appendChild(autoRow);
   actions.appendChild(fitFoot);
@@ -662,8 +662,8 @@ function renderColumnsMenu() {
   const reset = document.createElement("button");
   reset.type = "button";
   reset.className = "text-btn";
-  reset.textContent = "Reset to default";
-  reset.title = "File · Artist · Title · Album · Year · Length, default widths";
+  reset.textContent = t("columns.reset");
+  reset.title = t("columns.resetTitle");
   reset.addEventListener("click", resetColumns);
   foot.appendChild(reset);
   actions.appendChild(foot);
@@ -680,7 +680,7 @@ function colMenuRow(key, visible) {
   grip.className = "col-grip";
   grip.innerHTML = ico("grip");
   if (visible && !isFile) {
-    grip.title = "Drag to reorder";
+    grip.title = t("action.dragToReorder");
     enablePointerReorder(grip, row, el("columns-menu"), ".col-menu-row", moveColumn);
   } else {
     grip.style.visibility = "hidden";
@@ -724,7 +724,7 @@ function colMenuRow(key, visible) {
     remove.type = "button";
     remove.className = "icon col-row-btn";
     remove.innerHTML = ico("close");
-    remove.title = "Remove this column";
+    remove.title = t("columns.removeThis");
     remove.setAttribute("aria-label", `Remove column ${custom.name}`);
     remove.addEventListener("click", (e) => {
       e.preventDefault();

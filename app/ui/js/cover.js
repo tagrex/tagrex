@@ -10,7 +10,8 @@
 // fetched image means — and the strip below it is the rest of the set, editable
 // only when every selected file carries the same one. Every edit there sends the
 // WHOLE set, which is also what the plan stores and what undo writes back.
-import { el, escapeHtml, ico, plural, toast } from "./dom.js";
+import { el, escapeHtml, ico, toast } from "./dom.js";
+import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { enablePointerReorder } from "./reorder.js";
@@ -43,7 +44,7 @@ let pickAppends = false;
 // ---- cover art ----
 function chooseCover() {
   if (selectedPaths().length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
+    toast(t("toast.cover.selectEmbed"), true);
     return;
   }
   coverFileInput.value = ""; // allow re-picking the same file
@@ -81,11 +82,11 @@ async function readImageFile(file) {
 // — see embedCoverFromPath (#133).
 async function embedCoverFile(file) {
   if (!file.type.startsWith("image/")) {
-    toast("Drop an image file", true);
+    toast(t("toast.cover.dropImage"), true);
     return;
   }
   if (selectedPaths().length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
+    toast(t("toast.cover.selectEmbed"), true);
     return;
   }
   await embedCoverDto(await readImageFile(file));
@@ -96,7 +97,7 @@ async function embedCoverFile(file) {
 // guessing a type from a file name would be worse than asking.
 async function addCoverFile(file) {
   if (!file.type.startsWith("image/")) {
-    toast("Pick an image file", true);
+    toast(t("toast.cover.pickImage"), true);
     return;
   }
   const image = await readImageFile(file);
@@ -108,7 +109,7 @@ async function addCoverFile(file) {
 async function previewCoverSet(covers) {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks whose images to edit first", true);
+    toast(t("toast.cover.selectImages"), true);
     return;
   }
   try {
@@ -117,8 +118,11 @@ async function previewCoverSet(covers) {
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing ${plural(covers.length, "image", "images")} on ${plural(previewPlan.changes.length, "file", "files")}`
-        : "Selected files already carry exactly these images"
+        ? t("toast.cover.previewImages", {
+            images: tn("unit.image", covers.length),
+            files: tn("unit.file", previewPlan.changes.length),
+          })
+        : t("toast.cover.sameImages")
     );
   } catch (e) {
     toast(String(e), true);
@@ -129,7 +133,7 @@ async function previewCoverSet(covers) {
 // drag-drop event gives a path, which the backend reads into a cover DTO.
 async function embedCoverFromPath(path) {
   if (selectedPaths().length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
+    toast(t("toast.cover.selectEmbed"), true);
     return;
   }
   try {
@@ -146,7 +150,7 @@ async function embedCoverFromPath(path) {
 async function embedCoverDto(cover) {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
+    toast(t("toast.cover.selectEmbed"), true);
     return;
   }
   try {
@@ -155,8 +159,8 @@ async function embedCoverDto(cover) {
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing cover on ${plural(previewPlan.changes.length, "file", "files")}`
-        : "Selected files already have this cover"
+        ? t("toast.cover.preview", { files: tn("unit.file", previewPlan.changes.length) })
+        : t("toast.cover.sameCover")
     );
   } catch (e) {
     toast(String(e), true);
@@ -168,7 +172,7 @@ async function embedCoverDto(cover) {
 async function previewCoverRemove() {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks whose cover to remove first", true);
+    toast(t("toast.cover.selectRemove"), true);
     return;
   }
   try {
@@ -177,8 +181,8 @@ async function previewCoverRemove() {
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing cover removal on ${plural(previewPlan.changes.length, "file", "files")}`
-        : "None of the selected files have a cover"
+        ? t("toast.cover.previewRemoval", { files: tn("unit.file", previewPlan.changes.length) })
+        : t("toast.cover.noneHaveCover")
     );
   } catch (e) {
     toast(String(e), true);
@@ -191,7 +195,7 @@ async function previewCoverRemove() {
 async function previewClearTags() {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks whose tags to clear first", true);
+    toast(t("toast.cover.selectClear"), true);
     return;
   }
   try {
@@ -200,8 +204,8 @@ async function previewClearTags() {
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing tag clear on ${plural(previewPlan.changes.length, "file", "files")}`
-        : "None of the selected files have tags to clear"
+        ? t("toast.cover.previewClear", { files: tn("unit.file", previewPlan.changes.length) })
+        : t("toast.cover.nothingToClear")
     );
   } catch (e) {
     toast(String(e), true);
@@ -216,8 +220,8 @@ async function refreshCoverWell() {
   if (paths.length === 0) {
     coverWell.className = "cover-well empty";
     coverWell.innerHTML = `<div class="cover-thumb inert"></div>
-      <div class="cover-body"><div class="cover-title">No selection</div>
-      <div class="cover-hint">Select tracks to edit their cover.</div></div>`;
+      <div class="cover-body"><div class="cover-title">${escapeHtml(t("cover.noSelection"))}</div>
+      <div class="cover-hint">${escapeHtml(t("cover.selectToEdit"))}</div></div>`;
     coverSetBox.hidden = true;
     coverSet = [];
     return;
@@ -265,7 +269,7 @@ async function embedExternalCover() {
   if (!externalCover) return;
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks to embed the cover into first", true);
+    toast(t("toast.cover.selectEmbed"), true);
     return;
   }
   try {
@@ -274,8 +278,10 @@ async function embedExternalCover() {
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing folder image on ${plural(previewPlan.changes.length, "file", "files")} — click Apply`
-        : "Selected files already have this cover",
+        ? t("toast.cover.previewFolderImage", {
+            files: tn("unit.file", previewPlan.changes.length),
+          })
+        : t("toast.cover.sameCover"),
     );
   } catch (e) {
     toast(String(e), true);
@@ -289,16 +295,16 @@ function coverThumbImg(cover, cls) {
 function renderCoverWell(summary) {
   const { total, with_cover, distinct, samples } = summary;
   const n = total;
-  const drop = `<div class="cover-drop-cue">Drop image to embed in ${plural(n, "file", "files")}</div>`;
+  const drop = `<div class="cover-drop-cue">${escapeHtml(t("cover.dropCue", { files: tn("unit.file", n) }))}</div>`;
 
   if (with_cover === 0) {
     // No cover anywhere — the well itself is the click/drop target.
     coverWell.className = "cover-well empty";
     coverWell.innerHTML = `<div class="cover-thumb inert"></div>
       <div class="cover-body">
-        <div class="cover-title">No cover</div>
+        <div class="cover-title">${escapeHtml(t("cover.noCover"))}</div>
         ${drop}
-        <div class="cover-hint"><b>Embed cover…</b><br>or drag an image here</div>
+        <div class="cover-hint">${t("cover.embedHint")}</div>
       </div>`;
     return;
   }
@@ -308,13 +314,13 @@ function renderCoverWell(summary) {
     coverWell.className = "cover-well";
     coverWell.innerHTML = `${coverThumbImg(samples[0])}
       <div class="cover-body">
-        <div class="cover-title">Front cover</div>
-        <div class="cover-meta">shared across ${plural(n, "file", "files")}</div>
+        <div class="cover-title">${escapeHtml(t("cover.frontCover"))}</div>
+        <div class="cover-meta">${escapeHtml(t("cover.sharedAcross", { files: tn("unit.file", n) }))}</div>
         ${drop}
         <div class="cover-actions">
-          <button class="btn" data-cover="replace">Replace…</button>
-          <button class="btn" data-cover="remove">Remove</button>
-          <button class="btn" data-cover="export">Export</button>
+          <button class="btn" data-cover="replace">${escapeHtml(t("cover.replace"))}</button>
+          <button class="btn" data-cover="remove">${escapeHtml(t("action.remove"))}</button>
+          <button class="btn" data-cover="export">${escapeHtml(t("cover.export"))}</button>
         </div>
       </div>`;
     return;
@@ -326,13 +332,13 @@ function renderCoverWell(summary) {
   coverWell.className = "cover-well";
   coverWell.innerHTML = `<div class="cover-stack">${fan || '<div class="cover-thumb inert"></div>'}</div>
     <div class="cover-body">
-      <div class="cover-title">Multiple covers</div>
-      <div class="cover-meta">${with_cover}/${n} with a cover</div>
+      <div class="cover-title">${escapeHtml(t("cover.multiple"))}</div>
+      <div class="cover-meta">${escapeHtml(t("cover.withCover", { with_cover, n }))}</div>
       ${drop}
       <div class="cover-actions">
-        <button class="btn" data-cover="replace">Set one…</button>
-        <button class="btn" data-cover="remove">Remove all</button>
-        <button class="btn" data-cover="export">Export</button>
+        <button class="btn" data-cover="replace">${escapeHtml(t("cover.setOne"))}</button>
+        <button class="btn" data-cover="remove">${escapeHtml(t("cover.removeAll"))}</button>
+        <button class="btn" data-cover="export">${escapeHtml(t("cover.export"))}</button>
       </div>
     </div>`;
 }
@@ -433,7 +439,7 @@ function renderCoverSet(summary) {
 async function exportCover() {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks whose cover to export first", true);
+    toast(t("toast.cover.selectExport"), true);
     return;
   }
   try {
@@ -442,13 +448,13 @@ async function exportCover() {
     const skipped = result.skipped_no_cover.length;
     if (wrote === 0) {
       toast(
-        skipped ? "None of the selected files have an embedded cover" : "Nothing to export",
+        t(skipped ? "toast.cover.noneEmbedded" : "toast.cover.nothingToExport"),
         true
       );
       return;
     }
-    const skipNote = skipped ? ` (${skipped} without a cover skipped)` : "";
-    toast(`Exported ${plural(wrote, "cover file", "cover files")}${skipNote}`);
+    const skipNote = skipped ? " " + t("toast.cover.skippedNote", { skipped }) : "";
+    toast(t("toast.cover.exported", { files: tn("unit.coverFile", wrote) }) + skipNote);
   } catch (e) {
     toast(String(e), true);
   }

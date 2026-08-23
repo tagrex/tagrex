@@ -5,6 +5,7 @@
 // repeat, volume, the seek drag — is its own business. The rest of the UI only
 // asks it to start a track or show the bar.
 import { el, fileName, ico, placeFloating, toast } from "./dom.js";
+import { t } from "./i18n.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { tracks, selection, activeRowPath } from "./state.js";
@@ -256,7 +257,7 @@ function playerIdle() {
   playingPath = null;
   plPaused = false;
   plDuration = 0;
-  plTitle.textContent = "No track loaded";
+  plTitle.textContent = t("player.noTrack");
   plTitle.title = "";
   plTime.textContent = "0:00 / 0:00";
   plSeek.value = "0";
@@ -415,7 +416,7 @@ async function pollPlayerStatus() {
   // missing is why, said once per track rather than on every poll.
   if (st.seek_refused && seekRefusedFor !== st.path) {
     seekRefusedFor = st.path;
-    toast("This file can't be seeked", true);
+    toast(t("toast.player.noSeek"), true);
   } else if (!st.seek_refused && seekRefusedFor === st.path) {
     seekRefusedFor = null;
   }
@@ -520,7 +521,7 @@ function toggleVolume() {
 plTitle.addEventListener("click", () => {
   if (!playingPath) return;
   if (!hooks.revealPath(playingPath)) {
-    toast("That track isn't in the open library any more");
+    toast(t("toast.player.gone"));
   }
 });
 

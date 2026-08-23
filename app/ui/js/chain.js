@@ -11,7 +11,7 @@
 // gets back is an object it renders and reads. Nothing here knows about a
 // preview, a plan or a panel.
 import { el, ico, placeFloating, toast } from "./dom.js";
-import { tn } from "./i18n.js";
+import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
 import { EXTENDED_FIELDS } from "./fields.js";
@@ -191,7 +191,7 @@ function createRuleChain({ ids }) {
       const grip = document.createElement("span");
       grip.className = "rule-grip";
       grip.innerHTML = ico("grip");
-      grip.title = "Drag to reorder";
+      grip.title = t("action.dragToReorder");
       // Order is semantic (case before/after an acronym fix differs). Pointer-based
       // reorder — WKWebView's HTML5 DnD is unreliable (#88); ↑/↓ stay as fallback.
       enablePointerReorder(grip, card, el(ids.rules), ".rule-card", (draggedKey, targetKey, below) => {
@@ -262,7 +262,7 @@ function createRuleChain({ ids }) {
       // case — and a chain-wide scope makes that two chains to run in order.
       const scope = document.createElement("select");
       scope.className = "rule-scope";
-      scope.title = "What this step acts on";
+      scope.title = t("chain.scopeTitle");
       for (const [value, label] of scopeOptions()) {
         const opt = document.createElement("option");
         opt.value = value;
@@ -295,13 +295,13 @@ function createRuleChain({ ids }) {
         fields.className = "rule-fields";
         const from = document.createElement("input");
         from.type = "text";
-        from.placeholder = "find";
+        from.placeholder = t("chain.find");
         from.value = rule.from;
         from.spellcheck = false;
         from.addEventListener("input", () => (rule.from = from.value));
         const to = document.createElement("input");
         to.type = "text";
-        to.placeholder = "replace with";
+        to.placeholder = t("chain.replaceWith");
         to.value = rule.to;
         to.spellcheck = false;
         to.addEventListener("input", () => (rule.to = to.value));
@@ -349,7 +349,7 @@ function createRuleChain({ ids }) {
         }
         const note = document.createElement("span");
         note.className = "rule-note";
-        note.textContent = "Known acronyms & roman numerals keep their casing.";
+        note.textContent = t("chain.caseNote");
         b.append(seg, note);
         card.append(b);
       } else if (rule.kind === "key") {
@@ -374,7 +374,7 @@ function createRuleChain({ ids }) {
         }
         const note = document.createElement("span");
         note.className = "rule-note";
-        note.textContent = "Converts the musical key (best scoped to the Key field). Unrecognized values are left as-is.";
+        note.textContent = t("chain.keyNote");
         b.append(seg, note);
         card.append(b);
       } else if (rule.kind === "untransliterate") {
@@ -483,7 +483,7 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
     name = name.trim();
     if (!name) return;
     if (chain.length === 0) {
-      toast("Add at least one rule before saving a group", true);
+      toast(t("toast.chain.needRule"), true);
       return;
     }
     setActionGroups(actionGroups.filter((g) => g.name !== name));
@@ -518,7 +518,7 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
     tick.type = "checkbox";
     tick.className = "group-tick";
     tick.checked = tickedGroups.has(group.name);
-    tick.title = "Include in the next run";
+    tick.title = t("chain.includeNext");
     tick.addEventListener("change", (e) => {
       e.stopPropagation();
       toggleTicked(group.name, tick.checked);
@@ -571,7 +571,7 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
     if (!saved.length) {
       const empty = document.createElement("div");
       empty.className = "col-menu-sep";
-      empty.textContent = "No saved groups";
+      empty.textContent = t("chain.noGroups");
       box.appendChild(empty);
     }
     for (const group of saved) box.appendChild(groupMenuRow(group));
@@ -579,7 +579,7 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
     if (shipped.length) {
       const head = document.createElement("div");
       head.className = "col-menu-sep";
-      head.textContent = "Built-in";
+      head.textContent = t("chain.builtIn");
       box.appendChild(head);
       for (const group of shipped) box.appendChild(groupMenuRow(group));
     }
@@ -595,7 +595,7 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
       const runBtn = document.createElement("button");
       runBtn.type = "button";
       runBtn.className = "text-btn";
-      runBtn.title = "Preview the ticked groups, run in list order, as one plan";
+      runBtn.title = t("chain.runTitle");
       runBtn.addEventListener("click", () => {
         if (!inline) box.hidden = true;
         onRun(tickedInOrder());
@@ -608,13 +608,13 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
     saveRow.className = "col-menu-foot preset-save";
     const input = document.createElement("input");
     input.type = "text";
-    input.placeholder = "Save current chain as…";
+    input.placeholder = t("chain.saveAs");
     input.spellcheck = false;
     input.className = "preset-name";
     const save = document.createElement("button");
     save.type = "button";
     save.className = "text-btn";
-    save.textContent = "Save";
+    save.textContent = t("action.save");
     const commit = () => {
       if (input.value.trim()) {
         saveCurrentGroup(input.value);
