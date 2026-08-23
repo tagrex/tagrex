@@ -45,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   values beside the English, the interface renders it in the language of the
   day, and the journal keeps both. A batch recorded by an earlier build shows
   the English it was written with; nothing is guessed from the prose.
+- **Failures are translated too.** Every message the backend can fail with —
+  53 of them, from a mask that will not parse to a folder that is not there —
+  now travels as a code and its values instead of a finished English sentence,
+  and reads in the chosen language. Where a failure comes from outside the app
+  (the operating system, the tag backend, SQLite) the class is translated and
+  the detail stays in the words its author wrote, which is what a bug report
+  needs.
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a

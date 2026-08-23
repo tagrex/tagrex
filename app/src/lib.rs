@@ -568,6 +568,200 @@ pub struct StoredMessage {
     pub notes: Vec<MessageDto>,
 }
 
+/// A failure on its way to the interface (#268): the same code-and-values shape
+/// a plan uses, plus the English the error composed for itself.
+///
+/// Commands answer with this instead of a bare string. The English is not
+/// wasted — it is what a language with no entry for the code falls back to, and
+/// what a log or a bug report should carry, which is why `Display` on the error
+/// types stays English and the tests keep reading it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ErrorDto {
+    pub message: MessageDto,
+    pub text: String,
+}
+
+impl ErrorDto {
+    /// A failure with nothing to translate — one raised by a dependency at the
+    /// shell boundary, where the app has no error type of its own. The code is
+    /// empty, so the interface shows the text.
+    pub fn plain(text: impl Into<String>) -> Self {
+        Self {
+            message: MessageDto::default(),
+            text: text.into(),
+        }
+    }
+}
+
+impl From<&AppError> for ErrorDto {
+    fn from(error: &AppError) -> Self {
+        Self {
+            message: error_message(error),
+            text: error.to_string(),
+        }
+    }
+}
+
+impl From<AppError> for ErrorDto {
+    fn from(error: AppError) -> Self {
+        Self::from(&error)
+    }
+}
+
+// The `?` conversions the command layer leans on. Each routes through the error
+// type that already knows what the failure is, so a code is never invented at
+// the boundary.
+impl From<std::io::Error> for ErrorDto {
+    fn from(error: std::io::Error) -> Self {
+        Self::from(AppError::Io(error))
+    }
+}
+
+impl From<tagrex_core::provider::ProviderError> for ErrorDto {
+    fn from(error: tagrex_core::provider::ProviderError) -> Self {
+        Self::from(AppError::Provider(error))
+    }
+}
+
+impl From<serde_json::Error> for ErrorDto {
+    fn from(error: serde_json::Error) -> Self {
+        // Settings that will not parse. There is no error of ours behind it and
+        // nothing a translation would add to what serde says.
+        Self::plain(error.to_string())
+    }
+}
+
+/// One argument, the common shape by far.
+fn arg(name: &str, value: impl std::fmt::Display) -> BTreeMap<String, String> {
+    let mut args = BTreeMap::new();
+    args.insert(name.to_string(), value.to_string());
+    args
+}
+
+fn coded(code: &str, args: BTreeMap<String, String>) -> MessageDto {
+    MessageDto {
+        code: code.to_string(),
+        args,
+        count: None,
+    }
+}
+
+/// The catalogue key and values for a failure (#268).
+///
+/// Exhaustive on purpose, over the app's own error type *and* over every core
+/// one it wraps: a new variant anywhere stops the build here rather than
+/// quietly shipping an untranslated sentence. Where an error wraps something
+/// from outside — an OS I/O failure, the tag backend, SQLite — the code names
+/// the class and the detail travels as an argument, still in the words its
+/// author wrote. Translating those is not ours to do.
+fn error_message(error: &AppError) -> MessageDto {
+    use tagrex_core::journal::JournalError;
+    use tagrex_core::mask::MaskError;
+    use tagrex_core::model::TagIoError;
+    use tagrex_core::plan::PlanError;
+    use tagrex_core::provider::ProviderError;
+    use tagrex_core::transform::TransformError;
+
+    match error {
+        AppError::TagIo(inner) => match inner {
+            TagIoError::UnsupportedFormat(what) => {
+                coded("error.tag.unsupportedFormat", arg("format", what))
+            }
+            TagIoError::Malformed(detail) => coded("error.tag.malformed", arg("detail", detail)),
+            TagIoError::Io(detail) => coded("error.io", arg("detail", detail)),
+            // Reading a file and writing one fail with different backend types
+            // (#201); to a reader they are the same class of failure.
+            TagIoError::Backend(detail) => coded("error.tag.backend", arg("detail", detail)),
+            TagIoError::BackendWrite(detail) => coded("error.tag.backend", arg("detail", detail)),
+            TagIoError::Encoding(detail) => coded("error.tag.encoding", arg("detail", detail)),
+        },
+        AppError::Mask(inner) => match inner {
+            MaskError::UnknownPlaceholder(name) => {
+                coded("error.mask.unknownPlaceholder", arg("name", name))
+            }
+            MaskError::Ambiguous => coded("error.mask.ambiguous", BTreeMap::new()),
+            MaskError::RenderOnly => coded("error.mask.renderOnly", BTreeMap::new()),
+            MaskError::UnknownFunction(name) => {
+                coded("error.mask.unknownFunction", arg("name", name))
+            }
+            MaskError::UnclosedCall(name) => coded("error.mask.unclosedCall", arg("name", name)),
+            MaskError::BadArity {
+                name,
+                expected,
+                actual,
+            } => {
+                let mut args = arg("name", name);
+                args.insert("expected".to_string(), expected.clone());
+                args.insert("actual".to_string(), actual.to_string());
+                coded("error.mask.badArity", args)
+            }
+            MaskError::BadArgument(detail) => {
+                coded("error.mask.badArgument", arg("detail", detail))
+            }
+            MaskError::ExtractOnly => coded("error.mask.extractOnly", BTreeMap::new()),
+            MaskError::MissingTag(name) => coded("error.mask.missingTag", arg("name", name)),
+            MaskError::NoMatch => coded("error.mask.noMatch", BTreeMap::new()),
+            MaskError::UnbalancedSection => coded("error.mask.unbalancedSection", BTreeMap::new()),
+            MaskError::UnterminatedQuote => coded("error.mask.unterminatedQuote", BTreeMap::new()),
+        },
+        AppError::Plan(inner) => match inner {
+            PlanError::Stale(path) => coded("error.plan.stale", arg("path", path.display())),
+            PlanError::RenameCollision(path) => {
+                coded("error.plan.renameCollision", arg("path", path.display()))
+            }
+            PlanError::OutsideRoot(path) => {
+                coded("error.plan.outsideRoot", arg("path", path.display()))
+            }
+            PlanError::Journal(detail) => coded("error.journal", arg("detail", detail)),
+            PlanError::TagIo(detail) => coded("error.tag.backend", arg("detail", detail)),
+            PlanError::Io(detail) => coded("error.io", arg("detail", detail)),
+        },
+        AppError::Journal(inner) => match inner {
+            JournalError::Storage(detail) => coded("error.journal", arg("detail", detail)),
+            JournalError::UnknownBatch(id) => coded("error.journal.unknownBatch", arg("id", id.0)),
+            JournalError::NotRollbackable(detail) => {
+                coded("error.journal.notRollbackable", arg("detail", detail))
+            }
+        },
+        AppError::Provider(inner) => match inner {
+            ProviderError::Network(detail) => {
+                coded("error.provider.network", arg("detail", detail))
+            }
+            ProviderError::RateLimited { retry_after_secs } => coded(
+                "error.provider.rateLimited",
+                arg("seconds", retry_after_secs),
+            ),
+            ProviderError::Auth(detail) => coded("error.provider.auth", arg("detail", detail)),
+            ProviderError::NotFound => coded("error.provider.notFound", BTreeMap::new()),
+            ProviderError::Other(detail) => coded("error.provider.other", arg("detail", detail)),
+        },
+        AppError::Transform(inner) => match inner {
+            TransformError::EmptyPattern => coded("error.transform.emptyPattern", BTreeMap::new()),
+            TransformError::BadPattern(detail) => {
+                coded("error.transform.badPattern", arg("detail", detail))
+            }
+        },
+        AppError::OutsideRoot(path) => coded("error.outsideLibrary", arg("path", path)),
+        AppError::InvalidFileName(name) => coded("error.invalidFileName", arg("name", name)),
+        AppError::UnknownTransform(name) => coded("error.unknownTransform", arg("name", name)),
+        AppError::UnknownGrouping(name) => coded("error.unknownGrouping", arg("name", name)),
+        AppError::UnknownTagBlock(name) => coded("error.unknownTagBlock", arg("name", name)),
+        AppError::BlockNotWritable { kind, format } => {
+            let mut args = arg("kind", kind);
+            args.insert("format".to_string(), format.clone());
+            coded("error.blockNotWritable", args)
+        }
+        AppError::EmptyDrop => coded("error.emptyDrop", BTreeMap::new()),
+        AppError::NotAnImage(path) => coded("error.notAnImage", arg("path", path)),
+        AppError::MissingDestination(path) => coded("error.missingDestination", arg("path", path)),
+        AppError::MissingLibrary(path) => coded("error.missingLibrary", arg("path", path)),
+        AppError::Io(detail) => coded("error.io", arg("detail", detail)),
+        AppError::Trash(detail) => coded("error.trash", arg("detail", detail)),
+        AppError::NoLibraryOpen => coded("error.noLibraryOpen", BTreeMap::new()),
+        AppError::BeatportReauth(detail) => coded("error.beatportReauth", arg("detail", detail)),
+    }
+}
+
 /// A previewable plan, ready to render as a "current -> new" diff.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlanDto {
@@ -4940,6 +5134,10 @@ pub enum AppError {
     Io(#[from] std::io::Error),
     #[error("could not move to the Trash: {0}")]
     Trash(String),
+    #[error("no library open")]
+    NoLibraryOpen,
+    #[error("{0} — sign in to Beatport again")]
+    BeatportReauth(String),
 }
 
 #[cfg(test)]

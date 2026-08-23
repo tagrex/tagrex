@@ -314,7 +314,12 @@ function mockInvoke(cmd, args) {
         /^['"]|['"]$/.test(args.root) ||
         args.root.includes("does-not-exist")
       ) {
-        return Promise.reject(`no such folder: ${args.root}`);
+        // The shape the backend rejects with (#268): a code and its values,
+        // plus the English it composed for itself.
+        return Promise.reject({
+          message: { code: "error.missingLibrary", args: { path: args.root }, count: null },
+          text: `no such folder: ${args.root}`,
+        });
       }
       return Promise.resolve();
     case "read_cover_image":
