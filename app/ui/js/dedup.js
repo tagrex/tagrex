@@ -3,7 +3,8 @@
 // A read-only scan: it groups the library by the chosen criterion and shows
 // what it found behind a lock banner. Nothing here changes a file — deleting a
 // duplicate is deliberately not offered.
-import { el, escapeHtml, fileName, plural, toast } from "./dom.js";
+import { el, escapeHtml, fileName, toast } from "./dom.js";
+import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { selectedPaths } from "./state.js";
 
@@ -52,10 +53,10 @@ function renderDuplicates(groups) {
   const results = el("dup-results");
   const fileCount = groups.reduce((n, g) => n + g.files.length, 0);
   el("dup-summary").textContent = groups.length
-    ? `${plural(groups.length, "set", "sets")} · ${plural(fileCount, "file", "files")}`
-    : "No duplicates found";
+    ? `${tn("unit.set", groups.length)} · ${tn("unit.file", fileCount)}`
+    : t("dedup.none");
   if (!groups.length) {
-    results.innerHTML = `<p class="empty inert-panel">Nothing matched — the library looks clean by this criterion.</p>`;
+    results.innerHTML = `<p class="empty inert-panel">${escapeHtml(t("dedup.clean"))}</p>`;
     return;
   }
   // Same .files table shell as the main view, so the read-only result set reads

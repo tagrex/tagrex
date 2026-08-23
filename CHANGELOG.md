@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   themselves: the table headers, the column picker, the grouping menu and the
   field editor all read Исполнитель, Название, Альбом, and rename together when
   the language changes.
+- **The chrome around the panels is translated too.** The top bar, the mode
+  tabs, the table toolbar, the status bar and player, the drop cue, both context
+  menus, the dialogs and the whole settings sheet. `plural()` — two English
+  forms and no way to ask for a third — is gone from every module that shows a
+  count to a person.
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a

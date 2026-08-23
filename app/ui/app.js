@@ -10,11 +10,10 @@ import {
   ico,
   confirmDialog,
   placeFloating,
-  plural,
 } from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
-import { applyStaticText, t as tr, tn } from "./js/i18n.js";
+import { applyStaticText, t as msg, tn } from "./js/i18n.js";
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
@@ -1062,8 +1061,10 @@ function renderPreview(plan) {
     // rather than in each caller — every mode's plan comes through this.
     const skips = (plan && plan.locked_skipped) || [];
     if (skips.length) {
-      const parts = skips.map((s) => `${diffLabel(s.field)} on ${plural(s.files, "file", "files")}`);
-      toast(`Nothing left to change — locked: ${parts.join(", ")}`);
+      const parts = skips.map((s) =>
+        msg("locks.fieldOnFiles", { field: diffLabel(s.field), files: tn("unit.file", s.files) })
+      );
+      toast(msg("toast.nothingLeftLocked", { fields: parts.join(", ") }));
     }
     exitDiffState();
     return;
@@ -1133,9 +1134,11 @@ function renderLockedSkips() {
   const skips = (previewPlan && previewPlan.locked_skipped) || [];
   note.hidden = skips.length === 0;
   if (!skips.length) return;
-  const parts = skips.map((s) => `${diffLabel(s.field)} on ${plural(s.files, "file", "files")}`);
-  note.textContent = ` · locked: ${parts.join(", ")}`;
-  note.title = `${parts.length === 1 ? "This field is" : "These fields are"} locked, so the plan left ${parts.length === 1 ? "it" : "them"} alone.`;
+  const parts = skips.map((s) =>
+    msg("locks.fieldOnFiles", { field: diffLabel(s.field), files: tn("unit.file", s.files) })
+  );
+  note.textContent = ` · ${msg("locks.lockedList", { fields: parts.join(", ") })}`;
+  note.title = msg(parts.length === 1 ? "locks.lockedTitleOne" : "locks.lockedTitleMany");
 }
 
 // Leave the diff-state: drop the plan + apply scope and put the plain rows back.
@@ -1438,15 +1441,20 @@ async function refreshLibrary() {
     const delta = fresh.length - before;
     const change =
       delta === 0
-        ? "no change"
+        ? msg("reread.noChange")
         : delta > 0
-          ? `${plural(delta, "track", "tracks")} more`
-          : `${plural(-delta, "track", "tracks")} gone`;
+          ? msg("reread.more", { tracks: tn("unit.track", delta) })
+          : msg("reread.gone", { tracks: tn("unit.track", -delta) });
     const dropped = goneFromEdits.length
-      ? `, ${plural(goneFromEdits.length, "pending edit", "pending edits")} dropped`
+      ? msg("reread.dropped", { edits: tn("unit.pendingEdit", goneFromEdits.length) })
       : "";
     toast(
-      `Re-read ${folderName(openedRoot)} — ${plural(fresh.length, "track", "tracks")}, ${change}${dropped}`
+      msg("toast.reread", {
+        folder: folderName(openedRoot),
+        tracks: tn("unit.track", fresh.length),
+        change,
+        dropped,
+      })
     );
   } catch (e) {
     toast(String(e), true);
@@ -1557,7 +1565,7 @@ async function afterOpen(label) {
   // The folder's own name, not the path to it: the path field above the table
   // is already showing that, and spelling it out again is most of the toast
   // (#267).
-  toast(`Opened ${folderName(label)} — ${plural(tracks.length, "track", "tracks")}`);
+  toast(msg("toast.opened", { folder: folderName(label), tracks: tn("unit.track", tracks.length) }));
 }
 
 // Open a drag-and-drop of `paths` (#127). The backend resolves a lone folder to
@@ -1622,7 +1630,7 @@ async function apply() {
   const appliedPaths = new Set(appliedPlan.changes.map((c) => c.path));
   try {
     await invoke("apply_plan", { plan: appliedPlan });
-    toast(`Applied changes to ${plural(appliedPlan.changes.length, "file", "files")}`);
+    toast(msg("toast.applied", { files: tn("unit.file", appliedPlan.changes.length) }));
     if (wasRename) {
       remapEditsAfterRename(appliedPlan); // keep pending tag edits, new paths
     } else if (wasEdits) {
@@ -1825,10 +1833,10 @@ function showFileCtx(x, y, tr) {
   fileCtxPaths = selectedPaths();
   const many = fileCtxPaths.length > 1;
   fileCtx.querySelector('[data-cmd="hide"]').textContent = many
-    ? `Remove ${plural(fileCtxPaths.length, "file", "files")} from the list`
+    ? msg("ctx.removeN", { files: tn("unit.file", fileCtxPaths.length) })
     : "Remove from the list";
   fileCtx.querySelector('[data-cmd="trash"]').textContent = many
-    ? `Move ${plural(fileCtxPaths.length, "file", "files")} to Trash…`
+    ? msg("ctx.trashN", { files: tn("unit.file", fileCtxPaths.length) })
     : "Move to Trash…";
   fileCtx.hidden = false;
   const r = fileCtx.getBoundingClientRect();
@@ -1858,15 +1866,14 @@ function dropFromList(paths) {
 
 async function trashFiles(paths) {
   const ok = await confirmDialog(
-    `Move ${plural(paths.length, "file", "files")} to the Trash? ` +
-      `This is not part of the undo history — the Trash is where they can be got back from.`,
-    "Move to Trash"
+    msg("confirm.trash", { files: tn("unit.file", paths.length) }),
+    msg("action.moveToTrash")
   );
   if (!ok) return;
   try {
     const trashed = await invoke("trash_files", { paths });
     dropFromList(trashed);
-    toast(`Moved ${plural(trashed.length, "file", "files")} to the Trash`);
+    toast(msg("toast.trashed", { files: tn("unit.file", trashed.length) }));
   } catch (e) {
     toast(String(e), true);
   }
@@ -1880,7 +1887,7 @@ fileCtx.addEventListener("click", (e) => {
   if (!paths.length) return;
   if (item.dataset.cmd === "hide") {
     dropFromList(paths);
-    toast(`Removed ${plural(paths.length, "file", "files")} from the list — a re-read brings them back`);
+    toast(msg("toast.removedFromList", { files: tn("unit.file", paths.length) }));
   } else if (item.dataset.cmd === "trash") {
     trashFiles(paths);
   }

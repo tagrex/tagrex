@@ -71,37 +71,37 @@
              is one slot: Browse… normally, Open while the field says something
              other than what is already open. -->
         <div id="root-box" class="path">
-          <button id="root-display" class="path-open" type="button" title="Choose a folder to open">
-            <span class="path-parent"></span><span class="path-name">No folder open</span>
+          <button id="root-display" class="path-open" type="button" data-i18n-title="topbar.chooseFolder" title="Choose a folder to open">
+            <span class="path-parent"></span><span class="path-name" data-i18n="topbar.noFolder">No folder open</span>
           </button>
-          <button id="root-recent" class="path-recent" type="button" title="Recently opened folders" aria-label="Recently opened folders" hidden><svg class="ico"><use href="#i-caret-down"/></svg></button>
+          <button id="root-recent" class="path-recent" type="button" data-i18n-title="topbar.recent" title="Recently opened folders" data-i18n-aria-label="topbar.recent" aria-label="Recently opened folders" hidden><svg class="ico"><use href="#i-caret-down"/></svg></button>
           <div id="root-recent-menu" class="col-menu" hidden></div>
         </div>
-        <input id="root" type="text" placeholder="/path/to/music/library" spellcheck="false" hidden />
-        <button id="lib-action" class="icon" title="Choose a folder to open" aria-label="Choose a folder to open"><svg class="ico"><use id="lib-action-glyph" href="#i-folder"/></svg></button>
+        <input id="root" type="text" data-i18n-placeholder="topbar.pathPlaceholder" placeholder="/path/to/music/library" spellcheck="false" hidden />
+        <button id="lib-action" class="icon" data-i18n-title="topbar.chooseFolder" title="Choose a folder to open" data-i18n-aria-label="topbar.chooseFolder" aria-label="Choose a folder to open"><svg class="ico"><use id="lib-action-glyph" href="#i-folder"/></svg></button>
         <!-- Re-read what is open (#212): the folder changes under the app —
              something dropped in, a track edited elsewhere — and reopening it
              through the folder chooser is several clicks for one idea. -->
-        <button id="lib-refresh" class="icon" title="Re-read the open folder" aria-label="Re-read the open folder" disabled><svg class="ico"><use href="#i-refresh"/></svg></button>
+        <button id="lib-refresh" class="icon" data-i18n-title="topbar.reread" title="Re-read the open folder" data-i18n-aria-label="topbar.reread" aria-label="Re-read the open folder" disabled><svg class="ico"><use href="#i-refresh"/></svg></button>
       </div>
       <div class="spacer"></div>
       <!-- Layout control, kept a hair apart from the two app actions beside it:
            it changes what you see, it doesn't act on the library. -->
-      <button id="panel-toggle" class="icon" title="Collapse the mode panel (more room for the table)" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
+      <button id="panel-toggle" class="icon" data-i18n-title="topbar.collapsePanelTitle" title="Collapse the mode panel (more room for the table)" data-i18n-aria-label="topbar.collapsePanel" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
       <span class="topbar-div" aria-hidden="true"></span>
-      <button id="undo" class="icon" disabled title="Undo the last applied batch" aria-label="Undo the last applied batch"><svg class="ico"><use href="#i-undo"/></svg></button>
-      <button id="settings-open" class="icon gear" title="Settings" aria-label="Settings"><svg class="ico"><use href="#i-settings"/></svg></button>
+      <button id="undo" class="icon" disabled data-i18n-title="topbar.undo" title="Undo the last applied batch" data-i18n-aria-label="topbar.undo" aria-label="Undo the last applied batch"><svg class="ico"><use href="#i-undo"/></svg></button>
+      <button id="settings-open" class="icon gear" data-i18n-title="topbar.settings" title="Settings" data-i18n-aria-label="topbar.settings" aria-label="Settings"><svg class="ico"><use href="#i-settings"/></svg></button>
     </header>
 
     <!-- Mode tabs — the file table stays put; only the right-hand panel swaps.
          Table is the subject (noun), each tab is a verb applied to it. -->
     <nav class="modebar">
       <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="tagger" title="Edit tags — from an online source, by hand, and cover art" aria-label="TAGGER"><svg class="ico"><use href="#i-tag"/></svg><span class="lbl">TAGGER</span></button>
-        <button class="mode-tab" data-mode="renamer" title="Rename files and reorganize them into folders" aria-label="RENAMER"><svg class="ico"><use href="#i-rename"/></svg><span class="lbl">RENAMER</span></button>
-        <button class="mode-tab" data-mode="generator" title="Generate and clean up tag/filename values" aria-label="GENERATOR"><svg class="ico"><use href="#i-wand"/></svg><span class="lbl">GENERATOR</span></button>
-        <button class="mode-tab" data-mode="deduplicator" title="Find likely duplicate files in the library" aria-label="DEDUPLICATOR"><svg class="ico"><use href="#i-dedup"/></svg><span class="lbl">DEDUPLICATOR</span></button>
-        <button class="mode-tab" data-mode="exporter" title="Export playlists, CSV, and reports" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl">EXPORTER</span></button>
+        <button class="mode-tab active" data-mode="tagger" data-i18n-title="mode.tagger.title" title="Edit tags — from an online source, by hand, and cover art" data-i18n-aria-label="mode.tagger" aria-label="TAGGER"><svg class="ico"><use href="#i-tag"/></svg><span class="lbl" data-i18n="mode.tagger">TAGGER</span></button>
+        <button class="mode-tab" data-mode="renamer" data-i18n-title="mode.renamer.title" title="Rename files and reorganize them into folders" data-i18n-aria-label="mode.renamer" aria-label="RENAMER"><svg class="ico"><use href="#i-rename"/></svg><span class="lbl" data-i18n="mode.renamer">RENAMER</span></button>
+        <button class="mode-tab" data-mode="generator" data-i18n-title="mode.generator.title" title="Generate and clean up tag/filename values" data-i18n-aria-label="mode.generator" aria-label="GENERATOR"><svg class="ico"><use href="#i-wand"/></svg><span class="lbl" data-i18n="mode.generator">GENERATOR</span></button>
+        <button class="mode-tab" data-mode="deduplicator" data-i18n-title="mode.deduplicator.title" title="Find likely duplicate files in the library" data-i18n-aria-label="mode.deduplicator" aria-label="DEDUPLICATOR"><svg class="ico"><use href="#i-dedup"/></svg><span class="lbl" data-i18n="mode.deduplicator">DEDUPLICATOR</span></button>
+        <button class="mode-tab" data-mode="exporter" data-i18n-title="mode.exporter.title" title="Export playlists, CSV, and reports" data-i18n-aria-label="mode.exporter" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl" data-i18n="mode.exporter">EXPORTER</span></button>
       </div>
     </nav>
 
@@ -118,30 +118,30 @@
                the button also tints while grouping is on. Built by
                populateGroupMenu(). -->
           <div class="col-picker group-ctl">
-            <button id="group-btn" class="icon" title="Group rows by a key (view only — file order is unchanged)" aria-label="Group rows by a key"><svg class="ico"><use href="#i-group"/></svg></button>
+            <button id="group-btn" class="icon" data-i18n-title="toolbar.groupTitle" title="Group rows by a key (view only — file order is unchanged)" data-i18n-aria-label="toolbar.group" aria-label="Group rows by a key"><svg class="ico"><use href="#i-group"/></svg></button>
             <div id="group-menu" class="col-menu" hidden></div>
           </div>
           <!-- One control, because this is a state toggle: it offers whichever
                move is available from the current state (collapse while anything
                is open, expand once everything is shut). -->
-          <button id="toggle-groups" class="icon" hidden title="Collapse every group" aria-label="Collapse every group"><svg class="ico"><use href="#i-collapse-all"/></svg></button>
+          <button id="toggle-groups" class="icon" hidden data-i18n-title="toolbar.collapseGroups" title="Collapse every group" data-i18n-aria-label="toolbar.collapseGroups" aria-label="Collapse every group"><svg class="ico"><use href="#i-collapse-all"/></svg></button>
           <!-- Filter (#44): substring or regex, optionally case-sensitive, and
                field-scoped via a `field:query` prefix (e.g. artist:aphex). The
                two flag toggles sit inside the box; a bad regex reddens it. -->
           <div class="filter-ctl">
-            <input id="filter" type="search" placeholder="Filter… (try artist:aphex)" spellcheck="false" />
-            <button id="filter-regex" class="filter-flag flag-regex" type="button" title="Regular-expression mode" aria-pressed="false">.*</button>
-            <button id="filter-case" class="filter-flag flag-case" type="button" title="Case-sensitive" aria-pressed="false">Aa</button>
+            <input id="filter" type="search" data-i18n-placeholder="toolbar.filterPlaceholder" placeholder="Filter… (try artist:aphex)" spellcheck="false" />
+            <button id="filter-regex" class="filter-flag flag-regex" type="button" data-i18n-title="toolbar.regex" title="Regular-expression mode" aria-pressed="false">.*</button>
+            <button id="filter-case" class="filter-flag flag-case" type="button" data-i18n-title="toolbar.caseSensitive" title="Case-sensitive" aria-pressed="false">Aa</button>
           </div>
           <!-- Saved filter + sort presets (#44). Popover built by renderPresetsMenu. -->
           <div class="col-picker">
-            <button id="presets-btn" class="icon" title="Save and re-apply filter + sort presets" aria-label="Filter and sort presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+            <button id="presets-btn" class="icon" data-i18n-title="toolbar.presetsTitle" title="Save and re-apply filter + sort presets" data-i18n-aria-label="toolbar.presets" aria-label="Filter and sort presets"><svg class="ico"><use href="#i-presets"/></svg></button>
             <div id="presets-menu" class="col-menu" hidden></div>
           </div>
           <!-- Configurable columns (#43): pick which tag fields show, and their
                order. The popover is built by renderColumnsMenu. -->
           <div class="col-picker">
-            <button id="columns-btn" class="icon" title="Choose which columns to show" aria-label="Columns"><svg class="ico"><use href="#i-columns"/></svg></button>
+            <button id="columns-btn" class="icon" data-i18n-title="toolbar.columnsTitle" title="Choose which columns to show" data-i18n-aria-label="toolbar.columns" aria-label="Columns"><svg class="ico"><use href="#i-columns"/></svg></button>
             <div id="columns-menu" class="col-menu" hidden></div>
           </div>
           <!-- Clear tags, surfaced here so it doesn't require a trip into EDITOR.
@@ -157,8 +157,8 @@
                not mean leaving the mode. The dialog is filled with the GENERATOR
                panel's own chain — the block is moved in and back out, so there is
                one chain and one implementation, not a copy (#149). -->
-          <button id="transform-btn" class="icon" title="Rules to run on what this panel produces" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
-          <button id="clear-tags" class="icon" title="Clear text tags on the selected files (cover and DJ cue points are kept) — previewed before anything is written" aria-label="Clear text tags on the selected files"><svg class="ico"><use href="#i-eraser"/></svg></button>
+          <button id="transform-btn" class="icon" data-i18n-title="toolbar.transformTitle" title="Rules to run on what this panel produces" data-i18n-aria-label="toolbar.transform" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
+          <button id="clear-tags" class="icon" data-i18n-title="toolbar.clearTagsTitle" title="Clear text tags on the selected files (cover and DJ cue points are kept) — previewed before anything is written" data-i18n-aria-label="toolbar.clearTags" aria-label="Clear text tags on the selected files"><svg class="ico"><use href="#i-eraser"/></svg></button>
         </div>
 
         <div id="files-view" class="table-wrap">
@@ -166,16 +166,16 @@
             <thead>
               <tr>
                 <th class="sel"><input id="select-all" type="checkbox" /></th>
-                <th data-sort="file" class="sortable">File<span class="sort-ind"></span></th>
-                <th data-sort="artist" class="sortable">Artist<span class="sort-ind"></span></th>
-                <th data-sort="title" class="sortable">Title<span class="sort-ind"></span></th>
-                <th data-sort="album" class="sortable">Album<span class="sort-ind"></span></th>
-                <th data-sort="year" class="sortable">Year<span class="sort-ind"></span></th>
+                <th data-sort="file" class="sortable"><span data-i18n="column.file">File</span><span class="sort-ind"></span></th>
+                <th data-sort="artist" class="sortable"><span data-i18n="field.artist">Artist</span><span class="sort-ind"></span></th>
+                <th data-sort="title" class="sortable"><span data-i18n="field.title">Title</span><span class="sort-ind"></span></th>
+                <th data-sort="album" class="sortable"><span data-i18n="field.album">Album</span><span class="sort-ind"></span></th>
+                <th data-sort="year" class="sortable"><span data-i18n="field.year">Year</span><span class="sort-ind"></span></th>
               </tr>
             </thead>
             <tbody id="tracks-body"></tbody>
           </table>
-          <p id="tracks-empty" class="empty inert-panel">Open a library to list its tracks.</p>
+          <p id="tracks-empty" class="empty inert-panel" data-i18n="table.empty">Open a library to list its tracks.</p>
         </div>
 
         <!-- Duplicates view (#40): a read-only library scan grouped by a chosen
@@ -187,7 +187,7 @@
           <div class="dup-bar">
             <span id="dup-summary" class="hint muted" style="padding: 0"></span>
             <div class="spacer"></div>
-            <span class="ro-note"><svg class="ico"><use href="#i-lock"/></svg> Read-only — nothing is changed.</span>
+            <span class="ro-note"><svg class="ico"><use href="#i-lock"/></svg> <span data-i18n="dedup.readonly">Read-only — nothing is changed.</span></span>
           </div>
           <div id="dup-results" class="dup-wrap"></div>
         </div>
@@ -197,16 +197,16 @@
              place; this pill carries the apply scope, the Show-old toggle and the
              gate buttons — nothing is written until Apply. -->
         <div id="diff-actionbar" class="diff-actionbar" hidden>
-          <span class="ab-count"><b id="ab-count">0</b> to apply<span class="ab-plan" id="ab-plan"></span><span class="ab-locked" id="ab-locked" hidden></span></span>
+          <span class="ab-count"><b id="ab-count">0</b> <span data-i18n="diff.toApply">to apply</span><span class="ab-plan" id="ab-plan"></span><span class="ab-locked" id="ab-locked" hidden></span></span>
           <span class="ab-sep"></span>
-          <label class="toggle-old" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="diff-show-old" /> Show old values</label>
+          <label class="toggle-old" data-i18n-title="diff.showOldTitle" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="diff-show-old" /> <span data-i18n="diff.showOld">Show old values</span></label>
           <span class="ab-sep"></span>
-          <button id="diff-discard" class="btn">Discard</button>
-          <button id="diff-apply" class="btn primary" disabled>Apply</button>
+          <button id="diff-discard" class="btn" data-i18n="action.discard">Discard</button>
+          <button id="diff-apply" class="btn primary" disabled data-i18n="action.apply">Apply</button>
         </div>
       </section>
 
-      <div id="col-splitter" class="col-splitter" title="Drag to resize"></div>
+      <div id="col-splitter" class="col-splitter" data-i18n-title="toolbar.dragResize" title="Drag to resize"></div>
 
       <!-- Mode panels: exactly one is shown, matching the active tab. -->
       <aside class="mode-col">
@@ -621,18 +621,18 @@
            control always on screen, and the row itself now only appears once a
            track is actually loaded. Swaps out while the row is up, where the
            row's own toggle takes over. -->
-      <button id="sb-play" class="icon" hidden title="Play the current track" aria-label="Play the current track"><svg class="ico"><use href="#i-play"/></svg></button>
+      <button id="sb-play" class="icon" hidden data-i18n-title="player.play" title="Play the current track" data-i18n-aria-label="player.play" aria-label="Play the current track"><svg class="ico"><use href="#i-play"/></svg></button>
       <span id="status-sel" class="muted"></span>
       <!-- The player lives IN this bar rather than in a second one below it: two
            strips for what reads as one strip of chrome, and the player is the
            thing worth the room. It takes the space between the count and
            Preview edits, which puts it in the middle of the bar. -->
       <div id="player" hidden>
-        <button id="pl-prev" class="icon" title="Previous track" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
-        <button id="pl-toggle" class="icon" title="Play / pause" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
-        <button id="pl-stop" class="icon" title="Stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
-        <button id="pl-next" class="icon" title="Next track" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
-        <button id="pl-repeat" class="icon" title="Repeat off" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
+        <button id="pl-prev" class="icon" data-i18n-title="player.prev" title="Previous track" data-i18n-aria-label="player.prev" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
+        <button id="pl-toggle" class="icon" data-i18n-title="player.toggle" title="Play / pause" data-i18n-aria-label="player.toggle" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
+        <button id="pl-stop" class="icon" data-i18n-title="player.stop" title="Stop" data-i18n-aria-label="player.stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
+        <button id="pl-next" class="icon" data-i18n-title="player.next" title="Next track" data-i18n-aria-label="player.next" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
+        <button id="pl-repeat" class="icon" data-i18n-title="player.repeatOff" title="Repeat off" data-i18n-aria-label="player.repeatOff" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
         <!-- The title sits ABOVE the seek bar rather than beside it: squeezed into
              a column next to the waveform it was ellipsised after a few words,
              and the one thing a player has to be able to say is what is playing.
@@ -651,7 +651,7 @@
                paints the waveform and the playhead. -->
           <span id="pl-wave-wrap" class="pl-wave-wrap">
             <canvas id="pl-wave" aria-hidden="true"></canvas>
-            <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Seek" />
+            <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" data-i18n-aria-label="player.seek" aria-label="Seek" />
           </span>
         </div>
         <!-- Volume folds away behind its own button (the slider took a fixed strip
@@ -659,14 +659,14 @@
              state, so muted is still readable without opening anything; the
              popover holds the mute toggle and the slider. -->
         <div class="pl-vol">
-          <button id="pl-volume-btn" class="icon" title="Volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
+          <button id="pl-volume-btn" class="icon" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
           <div id="pl-volume-pop" class="pl-vol-pop" hidden>
-            <button id="pl-mute" class="icon" title="Mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
-            <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" title="Volume" aria-label="Volume" />
+            <button id="pl-mute" class="icon" data-i18n-title="player.mute" title="Mute" data-i18n-aria-label="player.mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
+            <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume" />
           </div>
         </div>
         </div>
-      <button id="preview-edits" disabled title="Preview the pending inline cell edits">Preview edits</button>
+      <button id="preview-edits" disabled data-i18n-title="statusbar.previewEditsTitle" title="Preview the pending inline cell edits" data-i18n="statusbar.previewEdits">Preview edits</button>
     </footer>
 
     <div id="toast" class="toast" hidden></div>
@@ -679,8 +679,8 @@
          dragged over the app. Toggled by body.drag-active from app.js. -->
     <div id="drop-overlay" aria-hidden="true">
       <div class="drop-cue">
-        <div class="drop-cue-title">Drop here</div>
-        <div class="drop-cue-sub">A folder or files open · a single image becomes the cover</div>
+        <div class="drop-cue-title" data-i18n="drop.title">Drop here</div>
+        <div class="drop-cue-sub" data-i18n="drop.sub">A folder or files open · a single image becomes the cover</div>
       </div>
     </div>
 
@@ -688,11 +688,11 @@
          input or an editing tag cell, in place of the webview's bloated native
          menu. Positioned + driven by app.js. -->
     <div id="edit-ctx" class="ctx-menu" hidden role="menu">
-      <button type="button" class="ctx-item" data-cmd="cut" role="menuitem">Cut</button>
-      <button type="button" class="ctx-item" data-cmd="copy" role="menuitem">Copy</button>
-      <button type="button" class="ctx-item" data-cmd="paste" role="menuitem">Paste</button>
+      <button type="button" class="ctx-item" data-cmd="cut" role="menuitem" data-i18n="ctx.cut">Cut</button>
+      <button type="button" class="ctx-item" data-cmd="copy" role="menuitem" data-i18n="ctx.copy">Copy</button>
+      <button type="button" class="ctx-item" data-cmd="paste" role="menuitem" data-i18n="ctx.paste">Paste</button>
       <div class="ctx-sep"></div>
-      <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem">Select All</button>
+      <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem" data-i18n="ctx.selectAll">Select All</button>
     </div>
 
     <!-- Right-click menu for the file column (#213). What it acts on is the
@@ -700,9 +700,9 @@
          which is selected first, so what is about to happen is visible before
          it happens. -->
     <div id="file-ctx" class="ctx-menu" hidden role="menu">
-      <button type="button" class="ctx-item" data-cmd="hide" role="menuitem">Remove from the list</button>
+      <button type="button" class="ctx-item" data-cmd="hide" role="menuitem" data-i18n="ctx.removeFromList">Remove from the list</button>
       <div class="ctx-sep"></div>
-      <button type="button" class="ctx-item danger" data-cmd="trash" role="menuitem">Move to Trash…</button>
+      <button type="button" class="ctx-item danger" data-cmd="trash" role="menuitem" data-i18n="ctx.trash">Move to Trash…</button>
     </div>
 
     <!-- Mask-defined column editor (#150). A column whose value is a mask
@@ -711,30 +711,30 @@
          other mask input has. -->
     <div id="colmask-modal" class="modal-backdrop" hidden>
       <div class="modal colmask" role="dialog" aria-modal="true" aria-labelledby="colmask-title">
-        <h3 id="colmask-title" class="modal-msg">Add column</h3>
+        <h3 id="colmask-title" class="modal-msg" data-i18n="colmask.title">Add column</h3>
         <label class="colmask-row">
-          <span>Name</span>
-          <input id="colmask-name" type="text" spellcheck="false" placeholder="Artist — Title" />
+          <span data-i18n="colmask.name">Name</span>
+          <input id="colmask-name" type="text" spellcheck="false" data-i18n-placeholder="colmask.namePlaceholder" placeholder="Artist — Title" />
         </label>
         <label class="colmask-row">
-          <span>Pattern</span>
+          <span data-i18n="renamer.pattern">Pattern</span>
           <span class="colmask-pattern">
             <input id="colmask-pattern" type="text" class="mono" spellcheck="false" placeholder="%artist% — %title%" />
-            <button class="icon ph-btn" type="button" data-ph-target="colmask-pattern" title="Placeholders" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+            <button class="icon ph-btn" type="button" data-ph-target="colmask-pattern" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
           </span>
         </label>
         <div class="colmask-row">
-          <span>Align</span>
+          <span data-i18n="colmask.align">Align</span>
           <div id="colmask-align" class="seg">
-            <button type="button" class="seg-btn active" data-align="left">Left</button>
-            <button type="button" class="seg-btn" data-align="center">Center</button>
-            <button type="button" class="seg-btn" data-align="right">Right</button>
+            <button type="button" class="seg-btn active" data-align="left" data-i18n="colmask.left">Left</button>
+            <button type="button" class="seg-btn" data-align="center" data-i18n="colmask.center">Center</button>
+            <button type="button" class="seg-btn" data-align="right" data-i18n="colmask.right">Right</button>
           </div>
         </div>
-        <p class="settings-hint">Read-only: the value is computed, so the cell can't be edited. It sorts on the rendered text, and it reflects what is on disk — staged edits show once applied.</p>
+        <p class="settings-hint" data-i18n="colmask.hint">Read-only: the value is computed, so the cell can't be edited. It sorts on the rendered text, and it reflects what is on disk — staged edits show once applied.</p>
         <div class="modal-actions">
-          <button id="colmask-cancel">Cancel</button>
-          <button id="colmask-ok" class="primary">Add column</button>
+          <button id="colmask-cancel" data-i18n="action.cancel">Cancel</button>
+          <button id="colmask-ok" class="primary" data-i18n="colmask.title">Add column</button>
         </div>
       </div>
     </div>
@@ -749,12 +749,12 @@
          opened from the ? button beside it and positioned against that button.
          Fixed rather than absolute, because the mode panel it opens from
          scrolls and would clip it. Rows are built by placeholders.js. -->
-    <div id="ph-menu" class="ph-menu" hidden role="dialog" aria-label="Placeholders">
+    <div id="ph-menu" class="ph-menu" hidden role="dialog" data-i18n-aria-label="mask.placeholders" aria-label="Placeholders">
       <div class="ph-head">
-        <input id="ph-filter" type="search" placeholder="Filter placeholders…" spellcheck="false" autocomplete="off" />
+        <input id="ph-filter" type="search" data-i18n-placeholder="ph.filter" placeholder="Filter placeholders…" spellcheck="false" autocomplete="off" />
       </div>
       <div id="ph-body" class="ph-body"></div>
-      <p class="ph-foot muted">Click one to insert it at the caret.</p>
+      <p class="ph-foot muted" data-i18n="ph.foot">Click one to insert it at the caret.</p>
     </div>
 
     <!-- Confirm dialog (#102): a small modal for yes/no prompts (e.g. overwriting
@@ -767,8 +767,8 @@
     <div id="transform-modal" class="modal-backdrop" hidden>
       <div class="modal transform-modal" role="dialog" aria-modal="true" aria-labelledby="transform-modal-title">
         <div class="modal-head">
-          <h2 id="transform-modal-title">Transform</h2>
-          <button id="transform-modal-close" class="icon" type="button" title="Done" aria-label="Done"><svg class="ico"><use href="#i-close"/></svg></button>
+          <h2 id="transform-modal-title" data-i18n="generator.transform">Transform</h2>
+          <button id="transform-modal-close" class="icon" type="button" data-i18n-title="action.done" title="Done" data-i18n-aria-label="action.done" aria-label="Done"><svg class="ico"><use href="#i-close"/></svg></button>
         </div>
         <div id="transform-modal-body" class="transform-modal-body"></div>
       </div>
@@ -778,8 +778,8 @@
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-message">
         <p id="confirm-message" class="modal-msg"></p>
         <div class="modal-actions">
-          <button id="confirm-cancel">Cancel</button>
-          <button id="confirm-ok" class="primary">OK</button>
+          <button id="confirm-cancel" data-i18n="action.cancel">Cancel</button>
+          <button id="confirm-ok" class="primary" data-i18n="action.ok">OK</button>
         </div>
       </div>
     </div>
@@ -788,33 +788,33 @@
          gear — deliberately outside the RENAMER/TAGGER/… per-mode panel flow. -->
     <div id="settings" class="settings-overlay" hidden>
       <div id="settings-scrim" class="settings-scrim"></div>
-      <aside class="settings-sheet" role="dialog" aria-modal="true" aria-label="Settings">
+      <aside class="settings-sheet" role="dialog" aria-modal="true" data-i18n-aria-label="topbar.settings" aria-label="Settings">
         <div class="settings-head">
-          <span class="settings-title">Settings</span>
+          <span class="settings-title" data-i18n="topbar.settings">Settings</span>
           <div class="spacer"></div>
-          <button id="settings-close" class="icon" title="Close" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+          <button id="settings-close" class="icon" data-i18n-title="action.close" title="Close" data-i18n-aria-label="action.close" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
         </div>
         <div class="settings-body">
           <div class="settings-group">
             <h3>Discogs</h3>
             <div class="settings-row">
-              <label for="discogs-token">Personal token</label>
-              <input id="discogs-token" type="password" class="mono" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
+              <label for="discogs-token" data-i18n="settings.discogs.token">Personal token</label>
+              <input id="discogs-token" type="password" class="mono" data-i18n-placeholder="settings.discogs.tokenPlaceholder" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
             </div>
-            <p class="settings-hint">Used for search, release lookups, and cover fetches.</p>
+            <p class="settings-hint" data-i18n="settings.discogs.hint">Used for search, release lookups, and cover fetches.</p>
           </div>
 
           <div class="settings-group">
             <h3>Beatport</h3>
             <div class="settings-row">
-              <label>Account</label>
+              <label data-i18n="settings.beatport.account">Account</label>
               <div class="bp-auth">
-                <span id="beatport-account" class="settings-hint">Not signed in</span>
-                <button id="beatport-signin" class="btn">Sign in…</button>
-                <button id="beatport-signout" class="btn" hidden>Sign out</button>
+                <span id="beatport-account" class="settings-hint" data-i18n="settings.beatport.notSignedIn">Not signed in</span>
+                <button id="beatport-signin" class="btn" data-i18n="settings.beatport.signIn">Sign in…</button>
+                <button id="beatport-signout" class="btn" hidden data-i18n="settings.beatport.signOut">Sign out</button>
               </div>
             </div>
-            <p class="settings-hint">
+            <p class="settings-hint" data-i18n="settings.beatport.hint">
               Signs in to your own Beatport account in a separate window; TagRex never sees your
               password. Beatport issues API credentials to partners only, so this uses the public
               client from its documentation page — unofficial access that can stop working without
@@ -823,111 +823,111 @@
           </div>
 
           <div class="settings-group">
-            <h3>Network</h3>
+            <h3 data-i18n="settings.network">Network</h3>
             <div class="settings-row">
-              <label for="set-proxy">Proxy</label>
-              <input id="set-proxy" type="text" class="mono" placeholder="http://host:port  (blank = none)" spellcheck="false" />
+              <label for="set-proxy" data-i18n="settings.proxy">Proxy</label>
+              <input id="set-proxy" type="text" class="mono" data-i18n-placeholder="settings.proxyPlaceholder" placeholder="http://host:port  (blank = none)" spellcheck="false" />
             </div>
             <div class="settings-row">
-              <label for="set-rate">Rate limit</label>
+              <label for="set-rate" data-i18n="settings.rateLimit">Rate limit</label>
               <div class="settings-inline">
                 <input id="set-rate" type="number" min="0" class="mono" style="width: 64px" />
-                <span class="settings-hint">requests / min — 0 = no limit (429 / Retry-After is always honoured)</span>
+                <span class="settings-hint" data-i18n="settings.rateHint">requests / min — 0 = no limit (429 / Retry-After is always honoured)</span>
               </div>
             </div>
           </div>
 
           <div class="settings-group">
-            <h3>Tag defaults</h3>
+            <h3 data-i18n="settings.tagDefaults">Tag defaults</h3>
             <div class="settings-row">
-              <label>ID3 version</label>
-              <div class="seg" id="set-id3" role="tablist" aria-label="ID3 version">
+              <label data-i18n="settings.id3Version">ID3 version</label>
+              <div class="seg" id="set-id3" role="tablist" data-i18n-aria-label="settings.id3Version" aria-label="ID3 version">
                 <button class="seg-btn" type="button" data-id3="v23">ID3v2.3</button>
                 <button class="seg-btn active" type="button" data-id3="v24">ID3v2.4</button>
               </div>
             </div>
-            <p class="settings-hint">Which ID3v2 revision to write for MP3/AIFF/WAV. v2.4 is the modern default.</p>
+            <p class="settings-hint" data-i18n="settings.id3Hint">Which ID3v2 revision to write for MP3/AIFF/WAV. v2.4 is the modern default.</p>
 
             <div class="settings-row col">
               <div class="row-head">
-                <label>Read priority</label>
-                <button id="set-prio-reset" class="text-btn" type="button" title="Reset to ID3v2 · Vorbis · APE">Reset</button>
+                <label data-i18n="settings.readPriority">Read priority</label>
+                <button id="set-prio-reset" class="text-btn" type="button" data-i18n-title="settings.resetTitle" title="Reset to ID3v2 · Vorbis · APE" data-i18n="settings.reset">Reset</button>
               </div>
-              <ol id="set-prio" class="prio-list" aria-label="Tag-block read priority"></ol>
+              <ol id="set-prio" class="prio-list" data-i18n-aria-label="settings.priorityAria" aria-label="Tag-block read priority"></ol>
             </div>
-            <p class="settings-hint">When a file carries more than one tag block, values are read from the highest one present. Drag to reorder. Most files have a single block, so this rarely matters.</p>
+            <p class="settings-hint" data-i18n="settings.priorityHint">When a file carries more than one tag block, values are read from the highest one present. Drag to reorder. Most files have a single block, so this rarely matters.</p>
 
             <div class="settings-row">
-              <label for="set-multi-sep">Multi-value separator</label>
+              <label for="set-multi-sep" data-i18n="settings.multiSep">Multi-value separator</label>
               <input id="set-multi-sep" type="text" class="mono" style="width: 80px" placeholder="; " spellcheck="false" />
             </div>
-            <p class="settings-hint">A track can carry several artists or genres. They are shown and edited as one value joined by this text, and written back as separate values. Only Artist, Album Artist, Genre and Composer are treated this way — every other field keeps a separator as part of its value. Leave it blank for a semicolon and a space.</p>
+            <p class="settings-hint" data-i18n="settings.multiSepHint">A track can carry several artists or genres. They are shown and edited as one value joined by this text, and written back as separate values. Only Artist, Album Artist, Genre and Composer are treated this way — every other field keeps a separator as part of its value. Leave it blank for a semicolon and a space.</p>
           </div>
 
           <div class="settings-group">
-            <h3>Cover art</h3>
+            <h3 data-i18n="editor.coverArt">Cover art</h3>
             <div class="settings-row">
-              <label for="set-cover-max">Max size</label>
+              <label for="set-cover-max" data-i18n="settings.coverMax">Max size</label>
               <div class="settings-inline">
                 <input id="set-cover-max" type="number" min="0" step="50" class="mono" style="width: 80px" />
-                <span class="settings-hint">px on the longest side — 0 = don't resize</span>
+                <span class="settings-hint" data-i18n="settings.coverMaxHint">px on the longest side — 0 = don't resize</span>
               </div>
             </div>
             <div class="settings-row">
-              <label for="set-cover-quality">JPEG quality</label>
+              <label for="set-cover-quality" data-i18n="settings.coverQuality">JPEG quality</label>
               <div class="settings-inline">
                 <input id="set-cover-quality" type="number" min="1" max="100" class="mono" style="width: 64px" />
-                <span class="settings-hint">1–100, used when a cover is resized</span>
+                <span class="settings-hint" data-i18n="settings.coverQualityHint">1–100, used when a cover is resized</span>
               </div>
             </div>
-            <p class="settings-hint">A larger fetched or chosen cover is downscaled and re-encoded as JPEG before embedding, so it doesn't bloat every file.</p>
+            <p class="settings-hint" data-i18n="settings.coverHint">A larger fetched or chosen cover is downscaled and re-encoded as JPEG before embedding, so it doesn't bloat every file.</p>
           </div>
 
           <!-- Which fields an online import may write (#152). The rows are built
                from the backend's own catalogue (`import_fields`), so the setting
                can never offer a field the import doesn't produce. -->
           <div class="settings-group">
-            <h3>Online import</h3>
-            <p class="settings-hint">Which tags an import from Discogs or MusicBrainz is allowed to write. Everything is on by default; a field switched off here is left exactly as the file has it.</p>
+            <h3 data-i18n="settings.onlineImport">Online import</h3>
+            <p class="settings-hint" data-i18n="settings.importHint">Which tags an import from Discogs or MusicBrainz is allowed to write. Everything is on by default; a field switched off here is left exactly as the file has it.</p>
             <div id="set-import-fields" class="import-fields"></div>
             <div class="settings-inline import-fields-actions">
-              <button id="set-import-all" type="button" class="text-btn">All</button>
-              <button id="set-import-none" type="button" class="text-btn">None</button>
+              <button id="set-import-all" type="button" class="text-btn" data-i18n="settings.all">All</button>
+              <button id="set-import-none" type="button" class="text-btn" data-i18n="settings.none">None</button>
             </div>
 
             <!-- Whether the release's artwork comes with the tags (#207). -->
             <div class="settings-row">
-              <label>Cover art</label>
-              <div class="seg" id="set-import-cover" role="tablist" aria-label="Import cover art">
-                <button class="seg-btn" type="button" data-import-cover="never">Never</button>
-                <button class="seg-btn active" type="button" data-import-cover="if-missing">If missing</button>
-                <button class="seg-btn" type="button" data-import-cover="always">Always</button>
+              <label data-i18n="editor.coverArt">Cover art</label>
+              <div class="seg" id="set-import-cover" role="tablist" data-i18n-aria-label="settings.importCover" aria-label="Import cover art">
+                <button class="seg-btn" type="button" data-import-cover="never" data-i18n="settings.cover.never">Never</button>
+                <button class="seg-btn active" type="button" data-import-cover="if-missing" data-i18n="settings.cover.ifMissing">If missing</button>
+                <button class="seg-btn" type="button" data-import-cover="always" data-i18n="settings.cover.always">Always</button>
               </div>
             </div>
-            <p class="settings-hint">Whether an import also embeds the release's cover. <strong>If missing</strong> only fills in files that carry no artwork at all, so nothing you chose yourself is ever overwritten — decided per file, so a mixed selection gets it exactly where it's needed. <strong>Always</strong> replaces the cover a file already has. Either way the tags and the artwork are one change, so a single undo takes back both.</p>
+            <p class="settings-hint" data-i18n="settings.importCoverHint" data-i18n-html>Whether an import also embeds the release's cover. <strong>If missing</strong> only fills in files that carry no artwork at all, so nothing you chose yourself is ever overwritten — decided per file, so a mixed selection gets it exactly where it's needed. <strong>Always</strong> replaces the cover a file already has. Either way the tags and the artwork are one change, so a single undo takes back both.</p>
           </div>
 
           <div class="settings-group">
-            <h3>Files</h3>
+            <h3 data-i18n="settings.files">Files</h3>
             <div class="settings-row">
-              <label for="set-carry-sidecars">Carry sidecar files</label>
+              <label for="set-carry-sidecars" data-i18n="settings.carrySidecars">Carry sidecar files</label>
               <input id="set-carry-sidecars" type="checkbox" />
             </div>
-            <p class="settings-hint">When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.</p>
+            <p class="settings-hint" data-i18n="settings.sidecarsHint">When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.</p>
             <div class="settings-row">
-              <label for="set-carry-extras">Carry folder leftovers</label>
+              <label for="set-carry-extras" data-i18n="settings.carryExtras">Carry folder leftovers</label>
               <input id="set-carry-extras" type="checkbox" />
             </div>
-            <p class="settings-hint">When a reorganize takes every track out of a folder, whatever is left in it — a rip log, loose artwork, a Scans subfolder — travels to the same destination, so nothing is stranded and the folder can be tidied away. A folder that still holds other music, or tracks that scatter to several destinations, are left alone.</p>
+            <p class="settings-hint" data-i18n="settings.extrasHint">When a reorganize takes every track out of a folder, whatever is left in it — a rip log, loose artwork, a Scans subfolder — travels to the same destination, so nothing is stranded and the folder can be tidied away. A folder that still holds other music, or tracks that scatter to several destinations, are left alone.</p>
             <div class="settings-row col">
-              <label for="set-sidecar-exts">Extensions</label>
-              <input id="set-sidecar-exts" type="text" class="mono" placeholder="lrc cue txt jpg jpeg png" spellcheck="false" />
+              <label for="set-sidecar-exts" data-i18n="settings.extensions">Extensions</label>
+              <input id="set-sidecar-exts" type="text" class="mono" data-i18n-placeholder="settings.extensionsPlaceholder" placeholder="lrc cue txt jpg jpeg png" spellcheck="false" />
             </div>
-            <p class="settings-hint">Space- or comma-separated, without the dot. Case-insensitive.</p>
+            <p class="settings-hint" data-i18n="settings.extensionsHint">Space- or comma-separated, without the dot. Case-insensitive.</p>
           </div>
 
           <div class="settings-group">
-            <h3>Display</h3>
+            <h3 data-i18n="settings.display">Display</h3>
             <div class="settings-row">
               <label data-i18n="settings.language">Language</label>
               <div class="seg" id="set-lang" role="tablist" data-i18n-aria-label="settings.language.aria" aria-label="Interface language">
@@ -938,67 +938,67 @@
             </div>
             <p class="settings-hint" data-i18n="settings.language.hint">Auto follows your system language. A language the app has no catalogue for falls back to English.</p>
             <div class="settings-row">
-              <label>Theme</label>
-              <div class="seg" id="set-theme" role="tablist" aria-label="Theme">
-                <button class="seg-btn" type="button" data-theme-mode="auto">Auto</button>
-                <button class="seg-btn" type="button" data-theme-mode="light">Light</button>
-                <button class="seg-btn" type="button" data-theme-mode="dark">Dark</button>
+              <label data-i18n="settings.theme">Theme</label>
+              <div class="seg" id="set-theme" role="tablist" data-i18n-aria-label="settings.theme" aria-label="Theme">
+                <button class="seg-btn" type="button" data-theme-mode="auto" data-i18n="settings.language.auto">Auto</button>
+                <button class="seg-btn" type="button" data-theme-mode="light" data-i18n="settings.theme.light">Light</button>
+                <button class="seg-btn" type="button" data-theme-mode="dark" data-i18n="settings.theme.dark">Dark</button>
               </div>
             </div>
-            <p class="settings-hint">Auto follows your system appearance; Light / Dark force one.</p>
+            <p class="settings-hint" data-i18n="settings.themeHint">Auto follows your system appearance; Light / Dark force one.</p>
             <div class="settings-row">
-              <label for="set-checkbox-col">Selection checkbox column</label>
+              <label for="set-checkbox-col" data-i18n="settings.checkboxCol">Selection checkbox column</label>
               <input id="set-checkbox-col" type="checkbox" />
             </div>
-            <p class="settings-hint">Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.</p>
+            <p class="settings-hint" data-i18n="settings.checkboxColHint">Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.</p>
           </div>
 
           <!-- LAB: typography knobs that are still being tried out. Grouped and
                labelled as experiments so it's clear they may change or go away,
                rather than sitting among the settled Display options. -->
           <div class="settings-group">
-            <h3>LAB <span class="lab-tag">experimental</span></h3>
-            <p class="settings-hint settings-lab-note">Typography still under evaluation. These may change or be dropped in a later release.</p>
+            <h3><span data-i18n="settings.lab">LAB</span> <span class="lab-tag" data-i18n="settings.experimental">experimental</span></h3>
+            <p class="settings-hint settings-lab-note" data-i18n="settings.labNote">Typography still under evaluation. These may change or be dropped in a later release.</p>
             <div class="settings-row">
-              <label>Value font</label>
-              <div class="seg" id="set-value-font" role="tablist" aria-label="Value font">
-                <button class="seg-btn" type="button" data-value-font="mono">Mono</button>
-                <button class="seg-btn" type="button" data-value-font="sans">Sans</button>
-                <button class="seg-btn" type="button" data-value-font="condensed">Condensed</button>
+              <label data-i18n="settings.valueFont">Value font</label>
+              <div class="seg" id="set-value-font" role="tablist" data-i18n-aria-label="settings.valueFont" aria-label="Value font">
+                <button class="seg-btn" type="button" data-value-font="mono" data-i18n="settings.font.mono">Mono</button>
+                <button class="seg-btn" type="button" data-value-font="sans" data-i18n="settings.font.sans">Sans</button>
+                <button class="seg-btn" type="button" data-value-font="condensed" data-i18n="settings.font.condensed">Condensed</button>
               </div>
             </div>
-            <p class="settings-hint">The face used for file names, tag values, tracklists and pattern fields. Mono keeps columns aligned and 0/O distinct; Sans matches the rest of the interface; Condensed fits more before a value truncates.</p>
+            <p class="settings-hint" data-i18n="settings.valueFontHint">The face used for file names, tag values, tracklists and pattern fields. Mono keeps columns aligned and 0/O distinct; Sans matches the rest of the interface; Condensed fits more before a value truncates.</p>
             <div class="settings-row">
-              <label for="set-table-font">Table font size</label>
+              <label for="set-table-font" data-i18n="settings.tableFont">Table font size</label>
               <div class="settings-inline">
                 <input id="set-table-font" type="range" min="10" max="20" step="1" />
                 <span id="set-table-font-val" class="settings-hint"></span>
               </div>
             </div>
-            <p class="settings-hint">Applies to the file table in any of the three faces. Drag to preview live.</p>
+            <p class="settings-hint" data-i18n="settings.tableFontHint">Applies to the file table in any of the three faces. Drag to preview live.</p>
             <div class="settings-row">
-              <label for="set-tracklist-font">Tracklist font size</label>
+              <label for="set-tracklist-font" data-i18n="settings.tracklistFont">Tracklist font size</label>
               <div class="settings-inline">
                 <input id="set-tracklist-font" type="range" min="10" max="16" step="1" />
                 <span id="set-tracklist-font-val" class="settings-hint"></span>
               </div>
             </div>
-            <p class="settings-hint">The release card's tracklist rows. Drag to preview live.</p>
+            <p class="settings-hint" data-i18n="settings.tracklistFontHint">The release card's tracklist rows. Drag to preview live.</p>
             <div class="settings-row">
-              <label>Release badge font</label>
-              <div class="seg" id="set-badge-font" role="tablist" aria-label="Release badge font">
-                <button class="seg-btn" type="button" data-badge-font="mono">Mono</button>
-                <button class="seg-btn" type="button" data-badge-font="sans">Sans</button>
+              <label data-i18n="settings.badgeFont">Release badge font</label>
+              <div class="seg" id="set-badge-font" role="tablist" data-i18n-aria-label="settings.badgeFont" aria-label="Release badge font">
+                <button class="seg-btn" type="button" data-badge-font="mono" data-i18n="settings.font.mono">Mono</button>
+                <button class="seg-btn" type="button" data-badge-font="sans" data-i18n="settings.font.sans">Sans</button>
               </div>
             </div>
-            <p class="settings-hint">The catalogue number and track count on a release card. Mono tells 0 from 8 apart and lines the numbers up down the list.</p>
+            <p class="settings-hint" data-i18n="settings.badgeFontHint">The catalogue number and track count on a release card. Mono tells 0 from 8 apart and lines the numbers up down the list.</p>
           </div>
         </div>
         <div class="settings-foot">
-          <span class="settings-hint">Saved to this machine.</span>
+          <span class="settings-hint" data-i18n="settings.savedHere">Saved to this machine.</span>
           <div class="spacer"></div>
-          <button id="settings-cancel">Cancel</button>
-          <button id="settings-save" class="primary">Save</button>
+          <button id="settings-cancel" data-i18n="action.cancel">Cancel</button>
+          <button id="settings-save" class="primary" data-i18n="action.save">Save</button>
         </div>
       </aside>
     </div>

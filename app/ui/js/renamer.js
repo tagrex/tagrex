@@ -8,7 +8,8 @@
 // outside the opened library, move or copy, and whether to clear up the folders
 // a move empties. The destination is only ever what the user picked here —
 // choosing it is what authorizes the backend to write there.
-import { el, plural, toast } from "./dom.js";
+import { el, toast } from "./dom.js";
+import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { onChainChanged, runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
@@ -79,8 +80,10 @@ async function previewMove() {
     hooks.renderPreview(previewPlan);
     toast(
       previewPlan.changes.length
-        ? `Previewing ${copy ? "copy" : "move"} of ${plural(previewPlan.changes.length, "file", "files")} — click Apply`
-        : "Nothing to move (check the pattern's tags are set)",
+        ? t(copy ? "toast.previewingCopy" : "toast.previewingMove", {
+            files: tn("unit.file", previewPlan.changes.length),
+          })
+        : t("toast.nothingToMove"),
       previewPlan.changes.length === 0
     );
   } catch (e) {
