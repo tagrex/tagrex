@@ -66,6 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   5 треків. The test that keeps the catalogues in step now reads the catalogue
   directory instead of naming the languages, so a fourth one is checked without
   the test having to be edited.
+- **The language control reads Auto · English · Українська · Русский.** The two
+  Cyrillic catalogues sat in the order they were written rather than in one a
+  reader can see.
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a
