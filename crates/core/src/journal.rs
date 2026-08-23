@@ -25,6 +25,11 @@ pub struct AppliedBatch {
     pub id: BatchId,
     /// Description inherited from the plan source (for the history UI).
     pub description: String,
+    /// The same description as an opaque code-and-values descriptor (#268), so
+    /// History can be rendered in the language of the day rather than in the
+    /// one that happened to be active when the batch was applied. See
+    /// [`ChangePlan::message`](crate::plan::ChangePlan::message).
+    pub message: Option<String>,
     /// Unix timestamp of when the batch was applied.
     pub applied_at: i64,
     /// The executed plan; `old` values are what rollback restores.
@@ -261,6 +266,13 @@ impl SqliteJournal {
                 "ALTER TABLE file_changes ADD COLUMN copied INTEGER NOT NULL DEFAULT 0",
             )?;
         }
+        // The translatable descriptor (#268), added the same way. A row written
+        // before it holds NULL and keeps showing the English it was written
+        // with — there is nothing to recover a code from, and matching the
+        // prose to guess one would be inventing what a batch was.
+        if !column_exists(&conn, "batches", "message")? {
+            conn.execute_batch("ALTER TABLE batches ADD COLUMN message TEXT")?;
+        }
         Ok(Self { conn })
     }
 }
@@ -269,8 +281,8 @@ impl UndoJournal for SqliteJournal {
     fn record(&mut self, batch: &AppliedBatch) -> Result<BatchId, JournalError> {
         let tx = self.conn.transaction()?;
         tx.execute(
-            "INSERT INTO batches (description, applied_at) VALUES (?1, ?2)",
-            rusqlite::params![batch.description, batch.applied_at],
+            "INSERT INTO batches (description, message, applied_at) VALUES (?1, ?2, ?3)",
+            rusqlite::params![batch.description, batch.message, batch.applied_at],
         )?;
         let batch_id = tx.last_insert_rowid();
 
@@ -414,25 +426,28 @@ impl UndoJournal for SqliteJournal {
     fn batches(&self) -> Result<Vec<AppliedBatch>, JournalError> {
         let mut batch_stmt = self
             .conn
-            .prepare("SELECT id, description, applied_at FROM batches ORDER BY id DESC")?;
+            .prepare("SELECT id, description, message, applied_at FROM batches ORDER BY id DESC")?;
         let rows = batch_stmt.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<_, i64>(2)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, i64>(3)?,
             ))
         })?;
 
         let mut batches = Vec::new();
         for row in rows {
-            let (id, description, applied_at) = row?;
+            let (id, description, message, applied_at) = row?;
             let changes = self.load_file_changes(id)?;
             batches.push(AppliedBatch {
                 id: BatchId(id),
                 description: description.clone(),
+                message: message.clone(),
                 applied_at,
                 plan: ChangePlan {
                     description,
+                    message,
                     changes,
                     // Apply-time only: what it caused is in `removed_dirs`.
                     prune_empty_dirs: false,

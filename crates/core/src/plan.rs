@@ -142,6 +142,15 @@ pub struct ChangePlan {
     /// the plan, and carried into the journal so history shows what a batch
     /// was (see [`AppliedBatch::description`]).
     pub description: String,
+    /// The same description as a code and its values, encoded by the layer that
+    /// knows what the encoding means (#268).
+    ///
+    /// Opaque here on purpose: the journal has to persist it so History can be
+    /// rendered in whatever language is chosen *later*, but nothing in this
+    /// crate reads it, and giving the core a serialization format for it would
+    /// buy a dependency for a string it only ever stores and hands back.
+    /// `None` for a plan built before this existed.
+    pub message: Option<String>,
     pub changes: Vec<FileChange>,
     /// Whether to remove the folders a move empties (#153). Off by default, so
     /// a plain rename never prunes anything; the reorganize operation turns it
@@ -298,6 +307,7 @@ impl Executor {
             // stay unique across restarts.
             id: BatchId(0),
             description: plan.description.clone(),
+            message: plan.message.clone(),
             applied_at: now_unix_secs(),
             plan: plan.clone(),
             created_dirs,

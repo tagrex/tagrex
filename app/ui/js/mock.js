@@ -10,6 +10,14 @@
 // It reaches for two things the real UI owns — a file-name helper and the
 // vinyl-position parser — because it fakes what the backend derives from them.
 import { fileName, plural } from "./dom.js";
+
+// A plan the way the backend now shapes one (#268): the English it composed,
+// plus the code and values the interface renders from. The mock stands in for
+// the backend, so it has to hand over both or the browser path would exercise
+// only the fallback.
+function plan(description, message, changes, notes = []) {
+  return { description, message: { args: {}, count: null, ...message }, notes, changes };
+}
 import { parseVinylPosition } from "./vinyl.js";
 
 // A group as the sequence of scoped chains it runs as, mirroring the backend's
@@ -389,7 +397,9 @@ function mockInvoke(cmd, args) {
           return rename_to === p ? null : { path: p, rename_to, tag_changes: [] };
         })
         .filter(Boolean);
-      return Promise.resolve({ description: `Rename by mask: ${args.mask}`, changes });
+      return Promise.resolve(
+        plan(`Rename by mask: ${args.mask}`, { code: "plan.renameByMask", args: { mask: args.mask } }, changes)
+      );
     }
     case "probe_tags_from_name": {
       const subject = mockNameSubject(args.path, args.mask);
@@ -414,7 +424,9 @@ function mockInvoke(cmd, args) {
           return tag_changes.length ? { path: p, rename_to: null, tag_changes } : null;
         })
         .filter(Boolean);
-      return Promise.resolve({ description: `Tags from name: ${args.mask}`, changes });
+      return Promise.resolve(
+        plan(`Tags from name: ${args.mask}`, { code: "plan.tagsFromName", args: { mask: args.mask } }, changes)
+      );
     }
     case "preview_transform": {
       // Mirrors the backend closely enough to exercise the dialog: literal
@@ -605,7 +617,7 @@ function mockInvoke(cmd, args) {
           .map(([field, old]) => ({ field, old, new: null }));
         if (tag_changes.length) changes.push({ path: p, rename_to: null, tag_changes, cover_change: null });
       }
-      return Promise.resolve({ description: "Clear tags", changes });
+      return Promise.resolve(plan("Clear tags", { code: "plan.clearTags" }, changes));
     }
     case "apply_plan":
       for (const c of args.plan.changes) {
@@ -628,7 +640,7 @@ function mockInvoke(cmd, args) {
         tag_changes: [],
         cover_change: { old: null, new: args.cover },
       }));
-      return Promise.resolve({ description: "Embed cover art", changes });
+      return Promise.resolve(plan("Embed cover art", { code: "plan.embedCover" }, changes));
     }
     case "read_cover_summary": {
       // Mock: a track's `cover` colour becomes its image set (#56) — the front
@@ -690,7 +702,7 @@ function mockInvoke(cmd, args) {
           return { path: p, rename_to: null, tag_changes: [], cover_change: { old: { mime: "image/svg+xml", data_base64: "" }, new: null } };
         })
         .filter(Boolean);
-      return Promise.resolve({ description: "Remove cover art", changes });
+      return Promise.resolve(plan("Remove cover art", { code: "plan.removeCover" }, changes));
     }
     case "preview_remove_tag_block": {
       // Only the files that actually carry that block, as the backend does; the
@@ -724,7 +736,9 @@ function mockInvoke(cmd, args) {
         })
         .filter(Boolean);
       const label = changes[0]?.block_changes[0].label || args.kind;
-      return Promise.resolve({ description: `Remove ${label} tag`, changes });
+      return Promise.resolve(
+        plan(`Remove ${label} tag`, { code: "plan.removeBlock", args: { block: label } }, changes)
+      );
     }
     case "tag_block_targets": {
       // The mock library is all MP3, so every MP3-capable block is on offer.

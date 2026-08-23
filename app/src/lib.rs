@@ -15,7 +15,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -343,10 +343,247 @@ pub struct LockedSkipDto {
     pub files: usize,
 }
 
+/// A sentence for the interface, as a key and its values rather than as prose
+/// (#268).
+///
+/// The backend used to compose English and hand it over finished, which put a
+/// third of what a user reads out of reach of the interface catalogue — and
+/// worse, a plan description is *persisted* into the journal, so prose written
+/// at apply time would freeze that row in whichever language was active. A code
+/// and its values can be rendered in the language of the day, every time it is
+/// shown.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct MessageDto {
+    /// Catalogue key, e.g. `plan.renameByMask`.
+    pub code: String,
+    /// What the key's template fills in. Values are already-formatted strings —
+    /// a mask, a tag block's name — never sentences.
+    #[serde(default)]
+    pub args: BTreeMap<String, String>,
+    /// The number the wording depends on, when it does. The frontend picks the
+    /// plural form its own language needs; nothing here has to know how many
+    /// forms that is.
+    #[serde(default)]
+    pub count: Option<u64>,
+}
+
+/// Every sentence a plan can describe itself with (#268).
+///
+/// One place per message rather than a `format!` at each call site, because
+/// both halves have to agree: the code and values the interface renders from,
+/// and the English the journal keeps and the tests read. Deriving them from one
+/// definition is what stops the two drifting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanMessage {
+    RenameByMask {
+        mask: String,
+    },
+    TagsFromName {
+        mask: String,
+    },
+    Transform {
+        scope: String,
+    },
+    ReorganizeByMask {
+        copy: bool,
+        mask: String,
+    },
+    EditTags,
+    EditTagsWithCover {
+        files: usize,
+    },
+    ClearTags,
+    EmbedCover,
+    SetCoverImages {
+        images: usize,
+    },
+    RemoveCover,
+    RemoveBlock {
+        block: String,
+    },
+    ConvertToRevision {
+        revision: String,
+    },
+    RewriteBlock {
+        block: String,
+    },
+    ConvertBlock {
+        from: String,
+        to: String,
+    },
+    ImportRelease {
+        source: Option<String>,
+    },
+    /// A note, appended after ` · `: what a move carries along.
+    CarryingExtras {
+        files: usize,
+    },
+    /// A note: a rule chain has been over the plan this describes.
+    CleanedUp,
+}
+
+impl PlanMessage {
+    /// The catalogue key.
+    fn code(&self) -> &'static str {
+        match self {
+            Self::RenameByMask { .. } => "plan.renameByMask",
+            Self::TagsFromName { .. } => "plan.tagsFromName",
+            Self::Transform { .. } => "plan.transform",
+            Self::ReorganizeByMask { copy: false, .. } => "plan.reorganizeByMask",
+            Self::ReorganizeByMask { copy: true, .. } => "plan.copyByMask",
+            Self::EditTags => "plan.editTags",
+            Self::EditTagsWithCover { .. } => "plan.editTagsWithCover",
+            Self::ClearTags => "plan.clearTags",
+            Self::EmbedCover => "plan.embedCover",
+            Self::SetCoverImages { .. } => "plan.setCoverImages",
+            Self::RemoveCover => "plan.removeCover",
+            Self::RemoveBlock { .. } => "plan.removeBlock",
+            Self::ConvertToRevision { .. } => "plan.convertToRevision",
+            Self::RewriteBlock { .. } => "plan.rewriteBlock",
+            Self::ConvertBlock { .. } => "plan.convertBlock",
+            Self::ImportRelease { source } => match source.as_deref() {
+                Some("discogs") => "plan.importDiscogs",
+                Some("musicbrainz") => "plan.importMusicBrainz",
+                Some("beatport") => "plan.importBeatport",
+                _ => "plan.importRelease",
+            },
+            Self::CarryingExtras { .. } => "plan.carryingExtras",
+            Self::CleanedUp => "plan.cleanedUp",
+        }
+    }
+
+    /// The values the template fills in.
+    fn args(&self) -> BTreeMap<String, String> {
+        let mut args = BTreeMap::new();
+        match self {
+            Self::RenameByMask { mask }
+            | Self::TagsFromName { mask }
+            | Self::ReorganizeByMask { mask, .. } => {
+                args.insert("mask".to_string(), mask.clone());
+            }
+            Self::Transform { scope } => {
+                args.insert("scope".to_string(), scope.clone());
+            }
+            Self::RemoveBlock { block } | Self::RewriteBlock { block } => {
+                args.insert("block".to_string(), block.clone());
+            }
+            Self::ConvertToRevision { revision } => {
+                args.insert("revision".to_string(), revision.clone());
+            }
+            Self::ConvertBlock { from, to } => {
+                args.insert("from".to_string(), from.clone());
+                args.insert("to".to_string(), to.clone());
+            }
+            _ => {}
+        }
+        args
+    }
+
+    /// The number the wording turns on, for the languages that need one.
+    fn count(&self) -> Option<u64> {
+        match self {
+            Self::EditTagsWithCover { files } | Self::CarryingExtras { files } => {
+                Some(*files as u64)
+            }
+            Self::SetCoverImages { images } => Some(*images as u64),
+            _ => None,
+        }
+    }
+
+    /// The English sentence — the fallback, and what the journal stores.
+    fn english(&self) -> String {
+        match self {
+            Self::RenameByMask { mask } => format!("Rename by mask: {mask}"),
+            Self::TagsFromName { mask } => format!("Tags from name: {mask}"),
+            Self::Transform { scope } => format!("Transform ({scope})"),
+            Self::ReorganizeByMask { copy, mask } => {
+                format!(
+                    "{} by mask: {mask}",
+                    if *copy { "Copy" } else { "Reorganize" }
+                )
+            }
+            Self::EditTags => "Edit tags".to_string(),
+            Self::EditTagsWithCover { files } => match files {
+                1 => "Edit tags + cover on 1 file".to_string(),
+                n => format!("Edit tags + cover on {n} files"),
+            },
+            Self::ClearTags => "Clear tags".to_string(),
+            Self::EmbedCover => "Embed cover art".to_string(),
+            Self::SetCoverImages { images } => format!("Set {images} cover image(s)"),
+            Self::RemoveCover => "Remove cover art".to_string(),
+            Self::RemoveBlock { block } => format!("Remove {block} tag"),
+            Self::ConvertToRevision { revision } => format!("Convert to ID3v{revision}"),
+            Self::RewriteBlock { block } => format!("Rewrite {block} tag"),
+            Self::ConvertBlock { from, to } => format!("Convert {from} to {to}"),
+            Self::ImportRelease { source } => match source.as_deref() {
+                Some("discogs") => "Import Discogs release".to_string(),
+                Some("musicbrainz") => "Import MusicBrainz release".to_string(),
+                Some("beatport") => "Import Beatport release".to_string(),
+                _ => "Import release".to_string(),
+            },
+            Self::CarryingExtras { files } => match files {
+                1 => "carrying 1 extra file".to_string(),
+                n => format!("carrying {n} extra files"),
+            },
+            Self::CleanedUp => "cleaned up".to_string(),
+        }
+    }
+}
+
+impl From<&PlanMessage> for MessageDto {
+    fn from(message: &PlanMessage) -> Self {
+        MessageDto {
+            code: message.code().to_string(),
+            args: message.args(),
+            count: message.count(),
+        }
+    }
+}
+
+/// A plan's message and notes, as the one string the journal persists (#268).
+///
+/// `None` when the plan has no message — a plan deserialized from a build that
+/// predates this — so an old-style plan records exactly what it did before.
+fn encode_plan_message(plan: &PlanDto) -> Option<String> {
+    let message = plan.message.as_ref()?;
+    serde_json::to_string(&StoredMessage {
+        message: message.clone(),
+        notes: plan.notes.clone(),
+    })
+    .ok()
+}
+
+/// The inverse. A row that holds nothing, or holds something this build cannot
+/// read, answers `None` and the caller shows the English it stored alongside.
+fn decode_plan_message(stored: Option<&str>) -> Option<StoredMessage> {
+    serde_json::from_str(stored?).ok()
+}
+
+/// What [`encode_plan_message`] writes. Its own type rather than a tuple, so
+/// the stored shape is named and can gain a field without becoming a riddle.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StoredMessage {
+    pub message: MessageDto,
+    #[serde(default)]
+    pub notes: Vec<MessageDto>,
+}
+
 /// A previewable plan, ready to render as a "current -> new" diff.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlanDto {
+    /// The English sentence, composed the way it always was. Still here as what
+    /// a language with no entry for `message` falls back to, as what a journal
+    /// row written before #268 holds, and as what the tests read.
     pub description: String,
+    /// The same thing as a code and its values (#268). `None` only for a plan
+    /// deserialized from a build that predates this.
+    #[serde(default)]
+    pub message: Option<MessageDto>,
+    /// Notes appended to the message with ` · ` — what a move is carrying, that
+    /// a chain has been over it. Separate messages because each is translated
+    /// on its own.
+    #[serde(default)]
+    pub notes: Vec<MessageDto>,
     pub changes: Vec<FileChangeDto>,
     /// Whether applying this plan should remove the folders its moves empty
     /// (#153). Defaults off, so every plan that isn't a reorganize behaves
@@ -548,7 +785,14 @@ fn effective_cover_quality(quality: u8) -> u8 {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct BatchDto {
     pub id: i64,
+    /// The English the batch was recorded with — the fallback, and all a row
+    /// written before #268 has.
     pub description: String,
+    /// The same thing as a code and its values, when the row has one.
+    #[serde(default)]
+    pub message: Option<MessageDto>,
+    #[serde(default)]
+    pub notes: Vec<MessageDto>,
     pub applied_at: i64,
 }
 
@@ -1344,9 +1588,34 @@ impl App {
     /// *value*; the artwork and the tag blocks are the container, they have
     /// their own deliberate operations, and each of those already spells out in
     /// its preview exactly what it takes away.
+    /// The plan a rule chain leaves behind after running over a staged one
+    /// (#142), described as the plan it came from plus a note (#268).
+    ///
+    /// The incoming plan crossed the wire from the frontend, so what it carries
+    /// is a `MessageDto`, not a `PlanMessage` — its own code and values, which
+    /// are kept exactly as they are and translated the same as ever. A plan
+    /// from a build before this has no message at all; its English description
+    /// is all there is, and the note is appended to that.
+    fn cleaned_up_plan(&self, previous: &PlanDto, changes: Vec<FileChangeDto>) -> PlanDto {
+        let mut plan = self.plan(PlanMessage::CleanedUp, Vec::new(), changes, false);
+        let already_cleaned = previous
+            .notes
+            .iter()
+            .any(|note| note.code == PlanMessage::CleanedUp.code());
+        let mut notes = previous.notes.clone();
+        if !already_cleaned {
+            notes.push(MessageDto::from(&PlanMessage::CleanedUp));
+        }
+        plan.description = cleaned_up_description(&previous.description);
+        plan.message = previous.message.clone();
+        plan.notes = notes;
+        plan
+    }
+
     fn plan(
         &self,
-        description: impl Into<String>,
+        message: PlanMessage,
+        notes: Vec<PlanMessage>,
         changes: Vec<FileChangeDto>,
         prune_empty_dirs: bool,
     ) -> PlanDto {
@@ -1384,8 +1653,16 @@ impl App {
         // Most files first, so a preview with room for one line names the lock
         // that did the most.
         skipped.sort_by(|a, b| b.files.cmp(&a.files).then_with(|| a.field.cmp(&b.field)));
+        // The English is composed here, from the same definitions the codes come
+        // from, so the two can never disagree (#268).
+        let description = std::iter::once(message.english())
+            .chain(notes.iter().map(PlanMessage::english))
+            .collect::<Vec<_>>()
+            .join(" · ");
         PlanDto {
-            description: description.into(),
+            description,
+            message: Some(MessageDto::from(&message)),
+            notes: notes.iter().map(MessageDto::from).collect(),
             changes: kept,
             prune_empty_dirs,
             locked_skipped: skipped,
@@ -1710,7 +1987,14 @@ impl App {
             self.attach_sidecars(&mut change);
             changes.push(change);
         }
-        Ok(self.plan(format!("Rename by mask: {mask_pattern}"), changes, false))
+        Ok(self.plan(
+            PlanMessage::RenameByMask {
+                mask: mask_pattern.to_string(),
+            },
+            Vec::new(),
+            changes,
+            false,
+        ))
     }
 
     /// Build a tag plan by reading each file's own name through a mask (#139) —
@@ -1790,7 +2074,14 @@ impl App {
                 copy: false,
             });
         }
-        Ok(self.plan(format!("Tags from name: {mask_pattern}"), changes, false))
+        Ok(self.plan(
+            PlanMessage::TagsFromName {
+                mask: mask_pattern.to_string(),
+            },
+            Vec::new(),
+            changes,
+            false,
+        ))
     }
 
     /// What a mask pulls out of one file's name (#139), for the live probe
@@ -1952,7 +2243,14 @@ impl App {
             }
         }
 
-        Ok(self.plan(format!("Transform ({scope})"), changes, false))
+        Ok(self.plan(
+            PlanMessage::Transform {
+                scope: scope.to_string(),
+            },
+            Vec::new(),
+            changes,
+            false,
+        ))
     }
 
     /// Preview several action groups run in order as **one** plan (#137).
@@ -2069,7 +2367,14 @@ impl App {
         }
 
         let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
-        Ok(self.plan(format!("Transform ({})", names.join(", ")), changes, false))
+        Ok(self.plan(
+            PlanMessage::Transform {
+                scope: names.join(", "),
+            },
+            Vec::new(),
+            changes,
+            false,
+        ))
     }
 
     /// Run action groups over a **staged plan** rather than over the files (#142).
@@ -2198,7 +2503,7 @@ impl App {
             changes.push(revised);
         }
 
-        Ok(self.plan(cleaned_up_description(&plan.description), changes, false))
+        Ok(self.cleaned_up_plan(plan, changes))
     }
 
     /// Build a plan that moves files into a folder structure rendered from a
@@ -2295,15 +2600,16 @@ impl App {
         // the description because the extras ride on another file's change, so
         // the diff has no row of their own to show.
         let carried = self.attach_folder_extras(&mut changes);
-        let carried_note = match carried {
-            0 => String::new(),
-            n => format!(" · carrying {}", plural_files(n)),
+        let notes = match carried {
+            0 => Vec::new(),
+            files => vec![PlanMessage::CarryingExtras { files }],
         };
         Ok(self.plan(
-            format!(
-                "{} by mask: {mask_pattern}{carried_note}",
-                if copy { "Copy" } else { "Reorganize" }
-            ),
+            PlanMessage::ReorganizeByMask {
+                copy,
+                mask: mask_pattern.to_string(),
+            },
+            notes,
             changes,
             // A copy empties nothing, so there is nothing to prune either way.
             prune_empty_dirs && !copy,
@@ -2393,13 +2699,11 @@ impl App {
             // staged row with nothing in it. The bar and the toast are the only
             // places that can say a few hundred KB is about to be written.
             if with_cover > 0 {
-                match with_cover {
-                    1 => "Edit tags + cover on 1 file".to_string(),
-                    n => format!("Edit tags + cover on {n} files"),
-                }
+                PlanMessage::EditTagsWithCover { files: with_cover }
             } else {
-                "Edit tags".to_string()
+                PlanMessage::EditTags
             },
+            Vec::new(),
             changes,
             false,
         ))
@@ -2469,7 +2773,7 @@ impl App {
                 });
             }
         }
-        Ok(self.plan("Clear tags".to_string(), changes, false))
+        Ok(self.plan(PlanMessage::ClearTags, Vec::new(), changes, false))
     }
 
     /// Preview embedding `cover` as the front cover of each `paths` file,
@@ -2523,7 +2827,7 @@ impl App {
                 copy: false,
             });
         }
-        Ok(self.plan("Embed cover art".to_string(), changes, false))
+        Ok(self.plan(PlanMessage::EmbedCover, Vec::new(), changes, false))
     }
 
     /// Preview replacing every selected file's whole image set with `covers`
@@ -2572,10 +2876,11 @@ impl App {
         }
         Ok(self.plan(
             if new.is_empty() {
-                "Remove cover art".to_string()
+                PlanMessage::RemoveCover
             } else {
-                format!("Set {} cover image(s)", new.len())
+                PlanMessage::SetCoverImages { images: new.len() }
             },
+            Vec::new(),
             changes,
             false,
         ))
@@ -2692,7 +2997,7 @@ impl App {
                 copy: false,
             });
         }
-        Ok(self.plan("Remove cover art".to_string(), changes, false))
+        Ok(self.plan(PlanMessage::RemoveCover, Vec::new(), changes, false))
     }
 
     /// Preview stripping one kind of tag block from every `paths` file that
@@ -2736,7 +3041,14 @@ impl App {
                 copy: false,
             });
         }
-        Ok(self.plan(format!("Remove {} tag", block_kind.name()), changes, false))
+        Ok(self.plan(
+            PlanMessage::RemoveBlock {
+                block: block_kind.name().to_string(),
+            },
+            Vec::new(),
+            changes,
+            false,
+        ))
     }
 
     /// Which tag blocks the selection can be converted *to* (#205), and which
@@ -2883,12 +3195,19 @@ impl App {
             });
         }
 
-        let description = match (source == target, revision) {
-            (true, Some(revision)) => format!("Convert to ID3v{}", revision.name()),
-            (true, None) => format!("Rewrite {} tag", target.name()),
-            (false, _) => format!("Convert {} to {}", source.name(), target.name()),
+        let message = match (source == target, revision) {
+            (true, Some(revision)) => PlanMessage::ConvertToRevision {
+                revision: revision.name().to_string(),
+            },
+            (true, None) => PlanMessage::RewriteBlock {
+                block: target.name().to_string(),
+            },
+            (false, _) => PlanMessage::ConvertBlock {
+                from: source.name().to_string(),
+                to: target.name().to_string(),
+            },
         };
-        Ok(self.plan(description, changes, false))
+        Ok(self.plan(message, Vec::new(), changes, false))
     }
 
     /// Export the embedded front cover of each `paths` file to an image file
@@ -3694,7 +4013,10 @@ impl App {
             }
         }
         Ok(self.plan(
-            import_description(selection.source.as_deref()),
+            PlanMessage::ImportRelease {
+                source: selection.source.clone(),
+            },
+            Vec::new(),
             changes,
             false,
         ))
@@ -3712,14 +4034,6 @@ fn cleaned_up_description(description: &str) -> String {
         return description.to_string();
     }
     format!("{description}{SUFFIX}")
-}
-
-/// "1 extra file" / "3 extra files", for the plan description.
-fn plural_files(count: usize) -> String {
-    match count {
-        1 => "1 extra file".to_string(),
-        n => format!("{n} extra files"),
-    }
 }
 
 /// Walk `folder` for files to carry with the tracks leaving it (#161).
@@ -3771,15 +4085,6 @@ fn collect_folder_extras(
 /// this description outlives the preview: it is what the undo journal shows
 /// months later, where "which of the three did this come from" is exactly the
 /// question. An unknown or absent source says nothing rather than guessing.
-fn import_description(source: Option<&str>) -> String {
-    match source {
-        Some("discogs") => "Import Discogs release".to_string(),
-        Some("musicbrainz") => "Import MusicBrainz release".to_string(),
-        Some("beatport") => "Import Beatport release".to_string(),
-        _ => "Import release".to_string(),
-    }
-}
-
 fn release_id_field(source: Option<&str>) -> TagField {
     match source {
         Some("musicbrainz") => TagField::Custom("MUSICBRAINZ_ALBUMID".to_string()),
@@ -4435,6 +4740,10 @@ impl PlanDto {
     fn to_change_plan(&self) -> ChangePlan {
         ChangePlan {
             description: self.description.clone(),
+            // The journal keeps this so History can be re-rendered in whatever
+            // language is chosen later (#268). JSON because this layer is the
+            // one that knows the shape; the core only stores the string.
+            message: encode_plan_message(self),
             prune_empty_dirs: self.prune_empty_dirs,
             changes: self
                 .changes
@@ -4501,9 +4810,12 @@ impl PlanDto {
 
 impl From<&tagrex_core::journal::AppliedBatch> for BatchDto {
     fn from(batch: &tagrex_core::journal::AppliedBatch) -> Self {
+        let stored = decode_plan_message(batch.message.as_deref());
         Self {
             id: batch.id.0,
             description: batch.description.clone(),
+            message: stored.as_ref().map(|s| s.message.clone()),
+            notes: stored.map(|s| s.notes).unwrap_or_default(),
             applied_at: batch.applied_at,
         }
     }
@@ -4994,6 +5306,8 @@ mod tests {
         // A hand-built plan aimed outside, as a crafted mask would produce.
         let plan = PlanDto {
             description: "sneaky".into(),
+            message: None,
+            notes: Vec::new(),
             prune_empty_dirs: false,
             locked_skipped: Vec::new(),
             changes: vec![FileChangeDto {
@@ -7911,6 +8225,120 @@ mod tests {
         // which patching the string rather than joining the segments would
         // have quietly turned into a path.
         assert!(list.contains("\nweird\\name.flac\n"), "{list}");
+    }
+
+    #[test]
+    fn a_batch_remembers_what_it_was_as_a_code_not_only_as_english() {
+        let dir = TempDir::new("batch-message");
+        let track = dir.tagged_flac("a.flac", "Plastic", "Sexy Groove");
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_rename("%artist% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        assert_eq!(plan.description, "Rename by mask: %artist% - %title%");
+        let message = plan.message.clone().expect("a plan describes itself");
+        assert_eq!(message.code, "plan.renameByMask");
+        assert_eq!(
+            message.args.get("mask").map(String::as_str),
+            Some("%artist% - %title%")
+        );
+
+        app.apply(&plan).unwrap();
+        // Read back through a fresh journal handle: what matters is that the
+        // code survived the round trip to SQLite, not that it stayed in memory.
+        let reopened = open_app(&dir);
+        let batch = reopened.history().unwrap().into_iter().next().unwrap();
+        assert_eq!(batch.description, "Rename by mask: %artist% - %title%");
+        let stored = batch.message.expect("the row kept the code");
+        assert_eq!(stored.code, "plan.renameByMask");
+        assert_eq!(
+            stored.args.get("mask").map(String::as_str),
+            Some("%artist% - %title%")
+        );
+    }
+
+    #[test]
+    fn a_plan_from_a_build_without_codes_still_applies_and_reads_back() {
+        let dir = TempDir::new("batch-message-old");
+        let track = dir.tagged_flac("a.flac", "Plastic", "Sexy Groove");
+        let mut app = open_app(&dir);
+
+        // What an older frontend would hand over: prose and nothing else.
+        let mut plan = app
+            .preview_rename("%artist% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        plan.message = None;
+        plan.notes = Vec::new();
+        app.apply(&plan).unwrap();
+
+        let reopened = open_app(&dir);
+        let batch = reopened.history().unwrap().into_iter().next().unwrap();
+        assert_eq!(batch.description, "Rename by mask: %artist% - %title%");
+        assert!(
+            batch.message.is_none(),
+            "nothing to decode, and nothing made up"
+        );
+    }
+
+    #[test]
+    fn a_reorganize_names_itself_by_code() {
+        let dir = TempDir::new("batch-message-move");
+        let track = dir.tagged_flac_at("album/a.flac", "Plastic", "Sexy Groove");
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_move(
+                "%albumartist%/%album%/%title%",
+                &[track],
+                None,
+                false,
+                false,
+            )
+            .unwrap();
+        assert_eq!(
+            plan.message.as_ref().map(|m| m.code.as_str()),
+            Some("plan.reorganizeByMask")
+        );
+        assert!(plan.notes.is_empty(), "nothing was carried along");
+    }
+
+    /// The two halves of a message have to say the same thing — the code and
+    /// values the interface renders from, and the English the journal keeps.
+    #[test]
+    fn a_messages_code_and_its_english_come_from_one_definition() {
+        let carrying = PlanMessage::CarryingExtras { files: 3 };
+        assert_eq!(carrying.code(), "plan.carryingExtras");
+        assert_eq!(carrying.count(), Some(3));
+        assert_eq!(carrying.english(), "carrying 3 extra files");
+        assert_eq!(
+            PlanMessage::CarryingExtras { files: 1 }.english(),
+            "carrying 1 extra file"
+        );
+
+        let convert = PlanMessage::ConvertBlock {
+            from: "ID3v2".to_string(),
+            to: "APE".to_string(),
+        };
+        assert_eq!(convert.english(), "Convert ID3v2 to APE");
+        let dto = MessageDto::from(&convert);
+        assert_eq!(dto.code, "plan.convertBlock");
+        assert_eq!(dto.args.get("from").map(String::as_str), Some("ID3v2"));
+        assert_eq!(dto.args.get("to").map(String::as_str), Some("APE"));
+        assert_eq!(dto.count, None);
+
+        // The source picks the code; an unknown one still has a sentence.
+        assert_eq!(
+            PlanMessage::ImportRelease {
+                source: Some("beatport".to_string())
+            }
+            .code(),
+            "plan.importBeatport"
+        );
+        assert_eq!(
+            PlanMessage::ImportRelease { source: None }.english(),
+            "Import release"
+        );
     }
 
     #[test]

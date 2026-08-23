@@ -86,6 +86,32 @@ export function list(items) {
   return LIST_FORMATS[lang].format(items);
 }
 
+// A message the backend composed as a code and its values (#268), rendered in
+// the current language: `{ code, args, count }`, where `count` is present only
+// when the wording turns on a number.
+//
+// A message whose code this catalogue has never heard of renders as nothing, so
+// the caller can fall back to the English the backend sent alongside — a code
+// from a newer backend must not put an identifier on screen.
+export function message(entry) {
+  if (!entry || !entry.code) return "";
+  if (!Object.prototype.hasOwnProperty.call(en, entry.code)) return "";
+  return entry.count === null || entry.count === undefined
+    ? t(entry.code, entry.args)
+    : tn(entry.code, entry.count, entry.args);
+}
+
+// What a plan or a journalled batch calls itself: its message and any notes,
+// joined the way the backend joins them. Falls back to the English the backend
+// sent — which is all a batch recorded before #268 has.
+export function planText(plan) {
+  if (!plan) return "";
+  const head = message(plan.message);
+  if (!head) return plan.description || "";
+  const notes = (plan.notes || []).map(message).filter(Boolean);
+  return [head, ...notes].join(" · ");
+}
+
 // The language in use — a resolved catalogue name, never "auto".
 export function currentLang() {
   return lang;

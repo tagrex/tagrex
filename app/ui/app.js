@@ -13,7 +13,7 @@ import {
 } from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
-import { applyStaticText, t as msg, tn } from "./js/i18n.js";
+import { applyStaticText, planText, t as msg, tn } from "./js/i18n.js";
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
@@ -1107,7 +1107,7 @@ function enterDiffState() {
   // the very thing that tells you months later what a batch did. So the head of
   // the description shows and the whole of it is a hover away.
   const plan = el("ab-plan");
-  const description = previewPlan.description || "";
+  const description = planText(previewPlan);
   plan.textContent = description ? ` · ${shortPlanDescription(description)}` : "";
   if (description && description !== shortPlanDescription(description)) {
     plan.title = description;
@@ -1213,8 +1213,8 @@ async function refreshHistory() {
     // Undo is icon-only now (#115) — reflect the batch count in the tooltip /
     // aria-label instead of overwriting the SVG with text.
     const label = batches.length
-      ? `Undo the last applied batch (${batches.length} available)`
-      : "Undo the last applied batch";
+      ? msg("topbar.undoCount", { batches: tn("unit.batch", batches.length) })
+      : msg("topbar.undo");
     undoBtn.title = label;
     undoBtn.setAttribute("aria-label", label);
   } catch (e) {

@@ -5,7 +5,7 @@
 // staged into the shared buffer and previewed with everything else, so nothing
 // here writes.
 import { confirmDialog, el, escapeHtml, ico, toast } from "./dom.js";
-import { list, t as tr, tn } from "./i18n.js";
+import { list, planText, t as tr, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import {
   edits,
@@ -336,7 +336,12 @@ async function previewConvertTagBlock(from, to, revision) {
     setPreviewPlan(plan);
     setPreviewSource("blocks");
     hooks.renderPreview(previewPlan);
-    toast(tr("toast.previewingWhat", { what: plan.description.toLowerCase(), files: tn("unit.file", plan.changes.length) }));
+    toast(
+      tr("toast.previewingWhat", {
+        what: planText(plan).toLowerCase(),
+        files: tn("unit.file", plan.changes.length),
+      })
+    );
   } catch (e) {
     toast(String(e), true);
   }

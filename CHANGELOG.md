@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   in step. What still answers in English is the text composed in Rust: the
   errors, the placeholder reference and the plan descriptions, filed as its own
   work.
+- **What a change was called is translated too, and stays translatable.** A
+  plan described itself in English composed in Rust — and that description is
+  written into the undo journal, so it would have frozen each row in whichever
+  language was active when the batch ran. A plan now carries a code and its
+  values beside the English, the interface renders it in the language of the
+  day, and the journal keeps both. A batch recorded by an earlier build shows
+  the English it was written with; nothing is guessed from the prose.
 
 - **A CUE sheet is an export format.** EXPORTER offers it beside the playlist,
   CSV, HTML, XML and the mask report: the selection becomes one sheet with a
