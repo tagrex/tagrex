@@ -1,0 +1,55 @@
+# Bundles for the native shell stands (#271).
+#
+# Deliberately separate from `Release build`: this one never tags, never
+# publishes a Release, and never touches `main`. It fires on the spike branches
+# themselves and leaves each bundle as a run artifact, which is enough to
+# download one and install it for a side-by-side comparison.
+#
+# The bundles are unsigned. macOS quarantines a downloaded .app — clear it once
+# with `xattr -dr com.apple.quarantine "TagRex Spike.app"`.
+
+name: Spike build
+
+on:
+  push:
+    branches:
+      - "spike/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spike-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swiftui:
+    name: SwiftUI stand (macOS arm64)
+    runs-on: macos-14
+    if: hashFiles('spikes/swiftui/Package.swift') != ''
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build the stand
+        run: ./spikes/swiftui/build.sh
+
+      # ditto rather than `zip`: it keeps the bundle's structure intact, which a
+      # plain zip of a .app on macOS does not reliably do.
+      - name: Pack the bundle
+        run: |
+          cd spikes/swiftui/build
+          ditto -c -k --sequesterRsrc --keepParent "TagRex Spike.app" TagRex-Spike-SwiftUI.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: swiftui-stand-macos-arm64
+          path: spikes/swiftui/build/TagRex-Spike-SwiftUI.zip
+          if-no-files-found: error
+          retention-days: 30
