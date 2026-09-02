@@ -42,10 +42,12 @@ echo "==> Bundle"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp ".build/release/TagRexSpike" "$app/Contents/MacOS/TagRexSpike"
-# Bundle.module resolves through Bundle.main.resourceURL, so the resource bundle
-# belongs beside the other resources rather than next to the executable.
-if [ -d ".build/release/TagRexSpike_TagRexSpike.bundle" ]; then
-  cp -R ".build/release/TagRexSpike_TagRexSpike.bundle" "$app/Contents/Resources/"
+# The fonts go straight into the bundle: SwiftPM's resource accessor resolves
+# against the build tree it was compiled in, which is fine on the machine that
+# built it and fatal on any other.
+if compgen -G "$fonts/*.ttf" > /dev/null; then
+  mkdir -p "$app/Contents/Resources/Fonts"
+  cp "$fonts"/*.ttf "$app/Contents/Resources/Fonts/"
 fi
 
 cat > "$app/Contents/Info.plist" <<'PLIST'

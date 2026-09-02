@@ -14,7 +14,10 @@ enum AppFonts {
     private(set) static var hasBundledFaces = false
 
     static func register() {
-        guard let urls = Bundle.module.urls(forResourcesWithExtension: "ttf", subdirectory: "Fonts"),
+        // Bundle.main, not Bundle.module: the generated accessor resolves
+        // against the build tree it was compiled in, so a bundle built by CI
+        // looked for its resources under /Users/runner and died on launch.
+        guard let urls = Bundle.main.urls(forResourcesWithExtension: "ttf", subdirectory: "Fonts"),
               !urls.isEmpty
         else { return }
 

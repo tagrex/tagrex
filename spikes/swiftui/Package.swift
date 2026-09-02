@@ -14,7 +14,6 @@ let package = Package(
         .executableTarget(
             name: "TagRexSpike",
             dependencies: ["CTagRex"],
-            resources: [.copy("Fonts")],
             linkerSettings: [
                 // The staticlib by full path, not -ltagrex_ffi: the crate also
                 // builds a cdylib into the same directory, the linker prefers a
