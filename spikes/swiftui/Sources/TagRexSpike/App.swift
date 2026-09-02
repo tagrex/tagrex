@@ -32,6 +32,7 @@ enum Mode: String, CaseIterable, Identifiable {
 }
 
 @main
+@MainActor
 struct TagRexSpikeApp: App {
     @State private var library = Library()
 
@@ -48,6 +49,7 @@ struct TagRexSpikeApp: App {
     }
 }
 
+@MainActor
 struct WorkspaceView: View {
     @Environment(Library.self) private var library
 
