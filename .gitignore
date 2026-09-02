@@ -2,3 +2,8 @@
 .DS_Store
 # Tauri-generated ACL schemas (regenerated from tauri.conf.json + capabilities)
 /app/gen
+
+# Spike stands: build output and the fonts build.sh fetches
+spikes/*/build/
+spikes/*/.build/
+spikes/swiftui/Sources/TagRexSpike/Fonts/*.ttf

@@ -1,0 +1,18 @@
+[package]
+name = "tagrex-ffi"
+description = "C ABI over the TagRex core, for the native shell spikes (read-only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "tagrex_ffi"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[dependencies]
+tagrex-core = { path = "../core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
