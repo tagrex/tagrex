@@ -27,7 +27,6 @@ jobs:
   swiftui:
     name: SwiftUI stand (macOS arm64)
     runs-on: macos-14
-    if: hashFiles('spikes/swiftui/Package.swift') != ''
     steps:
       - uses: actions/checkout@v4
 
