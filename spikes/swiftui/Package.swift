@@ -16,8 +16,11 @@ let package = Package(
             dependencies: ["CTagRex"],
             resources: [.copy("Fonts")],
             linkerSettings: [
-                // The staticlib built by `cargo build -p tagrex-ffi --release`.
-                .unsafeFlags(["-L../../target/release", "-ltagrex_ffi"])
+                // The staticlib by full path, not -ltagrex_ffi: the crate also
+                // builds a cdylib into the same directory, the linker prefers a
+                // .dylib to a .a, and the result is a bundle that hunts for an
+                // absolute path from whatever machine built it.
+                .unsafeFlags(["../../target/release/libtagrex_ffi.a"])
             ]
         ),
     ]
