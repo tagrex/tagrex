@@ -83,6 +83,7 @@ struct WorkspaceView: View {
                         choosingFolder = true
                     } label: {
                         Label(library.rootName, systemImage: "folder")
+                            .labelStyle(.titleAndIcon)
                     }
                     .help("Choose a folder to open")
 
@@ -128,7 +129,7 @@ struct WorkspaceView: View {
                 Task { await library.open(folder) }
             }
             .navigationTitle("TagRex")
-            .navigationSubtitle(library.rootName)
+            .navigationSubtitle(library.lastMessage)
             .task {
                 // Opening a folder by hand is a dialog; for screenshots, CI and
                 // a quick look at a known library, TAGREX_SPIKE_ROOT skips it.
@@ -136,6 +137,7 @@ struct WorkspaceView: View {
                       !path.isEmpty
                 else { return }
                 await library.open(URL(fileURLWithPath: path))
+                if let first = rows.first { selection = [first.id] }
             }
     }
 }
@@ -280,35 +282,78 @@ struct ModePanel: View {
                 editor
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: selection) { _, _ in drafts = [:] }
     }
 
+    /// Laid out by hand rather than with Form: the grouped form style trails the
+    /// value, sizes the label column per row and ignores the field's own frame,
+    /// so a column of fields came out ragged and right-aligned. This panel edits
+    /// a table and should read like one.
     private var editor: some View {
-        Form {
-            Section("Tag fields") {
-                ForEach(Field.allCases) { field in
-                    LabeledContent(field.label) {
-                        TextField(placeholder(field), text: binding(field))
-                            .textFieldStyle(.roundedBorder)
-                            .font(AppFonts.body)
-                            .onSubmit { stage(field) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                group("Tag fields") {
+                    ForEach(Field.allCases) { field in
+                        row(field.label) {
+                            TextField("", text: binding(field), prompt: prompt(field))
+                                .textFieldStyle(.roundedBorder)
+                                .font(AppFonts.body)
+                                .foregroundStyle(isStaged(field)
+                                                 ? AnyShapeStyle(.green)
+                                                 : AnyShapeStyle(.primary))
+                                .onSubmit { stage(field) }
+                        }
                     }
                 }
-            }
 
-            Section("File") {
-                LabeledContent("Format", value: shared { $0.format })
-                LabeledContent("Length", value: shared { $0.duration })
-                LabeledContent("Bitrate", value: shared { $0.bitrateKbps.map { "\($0) kbps" } ?? "—" })
-            }
+                group("File") {
+                    fact("Format", shared { $0.format })
+                    fact("Length", shared { $0.duration })
+                    fact("Bitrate", shared { $0.bitrateKbps.map { "\($0) kbps" } ?? "—" })
+                }
 
-            Section {
                 Text("Return stages a field. Nothing is written until Apply.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .padding(14)
         }
-        .formStyle(.grouped)
+    }
+
+    private func group<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    /// One panel row: a fixed label column, then the control filling the rest —
+    /// which is what keeps every field the same width.
+    private func row<Content: View>(
+        _ label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(label)
+                .frame(width: 92, alignment: .leading)
+                .foregroundStyle(.secondary)
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func fact(_ label: String, _ value: String) -> some View {
+        row(label) {
+            Text(value.isEmpty ? "—" : value)
+                .textSelection(.enabled)
+        }
     }
 
     private func binding(_ field: Field) -> Binding<String> {
@@ -335,14 +380,23 @@ struct ModePanel: View {
         return values.first
     }
 
-    /// The selection's shared value, or the app's own <multiple values>.
+    /// The selection's shared value, or the app's own <multiple values>. A
+    /// field showing this is left alone unless it is typed in, which is the
+    /// rule the web editor follows.
     private func shared(_ pick: (Track) -> String) -> String {
         let values = Set(tracks.map(pick))
-        return values.count == 1 ? (values.first ?? "") : "<multiple values>"
+        return values.count == 1 ? (values.first ?? "") : ""
     }
 
-    private func placeholder(_ field: Field) -> String {
-        tracks.count > 1 ? "<multiple values>" : field.label
+    /// What an empty field shows: the app's own <multiple values> when the
+    /// selection disagrees, nothing when it is simply empty.
+    private func prompt(_ field: Field) -> Text {
+        let values = Set(tracks.map { $0.value(for: field) })
+        return Text(values.count > 1 ? "<multiple values>" : "")
+    }
+
+    private func isStaged(_ field: Field) -> Bool {
+        tracks.contains { library.stagedValue(field, for: $0.id) != nil }
     }
 }
 
