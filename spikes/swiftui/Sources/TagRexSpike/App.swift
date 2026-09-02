@@ -41,8 +41,7 @@ struct TagRexSpikeApp: App {
 
     var body: some Scene {
         WindowGroup {
-            WorkspaceView()
-                .environment(library)
+            WorkspaceView(library: library)
                 .frame(minWidth: 980, minHeight: 620)
         }
         .defaultSize(width: 1240, height: 760)
@@ -52,7 +51,7 @@ struct TagRexSpikeApp: App {
 
 @MainActor
 struct WorkspaceView: View {
-    @Environment(Library.self) private var library
+    let library: Library
 
     @State private var mode: Mode = .tagger
     @State private var selection = Set<Track.ID>()
@@ -65,15 +64,21 @@ struct WorkspaceView: View {
     var body: some View {
         @Bindable var library = library
 
-        TrackTable(rows: rows, selection: $selection, sortOrder: $sortOrder)
+        TrackTable(
+            rows: rows,
+            selection: $selection,
+            sortOrder: $sortOrder,
+            staged: library.staged,
+            showsOldValues: library.showsOldValues
+        )
             .overlay(alignment: .bottom) {
-                if library.hasStagedPlan { ChangePlanBar() }
+                if library.hasStagedPlan { ChangePlanBar(library: library) }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                StatusBar(total: library.tracks.count, selected: selection.count)
+                StatusBar(library: library, total: library.tracks.count, selected: selection.count)
             }
             .inspector(isPresented: $showsInspector) {
-                ModePanel(mode: mode, selection: selection)
+                ModePanel(library: library, mode: mode, selection: selection)
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
             }
             .searchable(text: $library.filter, prompt: "Filter — try artist:aphex")
@@ -150,6 +155,13 @@ struct TrackTable: View {
     @Binding var selection: Set<Track.ID>
     @Binding var sortOrder: [KeyPathComparator<Track>]
 
+    /// Handed in rather than read from the environment. A TableColumn's content
+    /// closure escapes the view's environment chain, so an @Environment read
+    /// inside a cell trips the "no value for key" assertion the moment the table
+    /// re-lays out — which is what a click on a column header does.
+    let staged: [String: [Field: String]]
+    let showsOldValues: Bool
+
     var body: some View {
         Table(rows, selection: $selection, sortOrder: $sortOrder) {
             TableColumn("File", value: \.file) { track in
@@ -157,39 +169,46 @@ struct TrackTable: View {
             }
             .width(min: 180, ideal: 300)
 
-            TableColumn("Artist", value: \.artist) { DiffCell(track: $0, field: .artist) }
+            TableColumn("Artist", value: \.artist) { cell($0, .artist) }
                 .width(min: 90, ideal: 150)
-            TableColumn("Title", value: \.title) { DiffCell(track: $0, field: .title) }
+            TableColumn("Title", value: \.title) { cell($0, .title) }
                 .width(min: 90, ideal: 190)
-            TableColumn("Album", value: \.album) { DiffCell(track: $0, field: .album) }
+            TableColumn("Album", value: \.album) { cell($0, .album) }
                 .width(min: 90, ideal: 160)
-            TableColumn("Year", value: \.year) { DiffCell(track: $0, field: .year) }
+            TableColumn("Year", value: \.year) { cell($0, .year) }
                 .width(56)
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
     }
+
+    private func cell(_ track: Track, _ field: Field) -> DiffCell {
+        let stagedValue = staged[track.id]?[field]
+        return DiffCell(
+            value: stagedValue ?? track.value(for: field),
+            old: stagedValue == nil ? nil : track.value(for: field),
+            showsOld: showsOldValues
+        )
+    }
 }
 
 /// One cell, in all three states the app knows: unchanged, staged, and staged
-/// with the old value beside it.
-@MainActor
+/// with the old value beside it. A plain value view — it reads nothing from the
+/// environment, which is what keeps the table from crashing when it re-sorts.
 struct DiffCell: View {
-    let track: Track
-    let field: Field
-
-    @Environment(Library.self) private var library
+    /// What the cell shows: the staged value when there is one, else the file's.
+    let value: String
+    /// The file's own value, present only when the cell is staged.
+    let old: String?
+    let showsOld: Bool
 
     var body: some View {
-        let staged = library.stagedValue(field, for: track.id)
-        let old = track.value(for: field)
-
         HStack(spacing: 6) {
-            Text(displayed(staged ?? old))
+            Text(displayed(value))
                 .font(AppFonts.body)
-                .foregroundStyle(colour(staged: staged != nil, value: staged ?? old))
-                .fontWeight(staged == nil ? .regular : .semibold)
+                .foregroundStyle(colour)
+                .fontWeight(old == nil ? .regular : .semibold)
 
-            if staged != nil, library.showsOldValues {
+            if let old, showsOld {
                 Text(displayed(old))
                     .font(.caption)
                     .strikethrough()
@@ -198,12 +217,12 @@ struct DiffCell: View {
         }
     }
 
-    private func displayed(_ value: String) -> String {
-        value.isEmpty ? "—" : value
+    private func displayed(_ text: String) -> String {
+        text.isEmpty ? "—" : text
     }
 
-    private func colour(staged: Bool, value: String) -> AnyShapeStyle {
-        if staged { return AnyShapeStyle(.green) }
+    private var colour: AnyShapeStyle {
+        if old != nil { return AnyShapeStyle(.green) }
         return value.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary)
     }
 }
@@ -211,7 +230,7 @@ struct DiffCell: View {
 /// The gate. Nothing reaches disk until this bar is used.
 @MainActor
 struct ChangePlanBar: View {
-    @Environment(Library.self) private var library
+    let library: Library
 
     var body: some View {
         @Bindable var library = library
@@ -241,10 +260,9 @@ struct ChangePlanBar: View {
 
 @MainActor
 struct ModePanel: View {
+    let library: Library
     let mode: Mode
     let selection: Set<Track.ID>
-
-    @Environment(Library.self) private var library
     @State private var subtab = 1
     @State private var drafts: [Field: String] = [:]
 
@@ -404,10 +422,9 @@ struct ModePanel: View {
 
 @MainActor
 struct StatusBar: View {
+    let library: Library
     let total: Int
     let selected: Int
-
-    @Environment(Library.self) private var library
 
     var body: some View {
         VStack(spacing: 0) {
