@@ -69,6 +69,26 @@ struct WorkspaceView: View {
 
     private var rows: [Track] { library.visibleTracks.sorted(using: sortOrder) }
 
+    /// What the panel edits and the status bar counts: the selection narrowed to
+    /// the rows the filter leaves on screen.
+    ///
+    /// The set itself is never pruned. The filter runs on every keystroke, so
+    /// pruning would let one character destroy a hand-built selection with no
+    /// way back — and the web UI holds the same line: a re-render "never
+    /// silently wipes or widens the selection". But the scope of an edit has to
+    /// be something the user can see. Narrowing here keeps both: type into the
+    /// filter and the panel follows what is on screen, clear it and the whole
+    /// selection is still there. Staged edits are keyed by file and are not
+    /// touched either way — a row that scrolls out of the filter keeps its
+    /// staged change and still applies.
+    private var visibleSelection: Set<Track.ID> {
+        selection.intersection(rows.lazy.map(\.id))
+    }
+
+    /// Selected rows the filter is currently hiding. Reported rather than
+    /// silently dropped, so an empty panel with rows selected is explained.
+    private var hiddenSelectionCount: Int { selection.count - visibleSelection.count }
+
     var body: some View {
         @Bindable var library = library
 
@@ -83,10 +103,15 @@ struct WorkspaceView: View {
                 if library.hasStagedPlan { ChangePlanBar(library: library) }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                StatusBar(library: library, total: library.tracks.count, selected: selection.count)
+                StatusBar(
+                    library: library,
+                    total: library.tracks.count,
+                    selected: visibleSelection.count,
+                    hidden: hiddenSelectionCount
+                )
             }
             .inspector(isPresented: $showsInspector) {
-                ModePanel(library: library, mode: mode, selection: selection)
+                ModePanel(library: library, mode: mode, selection: visibleSelection)
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
                     // Declared on the inspector, not beside the other items: an
                     // inspector's own toolbar content is what claims the
@@ -530,6 +555,9 @@ struct StatusBar: View {
     let library: Library
     let total: Int
     let selected: Int
+    /// Selected but filtered off screen. Named in the count so an empty panel
+    /// with a selection behind it is not a mystery.
+    let hidden: Int
 
     var body: some View {
         VStack(spacing: 0) {
@@ -546,7 +574,7 @@ struct StatusBar: View {
                      ? "Playback is out of scope for this build"
                      : library.lastMessage)
                 Spacer()
-                Text(selected > 0 ? "\(selected) of \(total) selected" : "\(total) tracks")
+                Text(summary)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -554,5 +582,20 @@ struct StatusBar: View {
             .padding(.vertical, 7)
         }
         .background(.bar)
+    }
+
+    /// The right-hand count. It names the hidden part of the selection rather
+    /// than leaving the panel to go quiet for no visible reason.
+    private var summary: String {
+        switch (selected, hidden) {
+        case (0, 0):
+            "\(total) tracks"
+        case (0, let hidden):
+            "\(hidden) selected, all hidden by the filter"
+        case (let selected, 0):
+            "\(selected) of \(total) selected"
+        case (let selected, let hidden):
+            "\(selected) of \(total) selected · \(hidden) hidden by the filter"
+        }
     }
 }
