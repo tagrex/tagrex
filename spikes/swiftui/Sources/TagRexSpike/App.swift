@@ -296,7 +296,7 @@ struct TrackTable: View {
     var body: some View {
         Table(rows, selection: $selection, sortOrder: $sortOrder) {
             TableColumn("File", value: \.file) { track in
-                Text(track.file).font(AppFonts.mono)
+                Text(track.file).font(AppFonts.body)
             }
             .width(min: 180, ideal: 300)
 
