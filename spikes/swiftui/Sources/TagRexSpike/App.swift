@@ -105,6 +105,7 @@ struct WorkspaceView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 StatusBar(
                     library: library,
+                    shown: rows.count,
                     total: library.tracks.count,
                     selected: visibleSelection.count,
                     hidden: hiddenSelectionCount
@@ -553,11 +554,18 @@ struct ModePanel: View {
 @MainActor
 struct StatusBar: View {
     let library: Library
+    /// Rows the filter leaves in the table — the denominator, since that is what
+    /// a count in the table is counted out of.
+    let shown: Int
+    /// The whole open folder. Named only when the filter is holding some of it
+    /// back, so the number the denominator dropped from is still readable.
     let total: Int
     let selected: Int
     /// Selected but filtered off screen. Named in the count so an empty panel
     /// with a selection behind it is not a mystery.
     let hidden: Int
+
+    private var isFiltered: Bool { shown != total }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -589,13 +597,13 @@ struct StatusBar: View {
     private var summary: String {
         switch (selected, hidden) {
         case (0, 0):
-            "\(total) tracks"
+            isFiltered ? "\(shown) of \(total) tracks" : "\(total) tracks"
         case (0, let hidden):
             "\(hidden) selected, all hidden by the filter"
         case (let selected, 0):
-            "\(selected) of \(total) selected"
+            "\(selected) of \(shown) selected"
         case (let selected, let hidden):
-            "\(selected) of \(total) selected · \(hidden) hidden by the filter"
+            "\(selected) of \(shown) selected · \(hidden) hidden by the filter"
         }
     }
 }
