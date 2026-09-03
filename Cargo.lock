@@ -4005,20 +4005,33 @@ dependencies = [
 name = "tagrex"
 version = "0.15.0"
 dependencies = [
- "base64 0.22.1",
  "open",
  "rodio",
+ "serde",
+ "serde_json",
+ "tagrex-commands",
+ "tagrex-core",
+ "tagrex-providers-beatport",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-clipboard-manager",
+ "tauri-plugin-dialog",
+ "tauri-plugin-single-instance",
+ "thiserror 1.0.69",
+ "trash",
+]
+
+[[package]]
+name = "tagrex-commands"
+version = "0.15.0"
+dependencies = [
+ "base64 0.22.1",
  "serde",
  "serde_json",
  "tagrex-core",
  "tagrex-providers-beatport",
  "tagrex-providers-discogs",
  "tagrex-providers-musicbrainz",
- "tauri",
- "tauri-build",
- "tauri-plugin-clipboard-manager",
- "tauri-plugin-dialog",
- "tauri-plugin-single-instance",
  "thiserror 1.0.69",
  "trash",
 ]
