@@ -82,6 +82,18 @@ struct WorkspaceView: View {
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
             }
             .searchable(text: $library.filter, prompt: "Filter — try artist:aphex")
+            // The window title is dropped from the toolbar rather than shown:
+            // it landed between the folder group and the centred picker, in the
+            // title face, saying the app's own name — which the menu bar
+            // already does. The folder is named by the button that opens it.
+            .toolbar(removing: .title)
+            // Tahoe welds adjacent toolbar items into one glass capsule and
+            // breaks it wherever a ToolbarSpacer sits, so the spacers are the
+            // grouping. Choosing a folder and re-reading it are one subject and
+            // share a capsule; undo and the panel toggle have nothing to do with
+            // each other and get one each. A spacer inside .navigation does not
+            // split — that placement is a single titlebar accessory — which is
+            // why the leading pair is still written as a group.
             .toolbar {
                 ToolbarItemGroup(placement: .navigation) {
                     Button {
@@ -113,7 +125,7 @@ struct WorkspaceView: View {
                     .labelsHidden()
                 }
 
-                ToolbarItemGroup {
+                ToolbarItem {
                     Button {
                         Task { await library.undo() }
                     } label: {
@@ -121,12 +133,17 @@ struct WorkspaceView: View {
                     }
                     .disabled(library.root == nil || library.isBusy)
                     .help("Undo the last applied batch")
+                }
 
+                ToolbarSpacer(.fixed)
+
+                ToolbarItem {
                     Button {
                         showsInspector.toggle()
                     } label: {
                         Label("Panel", systemImage: "sidebar.trailing")
                     }
+                    .help("Show or hide the panel")
                 }
             }
             .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
@@ -134,7 +151,6 @@ struct WorkspaceView: View {
                 Task { await library.open(folder) }
             }
             .navigationTitle("TagRex")
-            .navigationSubtitle(library.lastMessage)
             .task {
                 // Opening a folder by hand is a dialog; for screenshots, CI and
                 // a quick look at a known library, TAGREX_SPIKE_ROOT skips it.

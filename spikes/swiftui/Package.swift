@@ -8,7 +8,15 @@ import PackageDescription
 
 let package = Package(
     name: "TagRexSpike",
-    platforms: [.macOS(.v14)],
+    // Tahoe, not v14: the toolbar is built out of ToolbarSpacer and the
+    // shared-background grouping it implies, both macOS 26. Guarding them
+    // with #available would not help — an older SDK cannot compile them at
+    // all — and a stand that exists to be compared against the 26 look has
+    // no reason to run anywhere else.
+    // The string form, not .v26: that enum case wants tools-version 6.2,
+    // and raising the tools version would flip the target into Swift 6
+    // language mode as a side effect.
+    platforms: [.macOS("26.0")],
     targets: [
         .target(name: "CTagRex"),
         .executableTarget(
