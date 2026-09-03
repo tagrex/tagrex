@@ -11,13 +11,17 @@ enum Mode: String, CaseIterable, Identifiable {
 
     var id: Self { self }
 
+    /// The web UI's own five names, in its own agent-noun pattern — the tab is
+    /// a verb applied to the table, so it is named for the thing that does it.
+    /// Shortening the last two to "Duplicates" and "Export" bought a narrower
+    /// picker and broke the row.
     var title: String {
         switch self {
         case .tagger: "Tagger"
         case .renamer: "Renamer"
         case .generator: "Generator"
-        case .deduplicator: "Duplicates"
-        case .exporter: "Export"
+        case .deduplicator: "Deduplicator"
+        case .exporter: "Exporter"
         }
     }
 
@@ -58,6 +62,10 @@ struct WorkspaceView: View {
     @State private var sortOrder = [KeyPathComparator(\Track.file)]
     @State private var showsInspector = true
     @State private var choosingFolder = false
+    /// Bumped to ask the filter field for the keyboard. A counter rather
+    /// than a Bool: focus is an event, and a Bool that is already true
+    /// cannot fire a second time.
+    @State private var focusFilter = 0
 
     private var rows: [Track] { library.visibleTracks.sorted(using: sortOrder) }
 
@@ -80,12 +88,35 @@ struct WorkspaceView: View {
             .inspector(isPresented: $showsInspector) {
                 ModePanel(library: library, mode: mode, selection: selection)
                     .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
+                    // Declared on the inspector, not beside the other items: an
+                    // inspector's own toolbar content is what claims the
+                    // titlebar strip above its column, and with nothing claiming
+                    // it every trailing item packs to the far edge of the window
+                    // — which is how the filter ended up over the panel. It is
+                    // also where the toggle belongs, above the thing it hides.
+                    .toolbar {
+                        ToolbarItem {
+                            Button {
+                                showsInspector.toggle()
+                            } label: {
+                                Label("Panel", systemImage: "sidebar.trailing")
+                            }
+                            .help("Show or hide the panel")
+                        }
+                    }
             }
-            .searchable(text: $library.filter, prompt: "Filter — try artist:aphex")
             // The window title is dropped from the toolbar rather than shown:
             // it landed between the folder group and the centred picker, in the
             // title face, saying the app's own name — which the menu bar
             // already does. The folder is named by the button that opens it.
+            .background {
+                // Command-F, which .searchable used to provide. Zero-sized and
+                // behind everything: it exists for the shortcut alone.
+                Button("Filter") { focusFilter += 1 }
+                    .keyboardShortcut("f", modifiers: .command)
+                    .opacity(0)
+                    .frame(width: 0, height: 0)
+            }
             .toolbar(removing: .title)
             // Tahoe welds adjacent toolbar items into one glass capsule and
             // breaks it wherever a ToolbarSpacer sits, so the spacers are the
@@ -125,6 +156,20 @@ struct WorkspaceView: View {
                     .labelsHidden()
                 }
 
+                // The filter is a toolbar item of its own rather than
+                // .searchable: that modifier is wired to the far trailing corner
+                // of the window, which is above the inspector column, so the
+                // control that filters the table sat over the panel — and no
+                // arrangement of the other items moves it, which is why this one
+                // is built by hand.
+                ToolbarItem {
+                    FilterField(text: $library.filter, focusRequest: focusFilter)
+                        .frame(width: 230)
+                }
+                .sharedBackgroundVisibility(.hidden)
+
+                ToolbarSpacer(.fixed)
+
                 ToolbarItem {
                     Button {
                         Task { await library.undo() }
@@ -135,16 +180,6 @@ struct WorkspaceView: View {
                     .help("Undo the last applied batch")
                 }
 
-                ToolbarSpacer(.fixed)
-
-                ToolbarItem {
-                    Button {
-                        showsInspector.toggle()
-                    } label: {
-                        Label("Panel", systemImage: "sidebar.trailing")
-                    }
-                    .help("Show or hide the panel")
-                }
             }
             .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
                 guard case .success(let folder) = result else { return }
@@ -160,6 +195,60 @@ struct WorkspaceView: View {
                 await library.open(URL(fileURLWithPath: path))
                 if let first = rows.first { selection = [first.id] }
             }
+    }
+}
+
+/// The filter field. An AppKit search field rather than a SwiftUI TextField:
+/// SwiftUI hosts toolbar content outside the view hierarchy that declares it,
+/// and a TextField put there never becomes first responder — a click sets a
+/// caret in it, every keystroke after that goes to the table, which type-selects
+/// on them, and @FocusState from the declaring view does not reach across the
+/// boundary to fix it. NSSearchField owns its responder handling, so it works in
+/// the one place the field has to be. It also brings its own bezel and its own
+/// clear button, which is why the item hides the shared glass behind it.
+@MainActor
+struct FilterField: NSViewRepresentable {
+    @Binding var text: String
+    /// Every increment is one request for the keyboard.
+    let focusRequest: Int
+
+    func makeNSView(context: Context) -> NSSearchField {
+        let field = NSSearchField()
+        field.placeholderString = "Filter — try artist:aphex"
+        field.delegate = context.coordinator
+        // Filter as it is typed; the table is in memory and the plan is staged,
+        // so there is nothing to defer until Return.
+        field.sendsSearchStringImmediately = true
+        field.sendsWholeSearchString = false
+        return field
+    }
+
+    func updateNSView(_ field: NSSearchField, context: Context) {
+        context.coordinator.text = $text
+        // Only when they differ: assigning while the user types moves the caret
+        // to the end of the line.
+        if field.stringValue != text { field.stringValue = text }
+
+        if context.coordinator.servedRequest != focusRequest {
+            context.coordinator.servedRequest = focusRequest
+            // Not on the first update — that would steal the keyboard from the
+            // table the moment the window opens.
+            if focusRequest > 0 { field.window?.makeFirstResponder(field) }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(text: $text) }
+
+    final class Coordinator: NSObject, NSSearchFieldDelegate {
+        var text: Binding<String>
+        var servedRequest = 0
+
+        init(text: Binding<String>) { self.text = text }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let field = notification.object as? NSSearchField else { return }
+            text.wrappedValue = field.stringValue
+        }
     }
 }
 
