@@ -94,7 +94,10 @@ function saveFilterMode() {
 const TABLE_FONT_STORAGE_KEY = "tagrex.tableFontPx";
 const TABLE_FONT_MIN = 10;
 const TABLE_FONT_MAX = 20;
-const TABLE_FONT_DEFAULT = 10;
+// First-run default (#274): a touch above the 10px floor so the table is a
+// little more legible out of the box while keeping its dense character. Anyone
+// who wants tighter drags it back down in Settings › Display.
+const TABLE_FONT_DEFAULT = 11;
 function clampTableFont(px) {
   return Math.min(TABLE_FONT_MAX, Math.max(TABLE_FONT_MIN, px || TABLE_FONT_DEFAULT));
 }

@@ -1385,8 +1385,10 @@ td.error {
    across every column so track numbers, filenames and tag values line up. */
 #tracks tbody td {
   font-family: var(--font-mono-bundled);
-  /* Compact rows; size is user-adjustable (Settings › Display), default 10px. */
-  font-size: var(--table-font-size, var(--text-2xs));
+  /* Compact rows; size is user-adjustable (Settings › Display), default 11px
+     (#274). The fallback only paints before prefs.js sets --table-font-size, so
+     it tracks the JS default to avoid a first-frame size jump. */
+  font-size: var(--table-font-size, var(--text-xs));
   padding: 2px 10px;
 }
 

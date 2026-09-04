@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The file table starts one point larger.** The first-run default size is now
+  11px instead of 10px — a touch more legible out of the box while keeping the
+  dense, information-first character. The Settings › Display control (10–20px)
+  is unchanged, so anyone who prefers it tighter drags it straight back to 10.
+
 ## [0.14.0] - 2026-08-23
 
 This release is about the words. The interface no longer speaks only English:
