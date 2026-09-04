@@ -344,6 +344,9 @@ function applyRepeatMode(mode) {
 let coverGen = 0;
 async function setPlayerCover(path) {
   const gen = ++coverGen;
+  // Hide until we know there is art, so a track with no cover never flashes an
+  // empty tile and a switch never shows the previous track's cover (#286).
+  plCover.hidden = true;
   try {
     // The track's EMBEDDED front cover, via the same call the editor's cover well
     // uses (read_cover_summary) — read_cover_image reads an external image file to
@@ -353,7 +356,7 @@ async function setPlayerCover(path) {
     const front = summary && summary.samples && summary.samples[0];
     if (front && front.data_base64) {
       plCoverImg.src = `data:${front.mime};base64,${front.data_base64}`;
-      plCover.classList.add("has-art");
+      plCover.hidden = false; // reveal only when there is a cover to show
       return;
     }
   } catch (e) {
@@ -363,7 +366,7 @@ async function setPlayerCover(path) {
 }
 function clearPlayerCover() {
   coverGen++; // cancel any in-flight read
-  plCover.classList.remove("has-art");
+  plCover.hidden = true;
   plCoverImg.removeAttribute("src");
 }
 

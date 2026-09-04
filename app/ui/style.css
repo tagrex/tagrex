@@ -1987,8 +1987,9 @@ body.show-checkbox tr.playing td.sel {
 }
 
 /* Now-playing cover thumbnail (#275): a small square at the head of the player,
-   the visual anchor a player wants. Shows the track's embedded front cover, or a
-   neutral note tile when there is none. */
+   the visual anchor a player wants. Shows the track's embedded front cover; when
+   the track carries none the element is hidden entirely (#286) rather than
+   standing in a placeholder tile. */
 .pl-cover {
   flex: 0 0 auto;
   width: 34px;
@@ -1997,27 +1998,17 @@ body.show-checkbox tr.playing td.sel {
   overflow: hidden;
   border: 1px solid var(--border);
   background: var(--panel);
-  display: grid;
-  place-items: center;
+}
+/* An author `display` beats the UA `[hidden]` rule, so the attribute needs its
+   own display:none to actually hide the tile (same guard as `.lib .path`). */
+.pl-cover[hidden] {
+  display: none;
 }
 .pl-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-}
-/* Placeholder icon shown only when the track carries no embedded art. */
-.pl-cover-ph {
-  width: 17px;
-  height: 17px;
-  color: var(--muted);
-  opacity: 0.7;
-}
-.pl-cover.has-art .pl-cover-ph {
-  display: none;
-}
-.pl-cover:not(.has-art) img {
-  display: none;
 }
 
 /* The player comes and goes with playback inside a bar that is already there,
