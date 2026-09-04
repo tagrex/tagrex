@@ -630,14 +630,18 @@
            Preview edits, which puts it in the middle of the bar. -->
       <div id="player" hidden>
         <!-- Now-playing cover (#275): the one element that anchors the bar as a
-             player. Reads the playing track's embedded front cover; falls back to
-             a neutral note tile when the track carries none. -->
+             player. Reads the playing track's embedded front cover; hidden
+             entirely (#286) when the track carries none. -->
         <span id="pl-cover" class="pl-cover" aria-hidden="true" hidden><img id="pl-cover-img" alt="" /></span>
-        <button id="pl-prev" class="icon" data-i18n-title="player.prev" title="Previous track" data-i18n-aria-label="player.prev" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
-        <button id="pl-toggle" class="icon" data-i18n-title="player.toggle" title="Play / pause" data-i18n-aria-label="player.toggle" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
-        <button id="pl-stop" class="icon" data-i18n-title="player.stop" title="Stop" data-i18n-aria-label="player.stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
-        <button id="pl-next" class="icon" data-i18n-title="player.next" title="Next track" data-i18n-aria-label="player.next" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
-        <button id="pl-repeat" class="icon" data-i18n-title="player.repeatOff" title="Repeat off" data-i18n-aria-label="player.repeatOff" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
+        <!-- Transport cluster (#276): grouped tight so the five glyphs read as one
+             control, with play/pause emphasised as the primary. -->
+        <div class="pl-transport">
+          <button id="pl-prev" class="icon" data-i18n-title="player.prev" title="Previous track" data-i18n-aria-label="player.prev" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
+          <button id="pl-toggle" class="icon" data-i18n-title="player.toggle" title="Play / pause" data-i18n-aria-label="player.toggle" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
+          <button id="pl-stop" class="icon" data-i18n-title="player.stop" title="Stop" data-i18n-aria-label="player.stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
+          <button id="pl-next" class="icon" data-i18n-title="player.next" title="Next track" data-i18n-aria-label="player.next" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
+          <button id="pl-repeat" class="icon" data-i18n-title="player.repeatOff" title="Repeat off" data-i18n-aria-label="player.repeatOff" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
+        </div>
         <!-- The title sits ABOVE the seek bar rather than beside it: squeezed into
              a column next to the waveform it was ellipsised after a few words,
              and the one thing a player has to be able to say is what is playing.

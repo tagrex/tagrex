@@ -27,6 +27,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   release's track list the artist was grey next to the title; it now takes the
   accent colour, so a various-artists release scans at a glance — title in the
   text colour, artist in green. The dot between them stays neutral.
+- **The transport controls read as one cluster.** The player's prev / play-pause
+  / stop / next / repeat glyphs are grouped tightly instead of spread evenly
+  across the bar, and play-pause now leads them with an accent fill rather than
+  looking like one more flat glyph — so the primary control is obvious and the
+  row reads as a player.
 
 ### Added
 

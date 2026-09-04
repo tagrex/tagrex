@@ -2079,6 +2079,34 @@ body.show-checkbox tr.playing td.sel {
   height: 16px;
 }
 
+/* Transport cluster (#276): the five glyphs group tightly so the row reads as
+   one control rather than five equal squares spread across the bar. The 10px
+   player gap still separates the cluster from the cover and the title. */
+.pl-transport {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* Play/pause is the primary control, so it leads the cluster with an accent
+   fill instead of the flat glyph the rest wear (#276). Two ids to outrank the
+   flat `#player .icon` base + hover; `#sb-play` is the same control while the
+   row is down, so it matches. Hover keeps the accent and just brightens, rather
+   than falling back to the grey row-hover the flat buttons use. */
+#player #pl-toggle,
+#sb-play {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-radius: 999px;
+}
+#player #pl-toggle:hover:not(:disabled),
+#player #pl-toggle:focus-visible,
+#sb-play:hover:not(:disabled),
+#sb-play:focus-visible {
+  background: var(--accent);
+  filter: brightness(1.08);
+}
+
 /* Toolbar divider: separates the view controls from the one control that acts
    on the selection, so the row's two halves don't read as one list. */
 .tb-div {
