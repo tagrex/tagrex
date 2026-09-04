@@ -23,7 +23,7 @@ const DELAY = 400;
 
 // Where a title belongs to a control rather than to content.
 const SCOPE =
-  "header.topbar, .modebar, .view-tabs, footer.statusbar, .mode-panel, .diff-actionbar";
+  "header.topbar, .view-tabs, footer.statusbar, .mode-panel, .diff-actionbar";
 
 let timer = 0;
 let anchor = null;

@@ -1741,24 +1741,24 @@ el("panel-toggle").addEventListener("click", () => {
   document.body.classList.toggle("panel-collapsed");
 });
 
-// Drop the mode-tab labels to icon-only when the labelled tabs would overflow the
-// mode bar (#116). Measured with labels shown (compact removed first), so the
+// Drop the mode-tab labels to icon-only when the labelled tabs no longer fit the
+// top bar (#116, #280). Measured with labels shown (compact removed first), so the
 // natural width is the yardstick — no oscillation. Keeps a fifth/longer mode
 // (DEDUPLICATOR) from ever truncating the bar.
 function updateCompactTabs() {
-  const bar = document.querySelector(".modebar");
+  const bar = document.querySelector(".topbar");
   const tabs = document.querySelector(".mode-tabs");
   if (!bar || !tabs) return;
   document.body.classList.remove("compact-tabs");
-  // Measure against the viewport, not bar.clientWidth — the bar stretches to its
-  // content when it overflows, which would hide the overflow from the check.
-  const toggle = el("panel-toggle");
-  const avail = document.documentElement.clientWidth - (toggle ? toggle.offsetWidth : 0) - 48;
-  if (tabs.scrollWidth > avail) document.body.classList.add("compact-tabs");
+  // The tabs share the top bar with the brand, the path box and the action icons
+  // now (#280). On a shrink the spacer collapses and the path box gives way to its
+  // floor; once both are spent the bar overflows its own width — that overflow,
+  // measured with labels shown, is the signal to fall back to icon-only tabs.
+  if (bar.scrollWidth > bar.clientWidth) document.body.classList.add("compact-tabs");
 }
-// The mode bar stretches to its content when it overflows, so observing it never
-// fires on a viewport shrink — track the viewport (the root element) instead, plus
-// the window resize event, and run once at startup.
+// The bar can overflow rather than shrink, so observing it never fires on a
+// viewport shrink — track the viewport (the root element) instead, plus the window
+// resize event, and run once at startup.
 window.addEventListener("resize", updateCompactTabs);
 if (window.ResizeObserver) {
   new ResizeObserver(updateCompactTabs).observe(document.documentElement);

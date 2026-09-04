@@ -319,8 +319,13 @@ body {
      a spacer, so with the basis left to the content the whole thing resized
      every time the indicator swapped for the field — the layout visibly shifted
      on a click. At a fixed basis the swap happens inside a box that doesn't
-     move; a narrow window still shrinks it. */
-  flex: 1 1 620px;
+     move; a narrow window still shrinks it. Now the tabs sit here too (#280):
+     the box no longer grows (the spacer between the tabs and the path takes the
+     slack), and a min-width floor keeps the path usable and makes the row
+     overflow — the signal that drops the tab labels to icon-only — fire while it
+     still is. */
+  flex: 0 1 620px;
+  min-width: 240px;
   max-width: 620px;
 }
 
@@ -726,20 +731,13 @@ input[type="search"]::-webkit-search-cancel-button {
 }
 
 /* ---- mode tabs ---- */
-.modebar {
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-  /* Match the top bar's 14px horizontal inset so the mode tabs line up under the
-     brand and the collapse toggle's right edge lines up with the gear above. */
-  padding: 0 14px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel);
-}
-
 .mode-tabs {
   display: flex;
   gap: 2px;
+  /* Sharing the top bar now (#280): the tabs hold their natural width and never
+     shrink, so the labels stay put until the width check swaps them for
+     icon-only (body.compact-tabs) — the path box and the spacer give way first. */
+  flex: 0 0 auto;
 }
 
 .mode-tab {
@@ -785,10 +783,6 @@ body.compact-tabs .mode-tab .lbl {
 }
 body.compact-tabs .mode-tab {
   padding: var(--space-4);
-}
-
-.modebar #panel-toggle {
-  align-self: center;
 }
 
 /* ---- work area: table (left) + mode panel (right) ---- */

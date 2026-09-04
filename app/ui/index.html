@@ -60,10 +60,24 @@
       <symbol id="i-import" viewBox="0 0 16 16"><line x1="3" y1="2.8" x2="3" y2="13.2"/><line x1="13.2" y1="8" x2="6" y2="8"/><path d="M9 5 6 8 9 11"/></symbol>
     </svg>
 
-    <!-- Top bar: brand, library path + open, undo. The library path is the app's
-         single source of files (the scanner recurses into subfolders). -->
+    <!-- Top bar: brand, mode tabs, library path + open, undo/settings — one strip
+         (#280). The mode tabs used to sit in a second `modebar` row below; folding
+         them up here gives the file table that row back. The library path is the
+         app's single source of files (the scanner recurses into subfolders). -->
     <header class="topbar">
       <div class="brand">/tagrex/</div>
+      <!-- Mode tabs — the file table stays put; only the right-hand panel swaps.
+           Table is the subject (noun), each tab is a verb applied to it. They
+           share the top bar now (#280); labels drop to icon-only under a width
+           threshold (body.compact-tabs, #116) so a longer mode never crowds it. -->
+      <nav class="mode-tabs">
+        <button class="mode-tab active" data-mode="tagger" data-i18n-title="mode.tagger.title" title="Edit tags — from an online source, by hand, and cover art" data-i18n-aria-label="mode.tagger" aria-label="TAGGER"><svg class="ico"><use href="#i-tag"/></svg><span class="lbl" data-i18n="mode.tagger">TAGGER</span></button>
+        <button class="mode-tab" data-mode="renamer" data-i18n-title="mode.renamer.title" title="Rename files and reorganize them into folders" data-i18n-aria-label="mode.renamer" aria-label="RENAMER"><svg class="ico"><use href="#i-rename"/></svg><span class="lbl" data-i18n="mode.renamer">RENAMER</span></button>
+        <button class="mode-tab" data-mode="generator" data-i18n-title="mode.generator.title" title="Generate and clean up tag/filename values" data-i18n-aria-label="mode.generator" aria-label="GENERATOR"><svg class="ico"><use href="#i-wand"/></svg><span class="lbl" data-i18n="mode.generator">GENERATOR</span></button>
+        <button class="mode-tab" data-mode="deduplicator" data-i18n-title="mode.deduplicator.title" title="Find likely duplicate files in the library" data-i18n-aria-label="mode.deduplicator" aria-label="DEDUPLICATOR"><svg class="ico"><use href="#i-dedup"/></svg><span class="lbl" data-i18n="mode.deduplicator">DEDUPLICATOR</span></button>
+        <button class="mode-tab" data-mode="exporter" data-i18n-title="mode.exporter.title" title="Export playlists, CSV, and reports" data-i18n-aria-label="mode.exporter" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl" data-i18n="mode.exporter">EXPORTER</span></button>
+      </nav>
+      <div class="spacer"></div>
       <div class="lib">
         <!-- The open library, and the one way in (#177). The indicator names the
              folder and hides the parent path's head; clicking it reveals the
@@ -84,7 +98,6 @@
              through the folder chooser is several clicks for one idea. -->
         <button id="lib-refresh" class="icon" data-i18n-title="topbar.reread" title="Re-read the open folder" data-i18n-aria-label="topbar.reread" aria-label="Re-read the open folder" disabled><svg class="ico"><use href="#i-refresh"/></svg></button>
       </div>
-      <div class="spacer"></div>
       <!-- Layout control, kept a hair apart from the two app actions beside it:
            it changes what you see, it doesn't act on the library. -->
       <button id="panel-toggle" class="icon" data-i18n-title="topbar.collapsePanelTitle" title="Collapse the mode panel (more room for the table)" data-i18n-aria-label="topbar.collapsePanel" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
@@ -92,18 +105,6 @@
       <button id="undo" class="icon" disabled data-i18n-title="topbar.undo" title="Undo the last applied batch" data-i18n-aria-label="topbar.undo" aria-label="Undo the last applied batch"><svg class="ico"><use href="#i-undo"/></svg></button>
       <button id="settings-open" class="icon gear" data-i18n-title="topbar.settings" title="Settings" data-i18n-aria-label="topbar.settings" aria-label="Settings"><svg class="ico"><use href="#i-settings"/></svg></button>
     </header>
-
-    <!-- Mode tabs — the file table stays put; only the right-hand panel swaps.
-         Table is the subject (noun), each tab is a verb applied to it. -->
-    <nav class="modebar">
-      <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="tagger" data-i18n-title="mode.tagger.title" title="Edit tags — from an online source, by hand, and cover art" data-i18n-aria-label="mode.tagger" aria-label="TAGGER"><svg class="ico"><use href="#i-tag"/></svg><span class="lbl" data-i18n="mode.tagger">TAGGER</span></button>
-        <button class="mode-tab" data-mode="renamer" data-i18n-title="mode.renamer.title" title="Rename files and reorganize them into folders" data-i18n-aria-label="mode.renamer" aria-label="RENAMER"><svg class="ico"><use href="#i-rename"/></svg><span class="lbl" data-i18n="mode.renamer">RENAMER</span></button>
-        <button class="mode-tab" data-mode="generator" data-i18n-title="mode.generator.title" title="Generate and clean up tag/filename values" data-i18n-aria-label="mode.generator" aria-label="GENERATOR"><svg class="ico"><use href="#i-wand"/></svg><span class="lbl" data-i18n="mode.generator">GENERATOR</span></button>
-        <button class="mode-tab" data-mode="deduplicator" data-i18n-title="mode.deduplicator.title" title="Find likely duplicate files in the library" data-i18n-aria-label="mode.deduplicator" aria-label="DEDUPLICATOR"><svg class="ico"><use href="#i-dedup"/></svg><span class="lbl" data-i18n="mode.deduplicator">DEDUPLICATOR</span></button>
-        <button class="mode-tab" data-mode="exporter" data-i18n-title="mode.exporter.title" title="Export playlists, CSV, and reports" data-i18n-aria-label="mode.exporter" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl" data-i18n="mode.exporter">EXPORTER</span></button>
-      </div>
-    </nav>
 
     <main class="workarea">
       <!-- Files column: the persistent table, plus a Preview view over it that

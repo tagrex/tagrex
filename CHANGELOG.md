@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   11px instead of 10px — a touch more legible out of the box while keeping the
   dense, information-first character. The Settings › Display control (10–20px)
   is unchanged, so anyone who prefers it tighter drags it straight back to 10.
+- **The mode tabs moved up into the top bar.** TAGGER / RENAMER / GENERATOR /
+  DEDUPLICATOR / EXPORTER used to sit in their own row below the top bar; folding
+  them into it — beside the brand, with the folder path to their right — gives
+  the file table that whole row back. On a narrow window the tab labels still
+  drop to icon-only before anything crowds, and the path keeps a usable width.
 
 ## [0.14.0] - 2026-08-23
 
