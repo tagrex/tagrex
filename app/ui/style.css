@@ -3952,8 +3952,13 @@ button.tk-art-btn > .ico:last-child {
   color: var(--text);
   white-space: nowrap;
 }
+/* Artist set apart from the title in accent-ink (#283): the title stays --text,
+   the artist takes the notable-text green so a various-artists tracklist scans
+   at a glance. Accent-ink is the link/active-text token, not the solid button
+   accent, so it doesn't add to the actionable-green surfaces (#278). The dot
+   separator stays neutral. */
 .tk-a {
-  color: var(--muted);
+  color: var(--accent-ink);
   white-space: nowrap;
 }
 .tk-a::before {

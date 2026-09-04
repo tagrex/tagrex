@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   above and below, and its folder name in the accent colour, so the boundary
   between one folder and the next is obvious in a dense table. The wash stays well
   below the selection tint, so a group is never mistaken for a selected row.
+- **The artist stands apart from the title in the online tracklist.** In a
+  release's track list the artist was grey next to the title; it now takes the
+  accent colour, so a various-artists release scans at a glance — title in the
+  text colour, artist in green. The dot between them stays neutral.
 
 ## [0.14.0] - 2026-08-23
 
