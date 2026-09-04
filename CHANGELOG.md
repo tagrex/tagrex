@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   them into it — beside the brand, with the folder path to their right — gives
   the file table that whole row back. On a narrow window the tab labels still
   drop to icon-only before anything crowds, and the path keeps a usable width.
+- **Folder-group headers read as a section band.** A group row was set apart only
+  by its bold text; it now carries a faint accent wash, thin accent hairlines
+  above and below, and its folder name in the accent colour, so the boundary
+  between one folder and the next is obvious in a dense table. The wash stays well
+  below the selection tint, so a group is never mistaken for a selected row.
 
 ## [0.14.0] - 2026-08-23
 

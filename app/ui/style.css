@@ -2311,15 +2311,26 @@ body.show-checkbox tr.playing td.sel {
   font: inherit;
 }
 
+/* The folder-group header reads as a section band, not "a bolder row" (#281):
+   a faint accent wash plus accent-ink name give it three cues (band + coloured
+   name + caret) rather than weight alone. The wash stays well under the
+   selection tint (--row-sel, accent 24%) so a group never reads as selected. */
 tr.group-head {
   user-select: none;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--accent) 15%, var(--bg));
 }
 
 td.group-cell {
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
   font-weight: 600;
+}
+
+/* The folder name itself, set apart from the filenames it sits over (#281). */
+.group-label {
+  color: var(--accent-ink);
+  font-weight: 700;
 }
 
 /* Only the caret toggles collapse — give it a clear hit area and affordance. */
@@ -2327,7 +2338,7 @@ td.group-cell {
   display: inline-block;
   width: 1.4em;
   text-align: center;
-  color: var(--muted);
+  color: var(--accent-ink);
   cursor: pointer;
   border-radius: 4px;
 }
