@@ -18,6 +18,8 @@ const plTitle = el("pl-title");
 const plSeek = el("pl-seek");
 const plTime = el("pl-time");
 const plWave = el("pl-wave");
+const plCover = el("pl-cover");
+const plCoverImg = el("pl-cover-img");
 
 // Playback runs in the native (rodio) backend; the UI mirrors its polled
 // status. `playingPath` is the track the backend reports as current, `plPaused`
@@ -267,6 +269,7 @@ function playerIdle() {
   waveFor = null;
   plPosition = 0;
   drawWave();
+  clearPlayerCover(); // #275
   playerBar.classList.add("idle");
   setPlayerVisible(false);
   setPlayerControlsEnabled(false);
@@ -334,6 +337,32 @@ function applyRepeatMode(mode) {
 
 // Start playing `path`. Clicking the already-current track toggles play/pause.
 // Also primes the next visible track so the backend can play it gaplessly.
+// The now-playing cover (#275). Reading it is async and a fast Next/auto-advance
+// can start a second read before the first returns, so a generation token drops
+// any answer that a newer track has superseded — the bar never shows the cover of
+// a track that is no longer playing.
+let coverGen = 0;
+async function setPlayerCover(path) {
+  const gen = ++coverGen;
+  try {
+    const cover = await invoke("read_cover_image", { path });
+    if (gen !== coverGen) return; // a newer track took over
+    if (cover && cover.data_base64) {
+      plCoverImg.src = `data:${cover.mime || "image/jpeg"};base64,${cover.data_base64}`;
+      plCover.classList.add("has-art");
+      return;
+    }
+  } catch (e) {
+    if (gen !== coverGen) return;
+  }
+  clearPlayerCover();
+}
+function clearPlayerCover() {
+  coverGen++; // cancel any in-flight read
+  plCover.classList.remove("has-art");
+  plCoverImg.removeAttribute("src");
+}
+
 function playTrack(path) {
   if (path === playingPath) {
     togglePlay();
@@ -353,6 +382,7 @@ function playTrack(path) {
   setPlayerControlsEnabled(true);
   markPlayingRow();
   beginWaveform(path); // #101 — and this is the path most tracks start on
+  setPlayerCover(path); // #275
 }
 
 function togglePlay() {
@@ -405,6 +435,7 @@ async function pollPlayerStatus() {
     setPlayerControlsEnabled(true);
     markPlayingRow();
     beginWaveform(st.path); // the backend advanced the queue on its own (#101)
+    setPlayerCover(st.path); // #275
   }
   // Keep the queue primed for gapless continuation.
   if (st.wants_next) {

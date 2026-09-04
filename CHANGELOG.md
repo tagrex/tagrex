@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   accent colour, so a various-artists release scans at a glance — title in the
   text colour, artist in green. The dot between them stays neutral.
 
+### Added
+
+- **The player shows the cover of what's playing.** A small thumbnail of the
+  current track's embedded front cover now sits at the head of the player bar, so
+  the bar reads as a player at a glance. A track with no embedded art shows a
+  neutral note tile instead; the cover follows every track change, including
+  gapless auto-advance.
+
 ## [0.14.0] - 2026-08-23
 
 This release is about the words. The interface no longer speaks only English:
