@@ -23,8 +23,6 @@
       <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.6 12.6 8 5 12.4Z" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-pause" viewBox="0 0 16 16"><rect x="4.5" y="3.5" width="2.6" height="9" rx=".6" fill="currentColor" stroke="none"/><rect x="9" y="3.5" width="2.6" height="9" rx=".6" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-close" viewBox="0 0 16 16"><line x1="4" y1="4" x2="12" y2="12"/><line x1="12" y1="4" x2="4" y2="12"/></symbol>
-      <symbol id="i-list" viewBox="0 0 16 16"><line x1="5.2" y1="4.5" x2="13.5" y2="4.5"/><line x1="5.2" y1="8" x2="13.5" y2="8"/><line x1="5.2" y1="11.5" x2="13.5" y2="11.5"/><circle cx="2.8" cy="4.5" r=".95" fill="currentColor" stroke="none"/><circle cx="2.8" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="2.8" cy="11.5" r=".95" fill="currentColor" stroke="none"/></symbol>
-      <symbol id="i-grid" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="4.6" height="4.6" rx="1"/><rect x="8.9" y="2.5" width="4.6" height="4.6" rx="1"/><rect x="2.5" y="8.9" width="4.6" height="4.6" rx="1"/><rect x="8.9" y="8.9" width="4.6" height="4.6" rx="1"/></symbol>
       <symbol id="i-volume" viewBox="0 0 16 16"><path d="M3.4 6.1h2.1L8.6 3.4v9.2L5.5 9.9H3.4Z"/><path d="M10.9 6.2a2.6 2.6 0 0 1 0 3.6"/><path d="M12.7 4.4a5.1 5.1 0 0 1 0 7.2"/></symbol>
       <symbol id="i-volume-off" viewBox="0 0 16 16"><path d="M3.4 6.1h2.1L8.6 3.4v9.2L5.5 9.9H3.4Z"/><line x1="11" y1="6.2" x2="14.2" y2="9.4"/><line x1="14.2" y1="6.2" x2="11" y2="9.4"/></symbol>
       <symbol id="i-prev" viewBox="0 0 16 16"><path d="M12.4 3.6 6.6 8l5.8 4.4Z" fill="currentColor" stroke="none"/><line x1="4.2" y1="3.6" x2="4.2" y2="12.4"/></symbol>
@@ -336,15 +334,11 @@
                     <option value="15">15</option>
                   </select>
                 </label>
-                <div class="seg" id="release-layout" role="tablist" data-i18n-aria-label="online.layout" aria-label="Layout">
-                  <button class="seg-btn active" data-layout="list"><svg class="ico"><use href="#i-list"/></svg><span data-i18n="online.list">List</span></button>
-                  <button class="seg-btn" data-layout="grid"><svg class="ico"><use href="#i-grid"/></svg><span data-i18n="online.grid">Grid</span></button>
-                </div>
               </div>
             </div>
             <div class="online-scroll">
-              <!-- Cards (list or grid). Each expands to its tracklist, fetched
-                   lazily; import is per-card. -->
+              <!-- Release cards. Each expands to its tracklist, fetched lazily;
+                   import is per-card. -->
               <div id="release-list" class="release-list"></div>
               <div id="release-more" class="release-more" hidden>
                 <button id="load-more" type="button" data-i18n="online.loadMore">Load more results</button>

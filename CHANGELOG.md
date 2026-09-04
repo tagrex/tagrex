@@ -52,6 +52,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   own art, so it always fell back to the placeholder; it now reads the embedded
   front cover the same way the editor's cover well does.
 
+### Removed
+
+- **The online results Grid layout is gone.** The List/Grid toggle offered a
+  cover-wall view that collapsed straight back to the list — expanded on the
+  clicked release — the moment you touched a tile, so it never really was a
+  second way to work. List (with per-card expand) is now the single layout, and
+  the toggle, the tile rendering and its cover-fetch path go with it.
+
 ## [0.14.0] - 2026-08-23
 
 This release is about the words. The interface no longer speaks only English:

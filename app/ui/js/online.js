@@ -34,7 +34,6 @@ import {
 // and its cover. Import / auto-match / embed-cover are per-card and route
 // through the same preview/apply/undo path as before.
 let releaseCandidates = []; // last search results (CandidateDto[])
-let releaseLayout = "list"; // "list" | "grid"
 // Which provider produced the current results (#33). Captured at search time so
 // every follow-up fetch (release, cover) hits the same source even if the user
 // changes the Source dropdown afterward.
@@ -208,9 +207,7 @@ function cardEl(id) {
 }
 
 function coverElOf(id) {
-  return releaseList().querySelector(
-    `[data-id="${cssEscape(id)}"] .release-cover, [data-id="${cssEscape(id)}"] .tile-cover`,
-  );
+  return releaseList().querySelector(`[data-id="${cssEscape(id)}"] .release-cover`);
 }
 
 // The track/disc-count pill, whichever layout this release is shown in.
@@ -303,15 +300,14 @@ function renderReleaseList() {
     el("discogs-empty").textContent = "No releases found.";
     return;
   }
-  list.classList.toggle("grid", releaseLayout === "grid");
   for (const c of releaseCandidates) {
-    list.insertAdjacentHTML("beforeend", releaseLayout === "grid" ? tileMarkup(c) : cardMarkup(c));
+    list.insertAdjacentHTML("beforeend", cardMarkup(c));
   }
   // Restore images (from cache) and any expanded tracklists after the re-render.
   for (const c of releaseCandidates) {
     applyImage(c);
     const card = cardEl(c.id);
-    if (releaseLayout === "list" && card && expandedIds.has(c.id) && releaseCache.has(c.id)) {
+    if (card && expandedIds.has(c.id) && releaseCache.has(c.id)) {
       card.setAttribute("aria-expanded", "true");
       card.querySelector(".release-caret").innerHTML = ico("caret-down");
       renderTracklist(card, releaseCache.get(c.id));
@@ -494,29 +490,11 @@ function cardMarkup(c) {
     </article>`;
 }
 
-function tileMarkup(c) {
-  const artist = c.artist ? `<span class="tile-artist">${escapeHtml(c.artist)}</span>` : "";
-  // Same information as a list card: the catalogue-no. + track-count match key
-  // (one segmented badge, #124) · artist (bold) · album title · country/year/format.
-  return `
-    <article class="release-tile" data-id="${escapeHtml(c.id)}">
-      <div class="tile-cover"></div>
-      <div class="tile-info">
-        <div class="tile-top">${releaseBadge(c)}</div>
-        ${artist}
-        <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
-        <span class="muted">${escapeHtml(candidateMeta(c))}</span>
-      </div>
-    </article>`;
-}
-
-// Show the layout-appropriate cover for a candidate, fetching + caching it once.
-// List cards use the small thumb (56px); grid tiles use the larger cover image so
-// they don't look upscaled. Cached data URIs are reused, so toggling layout is
-// instant and never re-hits Discogs.
+// Show the release's cover thumbnail, fetching + caching it once. Cached data
+// URIs are reused, so a re-render never re-hits Discogs.
 async function applyImage(c) {
-  const kind = releaseLayout === "grid" ? "cover" : "thumb";
-  const url = kind === "cover" ? c.cover_url || c.thumb_url : c.thumb_url || c.cover_url;
+  const kind = "thumb";
+  const url = c.thumb_url || c.cover_url;
   if (!url) return;
   const cached = imageCache.get(c.id) || {};
   let dataUri = cached[kind];
@@ -1334,15 +1312,6 @@ el("search-format").addEventListener("change", () => {
   if (releaseCandidates.length || el("discogs-query").value.trim()) discogsSearch();
 });
 
-// List/Grid layout toggle.
-el("release-layout").addEventListener("click", (e) => {
-  const btn = e.target.closest(".seg-btn");
-  if (!btn || btn.classList.contains("active")) return;
-  releaseLayout = btn.dataset.layout;
-  el("release-layout").querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b === btn));
-  renderReleaseList();
-});
-
 // One delegated handler for every card interaction (they're re-rendered often).
 el("release-list").addEventListener("click", (e) => {
   // The catalogue chip opens the release's provider page (#92) in both layouts;
@@ -1350,16 +1319,6 @@ el("release-list").addEventListener("click", (e) => {
   if (e.target.closest(".rb-catno")) {
     const host = e.target.closest("[data-id]");
     if (host) openReleasePage(host.dataset.id);
-    return;
-  }
-  const tile = e.target.closest(".release-tile");
-  if (tile) {
-    // Grid tile → back to list layout, expanded on that release.
-    releaseLayout = "list";
-    el("release-layout").querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("active", b.dataset.layout === "list"));
-    renderReleaseList();
-    const card = el("release-list").querySelector(`.release-card[data-id="${cssEscape(tile.dataset.id)}"]`);
-    if (card) toggleCard(card);
     return;
   }
   const card = e.target.closest(".release-card");
