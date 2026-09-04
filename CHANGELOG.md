@@ -51,6 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   thumbnail was reading covers through the wrong call and never found a track's
   own art, so it always fell back to the placeholder; it now reads the embedded
   front cover the same way the editor's cover well does.
+- **The open folder's name survives a language change.** Switching language with
+  a folder open could leave the path indicator reading `…/parent/No folder open` —
+  the static-text pass overwrote the folder name with the placeholder. The name
+  is dynamic again and the indicator repaints on a language change, so it keeps
+  the real folder (and the empty-state placeholder still localizes).
 
 ### Removed
 

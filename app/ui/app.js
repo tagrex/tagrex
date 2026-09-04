@@ -87,8 +87,13 @@ Object.assign(hooks, {
   revealPath,
   navigablePaths: () => navPaths,
   // A language change repaints the static markup itself; the open panel builds
-  // some of its own text, so it is asked to draw again (#50).
-  retranslate: () => (MODE_REFRESH[currentMode] || (() => {}))(),
+  // some of its own text, so it is asked to draw again (#50). The library
+  // indicator is dynamic too (#287) — repaint it so an open folder's name and
+  // path survive the language switch instead of being left on the placeholder.
+  retranslate: () => {
+    (MODE_REFRESH[currentMode] || (() => {}))();
+    renderRootDisplay();
+  },
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
 import {
@@ -1338,9 +1343,12 @@ function renderRootDisplay() {
   const name = display.querySelector(".path-name");
   if (!openedRoot) {
     parent.textContent = "";
-    name.textContent = "No folder open";
+    // Not a `data-i18n` on the span (#287): the static-text pass would then
+    // overwrite an open folder's name with this placeholder on every language
+    // change. The name is dynamic, so its empty-state text is set here instead.
+    name.textContent = msg("topbar.noFolder");
     display.classList.add("empty");
-    display.title = "Choose a folder to open";
+    display.title = msg("topbar.chooseFolder");
     return;
   }
   const parts = openedRoot.split(/[\\/]/).filter(Boolean);
