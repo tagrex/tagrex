@@ -33,8 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The player shows the cover of what's playing.** A small thumbnail of the
   current track's embedded front cover now sits at the head of the player bar, so
   the bar reads as a player at a glance. A track with no embedded art shows a
-  neutral note tile instead; the cover follows every track change, including
+  neutral image-icon tile instead; the cover follows every track change, including
   gapless auto-advance.
+
+### Fixed
+
+- **The player's no-cover placeholder no longer looks broken.** A track without
+  embedded art showed a bare "♪" text glyph that read as an empty field; it now
+  shows the standard image icon, so the empty state looks deliberate.
 
 ## [0.14.0] - 2026-08-23
 

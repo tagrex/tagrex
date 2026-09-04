@@ -2006,15 +2006,18 @@ body.show-checkbox tr.playing td.sel {
   object-fit: cover;
   display: block;
 }
-/* No embedded art: hide the empty img, show the note tile in its place. */
-.pl-cover:not(.has-art) img {
+/* Placeholder icon shown only when the track carries no embedded art. */
+.pl-cover-ph {
+  width: 17px;
+  height: 17px;
+  color: var(--muted);
+  opacity: 0.7;
+}
+.pl-cover.has-art .pl-cover-ph {
   display: none;
 }
-.pl-cover:not(.has-art)::after {
-  content: "♪";
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1;
+.pl-cover:not(.has-art) img {
+  display: none;
 }
 
 /* The player comes and goes with playback inside a bar that is already there,
