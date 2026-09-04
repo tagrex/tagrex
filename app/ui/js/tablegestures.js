@@ -16,6 +16,11 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
   const modeCol = document.querySelector(".mode-col");
   const workarea = document.querySelector(".workarea");
   let dragging = false;
+  // The width the last drag settled on. A pure display choice → localStorage, on
+  // the same footing as the table-font control (#282), so a chosen split survives
+  // a reload instead of snapping back to the 480px default.
+  const PANEL_WIDTH_KEY = "tagrex.panelWidthPx";
+  let lastWidth = 0;
 
   splitter.addEventListener("mousedown", (e) => {
     e.preventDefault();
@@ -31,7 +36,8 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
     // clamped so neither column collapses.
     const rect = workarea.getBoundingClientRect();
     const width = Math.min(Math.max(rect.right - e.clientX, 240), rect.width - 360);
-    modeCol.style.flexBasis = `${Math.round(width)}px`;
+    lastWidth = Math.round(width);
+    modeCol.style.flexBasis = `${lastWidth}px`;
   }
 
   function onUp() {
@@ -39,6 +45,27 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
     document.body.classList.remove("resizing");
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
+    // Persist what the drag settled on (only if it actually moved).
+    if (lastWidth) {
+      try {
+        localStorage.setItem(PANEL_WIDTH_KEY, String(lastWidth));
+      } catch (e) {
+        /* localStorage unavailable — the width just won't persist */
+      }
+    }
+  }
+
+  // Restore a previously dragged width. The clamp below still narrows it if the
+  // current window is too small for it; the stored value is left intact so a
+  // wider window later gets the full width back.
+  function restorePanelWidth() {
+    let v;
+    try {
+      v = parseInt(localStorage.getItem(PANEL_WIDTH_KEY), 10);
+    } catch (e) {
+      return;
+    }
+    if (Number.isFinite(v) && v >= 240) modeCol.style.flexBasis = `${v}px`;
   }
 
   // Keep the panel within the work area when the window shrinks (#109). The
@@ -55,6 +82,7 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
     }
   }
   window.addEventListener("resize", clampPanel);
+  restorePanelWidth(); // a remembered width first (#282), then clamp it to fit
   clampPanel(); // in case the initial window is narrower than the default panel
 })();
 

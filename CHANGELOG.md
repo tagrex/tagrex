@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   across the bar, and play-pause now leads them with an accent fill rather than
   looking like one more flat glyph — so the primary control is obvious and the
   row reads as a player.
+- **The panel width you drag is remembered.** Dragging the divider between the
+  file table and the mode panel used to reset to the default on the next launch;
+  the chosen width now persists across sessions. A window too narrow for it still
+  shrinks it to fit, and widening the window later brings the full width back.
 
 ### Added
 
