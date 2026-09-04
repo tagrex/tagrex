@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The player's no-cover placeholder no longer looks broken.** A track without
   embedded art showed a bare "♪" text glyph that read as an empty field; it now
   shows the standard image icon, so the empty state looks deliberate.
+- **The player now actually shows a track's embedded cover.** The now-playing
+  thumbnail was reading covers through the wrong call and never found a track's
+  own art, so it always fell back to the placeholder; it now reads the embedded
+  front cover the same way the editor's cover well does.
 
 ## [0.14.0] - 2026-08-23
 

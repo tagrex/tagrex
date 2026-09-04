@@ -345,10 +345,14 @@ let coverGen = 0;
 async function setPlayerCover(path) {
   const gen = ++coverGen;
   try {
-    const cover = await invoke("read_cover_image", { path });
+    // The track's EMBEDDED front cover, via the same call the editor's cover well
+    // uses (read_cover_summary) — read_cover_image reads an external image file to
+    // embed, not a track's own art, so it never returned the playing track's cover.
+    const summary = await invoke("read_cover_summary", { paths: [path] });
     if (gen !== coverGen) return; // a newer track took over
-    if (cover && cover.data_base64) {
-      plCoverImg.src = `data:${cover.mime || "image/jpeg"};base64,${cover.data_base64}`;
+    const front = summary && summary.samples && summary.samples[0];
+    if (front && front.data_base64) {
+      plCoverImg.src = `data:${front.mime};base64,${front.data_base64}`;
       plCover.classList.add("has-art");
       return;
     }
