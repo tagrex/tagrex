@@ -18,6 +18,15 @@ fn crate_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// The command layer's source, read as text rather than linked: the codes are
+/// string literals, and there is nothing to call that would list them.
+fn command_layer_source() -> PathBuf {
+    crate_dir()
+        .parent()
+        .expect("the app crate has a parent directory")
+        .join("crates/commands/src/lib.rs")
+}
+
 /// Every catalogue in the directory, by its language code — read rather than
 /// listed, so adding a language does not also mean remembering to add it here
 /// (#269). English is left out: it is the side the others are checked against.
@@ -38,8 +47,12 @@ fn other_catalogues() -> Vec<(String, PathBuf)> {
 }
 
 /// Every `"error.…"` / `"plan.…"` literal in the command layer.
+///
+/// The test stays in this crate because the catalogues it checks against live
+/// under `ui/`, but the layer it scans moved out to `crates/commands` (#272),
+/// so the path steps out of the manifest directory to reach it.
 fn codes_in_rust() -> BTreeSet<String> {
-    let source = std::fs::read_to_string(crate_dir().join("src/lib.rs")).expect("read lib.rs");
+    let source = std::fs::read_to_string(command_layer_source()).expect("read lib.rs");
     let mut codes = BTreeSet::new();
     for piece in source.split('"').skip(1).step_by(2) {
         if (piece.starts_with("error.") || piece.starts_with("plan."))
@@ -78,7 +91,7 @@ fn keys_in_catalogue(path: &Path) -> BTreeSet<String> {
 /// of the two anyway: these are the codes that will actually be sent.
 fn placeholder_codes() -> BTreeSet<String> {
     let mut codes = BTreeSet::new();
-    for entry in tagrex::mask_placeholders() {
+    for entry in tagrex_commands::mask_placeholders() {
         codes.insert(entry.code);
         codes.insert(entry.group_code);
     }

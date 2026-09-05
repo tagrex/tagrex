@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use tauri::{Manager, State};
 
 use player::{Player, PlayerStatus};
-use tagrex::{
+use tagrex_commands::{
     ActionGroupDto, AlignMatchDto, App, AppError, BatchDto, BlockTargetsDto, CandidateDto,
     CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateGroupDto, ErrorDto,
     ImportFieldDto, ImportSelectionDto, ImportTrackDto, NameProbeDto, PlaceholderDto, PlanDto,
@@ -378,7 +378,7 @@ fn read_external_cover(
 /// library, matching the file picker (the user chose it explicitly).
 #[tauri::command]
 fn read_cover_image(path: String) -> Result<CoverArtDto, ErrorDto> {
-    tagrex::read_cover_image(&PathBuf::from(path)).map_err(ErrorDto::from)
+    tagrex_commands::read_cover_image(&PathBuf::from(path)).map_err(ErrorDto::from)
 }
 
 #[tauri::command]
@@ -1002,21 +1002,21 @@ fn load_settings(app: tauri::AppHandle) -> Result<SettingsDto, ErrorDto> {
 /// frontend lists these below the user's own saved groups.
 #[tauri::command]
 fn builtin_action_groups() -> Vec<ActionGroupDto> {
-    tagrex::builtin_action_groups()
+    tagrex_commands::builtin_action_groups()
 }
 
 /// Every placeholder a mask accepts (#148), for the in-app reference. Needs no
 /// open library — the grammar is the same whether or not one is.
 #[tauri::command]
 fn mask_placeholders() -> Vec<PlaceholderDto> {
-    tagrex::mask_placeholders()
+    tagrex_commands::mask_placeholders()
 }
 
 /// Every field an online import can write (#152), for the setting that picks
 /// which of them it may. Read-only, like the placeholder reference.
 #[tauri::command]
 fn import_fields() -> Vec<ImportFieldDto> {
-    tagrex::import_fields()
+    tagrex_commands::import_fields()
 }
 
 /// Render a mask-defined column over a batch of files (#150).

@@ -12,8 +12,9 @@ publish = false
 
 [dependencies]
 tagrex-core.workspace = true
-tagrex-providers-discogs = { path = "../crates/providers-discogs" }
-tagrex-providers-musicbrainz = { path = "../crates/providers-musicbrainz" }
+# The command layer (#272). It used to be this crate's own src/lib.rs; it moved
+# out so the native shells can call it without linking the webview stack.
+tagrex-commands = { path = "../crates/commands" }
 tagrex-providers-beatport = { path = "../crates/providers-beatport" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -26,7 +27,6 @@ tauri-plugin-dialog = "2"
 # navigator.clipboard.readText() makes WKWebView pop a system "Paste"
 # permission pill; the plugin reads it natively, no pill.
 tauri-plugin-clipboard-manager = "2"
-base64 = "0.22.1"
 # Native audio backend for the preview player: a rodio Sink queues tracks
 # back-to-back for gapless playback, decoding every format we handle (incl. OGG)
 # via Symphonia. Linux needs libasound2-dev (see CI).

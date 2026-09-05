@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The command layer is a crate of its own.** It sat in the same crate as the
+  desktop shell, which also carries the webview stack and the audio backend, so
+  everything the app can do was reachable from that one shell and nothing else.
+  It moves to `crates/commands` unchanged — no behaviour, no signatures, no
+  logic — which is what lets a second interface call the same backend without
+  linking a browser engine to do it. Nothing about the app changes. (#272)
+
 ## [0.15.0] - 2026-09-05
 
 This release is a visual pass over the workspace. The top bar absorbs the mode
