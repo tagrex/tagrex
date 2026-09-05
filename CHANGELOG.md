@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-09-05
+
+This release is a visual pass over the workspace. The top bar absorbs the mode
+tabs to give the file table back a whole row, folder-group headers and the
+online tracklist read more clearly, and the preview player grows up — a
+now-playing cover, a grouped transport with an emphasised play/pause, and a bar
+that belongs to the file table instead of stretching under the side panel. The
+online results drop the Grid layout that only ever collapsed back to the list,
+a dragged panel width is remembered between sessions, and an open folder's name
+no longer vanishes from the path when you switch language.
+
 ### Changed
 
 - **The file table starts one point larger.** The first-run default size is now
