@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The SwiftUI stand reads tags out of file names.** The Tagger's From-name
+  sub-tab is a working panel over `preview_tags_from_name` /
+  `probe_tags_from_name`: a mask, a live probe of the first file (the fields it
+  captures, and whether it matched), and Stage that writes the captured values
+  into the tags through the same gate — the table shows the changes and Apply
+  writes one journaled, undoable batch. This completes the stand's six modes.
+  Spike-only. (#306)
 - **The SwiftUI stand exports.** The Export mode writes a playlist (m3u8), CUE,
   CSV, HTML, XML or a masked report of the chosen files into the open library
   folder over the `export_*` commands — a format picker, a file name, a mask for
@@ -84,11 +91,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   live — proxy and rate limit to the hub, ID3 revision and the rest to the open
   library — so a proxied, rate-limited, token-authenticated Discogs search is now
   drivable from a shell. Spike-only; nothing about the app changes. (#295)
-- **The preview player is a crate of its own.** `player.rs` — the rodio Sink on
-  its own thread and the waveform decoder — moves to `crates/player` so the
-  native shells can drive playback, the same reason the command layer moved
-  (#272). The rodio audio backend rides with it. Pure relocation; nothing about
-  the app changes. (#296)
 - **The native-shell bridge drives the player.** The session gains a `Player`,
   and the dispatcher gains `player_play`, `player_set_next`, `player_pause`,
   `player_resume`, `player_stop`, `player_seek`, `player_set_volume`,

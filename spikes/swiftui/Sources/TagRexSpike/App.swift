@@ -442,12 +442,8 @@ struct ModePanel: View {
 
             if subtab == 0 {
                 OnlinePanel(library: library, selection: selection)
-            } else if subtab != 1 {
-                ContentUnavailableView(
-                    "Not in this build",
-                    systemImage: "hammer",
-                    description: Text("This build carries the tag editor and online search; the other modes come next.")
-                )
+            } else if subtab == 2 {
+                FromNamePanel(library: library, selection: selection)
             } else if tracks.isEmpty {
                 ContentUnavailableView(
                     "Nothing selected",

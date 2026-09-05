@@ -187,6 +187,19 @@ struct DuplicateGroup: Decodable, Identifiable {
     var id: String { key + (files.first?.path ?? "") }
 }
 
+/// A live probe of one file's name through a mask: the string matched, the
+/// fields captured, and whether the mask matched at all.
+struct NameProbe: Decodable {
+    var subject: String
+    /// (field key, captured value) pairs, serialized as 2-element arrays.
+    var fields: [[String]]
+    var matched: Bool
+
+    var pairs: [(field: String, value: String)] {
+        fields.compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil }
+    }
+}
+
 /// One transform rule, as the backend's TransformRuleDto. snake_case keys are
 /// the property names, since the ABI does not convert them.
 struct TransformRule: Encodable {
@@ -665,6 +678,61 @@ final class Library {
         }
     }
 
+    // MARK: - Tags from name
+
+    /// Probe one file's name through a mask: what the mask captures. Read-only.
+    func probeFromName(mask: String, path: String) async -> Result<NameProbe, SearchFailure> {
+        guard let session, !mask.isEmpty, !path.isEmpty else {
+            return .failure(SearchFailure(message: "Pick a file and a mask"))
+        }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<NameProbe>? =
+                invoke(box, "probe_tags_from_name", encodeArgs(ProbeArg(mask: mask, path: path)))
+            if let probe = reply?.ok { return .success(probe) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "the probe failed"))
+        }.value
+    }
+
+    /// Build the tags-from-name plan and stage it: captured values fill the table
+    /// diff, the change-plan bar takes over, Apply writes one journaled batch.
+    func stageFromName(mask: String, paths: [String]) async -> Result<Int, SearchFailure> {
+        guard let session, !mask.isEmpty, !paths.isEmpty else { return .success(0) }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, [String: [Field: String]], Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let reply: Reply<JSONValue>? = invoke(
+                    box, "preview_tags_from_name",
+                    encodeArgs(MaskPathsArg(mask: mask, paths: paths)))
+                guard let plan = reply?.ok else {
+                    return .failure(SearchFailure(
+                        message: reply?.error?.text ?? "the tags could not be prepared"))
+                }
+                guard let parsed = decodePlan(plan) else {
+                    return .failure(SearchFailure(message: "could not read the plan"))
+                }
+                var diffs: [String: [Field: String]] = [:]
+                for change in parsed.changes {
+                    for tag in change.tag_changes where Field(rawValue: tag.field) != nil {
+                        diffs[change.path, default: [:]][Field(rawValue: tag.field)!] = tag.new ?? ""
+                    }
+                }
+                return .success((plan, diffs, parsed.changes.count))
+            }.value
+
+        switch result {
+        case .success(let (plan, diffs, count)):
+            staged = diffs
+            stagedRenames.removeAll()
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged tags from name for \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            return .failure(failure)
+        }
+    }
+
     // MARK: - Generator
 
     /// Preview a transform chain over a scope ("tags", a field key, "filename"
@@ -1086,6 +1154,11 @@ private struct TransformArgs: Encodable {
 
 private struct CriterionArg: Encodable {
     let criterion: String
+}
+
+private struct ProbeArg: Encodable {
+    let mask: String
+    let path: String
 }
 
 private struct ExportArg: Encodable {
