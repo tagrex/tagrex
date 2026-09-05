@@ -36,6 +36,43 @@ enum Mode: String, CaseIterable, Identifiable {
     }
 }
 
+/// The mode tabs, matching the Tauri top bar: an icon and an UPPERCASE label per
+/// mode, the active one tinted. A custom control rather than a segmented Picker,
+/// which shows text or icon but not both.
+@MainActor
+struct ModeTabBar: View {
+    @Binding var selection: Mode
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Mode.allCases) { mode in
+                let isOn = mode == selection
+                Button {
+                    selection = mode
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: mode.symbol)
+                        Text(mode.title.uppercased())
+                            .fontWeight(.medium)
+                    }
+                    .font(.system(size: 11))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    .background {
+                        if isOn {
+                            RoundedRectangle(cornerRadius: 6).fill(.tint.opacity(0.15))
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(mode.title)
+            }
+        }
+    }
+}
+
 @main
 @MainActor
 struct TagRexSpikeApp: App {
@@ -175,15 +212,7 @@ struct WorkspaceView: View {
                 }
 
                 ToolbarItem(placement: .principal) {
-                    Picker("Tool", selection: $mode) {
-                        ForEach(Mode.allCases) { mode in
-                            Label(mode.title, systemImage: mode.symbol)
-                                .labelStyle(.titleAndIcon)
-                                .tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    ModeTabBar(selection: $mode)
                 }
 
                 // The filter is a toolbar item of its own rather than
@@ -418,7 +447,8 @@ struct ModePanel: View {
     let library: Library
     let mode: Mode
     let selection: Set<Track.ID>
-    @State private var subtab = 1
+    // ONLINE first, matching the Tauri default (its `subtab active` is online).
+    @State private var subtab = 0
     @State private var drafts: [Field: String] = [:]
 
     private var tracks: [Track] {
@@ -445,9 +475,9 @@ struct ModePanel: View {
     private var taggerPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
             Picker("", selection: $subtab) {
-                Text("Online").tag(0)
-                Text("Editor").tag(1)
-                Text("From name").tag(2)
+                Text("ONLINE").tag(0)
+                Text("EDITOR").tag(1)
+                Text("FROM NAME").tag(2)
             }
             .pickerStyle(.segmented)
             .labelsHidden()

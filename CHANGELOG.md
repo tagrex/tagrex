@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The SwiftUI stand's tabs read like the Tauri top bar.** The mode tabs are
+  `TAGGER / RENAMER / GENERATOR / DEDUPLICATOR / EXPORTER` again — UPPERCASE, each
+  with its icon (a custom tab bar; a segmented picker showed the label without the
+  icon) — the Tagger sub-tabs are `ONLINE / EDITOR / FROM NAME`, and the Tagger
+  opens on ONLINE, not EDITOR, matching the Tauri default. Spike-only. (#314)
 - **The SwiftUI stand's Online panel matches the Tauri UI.** It was built
   free-hand and diverged; it now defaults to Discogs (not MusicBrainz), picks the
   source from a dropdown, searches on **one** query field instead of three, and
