@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   native shells can drive playback, the same reason the command layer moved
   (#272). The rodio audio backend rides with it. Pure relocation; nothing about
   the app changes. (#296)
+- **The native-shell bridge dispatches into the command layer.** `crates/ffi`
+  had three hand-written functions, each reimplementing a slice of the app
+  against the core. It becomes a session — open a library, then invoke commands
+  by name — over the same `App` and the same DTOs the desktop shell uses, so a
+  shell reaches the whole synchronous surface (every `preview_*`, the change
+  plan, Apply, Undo, the exporters, duplicates, field locks) instead of a
+  hand-copied fraction. Spike-only; nothing about the app changes. (#293)
 
 ## [0.15.0] - 2026-09-05
 

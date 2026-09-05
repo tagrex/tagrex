@@ -13,6 +13,10 @@ name = "tagrex_ffi"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
+# The command layer (#293). The bridge dispatches into App rather than
+# reimplementing a slice of the core, so a shell reaches the same surface the
+# desktop app does. tagrex-core is still needed for the path types the DTOs use.
+tagrex-commands = { path = "../commands" }
 tagrex-core = { path = "../core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

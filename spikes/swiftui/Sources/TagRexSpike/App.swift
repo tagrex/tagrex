@@ -459,7 +459,6 @@ struct ModePanel: View {
                 group("File") {
                     fact("Format", shared { $0.format })
                     fact("Length", shared { $0.duration })
-                    fact("Bitrate", shared { $0.bitrateKbps.map { "\($0) kbps" } ?? "—" })
                 }
 
                 Text("Return stages a field. Nothing is written until Apply.")

@@ -1,130 +1,46 @@
-//! A C ABI over the core, for the native shell spikes (#271).
+//! A C ABI over the command layer, for the native shell spikes (#271, #293).
 //!
-//! The spike shell reads a folder, edits tags, and writes them back through the
-//! core's own change plan — the same `ChangePlan` / `plan::apply` / journal path
-//! the app uses, so a write here is gated and undoable exactly as it is there.
+//! The bridge holds one [`App`] per open library and dispatches into it by name,
+//! rather than reimplementing a slice of the core the way the first cut did. A
+//! shell here reaches the same surface the desktop app does — every `preview_*`,
+//! the change plan, Apply and Undo, the exporters, duplicates, field locks — and
+//! the write path is the core's own gated, journaled `ChangePlan`, so a write is
+//! undoable here exactly as it is there.
 //!
-//! JSON rather than a struct layout on purpose: three shells in three languages
-//! have to agree about the shape, and a listing of a few thousand rows is not
-//! where this app spends its time. When a spike grows into something real, this
-//! is the file that gets replaced by a typed bridge.
+//! JSON in and JSON out on purpose: several shells in several languages have to
+//! agree about the shape, and a listing of a few thousand rows is not where this
+//! app spends its time. Each dispatch arm is the same thin forward the desktop
+//! handler is, over the same DTOs from `tagrex-commands` — no logic is restated.
+//!
+//! Threading: a `Session` is not synchronised. A shell drives one from a single
+//! thread, or serialises its own access; calling into the same handle from two
+//! threads at once is undefined, the same contract the desktop side keeps by
+//! holding the `App` behind a mutex.
 
-use std::collections::BTreeMap;
 use std::ffi::{c_char, CStr, CString};
 use std::path::{Path, PathBuf};
 
-use serde::{Deserialize, Serialize};
-use tagrex_core::journal::{SqliteJournal, UndoJournal};
-use tagrex_core::model::{TagEngine, TagField};
-use tagrex_core::plan::{ChangePlan, Executor, FieldChange, FileChange};
-use tagrex_core::scanner::{scan, ScanOptions};
+use serde::Deserialize;
+use serde_json::{json, Value};
 
-/// One table row, named the way the columns are named in the UI.
-#[derive(Serialize)]
-struct Row {
-    path: String,
-    file: String,
-    format: String,
-    artist: String,
-    title: String,
-    album: String,
-    albumartist: String,
-    year: String,
-    genre: String,
-    track: String,
-    duration_secs: u64,
-    bitrate_kbps: Option<u32>,
+use tagrex_commands::{
+    ActionGroupDto, App, CoverArtDto, ErrorDto, ImportSelectionDto, ImportTrackDto, PlanDto,
+    TagEditDto, TransformRuleDto,
+};
+
+/// One open library: the `App` a shell drives across calls.
+pub struct Session {
+    app: App,
 }
 
-#[derive(Serialize)]
-struct Library {
-    root: String,
-    rows: Vec<Row>,
-    /// Files the scanner found but the reader could not open, with the reason.
-    errors: Vec<String>,
-}
-
-fn field(track: &tagrex_core::model::TrackFile, field: TagField) -> String {
-    track.tags.get(&field).cloned().unwrap_or_default()
-}
-
-fn read_library(root: &Path) -> Library {
-    let mut rows = Vec::new();
-    let mut errors = Vec::new();
-
-    for entry in scan(root, &ScanOptions::default()) {
-        let path: PathBuf = match entry {
-            Ok(path) => path,
-            Err(err) => {
-                errors.push(format!("{err}"));
-                continue;
-            }
-        };
-
-        match TagEngine::read_with_props(&path) {
-            Ok(read) => {
-                let file = &read.file;
-                rows.push(Row {
-                    path: file.path.display().to_string(),
-                    file: file
-                        .path
-                        .file_name()
-                        .map(|name| name.to_string_lossy().into_owned())
-                        .unwrap_or_default(),
-                    format: format!("{:?}", file.format),
-                    artist: field(file, TagField::Artist),
-                    title: field(file, TagField::Title),
-                    album: field(file, TagField::Album),
-                    albumartist: field(file, TagField::AlbumArtist),
-                    year: field(file, TagField::Year),
-                    genre: field(file, TagField::Genre),
-                    track: field(file, TagField::TrackNumber),
-                    duration_secs: read.props.duration_secs,
-                    bitrate_kbps: read.props.bitrate_kbps,
-                });
-            }
-            Err(err) => errors.push(format!("{}: {err}", path.display())),
-        }
-    }
-
-    Library {
-        root: root.display().to_string(),
-        rows,
-        errors,
-    }
-}
-
-/// Scan `root` and return the library as a JSON string.
-///
-/// The caller owns the result and must hand it back to `tagrex_string_free`.
-/// A null or non-UTF-8 path, or a serialization failure, answers with a JSON
-/// object carrying an `error` key rather than a null pointer, so every shell has
-/// exactly one thing to parse.
-///
-/// # Safety
-///
-/// `root` must be a valid, NUL-terminated C string, or null.
-#[no_mangle]
-pub unsafe extern "C" fn tagrex_scan_json(root: *const c_char) -> *mut c_char {
-    let out = match cstr_to_path(root) {
-        Ok(path) => serde_json::to_string(&read_library(&path))
-            .unwrap_or_else(|err| error_json(&format!("serialize: {err}"))),
-        Err(message) => error_json(&message),
-    };
-
-    // The string is built here and freed by tagrex_string_free; a NUL inside it
-    // is impossible, since serde_json never emits one unescaped.
-    CString::new(out)
-        .unwrap_or_else(|_| CString::new(error_json("interior NUL")).expect("static json"))
-        .into_raw()
-}
+// ------------------------------------------------------------- string plumbing
 
 /// Free a string handed out by this library.
 ///
 /// # Safety
 ///
-/// `ptr` must be a pointer returned by `tagrex_scan_json`, and must not be used
-/// afterwards. Null is accepted and ignored.
+/// `ptr` must be a pointer returned by one of this library's functions, and must
+/// not be used afterwards. Null is accepted and ignored.
 #[no_mangle]
 pub unsafe extern "C" fn tagrex_string_free(ptr: *mut c_char) {
     if !ptr.is_null() {
@@ -132,249 +48,645 @@ pub unsafe extern "C" fn tagrex_string_free(ptr: *mut c_char) {
     }
 }
 
-unsafe fn cstr_to_path(root: *const c_char) -> Result<PathBuf, String> {
-    if root.is_null() {
-        return Err("null path".to_string());
-    }
-    CStr::from_ptr(root)
-        .to_str()
-        .map(PathBuf::from)
-        .map_err(|_| "path is not UTF-8".to_string())
-}
-
-fn error_json(message: &str) -> String {
-    serde_json::json!({ "root": "", "rows": [], "errors": [message] }).to_string()
-}
-
-// ---------------------------------------------------------------- write path
-
-/// One file's edits, as the shell states them: storage key to new value.
-#[derive(Deserialize)]
-struct EditRequest {
-    path: String,
-    fields: BTreeMap<String, String>,
-}
-
-/// Everything a write needs. `root` is the authorization — `plan::apply`
-/// refuses to touch anything outside it — and `journal` is where the batch is
-/// recorded so it can be undone.
-#[derive(Deserialize)]
-struct ApplyRequest {
-    root: String,
-    journal: String,
-    #[serde(default)]
-    description: String,
-    edits: Vec<EditRequest>,
-}
-
-#[derive(Deserialize)]
-struct UndoRequest {
-    root: String,
-    journal: String,
-}
-
-#[derive(Serialize, Default)]
-struct WriteResult {
-    /// Files the batch actually touched.
-    applied: usize,
-    /// The journal id, for the undo that follows.
-    batch: Option<i64>,
-    description: String,
-    errors: Vec<String>,
-}
-
-/// Turn the shell's edits into a plan, reading each file for the old side.
-///
-/// The old value has to come from disk rather than from the table the shell is
-/// showing: between the scan and the Apply the file may have changed, and the
-/// core's staleness check is what catches that — but only if the plan says what
-/// the shell believed the file held.
-fn build_plan(request: &ApplyRequest) -> Result<ChangePlan, String> {
-    let mut changes = Vec::new();
-
-    for edit in &request.edits {
-        let path = PathBuf::from(&edit.path);
-        let current = TagEngine::read(&path).map_err(|err| format!("{}: {err}", path.display()))?;
-
-        let mut tag_changes = Vec::new();
-        for (key, value) in &edit.fields {
-            let field = TagField::from_storage_key(key);
-            let old = current.tags.get(&field).cloned();
-            let new = (!value.is_empty()).then(|| value.clone());
-
-            // A field the edit did not actually change is not a change.
-            if old.as_deref().unwrap_or_default() == new.as_deref().unwrap_or_default() {
-                continue;
-            }
-            tag_changes.push(FieldChange { field, old, new });
-        }
-
-        if !tag_changes.is_empty() {
-            changes.push(FileChange {
-                path,
-                tag_changes,
-                ..Default::default()
-            });
-        }
-    }
-
-    Ok(ChangePlan {
-        description: if request.description.is_empty() {
-            "Edit tags".to_string()
-        } else {
-            request.description.clone()
-        },
-        changes,
-        ..Default::default()
-    })
-}
-
-fn apply(request: &ApplyRequest) -> WriteResult {
-    let plan = match build_plan(request) {
-        Ok(plan) => plan,
-        Err(message) => {
-            return WriteResult {
-                errors: vec![message],
-                ..Default::default()
-            }
-        }
-    };
-
-    if plan.is_empty() {
-        return WriteResult {
-            description: "nothing to write".to_string(),
-            ..Default::default()
-        };
-    }
-
-    let mut journal = match SqliteJournal::open(Path::new(&request.journal)) {
-        Ok(journal) => journal,
-        Err(err) => {
-            return WriteResult {
-                errors: vec![format!("journal: {err}")],
-                ..Default::default()
-            }
-        }
-    };
-
-    let roots = vec![PathBuf::from(&request.root)];
-    match Executor::apply(&plan, &mut journal, &roots) {
-        Ok(batch) => WriteResult {
-            applied: plan.file_count(),
-            batch: Some(batch.id.0),
-            description: plan.description,
-            errors: Vec::new(),
-        },
-        Err(err) => WriteResult {
-            errors: vec![format!("{err}")],
-            ..Default::default()
-        },
-    }
-}
-
-fn undo(request: &UndoRequest) -> WriteResult {
-    let mut journal = match SqliteJournal::open(Path::new(&request.journal)) {
-        Ok(journal) => journal,
-        Err(err) => {
-            return WriteResult {
-                errors: vec![format!("journal: {err}")],
-                ..Default::default()
-            }
-        }
-    };
-
-    // Newest first, so the head of the list is the batch to take back.
-    let batches = match journal.batches() {
-        Ok(batches) => batches,
-        Err(err) => {
-            return WriteResult {
-                errors: vec![format!("journal: {err}")],
-                ..Default::default()
-            }
-        }
-    };
-
-    let Some(batch) = batches.into_iter().next() else {
-        return WriteResult {
-            description: "nothing to undo".to_string(),
-            ..Default::default()
-        };
-    };
-
-    let roots = vec![PathBuf::from(&request.root)];
-    match Executor::undo(&mut journal, batch.id, &roots) {
-        Ok(()) => WriteResult {
-            applied: batch.plan.changes.len(),
-            batch: Some(batch.id.0),
-            description: batch.description,
-            errors: Vec::new(),
-        },
-        Err(err) => WriteResult {
-            errors: vec![format!("{err}")],
-            ..Default::default()
-        },
-    }
-}
-
-/// Write a set of tag edits, as one journaled batch.
-///
-/// # Safety
-///
-/// `request` must be a valid, NUL-terminated C string holding the JSON above.
-#[no_mangle]
-pub unsafe extern "C" fn tagrex_apply_json(request: *const c_char) -> *mut c_char {
-    into_c_string(match parse_request::<ApplyRequest>(request) {
-        Ok(request) => serde_json::to_string(&apply(&request))
-            .unwrap_or_else(|err| error_json(&format!("serialize: {err}"))),
-        Err(message) => error_json(&message),
-    })
-}
-
-/// Take back the most recent batch in the journal.
-///
-/// # Safety
-///
-/// `request` must be a valid, NUL-terminated C string holding the JSON above.
-#[no_mangle]
-pub unsafe extern "C" fn tagrex_undo_json(request: *const c_char) -> *mut c_char {
-    into_c_string(match parse_request::<UndoRequest>(request) {
-        Ok(request) => serde_json::to_string(&undo(&request))
-            .unwrap_or_else(|err| error_json(&format!("serialize: {err}"))),
-        Err(message) => error_json(&message),
-    })
-}
-
-unsafe fn parse_request<T: serde::de::DeserializeOwned>(raw: *const c_char) -> Result<T, String> {
-    if raw.is_null() {
-        return Err("null request".to_string());
-    }
-    let text = CStr::from_ptr(raw)
-        .to_str()
-        .map_err(|_| "request is not UTF-8".to_string())?;
-    serde_json::from_str(text).map_err(|err| format!("request: {err}"))
-}
-
 fn into_c_string(text: String) -> *mut c_char {
     CString::new(text)
-        .unwrap_or_else(|_| CString::new(error_json("interior NUL")).expect("static json"))
+        .unwrap_or_else(|_| CString::new(r#"{"error":"interior NUL"}"#).expect("static json"))
         .into_raw()
+}
+
+/// Serialise an `ok`/`error` envelope to a heap C string the caller frees.
+fn reply(result: Result<Value, ErrorDto>) -> *mut c_char {
+    let value = match result {
+        Ok(value) => json!({ "ok": value }),
+        Err(error) => json!({ "error": error }),
+    };
+    into_c_string(value.to_string())
+}
+
+unsafe fn cstr<'a>(raw: *const c_char, what: &str) -> Result<&'a str, ErrorDto> {
+    if raw.is_null() {
+        return Err(ErrorDto::plain(format!("null {what}")));
+    }
+    CStr::from_ptr(raw)
+        .to_str()
+        .map_err(|_| ErrorDto::plain(format!("{what} is not UTF-8")))
+}
+
+fn journal_path(config_dir: &str) -> Result<PathBuf, ErrorDto> {
+    let dir = PathBuf::from(config_dir);
+    std::fs::create_dir_all(&dir).map_err(|err| ErrorDto::plain(format!("config dir: {err}")))?;
+    Ok(dir.join("journal.sqlite"))
+}
+
+// ----------------------------------------------------------- session lifecycle
+
+/// Open `root` as a library, storing the handle through `out`.
+///
+/// The journal lives at `config_dir/journal.sqlite`, the way the desktop shell
+/// derives it under the app config dir. Answers with `{"ok":null}` and a live
+/// handle, or `{"error":…}` and a null handle.
+///
+/// # Safety
+///
+/// `root` and `config_dir` must be valid, NUL-terminated C strings; `out` must
+/// be a valid pointer to a `*mut Session`.
+#[no_mangle]
+pub unsafe extern "C" fn tagrex_open(
+    root: *const c_char,
+    config_dir: *const c_char,
+    out: *mut *mut Session,
+) -> *mut c_char {
+    if !out.is_null() {
+        *out = std::ptr::null_mut();
+    }
+    reply((|| {
+        let root = cstr(root, "root")?;
+        let config_dir = cstr(config_dir, "config dir")?;
+        let journal = journal_path(config_dir)?;
+        let app = App::open(root, &journal).map_err(ErrorDto::from)?;
+        if out.is_null() {
+            return Err(ErrorDto::plain("null out pointer"));
+        }
+        *out = Box::into_raw(Box::new(Session { app }));
+        Ok(Value::Null)
+    })())
+}
+
+/// Open a drag-and-drop of files and/or folders (#127), storing the handle
+/// through `out`. `paths_json` is a JSON array of path strings. Answers with
+/// `{"ok":<DropResultDto>}` and a live handle, or `{"error":…}` and a null one.
+///
+/// # Safety
+///
+/// `paths_json` and `config_dir` must be valid, NUL-terminated C strings; `out`
+/// must be a valid pointer to a `*mut Session`.
+#[no_mangle]
+pub unsafe extern "C" fn tagrex_open_drop(
+    paths_json: *const c_char,
+    config_dir: *const c_char,
+    out: *mut *mut Session,
+) -> *mut c_char {
+    if !out.is_null() {
+        *out = std::ptr::null_mut();
+    }
+    reply((|| {
+        let paths_json = cstr(paths_json, "paths")?;
+        let config_dir = cstr(config_dir, "config dir")?;
+        let paths: Vec<PathBuf> = serde_json::from_str(paths_json)
+            .map_err(|err| ErrorDto::plain(format!("paths: {err}")))?;
+        let journal = journal_path(config_dir)?;
+        let (app, dto) = App::open_drop(paths, &journal).map_err(ErrorDto::from)?;
+        if out.is_null() {
+            return Err(ErrorDto::plain("null out pointer"));
+        }
+        *out = Box::into_raw(Box::new(Session { app }));
+        to_value(dto)
+    })())
+}
+
+/// Close a session opened by `tagrex_open` / `tagrex_open_drop`.
+///
+/// # Safety
+///
+/// `handle` must be a handle from this library that has not already been closed,
+/// or null. It must not be used afterwards.
+#[no_mangle]
+pub unsafe extern "C" fn tagrex_close(handle: *mut Session) {
+    if !handle.is_null() {
+        drop(Box::from_raw(handle));
+    }
+}
+
+// -------------------------------------------------------------------- dispatch
+
+/// Run a command against an open session.
+///
+/// `cmd` is the command name and `args_json` a JSON object keyed the way the
+/// desktop handler names its parameters. Answers with `{"ok":<result>}` or
+/// `{"error":<ErrorDto>}`.
+///
+/// # Safety
+///
+/// `handle` must be a live handle from this library; `cmd` and `args_json` must
+/// be valid, NUL-terminated C strings.
+#[no_mangle]
+pub unsafe extern "C" fn tagrex_invoke(
+    handle: *mut Session,
+    cmd: *const c_char,
+    args_json: *const c_char,
+) -> *mut c_char {
+    reply((|| {
+        let Some(session) = handle.as_mut() else {
+            return Err(ErrorDto::plain("null session"));
+        };
+        let cmd = cstr(cmd, "command")?;
+        let args = cstr(args_json, "args")?;
+        dispatch(&mut session.app, cmd, args)
+    })())
+}
+
+fn to_value<T: serde::Serialize>(value: T) -> Result<Value, ErrorDto> {
+    serde_json::to_value(value).map_err(|err| ErrorDto::plain(format!("serialize: {err}")))
+}
+
+/// Deserialize a command's argument object.
+macro_rules! args {
+    ($args:expr, $t:ty) => {
+        serde_json::from_str::<$t>($args).map_err(|err| ErrorDto::plain(format!("args: {err}")))?
+    };
+}
+
+/// The command table. Every arm is the forward the matching desktop handler is,
+/// over the same DTOs; the argument structs below mirror each handler's
+/// parameters so a shell calls them the same way the frontend does.
+fn dispatch(app: &mut App, cmd: &str, raw: &str) -> Result<Value, ErrorDto> {
+    match cmd {
+        // -- reading the open library
+        "list_tracks" => to_value(app.list_tracks()),
+        "history" => to_value(app.history().map_err(ErrorDto::from)?),
+        "locked_fields" => to_value(app.locked_fields()),
+        "render_column" => {
+            let a = args!(raw, RenderColumn);
+            to_value(
+                app.render_column(&a.pattern, &a.paths)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "find_duplicates" => {
+            let a = args!(raw, FindDuplicates);
+            to_value(app.find_duplicates(&a.criterion).map_err(ErrorDto::from)?)
+        }
+
+        // -- covers
+        "read_cover_summary" => {
+            let a = args!(raw, Paths);
+            to_value(app.read_cover_summary(&a.paths).map_err(ErrorDto::from)?)
+        }
+        "read_external_cover" => {
+            let a = args!(raw, Paths);
+            to_value(app.read_external_cover(&a.paths).map_err(ErrorDto::from)?)
+        }
+        "export_cover" => {
+            let a = args!(raw, ExportCover);
+            to_value(
+                app.export_cover(&a.paths, &a.basename)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+
+        // -- tag-block reporting
+        "tag_block_targets" => {
+            let a = args!(raw, Paths);
+            to_value(app.tag_block_targets(&a.paths).map_err(ErrorDto::from)?)
+        }
+
+        // -- field locks
+        "set_locked_fields" => {
+            let a = args!(raw, LockedFields);
+            app.set_locked_fields(&a.fields);
+            Ok(Value::Null)
+        }
+
+        // -- trash
+        "trash_files" => {
+            let a = args!(raw, TrashFiles);
+            to_value(app.trash_files(&a.paths).map_err(ErrorDto::from)?)
+        }
+
+        // -- previews (staged plans, nothing written)
+        "preview_rename" => {
+            let a = args!(raw, MaskPaths);
+            to_value(
+                app.preview_rename(&a.mask, &a.paths)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_tags_from_name" => {
+            let a = args!(raw, MaskPaths);
+            to_value(
+                app.preview_tags_from_name(&a.mask, &a.paths)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "probe_tags_from_name" => {
+            let a = args!(raw, ProbeTagsFromName);
+            to_value(
+                app.probe_tags_from_name(&a.mask, Path::new(&a.path))
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_transform" => {
+            let a = args!(raw, PreviewTransform);
+            to_value(
+                app.preview_transform(&a.paths, &a.rules, &a.scope)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_transform_groups" => {
+            let a = args!(raw, PreviewTransformGroups);
+            to_value(
+                app.preview_transform_groups(&a.paths, &a.groups)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_transform_over_plan" => {
+            let a = args!(raw, PreviewTransformOverPlan);
+            to_value(
+                app.preview_transform_over_plan(&a.plan, &a.groups)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_move" => {
+            let a = args!(raw, PreviewMove);
+            let destination = a
+                .destination
+                .map(|d| d.trim().to_string())
+                .filter(|d| !d.is_empty())
+                .map(PathBuf::from);
+            to_value(
+                app.preview_move(
+                    &a.mask,
+                    &a.paths,
+                    destination.as_deref(),
+                    a.copy,
+                    a.prune_empty_dirs,
+                )
+                .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_tag_edits" => {
+            let a = args!(raw, PreviewTagEdits);
+            to_value(
+                app.preview_tag_edits_with_cover(&a.edits, a.cover.as_ref())
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_cover_set" => {
+            let a = args!(raw, PreviewCoverSet);
+            to_value(
+                app.preview_cover_set(&a.paths, &a.covers)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_cover_embed" => {
+            let a = args!(raw, PreviewCoverEmbed);
+            to_value(
+                app.preview_cover_embed(&a.paths, &a.cover)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_cover_remove" => {
+            let a = args!(raw, Paths);
+            to_value(app.preview_cover_remove(&a.paths).map_err(ErrorDto::from)?)
+        }
+        "preview_remove_tag_block" => {
+            let a = args!(raw, PreviewRemoveTagBlock);
+            to_value(
+                app.preview_remove_tag_block(&a.paths, &a.kind)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_convert_tag_block" => {
+            let a = args!(raw, PreviewConvertTagBlock);
+            to_value(
+                app.preview_convert_tag_block(&a.paths, &a.from, &a.to, a.revision.as_deref())
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "preview_clear_tags" => {
+            let a = args!(raw, Paths);
+            to_value(app.preview_clear_tags(&a.paths).map_err(ErrorDto::from)?)
+        }
+        "preview_import" => {
+            let a = args!(raw, PreviewImport);
+            to_value(
+                app.preview_import(&a.paths, &a.selection, a.vinyl_sides_to_disc)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "auto_align" => {
+            let a = args!(raw, AutoAlign);
+            to_value(
+                app.auto_align(&a.paths, &a.tracks)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+
+        // -- exporters
+        "export_playlist" => {
+            let a = args!(raw, PathsFileName);
+            to_value(
+                app.export_playlist(&a.paths, &a.file_name)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "export_playlists" => {
+            let a = args!(raw, ExportPlaylists);
+            to_value(
+                app.export_playlists(&a.paths, &a.grouping, &a.name_mask)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "export_cue" => {
+            let a = args!(raw, PathsFileName);
+            to_value(
+                app.export_cue(&a.paths, &a.file_name)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "export_csv" => {
+            let a = args!(raw, PathsFileName);
+            to_value(
+                app.export_csv(&a.paths, &a.file_name)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "export_report" => {
+            let a = args!(raw, ExportReport);
+            to_value(
+                app.export_report(&a.paths, &a.mask, &a.file_name)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "export_html" => {
+            let a = args!(raw, PathsFileName);
+            to_value(
+                app.export_html(&a.paths, &a.file_name)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "export_xml" => {
+            let a = args!(raw, PathsFileName);
+            to_value(
+                app.export_xml(&a.paths, &a.file_name)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+
+        // -- the gate: write and take back
+        "apply_plan" => {
+            let a = args!(raw, ApplyPlan);
+            to_value(app.apply(&a.plan).map_err(ErrorDto::from)?)
+        }
+        "undo" => {
+            let a = args!(raw, Undo);
+            app.undo(a.batch_id).map_err(ErrorDto::from)?;
+            Ok(Value::Null)
+        }
+
+        // -- static catalogues, independent of the open library
+        "builtin_action_groups" => to_value(tagrex_commands::builtin_action_groups()),
+        "mask_placeholders" => to_value(tagrex_commands::mask_placeholders()),
+        "import_fields" => to_value(tagrex_commands::import_fields()),
+        "read_cover_image" => {
+            let a = args!(raw, ReadCoverImage);
+            to_value(
+                tagrex_commands::read_cover_image(&PathBuf::from(a.path))
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+
+        other => Err(ErrorDto::plain(format!("unknown command: {other}"))),
+    }
+}
+
+// ------------------------------------------------------------- argument structs
+//
+// One per handler shape, keyed the way the desktop handler names its parameters.
+// `paths` deserialises straight into `PathBuf`, which serde builds from a JSON
+// string, so the shell sends the same string arrays the frontend does.
+
+#[derive(Deserialize)]
+struct Paths {
+    paths: Vec<PathBuf>,
+}
+
+#[derive(Deserialize)]
+struct MaskPaths {
+    mask: String,
+    paths: Vec<PathBuf>,
+}
+
+#[derive(Deserialize)]
+struct PathsFileName {
+    paths: Vec<PathBuf>,
+    file_name: String,
+}
+
+#[derive(Deserialize)]
+struct RenderColumn {
+    pattern: String,
+    paths: Vec<PathBuf>,
+}
+
+#[derive(Deserialize)]
+struct FindDuplicates {
+    criterion: String,
+}
+
+#[derive(Deserialize)]
+struct LockedFields {
+    fields: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct TrashFiles {
+    paths: Vec<PathBuf>,
+}
+
+#[derive(Deserialize)]
+struct ExportCover {
+    paths: Vec<PathBuf>,
+    basename: String,
+}
+
+#[derive(Deserialize)]
+struct ProbeTagsFromName {
+    mask: String,
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct PreviewTransform {
+    paths: Vec<PathBuf>,
+    rules: Vec<TransformRuleDto>,
+    scope: String,
+}
+
+#[derive(Deserialize)]
+struct PreviewTransformGroups {
+    paths: Vec<PathBuf>,
+    groups: Vec<ActionGroupDto>,
+}
+
+#[derive(Deserialize)]
+struct PreviewTransformOverPlan {
+    plan: PlanDto,
+    groups: Vec<ActionGroupDto>,
+}
+
+#[derive(Deserialize)]
+struct PreviewMove {
+    mask: String,
+    paths: Vec<PathBuf>,
+    #[serde(default)]
+    destination: Option<String>,
+    copy: bool,
+    prune_empty_dirs: bool,
+}
+
+#[derive(Deserialize)]
+struct PreviewTagEdits {
+    edits: Vec<TagEditDto>,
+    #[serde(default)]
+    cover: Option<CoverArtDto>,
+}
+
+#[derive(Deserialize)]
+struct PreviewCoverSet {
+    paths: Vec<PathBuf>,
+    covers: Vec<CoverArtDto>,
+}
+
+#[derive(Deserialize)]
+struct PreviewCoverEmbed {
+    paths: Vec<PathBuf>,
+    cover: CoverArtDto,
+}
+
+#[derive(Deserialize)]
+struct PreviewRemoveTagBlock {
+    paths: Vec<PathBuf>,
+    kind: String,
+}
+
+#[derive(Deserialize)]
+struct PreviewConvertTagBlock {
+    paths: Vec<PathBuf>,
+    from: String,
+    to: String,
+    #[serde(default)]
+    revision: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PreviewImport {
+    paths: Vec<PathBuf>,
+    selection: ImportSelectionDto,
+    vinyl_sides_to_disc: bool,
+}
+
+#[derive(Deserialize)]
+struct AutoAlign {
+    paths: Vec<PathBuf>,
+    tracks: Vec<ImportTrackDto>,
+}
+
+#[derive(Deserialize)]
+struct ExportPlaylists {
+    paths: Vec<PathBuf>,
+    grouping: String,
+    name_mask: String,
+}
+
+#[derive(Deserialize)]
+struct ExportReport {
+    paths: Vec<PathBuf>,
+    mask: String,
+    file_name: String,
+}
+
+#[derive(Deserialize)]
+struct ApplyPlan {
+    plan: PlanDto,
+}
+
+#[derive(Deserialize)]
+struct Undo {
+    batch_id: i64,
+}
+
+#[derive(Deserialize)]
+struct ReadCoverImage {
+    path: String,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::CString;
+
+    /// Drive the ABI the way a shell does: open a scratch library, invoke,
+    /// free every string. Returns the parsed `ok`/`error` envelope.
+    unsafe fn open(root: &Path, config: &Path) -> *mut Session {
+        let root_c = CString::new(root.to_str().unwrap()).unwrap();
+        let cfg_c = CString::new(config.to_str().unwrap()).unwrap();
+        let mut handle: *mut Session = std::ptr::null_mut();
+        let reply = tagrex_open(root_c.as_ptr(), cfg_c.as_ptr(), &mut handle);
+        let text = CStr::from_ptr(reply).to_str().unwrap().to_owned();
+        tagrex_string_free(reply);
+        assert!(text.contains("\"ok\""), "open failed: {text}");
+        assert!(!handle.is_null());
+        handle
+    }
+
+    unsafe fn invoke(handle: *mut Session, cmd: &str, args: &str) -> Value {
+        let cmd_c = CString::new(cmd).unwrap();
+        let args_c = CString::new(args).unwrap();
+        let reply = tagrex_invoke(handle, cmd_c.as_ptr(), args_c.as_ptr());
+        let text = CStr::from_ptr(reply).to_str().unwrap().to_owned();
+        tagrex_string_free(reply);
+        serde_json::from_str(&text).unwrap()
+    }
 
     #[test]
-    fn a_missing_folder_reads_as_an_empty_library_rather_than_a_failure() {
-        let library = read_library(Path::new("/definitely/not/here"));
-        assert!(library.rows.is_empty());
+    fn open_lists_the_library_and_a_bad_command_answers_with_an_error() {
+        let dir = std::env::temp_dir().join(format!("tagrex-ffi-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let config = dir.join("config");
+
+        unsafe {
+            let handle = open(&dir, &config);
+
+            let listed = invoke(handle, "list_tracks", "{}");
+            assert!(
+                listed.get("ok").and_then(Value::as_array).is_some(),
+                "{listed}"
+            );
+
+            // A static catalogue needs no files on disk.
+            let placeholders = invoke(handle, "mask_placeholders", "{}");
+            assert!(
+                placeholders.get("ok").and_then(Value::as_array).is_some(),
+                "{placeholders}"
+            );
+
+            let unknown = invoke(handle, "no_such_command", "{}");
+            assert!(
+                unknown["error"]["text"]
+                    .as_str()
+                    .unwrap()
+                    .contains("unknown command"),
+                "{unknown}"
+            );
+
+            tagrex_close(handle);
+        }
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_null_path_answers_with_json_carrying_the_reason() {
-        let ptr = unsafe { tagrex_scan_json(std::ptr::null()) };
-        let text = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-        unsafe { tagrex_string_free(ptr) };
-        assert!(text.contains("null path"), "{text}");
+        let cfg = CString::new("/tmp").unwrap();
+        let mut handle: *mut Session = std::ptr::null_mut();
+        let reply = unsafe { tagrex_open(std::ptr::null(), cfg.as_ptr(), &mut handle) };
+        let text = unsafe { CStr::from_ptr(reply) }
+            .to_str()
+            .unwrap()
+            .to_owned();
+        unsafe { tagrex_string_free(reply) };
+        assert!(text.contains("null root"), "{text}");
+        assert!(handle.is_null());
     }
 }
