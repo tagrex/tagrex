@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The SwiftUI stand has a Settings screen.** A gear in the toolbar opens a
+  sheet over `load_settings` / `save_settings` and the Discogs token commands:
+  the Discogs token, a proxy, the search rate limit, and the ID3v2 write revision
+  (v2.3 / v2.4). Saving a token is what turns on Online release-candidate covers,
+  which Discogs withholds from unauthenticated requests. A subset of the Tauri
+  settings; fonts, theme, import fields and the rest follow. Spike-only. (#312)
 - **A parity-audit checklist for the SwiftUI stand.** `spikes/swiftui/PARITY.md`
   compares each stand mode to its Tauri module (`app/ui/js/*.js`) with code
   references and severity, and records that almost every gap is UI-side — the

@@ -62,6 +62,7 @@ struct WorkspaceView: View {
     @State private var sortOrder = [KeyPathComparator(\Track.file)]
     @State private var showsInspector = true
     @State private var choosingFolder = false
+    @State private var showingSettings = false
     /// Bumped to ask the filter field for the keyboard. A counter rather
     /// than a Bool: focus is an event, and a Bool that is already true
     /// cannot fire a second time.
@@ -209,6 +210,19 @@ struct WorkspaceView: View {
                     .help("Undo the last applied batch")
                 }
 
+                ToolbarSpacer(.fixed)
+
+                ToolbarItem {
+                    Button {
+                        showingSettings = true
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                    .help("Settings")
+                }
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView(library: library)
             }
             .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
                 guard case .success(let folder) = result else { return }

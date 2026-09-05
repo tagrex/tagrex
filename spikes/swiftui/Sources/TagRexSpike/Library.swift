@@ -161,6 +161,15 @@ struct SearchFailure: Error {
     let message: String
 }
 
+/// The settings the stand exposes: the online credentials/throttle and the ID3
+/// write revision. A subset of the backend `SettingsDto`.
+struct OnlineSettings: Equatable {
+    var discogsToken = ""
+    var proxy = ""
+    var rateLimitPerMin = 0
+    var id3v23 = false
+}
+
 /// One line of a rename preview: the file's current name and what the mask
 /// renames it to.
 struct RenamePair: Identifiable, Hashable {
@@ -580,6 +589,45 @@ final class Library {
         }.value
         if let data { imageCache[url] = data }
         return data
+    }
+
+    // MARK: - Settings
+
+    /// Load the settings the stand exposes plus the saved Discogs token.
+    func loadOnlineSettings() async -> OnlineSettings {
+        guard let session else { return OnlineSettings() }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) { () -> OnlineSettings in
+            var settings = OnlineSettings()
+            let loaded: Reply<LoadedSettings>? = invoke(box, "load_settings", "{}")
+            if let ok = loaded?.ok {
+                settings.proxy = ok.proxy ?? ""
+                settings.rateLimitPerMin = ok.rate_limit_per_min ?? 0
+                settings.id3v23 = ok.id3_v23 ?? false
+            }
+            let token: Reply<String>? = invoke(box, "saved_discogs_token", "{}")
+            settings.discogsToken = token?.ok ?? ""
+            return settings
+        }.value
+    }
+
+    /// Save the exposed settings and the Discogs token. Only the managed fields
+    /// are written; the backend defaults the rest (nothing else in the stand sets
+    /// them). Applied live in the session, so a new token or proxy takes effect
+    /// on the next search without reopening.
+    func saveOnlineSettings(_ settings: OnlineSettings) async {
+        guard let session else { return }
+        let box = SessionHandle(raw: session)
+        await Task.detached(priority: .userInitiated) {
+            let payload = SaveSettingsArgs(settings: .init(
+                proxy: settings.proxy.trimmingCharacters(in: .whitespaces),
+                rate_limit_per_min: settings.rateLimitPerMin,
+                id3_v23: settings.id3v23
+            ))
+            _ = invoke(box, "save_settings", encodeArgs(payload)) as Reply<EmptyOk>?
+            let token = SaveTokenArgs(token: settings.discogsToken.trimmingCharacters(in: .whitespaces))
+            _ = invoke(box, "save_discogs_token", encodeArgs(token)) as Reply<EmptyOk>?
+        }.value
     }
 
     /// Align a release's tracks to `paths`. Returns, per file in order, the index
@@ -1152,6 +1200,26 @@ private struct FetchImageArgs: Encodable {
     let source: String
     let token: String
     let url: String
+}
+
+/// The subset of `SettingsDto` the stand reads back; unknown keys are ignored.
+private struct LoadedSettings: Decodable {
+    let proxy: String?
+    let rate_limit_per_min: Int?
+    let id3_v23: Bool?
+}
+
+private struct SaveSettingsArgs: Encodable {
+    struct Payload: Encodable {
+        let proxy: String
+        let rate_limit_per_min: Int
+        let id3_v23: Bool
+    }
+    let settings: Payload
+}
+
+private struct SaveTokenArgs: Encodable {
+    let token: String
 }
 
 /// The reply from `provider_fetch_image`: the raw bytes as base64 and their mime.
