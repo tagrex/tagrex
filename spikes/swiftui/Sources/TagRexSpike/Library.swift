@@ -150,6 +150,28 @@ struct RenamePair: Identifiable, Hashable {
     var id: String { old }
 }
 
+/// One transform rule, as the backend's TransformRuleDto. snake_case keys are
+/// the property names, since the ABI does not convert them.
+struct TransformRule: Encodable {
+    var kind: String
+    var from = ""
+    var to = ""
+    var regex = false
+    var whole_word = false
+    var case_sensitive = false
+    var style = ""
+    var enabled = true
+}
+
+/// One line of a transform preview: what changed (a field name or "file"), its
+/// old value and the new one.
+struct TransformPair: Identifiable, Hashable {
+    var label: String
+    var old: String
+    var new: String
+    var id: String { "\(label)|\(old)|\(new)" }
+}
+
 /// The editable fields, named with the core's storage keys.
 enum Field: String, CaseIterable, Identifiable {
     case artist, title, album, albumartist, year, genre, track
@@ -606,6 +628,88 @@ final class Library {
         }
     }
 
+    // MARK: - Generator
+
+    /// Preview a transform chain over a scope ("tags", a field key, "filename"
+    /// or "fileext"): what each file's value changes from and to. Read-only.
+    func transformPreview(
+        rules: [TransformRule],
+        scope: String,
+        paths: [String]
+    ) async -> Result<[TransformPair], SearchFailure> {
+        guard let session, !rules.isEmpty, !paths.isEmpty else { return .success([]) }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<JSONValue>? = invoke(
+                box, "preview_transform",
+                encodeArgs(TransformArgs(paths: paths, rules: rules, scope: scope)))
+            guard let plan = reply?.ok else {
+                return .failure(SearchFailure(
+                    message: reply?.error?.text ?? "the transform could not be previewed"))
+            }
+            guard let parsed = decodePlan(plan) else {
+                return .failure(SearchFailure(message: "could not read the transform plan"))
+            }
+            var pairs: [TransformPair] = []
+            for change in parsed.changes {
+                if let to = change.rename_to {
+                    pairs.append(TransformPair(
+                        label: "file", old: baseName(change.path), new: baseName(to)))
+                }
+                for tag in change.tag_changes {
+                    pairs.append(TransformPair(
+                        label: tag.field, old: tag.old ?? "", new: tag.new ?? ""))
+                }
+            }
+            return .success(pairs)
+        }.value
+    }
+
+    /// Build the transform plan and stage it: tag changes fill the table diff,
+    /// a filename change fills the File column, the change-plan bar takes over.
+    func stageTransform(
+        rules: [TransformRule],
+        scope: String,
+        paths: [String]
+    ) async -> Result<Int, SearchFailure> {
+        guard let session, !rules.isEmpty, !paths.isEmpty else { return .success(0) }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, [String: [Field: String]], [String: String], Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let reply: Reply<JSONValue>? = invoke(
+                    box, "preview_transform",
+                    encodeArgs(TransformArgs(paths: paths, rules: rules, scope: scope)))
+                guard let plan = reply?.ok else {
+                    return .failure(SearchFailure(
+                        message: reply?.error?.text ?? "the transform could not be prepared"))
+                }
+                guard let parsed = decodePlan(plan) else {
+                    return .failure(SearchFailure(message: "could not read the transform plan"))
+                }
+                var diffs: [String: [Field: String]] = [:]
+                var renames: [String: String] = [:]
+                for change in parsed.changes {
+                    if let to = change.rename_to { renames[change.path] = baseName(to) }
+                    for tag in change.tag_changes where Field(rawValue: tag.field) != nil {
+                        diffs[change.path, default: [:]][Field(rawValue: tag.field)!] = tag.new ?? ""
+                    }
+                }
+                return .success((plan, diffs, renames, parsed.changes.count))
+            }.value
+
+        switch result {
+        case .success(let (plan, diffs, renames, count)):
+            staged = diffs
+            stagedRenames = renames
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged a transform of \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            return .failure(failure)
+        }
+    }
+
     // MARK: - Player
 
     /// The last status read from the player, or nil when nothing is loaded.
@@ -889,6 +993,12 @@ private struct MaskPathsArg: Encodable {
     let paths: [String]
 }
 
+private struct TransformArgs: Encodable {
+    let paths: [String]
+    let rules: [TransformRule]
+    let scope: String
+}
+
 /// Decode a plan (as a JSONValue) into the parts the stand reflects — visible
 /// tag changes and renames. Re-encodes the opaque value, then reads the shape.
 private func decodePlan(_ plan: JSONValue) -> StagedPlanShape? {
@@ -933,6 +1043,7 @@ private struct StagedPlanShape: Decodable {
 
     struct FieldChange: Decodable {
         let field: String
+        let old: String?
         let new: String?
     }
 

@@ -415,13 +415,15 @@ struct ModePanel: View {
         Group {
             if mode == .renamer {
                 RenamerPanel(library: library, selection: selection)
+            } else if mode == .generator {
+                GeneratorPanel(library: library, selection: selection)
             } else if mode == .tagger {
                 taggerPanel
             } else {
                 ContentUnavailableView(
                     "Not in this build",
                     systemImage: "hammer",
-                    description: Text("This build carries the tag editor, online search and the renamer; the other modes come next.")
+                    description: Text("This build carries the tag editor, online search, the renamer and the generator; the rest come next.")
                 )
             }
         }

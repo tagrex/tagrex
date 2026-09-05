@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The SwiftUI stand generates and cleans up values.** The Generator mode is a
+  working panel over `preview_transform`: pick a scope (all tags, one field, the
+  filename or extension) and a rule — change case, find & replace (regex /
+  whole-word / case-sensitive), strip accents, transliterate — see a live
+  old → new preview, and Stage it through the same gate (the table shows the
+  changes, Apply writes one journaled, undoable batch). One rule for now.
+  Spike-only. (#303)
 - **The SwiftUI stand renames files by a mask.** The Renamer mode is a working
   panel over `preview_rename`: a mask field (`%artist% - %title%`, with the
   placeholder/function grammar), a live old → new preview, and "Stage rename"
