@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   shell reaches the whole synchronous surface (every `preview_*`, the change
   plan, Apply, Undo, the exporters, duplicates, field locks) instead of a
   hand-copied fraction. Spike-only; nothing about the app changes. (#293)
+- **The native-shell bridge reaches the online sources.** The session gains a
+  provider hub, and the dispatcher gains `provider_search`,
+  `provider_fetch_release`, `provider_fetch_image` and `save_release_images` —
+  synchronous forwards, no runtime, since the provider crates use blocking HTTP.
+  A shell can now search a source, pull a release, and save its cover next to the
+  tracks. Spike-only; nothing about the app changes. (#294)
 
 ## [0.15.0] - 2026-09-05
 

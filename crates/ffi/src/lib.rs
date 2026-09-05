@@ -25,12 +25,15 @@ use serde_json::{json, Value};
 
 use tagrex_commands::{
     ActionGroupDto, App, CoverArtDto, ErrorDto, ImportSelectionDto, ImportTrackDto, PlanDto,
-    TagEditDto, TransformRuleDto,
+    ProviderHub, SearchQueryDto, TagEditDto, TransformRuleDto,
 };
 
-/// One open library: the `App` a shell drives across calls.
+/// One open library: the `App` a shell drives across calls, plus the
+/// `ProviderHub` the online-source commands go through. The hub is synchronous —
+/// the provider crates use blocking HTTP — so it needs no runtime of its own.
 pub struct Session {
     app: App,
+    providers: ProviderHub,
 }
 
 // ------------------------------------------------------------- string plumbing
@@ -107,7 +110,10 @@ pub unsafe extern "C" fn tagrex_open(
         if out.is_null() {
             return Err(ErrorDto::plain("null out pointer"));
         }
-        *out = Box::into_raw(Box::new(Session { app }));
+        *out = Box::into_raw(Box::new(Session {
+            app,
+            providers: ProviderHub::default(),
+        }));
         Ok(Value::Null)
     })())
 }
@@ -139,7 +145,10 @@ pub unsafe extern "C" fn tagrex_open_drop(
         if out.is_null() {
             return Err(ErrorDto::plain("null out pointer"));
         }
-        *out = Box::into_raw(Box::new(Session { app }));
+        *out = Box::into_raw(Box::new(Session {
+            app,
+            providers: ProviderHub::default(),
+        }));
         to_value(dto)
     })())
 }
@@ -181,7 +190,7 @@ pub unsafe extern "C" fn tagrex_invoke(
         };
         let cmd = cstr(cmd, "command")?;
         let args = cstr(args_json, "args")?;
-        dispatch(&mut session.app, cmd, args)
+        dispatch(session, cmd, args)
     })())
 }
 
@@ -196,10 +205,65 @@ macro_rules! args {
     };
 }
 
-/// The command table. Every arm is the forward the matching desktop handler is,
-/// over the same DTOs; the argument structs below mirror each handler's
-/// parameters so a shell calls them the same way the frontend does.
-fn dispatch(app: &mut App, cmd: &str, raw: &str) -> Result<Value, ErrorDto> {
+/// Commands that need the provider hub, or both it and the library. Everything
+/// else falls through to [`dispatch_app`]. Split out because these borrow other
+/// fields of the session alongside `app`.
+fn dispatch(session: &mut Session, cmd: &str, raw: &str) -> Result<Value, ErrorDto> {
+    match cmd {
+        "provider_search" => {
+            let a = args!(raw, ProviderSearch);
+            to_value(
+                session
+                    .providers
+                    .provider_search(&a.source, &a.token, &a.query)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "provider_fetch_release" => {
+            let a = args!(raw, ProviderFetchRelease);
+            to_value(
+                session
+                    .providers
+                    .provider_fetch_release(&a.source, &a.token, &a.release_id)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        "provider_fetch_image" => {
+            let a = args!(raw, ProviderFetchImage);
+            to_value(
+                session
+                    .providers
+                    .provider_fetch_image(&a.source, &a.token, &a.url)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        // Writes the images next to the tracks, inside the opened root — so it
+        // needs the library as well as the hub.
+        "save_release_images" => {
+            let a = args!(raw, SaveReleaseImages);
+            to_value(
+                session
+                    .app
+                    .save_release_images(
+                        &session.providers,
+                        &a.source,
+                        &a.token,
+                        &a.path,
+                        &a.urls,
+                        a.overwrite,
+                    )
+                    .map_err(ErrorDto::from)?,
+            )
+        }
+        _ => dispatch_app(&mut session.app, cmd, raw),
+    }
+}
+
+/// The command table over the library alone. Every arm is the forward the
+/// matching desktop handler is, over the same DTOs; the argument structs below
+/// mirror each handler's parameters so a shell calls them the same way the
+/// frontend does.
+fn dispatch_app(app: &mut App, cmd: &str, raw: &str) -> Result<Value, ErrorDto> {
     match cmd {
         // -- reading the open library
         "list_tracks" => to_value(app.list_tracks()),
@@ -609,6 +673,36 @@ struct Undo {
 #[derive(Deserialize)]
 struct ReadCoverImage {
     path: String,
+}
+
+#[derive(Deserialize)]
+struct ProviderSearch {
+    source: String,
+    token: String,
+    query: SearchQueryDto,
+}
+
+#[derive(Deserialize)]
+struct ProviderFetchRelease {
+    source: String,
+    token: String,
+    release_id: String,
+}
+
+#[derive(Deserialize)]
+struct ProviderFetchImage {
+    source: String,
+    token: String,
+    url: String,
+}
+
+#[derive(Deserialize)]
+struct SaveReleaseImages {
+    source: String,
+    token: String,
+    path: PathBuf,
+    urls: Vec<String>,
+    overwrite: bool,
 }
 
 #[cfg(test)]

@@ -60,6 +60,37 @@ fn main() {
             println!("{listed}");
         }
 
+        // A live provider search. MusicBrainz needs no token.
+        //   probe search <folder> <source> <artist> <album>
+        "search" => {
+            let source = args.get(2).cloned().unwrap_or_else(|| "musicbrainz".into());
+            let artist = args.get(3).cloned().unwrap_or_default();
+            let album = args.get(4).cloned().unwrap_or_default();
+            let result = invoke(
+                handle,
+                "provider_search",
+                &serde_json::json!({
+                    "source": source,
+                    "token": "",
+                    "query": { "artist": artist, "album": album },
+                }),
+            );
+            println!("{result}");
+        }
+
+        // Pull a full release by id.
+        //   probe fetch <folder> <source> <release_id>
+        "fetch" => {
+            let source = args.get(2).cloned().unwrap_or_else(|| "musicbrainz".into());
+            let release_id = args.get(3).cloned().unwrap_or_default();
+            let result = invoke(
+                handle,
+                "provider_fetch_release",
+                &serde_json::json!({ "source": source, "token": "", "release_id": release_id }),
+            );
+            println!("{result}");
+        }
+
         // Stage the edits into a plan, then apply that plan — the same two steps
         // the interface takes, so the write goes through the gate.
         "edit" => {
