@@ -142,6 +142,14 @@ struct SearchFailure: Error {
     let message: String
 }
 
+/// One line of a rename preview: the file's current name and what the mask
+/// renames it to.
+struct RenamePair: Identifiable, Hashable {
+    var old: String
+    var new: String
+    var id: String { old }
+}
+
 /// The editable fields, named with the core's storage keys.
 enum Field: String, CaseIterable, Identifiable {
     case artist, title, album, albumartist, year, genre, track
@@ -204,6 +212,10 @@ final class Library {
     /// only mirrors the visible part of it for the diff.
     private var stagedPlan: JSONValue?
     private var stagedPlanCount = 0
+
+    /// path → the new file name a staged rename gives it, so the File column can
+    /// show the rename as a diff the way a tag change shows in its column.
+    private(set) var stagedRenames: [String: String] = [:]
 
     var filter = ""
     var showsOldValues = false
@@ -284,10 +296,11 @@ final class Library {
     /// value back to what it was cancels the change instead of recording a
     /// no-op the way the web editor does.
     func stage(_ field: Field, to value: String, for ids: [Track.ID]) {
-        // A hand edit supersedes a pending import: the two staging sources must
-        // not mix, and Apply follows whichever is current.
+        // A hand edit supersedes a pending import or rename: the staging sources
+        // must not mix, and Apply follows whichever is current.
         stagedPlan = nil
         stagedPlanCount = 0
+        stagedRenames.removeAll()
         for id in ids {
             guard let track = tracks.first(where: { $0.id == id }) else { continue }
 
@@ -311,6 +324,7 @@ final class Library {
         staged.removeAll()
         stagedPlan = nil
         stagedPlanCount = 0
+        stagedRenames.removeAll()
         lastMessage = "Discarded"
     }
 
@@ -375,6 +389,7 @@ final class Library {
             staged.removeAll()
             stagedPlan = nil
             stagedPlanCount = 0
+            stagedRenames.removeAll()
         }
         await rescan()
     }
@@ -524,6 +539,67 @@ final class Library {
             stagedPlan = plan
             stagedPlanCount = count
             lastMessage = "Staged an import of \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            return .failure(failure)
+        }
+    }
+
+    // MARK: - Renamer
+
+    /// Preview a rename mask over `paths`: old file name → new file name, for the
+    /// files the mask actually changes. Read-only; nothing is staged.
+    func renamePreview(mask: String, paths: [String]) async -> Result<[RenamePair], SearchFailure> {
+        guard let session, !mask.isEmpty, !paths.isEmpty else { return .success([]) }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<JSONValue>? =
+                invoke(box, "preview_rename", encodeArgs(MaskPathsArg(mask: mask, paths: paths)))
+            guard let plan = reply?.ok else {
+                return .failure(SearchFailure(
+                    message: reply?.error?.text ?? "the rename could not be previewed"))
+            }
+            guard let parsed = decodePlan(plan) else {
+                return .failure(SearchFailure(message: "could not read the rename plan"))
+            }
+            let pairs = parsed.changes.compactMap { change -> RenamePair? in
+                guard let to = change.rename_to else { return nil }
+                return RenamePair(old: baseName(change.path), new: baseName(to))
+            }
+            return .success(pairs)
+        }.value
+    }
+
+    /// Build the rename plan and stage it: the File column shows each new name,
+    /// the change-plan bar takes over, and Apply writes it — one journaled batch.
+    func stageRename(mask: String, paths: [String]) async -> Result<Int, SearchFailure> {
+        guard let session, !mask.isEmpty, !paths.isEmpty else { return .success(0) }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, [String: String], Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let reply: Reply<JSONValue>? =
+                    invoke(box, "preview_rename", encodeArgs(MaskPathsArg(mask: mask, paths: paths)))
+                guard let plan = reply?.ok else {
+                    return .failure(SearchFailure(
+                        message: reply?.error?.text ?? "the rename could not be prepared"))
+                }
+                guard let parsed = decodePlan(plan) else {
+                    return .failure(SearchFailure(message: "could not read the rename plan"))
+                }
+                var renames: [String: String] = [:]
+                for change in parsed.changes {
+                    if let to = change.rename_to { renames[change.path] = baseName(to) }
+                }
+                return .success((plan, renames, renames.count))
+            }.value
+
+        switch result {
+        case .success(let (plan, renames, count)):
+            staged.removeAll()
+            stagedRenames = renames
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged a rename of \(count) file(s)"
             return .success(count)
         case .failure(let failure):
             return .failure(failure)
@@ -808,6 +884,22 @@ private struct AlignArgs: Encodable {
     let tracks: [ImportTrack]
 }
 
+private struct MaskPathsArg: Encodable {
+    let mask: String
+    let paths: [String]
+}
+
+/// Decode a plan (as a JSONValue) into the parts the stand reflects — visible
+/// tag changes and renames. Re-encodes the opaque value, then reads the shape.
+private func decodePlan(_ plan: JSONValue) -> StagedPlanShape? {
+    guard let data = try? JSONEncoder().encode(plan) else { return nil }
+    return try? JSONDecoder().decode(StagedPlanShape.self, from: data)
+}
+
+private func baseName(_ path: String) -> String {
+    (path as NSString).lastPathComponent
+}
+
 private struct PathArg: Encodable {
     let path: String
 }
@@ -835,6 +927,7 @@ private struct AlignMatch: Decodable {
 private struct StagedPlanShape: Decodable {
     struct FileChange: Decodable {
         let path: String
+        let rename_to: String?
         let tag_changes: [FieldChange]
     }
 

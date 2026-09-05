@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The SwiftUI stand renames files by a mask.** The Renamer mode is a working
+  panel over `preview_rename`: a mask field (`%artist% - %title%`, with the
+  placeholder/function grammar), a live old → new preview, and "Stage rename"
+  that stages the plan through the same gate — the File column shows each new
+  name and the change-plan bar's Apply writes one journaled, undoable batch.
+  Runs over the selection, or every file when nothing is selected. Spike-only. (#302)
 - **The SwiftUI stand plays tracks.** The status bar's placeholder transport is
   now a working player over the player ABI: play / pause / stop, the now-playing
   title, a seek bar driven by the player's own clock (scrub to seek), and a

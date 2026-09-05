@@ -97,6 +97,7 @@ struct WorkspaceView: View {
             selection: $selection,
             sortOrder: $sortOrder,
             staged: library.staged,
+            renames: library.stagedRenames,
             showsOldValues: library.showsOldValues
         )
             .overlay(alignment: .bottom) {
@@ -293,12 +294,19 @@ struct TrackTable: View {
     /// inside a cell trips the "no value for key" assertion the moment the table
     /// re-lays out — which is what a click on a column header does.
     let staged: [String: [Field: String]]
+    /// path → the new name a staged rename gives it, shown in the File column as
+    /// a diff the way a tag change shows in its column.
+    let renames: [String: String]
     let showsOldValues: Bool
 
     var body: some View {
         Table(rows, selection: $selection, sortOrder: $sortOrder) {
             TableColumn("File", value: \.file) { track in
-                Text(track.file).font(AppFonts.body)
+                DiffCell(
+                    value: renames[track.id] ?? track.file,
+                    old: renames[track.id] == nil ? nil : track.file,
+                    showsOld: showsOldValues
+                )
             }
             .width(min: 180, ideal: 300)
 
@@ -404,22 +412,37 @@ struct ModePanel: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if mode == .tagger {
-                Picker("", selection: $subtab) {
-                    Text("Online").tag(0)
-                    Text("Editor").tag(1)
-                    Text("From name").tag(2)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .padding(12)
-                Divider()
+        Group {
+            if mode == .renamer {
+                RenamerPanel(library: library, selection: selection)
+            } else if mode == .tagger {
+                taggerPanel
+            } else {
+                ContentUnavailableView(
+                    "Not in this build",
+                    systemImage: "hammer",
+                    description: Text("This build carries the tag editor, online search and the renamer; the other modes come next.")
+                )
             }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
 
-            if mode == .tagger && subtab == 0 {
+    private var taggerPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Picker("", selection: $subtab) {
+                Text("Online").tag(0)
+                Text("Editor").tag(1)
+                Text("From name").tag(2)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(12)
+            Divider()
+
+            if subtab == 0 {
                 OnlinePanel(library: library, selection: selection)
-            } else if mode != .tagger || subtab != 1 {
+            } else if subtab != 1 {
                 ContentUnavailableView(
                     "Not in this build",
                     systemImage: "hammer",
@@ -435,7 +458,6 @@ struct ModePanel: View {
                 editor
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: selection) { _, _ in drafts = [:] }
     }
 
