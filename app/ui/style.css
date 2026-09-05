@@ -1962,7 +1962,11 @@ body.show-checkbox tr.playing td.sel {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* Symmetric 14px inset (#292): the transport clears the window edge on the left
+     and the waveform/clock clear the panel border on the right, matching the
+     count's inset in the right zone rather than sitting flush against the split. */
   padding-left: 14px;
+  padding-right: 14px;
 }
 .sb-right {
   flex: 0 0 auto;
