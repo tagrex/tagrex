@@ -27,13 +27,17 @@ use tagrex_commands::{
     ActionGroupDto, App, CoverArtDto, ErrorDto, ImportSelectionDto, ImportTrackDto, PlanDto,
     ProviderHub, SearchQueryDto, SettingsDto, TagEditDto, TransformRuleDto,
 };
+use tagrex_player::Player;
 
-/// One open library: the `App` a shell drives across calls, plus the
-/// `ProviderHub` the online-source commands go through. The hub is synchronous —
-/// the provider crates use blocking HTTP — so it needs no runtime of its own.
+/// One open library: the `App` a shell drives across calls, the `ProviderHub`
+/// the online-source commands go through, and the `Player` for preview
+/// playback. The hub is synchronous (the provider crates use blocking HTTP) and
+/// the player opens its audio device lazily on the first play, so neither needs
+/// a runtime and opening a session touches no device.
 pub struct Session {
     app: App,
     providers: ProviderHub,
+    player: Player,
     /// Where the journal, settings and the token live — one dir, as on the
     /// desktop. Kept so the settings commands can find their files.
     config_dir: PathBuf,
@@ -116,6 +120,7 @@ pub unsafe extern "C" fn tagrex_open(
         *out = Box::into_raw(Box::new(Session {
             app,
             providers: ProviderHub::default(),
+            player: Player::new(),
             config_dir: PathBuf::from(config_dir),
         }));
         Ok(Value::Null)
@@ -152,6 +157,7 @@ pub unsafe extern "C" fn tagrex_open_drop(
         *out = Box::into_raw(Box::new(Session {
             app,
             providers: ProviderHub::default(),
+            player: Player::new(),
             config_dir: PathBuf::from(config_dir),
         }));
         to_value(dto)
@@ -277,6 +283,46 @@ fn dispatch(session: &mut Session, cmd: &str, raw: &str) -> Result<Value, ErrorD
             std::fs::write(token_path(&session.config_dir), a.token.trim())
                 .map_err(|err| ErrorDto::plain(format!("token: {err}")))?;
             Ok(Value::Null)
+        }
+
+        // -- preview player. Each command is fire-and-forget over a channel;
+        // the device opens lazily on the first play.
+        "player_play" => {
+            let a = args!(raw, PlayerPath);
+            session.player.play(a.path);
+            Ok(Value::Null)
+        }
+        "player_set_next" => {
+            let a = args!(raw, PlayerPath);
+            session.player.set_next(a.path);
+            Ok(Value::Null)
+        }
+        "player_pause" => {
+            session.player.pause();
+            Ok(Value::Null)
+        }
+        "player_resume" => {
+            session.player.resume();
+            Ok(Value::Null)
+        }
+        "player_stop" => {
+            session.player.stop();
+            Ok(Value::Null)
+        }
+        "player_seek" => {
+            let a = args!(raw, PlayerSeek);
+            session.player.seek(a.secs);
+            Ok(Value::Null)
+        }
+        "player_set_volume" => {
+            let a = args!(raw, PlayerVolume);
+            session.player.set_volume(a.level as f32);
+            Ok(Value::Null)
+        }
+        "player_status" => to_value(session.player.status()),
+        "waveform" => {
+            let a = args!(raw, Waveform);
+            to_value(tagrex_player::waveform(Path::new(&a.path)).map_err(ErrorDto::plain)?)
         }
 
         _ => dispatch_app(&mut session.app, cmd, raw),
@@ -768,6 +814,26 @@ struct SaveSettings {
 #[derive(Deserialize)]
 struct SaveDiscogsToken {
     token: String,
+}
+
+#[derive(Deserialize)]
+struct PlayerPath {
+    path: PathBuf,
+}
+
+#[derive(Deserialize)]
+struct PlayerSeek {
+    secs: f64,
+}
+
+#[derive(Deserialize)]
+struct PlayerVolume {
+    level: f64,
+}
+
+#[derive(Deserialize)]
+struct Waveform {
+    path: String,
 }
 
 #[cfg(test)]

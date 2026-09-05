@@ -4056,6 +4056,7 @@ dependencies = [
  "serde_json",
  "tagrex-commands",
  "tagrex-core",
+ "tagrex-player",
 ]
 
 [[package]]

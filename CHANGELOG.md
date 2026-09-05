@@ -39,6 +39,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   live — proxy and rate limit to the hub, ID3 revision and the rest to the open
   library — so a proxied, rate-limited, token-authenticated Discogs search is now
   drivable from a shell. Spike-only; nothing about the app changes. (#295)
+- **The preview player is a crate of its own.** `player.rs` — the rodio Sink on
+  its own thread and the waveform decoder — moves to `crates/player` so the
+  native shells can drive playback, the same reason the command layer moved
+  (#272). The rodio audio backend rides with it. Pure relocation; nothing about
+  the app changes. (#296)
+- **The native-shell bridge drives the player.** The session gains a `Player`,
+  and the dispatcher gains `player_play`, `player_set_next`, `player_pause`,
+  `player_resume`, `player_stop`, `player_seek`, `player_set_volume`,
+  `player_status` and `waveform`. The device opens lazily on the first play, so
+  opening a session touches none. A shell can now play a track, read its state,
+  and draw the seek bar. Spike-only; nothing about the app changes. (#297)
 
 ## [0.15.0] - 2026-09-05
 

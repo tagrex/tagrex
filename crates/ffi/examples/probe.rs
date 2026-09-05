@@ -60,6 +60,20 @@ fn main() {
             println!("{listed}");
         }
 
+        // Play a track, read the status back, and compute its waveform.
+        //   probe play <folder> <file>
+        "play" => {
+            let file = args.get(2).cloned().unwrap_or_default();
+            invoke(handle, "player_play", &serde_json::json!({ "path": file }));
+            std::thread::sleep(std::time::Duration::from_millis(700));
+            let status = invoke(handle, "player_status", &serde_json::json!({}));
+            println!("status: {}", status["ok"]);
+            let wave = invoke(handle, "waveform", &serde_json::json!({ "path": file }));
+            let buckets = wave["ok"].as_array().map(|a| a.len()).unwrap_or(0);
+            println!("waveform buckets: {buckets}");
+            invoke(handle, "player_stop", &serde_json::json!({}));
+        }
+
         // A live provider search. MusicBrainz needs no token.
         //   probe search <folder> <source> <artist> <album>
         "search" => {
