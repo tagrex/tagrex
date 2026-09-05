@@ -33,6 +33,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   synchronous forwards, no runtime, since the provider crates use blocking HTTP.
   A shell can now search a source, pull a release, and save its cover next to the
   tracks. Spike-only; nothing about the app changes. (#294)
+- **The native-shell bridge reads and writes settings.** The session remembers
+  its config dir, and the dispatcher gains `load_settings`, `save_settings`,
+  `saved_discogs_token` and `save_discogs_token`. Saving applies the settings
+  live — proxy and rate limit to the hub, ID3 revision and the rest to the open
+  library — so a proxied, rate-limited, token-authenticated Discogs search is now
+  drivable from a shell. Spike-only; nothing about the app changes. (#295)
 
 ## [0.15.0] - 2026-09-05
 

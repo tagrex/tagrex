@@ -78,6 +78,43 @@ fn main() {
             println!("{result}");
         }
 
+        // Round-trip settings and the token, then confirm a search still runs
+        // with the settings applied to the hub.
+        //   probe settings <folder>
+        "settings" => {
+            let saved = invoke(
+                handle,
+                "save_settings",
+                &serde_json::json!({ "settings": { "rate_limit_per_min": 30, "id3_v23": true } }),
+            );
+            println!("save_settings: {saved}");
+            let loaded = invoke(handle, "load_settings", &serde_json::json!({}));
+            println!(
+                "load_settings rate_limit_per_min: {}",
+                loaded["ok"]["rate_limit_per_min"]
+            );
+
+            let token_set = invoke(
+                handle,
+                "save_discogs_token",
+                &serde_json::json!({ "token": "  probe-token-123  " }),
+            );
+            println!("save_discogs_token: {token_set}");
+            let token = invoke(handle, "saved_discogs_token", &serde_json::json!({}));
+            println!("saved_discogs_token: {}", token["ok"]);
+
+            let search = invoke(
+                handle,
+                "provider_search",
+                &serde_json::json!({
+                    "source": "musicbrainz", "token": "",
+                    "query": { "artist": "Air", "album": "Moon Safari" },
+                }),
+            );
+            let count = search["ok"].as_array().map(|a| a.len()).unwrap_or(0);
+            println!("search after settings: {count} candidates");
+        }
+
         // Pull a full release by id.
         //   probe fetch <folder> <source> <release_id>
         "fetch" => {

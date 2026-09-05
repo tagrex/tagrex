@@ -25,7 +25,7 @@ use serde_json::{json, Value};
 
 use tagrex_commands::{
     ActionGroupDto, App, CoverArtDto, ErrorDto, ImportSelectionDto, ImportTrackDto, PlanDto,
-    ProviderHub, SearchQueryDto, TagEditDto, TransformRuleDto,
+    ProviderHub, SearchQueryDto, SettingsDto, TagEditDto, TransformRuleDto,
 };
 
 /// One open library: the `App` a shell drives across calls, plus the
@@ -34,6 +34,9 @@ use tagrex_commands::{
 pub struct Session {
     app: App,
     providers: ProviderHub,
+    /// Where the journal, settings and the token live — one dir, as on the
+    /// desktop. Kept so the settings commands can find their files.
+    config_dir: PathBuf,
 }
 
 // ------------------------------------------------------------- string plumbing
@@ -113,6 +116,7 @@ pub unsafe extern "C" fn tagrex_open(
         *out = Box::into_raw(Box::new(Session {
             app,
             providers: ProviderHub::default(),
+            config_dir: PathBuf::from(config_dir),
         }));
         Ok(Value::Null)
     })())
@@ -148,6 +152,7 @@ pub unsafe extern "C" fn tagrex_open_drop(
         *out = Box::into_raw(Box::new(Session {
             app,
             providers: ProviderHub::default(),
+            config_dir: PathBuf::from(config_dir),
         }));
         to_value(dto)
     })())
@@ -255,8 +260,58 @@ fn dispatch(session: &mut Session, cmd: &str, raw: &str) -> Result<Value, ErrorD
                     .map_err(ErrorDto::from)?,
             )
         }
+        // -- settings and the token, under the session's config dir
+        "load_settings" => to_value(read_settings(&session.config_dir)),
+        "save_settings" => {
+            let a = args!(raw, SaveSettings);
+            write_settings(&session.config_dir, &a.settings)?;
+            // Apply live: the hub always, the library too (it is always open in
+            // a session), so a change takes effect without reopening.
+            session.providers.apply_settings(&a.settings);
+            session.app.apply_settings(&a.settings);
+            Ok(Value::Null)
+        }
+        "saved_discogs_token" => to_value(read_token(&session.config_dir)),
+        "save_discogs_token" => {
+            let a = args!(raw, SaveDiscogsToken);
+            std::fs::write(token_path(&session.config_dir), a.token.trim())
+                .map_err(|err| ErrorDto::plain(format!("token: {err}")))?;
+            Ok(Value::Null)
+        }
+
         _ => dispatch_app(&mut session.app, cmd, raw),
     }
+}
+
+fn settings_path(config_dir: &Path) -> PathBuf {
+    config_dir.join("settings.json")
+}
+
+fn token_path(config_dir: &Path) -> PathBuf {
+    config_dir.join("discogs_token")
+}
+
+/// The stored settings, or the defaults when the file is absent or unreadable —
+/// the same forgiving read the desktop does, so a fresh install starts clean.
+fn read_settings(config_dir: &Path) -> SettingsDto {
+    std::fs::read_to_string(settings_path(config_dir))
+        .ok()
+        .and_then(|json| serde_json::from_str(&json).ok())
+        .unwrap_or_default()
+}
+
+fn write_settings(config_dir: &Path, settings: &SettingsDto) -> Result<(), ErrorDto> {
+    let json = serde_json::to_string_pretty(settings)
+        .map_err(|err| ErrorDto::plain(format!("serialize: {err}")))?;
+    std::fs::write(settings_path(config_dir), json)
+        .map_err(|err| ErrorDto::plain(format!("settings: {err}")))
+}
+
+fn read_token(config_dir: &Path) -> String {
+    std::fs::read_to_string(token_path(config_dir))
+        .unwrap_or_default()
+        .trim()
+        .to_string()
 }
 
 /// The command table over the library alone. Every arm is the forward the
@@ -703,6 +758,16 @@ struct SaveReleaseImages {
     path: PathBuf,
     urls: Vec<String>,
     overwrite: bool,
+}
+
+#[derive(Deserialize)]
+struct SaveSettings {
+    settings: SettingsDto,
+}
+
+#[derive(Deserialize)]
+struct SaveDiscogsToken {
+    token: String,
 }
 
 #[cfg(test)]
