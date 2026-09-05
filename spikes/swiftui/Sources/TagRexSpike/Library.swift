@@ -530,6 +530,95 @@ final class Library {
         }
     }
 
+    // MARK: - Player
+
+    /// The last status read from the player, or nil when nothing is loaded.
+    private(set) var playerStatus: PlayerStatus?
+
+    /// The paths playback walks for gapless advance (the visible rows at the
+    /// moment Play was pressed), and the track we have already queued a next for.
+    private var playQueue: [String] = []
+    private var fedNextFor: String?
+    private var polling: Task<Void, Never>?
+
+    var isPlaying: Bool {
+        guard let status = playerStatus else { return false }
+        return status.path != nil && !status.isPaused
+    }
+
+    /// The loaded track, matched back to a row so the bar can name it.
+    var nowPlaying: Track? {
+        guard let path = playerStatus?.path else { return nil }
+        return tracks.first { $0.id == path }
+    }
+
+    func play(_ path: String, queue: [String]) {
+        guard let session else { return }
+        playQueue = queue
+        fedNextFor = nil
+        fire(session, "player_play", encodeArgs(PathArg(path: path)))
+        startPolling()
+    }
+
+    func togglePause() {
+        guard let session, let status = playerStatus, status.path != nil else { return }
+        fire(session, status.isPaused ? "player_resume" : "player_pause", "{}")
+    }
+
+    func stopPlayback() {
+        guard let session else { return }
+        fire(session, "player_stop", "{}")
+        polling?.cancel()
+        polling = nil
+        playerStatus = nil
+    }
+
+    func seek(to secs: Double) {
+        guard let session else { return }
+        fire(session, "player_seek", encodeArgs(SecsArg(secs: secs)))
+    }
+
+    func setVolume(_ level: Double) {
+        guard let session else { return }
+        fire(session, "player_set_volume", encodeArgs(LevelArg(level: level)))
+    }
+
+    /// Send a fire-and-forget player command off the main actor.
+    private func fire(_ session: OpaquePointer, _ cmd: String, _ args: String) {
+        let box = SessionHandle(raw: session)
+        Task.detached(priority: .userInitiated) {
+            _ = invoke(box, cmd, args) as Reply<EmptyOk>?
+        }
+    }
+
+    private func startPolling() {
+        polling?.cancel()
+        polling = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshStatus()
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+        }
+    }
+
+    private func refreshStatus() async {
+        guard let session else { return }
+        let box = SessionHandle(raw: session)
+        let reply: Reply<PlayerStatus>? =
+            await Task.detached(priority: .userInitiated) { invoke(box, "player_status", "{}") }.value
+        guard let status = reply?.ok else { return }
+        playerStatus = status
+
+        // Gapless: when the player asks for a next track and one hasn't been fed
+        // for the current track yet, queue the following row.
+        if status.wantsNext, let current = status.path, fedNextFor != current {
+            fedNextFor = current
+            if let index = playQueue.firstIndex(of: current), index + 1 < playQueue.count {
+                fire(session, "player_set_next", encodeArgs(PathArg(path: playQueue[index + 1])))
+            }
+        }
+    }
+
     /// The config dir (and so the journal) lives beside the app's own data, not
     /// in the music folder — a stand should leave nothing behind in a library it
     /// was pointed at. One dir per library, keyed by path, so two folders never
@@ -717,6 +806,18 @@ private struct ImportSelection: Encodable {
 private struct AlignArgs: Encodable {
     let paths: [String]
     let tracks: [ImportTrack]
+}
+
+private struct PathArg: Encodable {
+    let path: String
+}
+
+private struct SecsArg: Encodable {
+    let secs: Double
+}
+
+private struct LevelArg: Encodable {
+    let level: Double
 }
 
 private struct ImportArgs: Encodable {

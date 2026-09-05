@@ -105,6 +105,8 @@ struct WorkspaceView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 StatusBar(
                     library: library,
+                    queue: rows.map(\.id),
+                    selectedFirst: rows.first { visibleSelection.contains($0.id) }?.id,
                     shown: rows.count,
                     total: library.tracks.count,
                     selected: visibleSelection.count,
@@ -555,6 +557,10 @@ struct ModePanel: View {
 @MainActor
 struct StatusBar: View {
     let library: Library
+    /// The visible rows in order, and the first selected one — what the player
+    /// bar walks and where Play starts.
+    let queue: [String]
+    let selectedFirst: String?
     /// Rows the filter leaves in the table — the denominator, since that is what
     /// a count in the table is counted out of.
     let shown: Int
@@ -572,16 +578,14 @@ struct StatusBar: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 10) {
-                Image(systemName: "backward.end.fill")
-                Image(systemName: "play.fill")
-                Image(systemName: "forward.end.fill")
+                PlayerBar(library: library, queue: queue, selectedFirst: selectedFirst)
                 Divider().frame(height: 14)
                 if library.isBusy {
                     ProgressView().controlSize(.small)
                 }
-                Text(library.lastMessage.isEmpty
-                     ? "Playback is out of scope for this build"
-                     : library.lastMessage)
+                if !library.lastMessage.isEmpty {
+                    Text(library.lastMessage).lineLimit(1)
+                }
                 Spacer()
                 Text(summary)
             }

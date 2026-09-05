@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The SwiftUI stand plays tracks.** The status bar's placeholder transport is
+  now a working player over the player ABI: play / pause / stop, the now-playing
+  title, a seek bar driven by the player's own clock (scrub to seek), and a
+  volume slider. Play starts the selected row and walks the visible rows, feeding
+  the next one for gapless advance. Spike-only. (#301)
 - **The SwiftUI stand applies an online release to the selected files.** With a
   release open, the Online panel aligns its tracks to the selected files
   (`auto_align`, shown as a per-track match) and a "Stage import" builds the
