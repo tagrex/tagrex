@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A parity-audit checklist for the SwiftUI stand.** `spikes/swiftui/PARITY.md`
+  compares each stand mode to its Tauri module (`app/ui/js/*.js`) with code
+  references and severity, and records that almost every gap is UI-side — the
+  `crates/ffi` dispatcher already exposes the commands (two exceptions:
+  `read_cover_image`, `builtin_action_groups`). It is the tracking doc for
+  bringing the stand to parity. Spike-only. (#309)
 - **The SwiftUI stand reads tags out of file names.** The Tagger's From-name
   sub-tab is a working panel over `preview_tags_from_name` /
   `probe_tags_from_name`: a mask, a live probe of the first file (the fields it
