@@ -47,6 +47,86 @@ struct Track: Identifiable, Decodable, Hashable {
     }
 }
 
+// MARK: - Online search models
+
+/// An online source the panel can search.
+enum Source: String, CaseIterable, Identifiable {
+    case discogs, musicbrainz, beatport
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .discogs: "Discogs"
+        case .musicbrainz: "MusicBrainz"
+        case .beatport: "Beatport"
+        }
+    }
+}
+
+/// One release candidate from `provider_search`.
+struct Candidate: Identifiable, Decodable, Hashable {
+    var id: String
+    var artist: String
+    var title: String
+    var year: Int?
+    var score: Double
+    var country: String?
+    var label: String?
+    var format: String?
+    var catalogNumber: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, artist, title, year, score, country, label, format
+        case catalogNumber = "catalog_number"
+    }
+
+    /// "label · CAT 123 · Belgium", the parts that are present.
+    var detail: String {
+        [label, catalogNumber, country]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
+    }
+}
+
+/// One track of a fetched release.
+struct ReleaseTrack: Identifiable, Decodable, Hashable {
+    var position: String
+    var disc: Int?
+    var artist: String?
+    var title: String
+    var durationSecs: Int?
+
+    var id: String { "\(disc ?? 0)-\(position)-\(title)" }
+
+    enum CodingKeys: String, CodingKey {
+        case position, disc, artist, title
+        case durationSecs = "duration_secs"
+    }
+
+    var length: String {
+        guard let secs = durationSecs else { return "" }
+        return String(format: "%d:%02d", secs / 60, secs % 60)
+    }
+}
+
+/// A fetched release. Only the parts the panel shows are decoded.
+struct Release: Decodable {
+    var id: String
+    var artist: String
+    var title: String
+    var year: Int?
+    var tracks: [ReleaseTrack]
+    var country: String?
+}
+
+/// A search or fetch failure, carrying the message to show in the panel.
+/// `Result`'s failure type must be an `Error`, and a bare `String` is not one.
+struct SearchFailure: Error {
+    let message: String
+}
+
 /// The editable fields, named with the core's storage keys.
 enum Field: String, CaseIterable, Identifiable {
     case artist, title, album, albumartist, year, genre, track
@@ -267,6 +347,54 @@ final class Library {
         await rescan()
     }
 
+    // MARK: - Online search
+
+    /// Search a source. Returns the candidates, or a message to show in place of
+    /// them — a provider's own error (a missing Discogs token, no Beatport
+    /// sign-in) rather than a silent empty list.
+    func search(
+        _ source: Source,
+        artist: String,
+        album: String,
+        catalog: String
+    ) async -> Result<[Candidate], SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "No library open")) }
+        let box = SessionHandle(raw: session)
+        let query = SearchArgs.Query(
+            artist: blankToNil(artist),
+            album: blankToNil(album),
+            catalog_number: blankToNil(catalog)
+        )
+        return await Task.detached(priority: .userInitiated) {
+            let token: String
+            switch resolveToken(box, source) {
+            case .success(let resolved): token = resolved
+            case .failure(let failure): return .failure(failure)
+            }
+            let args = SearchArgs(source: source.rawValue, token: token, query: query)
+            let reply: Reply<[Candidate]>? = invoke(box, "provider_search", encodeArgs(args))
+            if let candidates = reply?.ok { return .success(candidates) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "the search failed"))
+        }.value
+    }
+
+    /// Fetch a release's full tracklist.
+    func fetchRelease(_ source: Source, id: String) async -> Result<Release, SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "No library open")) }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let token: String
+            switch resolveToken(box, source) {
+            case .success(let resolved): token = resolved
+            case .failure(let failure): return .failure(failure)
+            }
+            let args = FetchArgs(source: source.rawValue, token: token, release_id: id)
+            let reply: Reply<Release>? = invoke(box, "provider_fetch_release", encodeArgs(args))
+            if let release = reply?.ok { return .success(release) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "could not load the release"))
+        }.value
+    }
+
     /// The config dir (and so the journal) lives beside the app's own data, not
     /// in the music folder — a stand should leave nothing behind in a library it
     /// was pointed at. One dir per library, keyed by path, so two folders never
@@ -367,4 +495,47 @@ private func encodeArgs<T: Encodable>(_ value: T) -> String {
 private func decode<T: Decodable>(_ type: T.Type, from raw: UnsafeMutablePointer<CChar>) -> T? {
     let json = Data(String(cString: raw).utf8)
     return try? JSONDecoder().decode(type, from: json)
+}
+
+/// The token a source needs, resolved off the main actor (it is itself an
+/// invoke). MusicBrainz needs none; Discogs reads the saved token (empty is
+/// fine, the provider says so); Beatport asks for a fresh access token and
+/// surfaces "not signed in" as a failure rather than searching with none.
+private func resolveToken(_ box: SessionHandle, _ source: Source) -> Result<String, SearchFailure> {
+    switch source {
+    case .musicbrainz:
+        return .success("")
+    case .discogs:
+        let reply: Reply<String>? = invoke(box, "saved_discogs_token", "{}")
+        return .success(reply?.ok ?? "")
+    case .beatport:
+        let reply: Reply<String>? = invoke(box, "beatport_token", "{}")
+        if let token = reply?.ok { return .success(token) }
+        return .failure(SearchFailure(message: reply?.error?.text ?? "Not signed in to Beatport"))
+    }
+}
+
+private func blankToNil(_ text: String) -> String? {
+    let trimmed = text.trimmingCharacters(in: .whitespaces)
+    return trimmed.isEmpty ? nil : trimmed
+}
+
+private struct SearchArgs: Encodable {
+    let source: String
+    let token: String
+    let query: Query
+
+    /// Optional fields the synthesized encoder omits when nil, which is what the
+    /// backend's `SearchQueryDto` expects for an absent term.
+    struct Query: Encodable {
+        let artist: String?
+        let album: String?
+        let catalog_number: String?
+    }
+}
+
+private struct FetchArgs: Encodable {
+    let source: String
+    let token: String
+    let release_id: String
 }

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The SwiftUI stand searches the online sources.** Its Online sub-tab is a
+  working panel over the session ABI: a source picker (Discogs / MusicBrainz /
+  Beatport), artist / album / catalogue fields, a results list of release
+  candidates, and a release view with the full tracklist. MusicBrainz needs no
+  token and works out of the box; Discogs and Beatport surface the provider's
+  own auth error until credentials are set. Search-and-look for now — applying a
+  release to the files comes next. Spike-only. (#299)
+
 ### Changed
 
 - **The command layer is a crate of its own.** It sat in the same crate as the

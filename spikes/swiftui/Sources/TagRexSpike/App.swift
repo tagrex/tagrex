@@ -415,11 +415,13 @@ struct ModePanel: View {
                 Divider()
             }
 
-            if mode != .tagger || subtab != 1 {
+            if mode == .tagger && subtab == 0 {
+                OnlinePanel(library: library)
+            } else if mode != .tagger || subtab != 1 {
                 ContentUnavailableView(
                     "Not in this build",
                     systemImage: "hammer",
-                    description: Text("This build carries the tag editor; the other modes come next.")
+                    description: Text("This build carries the tag editor and online search; the other modes come next.")
                 )
             } else if tracks.isEmpty {
                 ContentUnavailableView(

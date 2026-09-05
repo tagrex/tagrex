@@ -27,7 +27,14 @@ let package = Package(
                 // builds a cdylib into the same directory, the linker prefers a
                 // .dylib to a .a, and the result is a bundle that hunts for an
                 // absolute path from whatever machine built it.
-                .unsafeFlags(["../../target/release/libtagrex_ffi.a"])
+                .unsafeFlags(["../../target/release/libtagrex_ffi.a"]),
+                // The bridge now carries the audio backend (#297): rodio → cpal →
+                // coreaudio needs these system frameworks. cargo links them for
+                // the desktop build; a staticlib linked by SwiftPM does not, so
+                // they are named here or the player symbols come up undefined.
+                .linkedFramework("CoreAudio"),
+                .linkedFramework("AudioToolbox"),
+                .linkedFramework("AudioUnit"),
             ]
         ),
     ]
