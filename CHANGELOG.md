@@ -67,6 +67,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The SwiftUI stand's Online panel matches the Tauri UI.** It was built
+  free-hand and diverged; it now defaults to Discogs (not MusicBrainz), picks the
+  source from a dropdown, searches on **one** query field instead of three, and
+  offers query presets built from the selection (Folder name / File name / Album /
+  Artist + Title, each shown as the text it will search). Release candidates and
+  the open release carry a cover over `provider_fetch_image` — for MusicBrainz
+  from Cover Art Archive, no token needed. Candidate-card thumbnails still need a
+  Discogs token, which awaits the Settings screen. Spike-only. (#310)
 - **The command layer is a crate of its own.** It sat in the same crate as the
   desktop shell, which also carries the webview stack and the audio backend, so
   everything the app can do was reachable from that one shell and nothing else.

@@ -75,10 +75,20 @@ struct Candidate: Identifiable, Decodable, Hashable {
     var label: String?
     var format: String?
     var catalogNumber: String?
+    var thumbURL: String?
+    var coverURL: String?
 
     enum CodingKeys: String, CodingKey {
         case id, artist, title, year, score, country, label, format
         case catalogNumber = "catalog_number"
+        case thumbURL = "thumb_url"
+        case coverURL = "cover_url"
+    }
+
+    /// The image the card shows: the thumbnail if the source gave one, else the
+    /// full cover URL. Empty when the source carries no art.
+    var imageURL: String? {
+        [thumbURL, coverURL].compactMap { $0 }.first { !$0.isEmpty }
     }
 
     /// "label · CAT 123 · Belgium", the parts that are present.
@@ -126,6 +136,14 @@ struct Release: Decodable {
     /// genre tag by preference, falling back to the genres.
     var genres: [String]?
     var styles: [String]?
+    /// The release cover. From Cover Art Archive for MusicBrainz (public, no
+    /// token) and from the provider for Discogs/Beatport (needs their auth).
+    var coverImageURL: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, artist, title, year, tracks, country, genres, styles
+        case coverImageURL = "cover_image_url"
+    }
 
     /// The value the import writes to the genre tag: the styles joined, else the
     /// genres.
@@ -273,6 +291,11 @@ final class Library {
     private(set) var errors: [String] = []
     private(set) var isBusy = false
     private(set) var lastMessage = ""
+
+    /// Release-cover bytes already fetched, keyed by image URL, so re-rendering a
+    /// results row never re-hits the provider. Mirrors `imageCache` in the Tauri
+    /// online.js.
+    private var imageCache: [String: Data] = [:]
 
     /// The staged edit map: path → field → new value. Nothing is on disk until
     /// Apply. It drives the table diff for both a hand edit and a staged import.
@@ -495,18 +518,16 @@ final class Library {
     /// Search a source. Returns the candidates, or a message to show in place of
     /// them — a provider's own error (a missing Discogs token, no Beatport
     /// sign-in) rather than a silent empty list.
-    func search(
-        _ source: Source,
-        artist: String,
-        album: String,
-        catalog: String
-    ) async -> Result<[Candidate], SearchFailure> {
+    /// One free-text query, sent as the album term the way the Tauri panel does
+    /// (`query: { album }` in online.js) — the provider treats it as the general
+    /// search string.
+    func search(_ source: Source, query text: String) async -> Result<[Candidate], SearchFailure> {
         guard let session else { return .failure(SearchFailure(message: "No library open")) }
         let box = SessionHandle(raw: session)
         let query = SearchArgs.Query(
-            artist: blankToNil(artist),
-            album: blankToNil(album),
-            catalog_number: blankToNil(catalog)
+            artist: nil,
+            album: blankToNil(text),
+            catalog_number: nil
         )
         return await Task.detached(priority: .userInitiated) {
             let token: String
@@ -536,6 +557,28 @@ final class Library {
             if let release = reply?.ok { return .success(release) }
             return .failure(SearchFailure(message: reply?.error?.text ?? "could not load the release"))
         }.value
+    }
+
+    /// Fetch a release cover's bytes over `provider_fetch_image`, cached by URL so
+    /// a re-render never re-hits the provider. Returns nil — leaving the row's
+    /// placeholder — on any failure, the way the Tauri card does.
+    func fetchImage(_ source: Source, url: String) async -> Data? {
+        guard session != nil, !url.isEmpty else { return nil }
+        if let cached = imageCache[url] { return cached }
+        let box = SessionHandle(raw: session!)
+        let data = await Task.detached(priority: .utility) { () -> Data? in
+            let token: String
+            switch resolveToken(box, source) {
+            case .success(let resolved): token = resolved
+            case .failure: return nil
+            }
+            let args = FetchImageArgs(source: source.rawValue, token: token, url: url)
+            let reply: Reply<ProviderImage>? = invoke(box, "provider_fetch_image", encodeArgs(args))
+            guard let image = reply?.ok else { return nil }
+            return Data(base64Encoded: image.data_base64)
+        }.value
+        if let data { imageCache[url] = data }
+        return data
     }
 
     /// Align a release's tracks to `paths`. Returns, per file in order, the index
@@ -1097,6 +1140,18 @@ private struct FetchArgs: Encodable {
     let source: String
     let token: String
     let release_id: String
+}
+
+private struct FetchImageArgs: Encodable {
+    let source: String
+    let token: String
+    let url: String
+}
+
+/// The reply from `provider_fetch_image`: the raw bytes as base64 and their mime.
+private struct ProviderImage: Decodable {
+    let mime: String
+    let data_base64: String
 }
 
 // One release track as the backend's ImportTrackDto; snake_case keys are the
