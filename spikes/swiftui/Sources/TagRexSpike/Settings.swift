@@ -18,7 +18,7 @@ struct SettingsView: View {
         VStack(spacing: 0) {
             Form {
                 Section {
-                    TextField("Discogs token", text: $draft.discogsToken)
+                    SecureField("Discogs token", text: $draft.discogsToken)
                     TextField("Proxy", text: $draft.proxy, prompt: Text("Direct connection"))
                     TextField(
                         "Rate limit",

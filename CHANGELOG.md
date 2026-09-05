@@ -127,6 +127,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The Discogs token in the SwiftUI stand's Settings is masked.** It was a plain
+  text field showing the credential in the clear; it is now a secure field.
+  Spike-only. (#313)
 - **The SwiftUI stand's per-library config now persists across launches.** Its
   directory was named with `String.hashValue`, which Swift seeds randomly per
   process (SE-0206), so a fresh `lib-<hash>` folder was created every launch and
