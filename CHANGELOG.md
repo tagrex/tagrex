@@ -119,6 +119,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   completes the command surface for the shells. Spike-only; nothing about the app
   changes. (#298)
 
+### Fixed
+
+- **The SwiftUI stand's per-library config now persists across launches.** Its
+  directory was named with `String.hashValue`, which Swift seeds randomly per
+  process (SE-0206), so a fresh `lib-<hash>` folder was created every launch and
+  the journal — and any saved Discogs token — never came back. It is now a stable
+  SHA-256 of the library path. Spike-only. (#311)
+
 ## [0.15.0] - 2026-09-05
 
 This release is a visual pass over the workspace. The top bar absorbs the mode

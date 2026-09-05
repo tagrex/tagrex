@@ -4,6 +4,7 @@
 // in crates/ffi: `tagrex_open` once, then `tagrex_invoke` by command name.
 
 import CTagRex
+import CryptoKit
 import Foundation
 
 struct Track: Identifiable, Decodable, Hashable {
@@ -1003,7 +1004,12 @@ final class Library {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first!
             .appendingPathComponent("TagRex Spike", isDirectory: true)
-        let key = String(folder.path.hashValue, radix: 16)
+        // A stable digest of the path, not `String.hashValue` — Swift seeds its
+        // hasher randomly per process (SE-0206), so hashValue gave a fresh
+        // directory every launch and the journal (and any saved token) never
+        // persisted (#311).
+        let digest = SHA256.hash(data: Data(folder.path.utf8))
+        let key = digest.prefix(8).map { String(format: "%02x", $0) }.joined()
         return support.appendingPathComponent("lib-\(key)", isDirectory: true).path
     }
 }
