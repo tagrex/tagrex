@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The SwiftUI stand finds duplicates.** The Duplicates mode is a read-only
+  scan over `find_duplicates`: pick a criterion (Artist + Title, Album + Track,
+  Duration, File size, Identical bytes) and see the library grouped into likely
+  duplicates, each file with its duration, size and bitrate. A report — nothing
+  here changes files. Spike-only. (#304)
 - **The SwiftUI stand generates and cleans up values.** The Generator mode is a
   working panel over `preview_transform`: pick a scope (all tags, one field, the
   filename or extension) and a rule — change case, find & replace (regex /

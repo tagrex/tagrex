@@ -150,6 +150,43 @@ struct RenamePair: Identifiable, Hashable {
     var id: String { old }
 }
 
+/// One file in a duplicate group.
+struct DuplicateFile: Decodable, Hashable, Identifiable {
+    var path: String
+    var artist: String
+    var title: String
+    var album: String
+    var durationSecs: UInt64
+    var sizeBytes: UInt64
+    var bitrateKbps: UInt32?
+
+    var id: String { path }
+    var file: String { (path as NSString).lastPathComponent }
+
+    enum CodingKeys: String, CodingKey {
+        case path, artist, title, album
+        case durationSecs = "duration_secs"
+        case sizeBytes = "size_bytes"
+        case bitrateKbps = "bitrate_kbps"
+    }
+
+    var duration: String {
+        String(format: "%d:%02d", durationSecs / 60, durationSecs % 60)
+    }
+
+    var size: String {
+        let mb = Double(sizeBytes) / 1_048_576
+        return String(format: "%.1f MB", mb)
+    }
+}
+
+/// A set of files judged duplicates of each other under the chosen criterion.
+struct DuplicateGroup: Decodable, Identifiable {
+    var key: String
+    var files: [DuplicateFile]
+    var id: String { key + (files.first?.path ?? "") }
+}
+
 /// One transform rule, as the backend's TransformRuleDto. snake_case keys are
 /// the property names, since the ABI does not convert them.
 struct TransformRule: Encodable {
@@ -710,6 +747,21 @@ final class Library {
         }
     }
 
+    // MARK: - Duplicates
+
+    /// Scan the whole open library for likely duplicates under `criterion`
+    /// ("artist_title", "album_track", "duration", "size", "hash"). Read-only.
+    func findDuplicates(criterion: String) async -> Result<[DuplicateGroup], SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "No library open")) }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<[DuplicateGroup]>? =
+                invoke(box, "find_duplicates", encodeArgs(CriterionArg(criterion: criterion)))
+            if let groups = reply?.ok { return .success(groups) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "the scan failed"))
+        }.value
+    }
+
     // MARK: - Player
 
     /// The last status read from the player, or nil when nothing is loaded.
@@ -997,6 +1049,10 @@ private struct TransformArgs: Encodable {
     let paths: [String]
     let rules: [TransformRule]
     let scope: String
+}
+
+private struct CriterionArg: Encodable {
+    let criterion: String
 }
 
 /// Decode a plan (as a JSONValue) into the parts the stand reflects — visible
