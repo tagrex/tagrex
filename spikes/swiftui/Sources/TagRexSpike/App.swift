@@ -419,14 +419,10 @@ struct ModePanel: View {
                 GeneratorPanel(library: library, selection: selection)
             } else if mode == .deduplicator {
                 DuplicatesPanel(library: library)
-            } else if mode == .tagger {
-                taggerPanel
+            } else if mode == .exporter {
+                ExportPanel(library: library, selection: selection)
             } else {
-                ContentUnavailableView(
-                    "Not in this build",
-                    systemImage: "hammer",
-                    description: Text("This build carries the tag editor, online search, the renamer, the generator and duplicates; export comes next.")
-                )
+                taggerPanel
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

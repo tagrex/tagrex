@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The SwiftUI stand exports.** The Export mode writes a playlist (m3u8), CUE,
+  CSV, HTML, XML or a masked report of the chosen files into the open library
+  folder over the `export_*` commands — a format picker, a file name, a mask for
+  the report, and a written-name confirmation. Read-only for the audio. One
+  playlist for now (per-folder/album split comes later). Spike-only. (#305)
 - **The SwiftUI stand finds duplicates.** The Duplicates mode is a read-only
   scan over `find_duplicates`: pick a criterion (Artist + Title, Album + Track,
   Duration, File size, Identical bytes) and see the library grouped into likely

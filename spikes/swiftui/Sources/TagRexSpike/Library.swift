@@ -747,6 +747,39 @@ final class Library {
         }
     }
 
+    // MARK: - Export
+
+    /// Write an export of `paths` into the library folder and return the path
+    /// written. Read-only for the audio files — it only adds an export file.
+    /// `format` is one of playlist / cue / csv / html / xml / report; `mask` is
+    /// used only by report.
+    func export(
+        format: String,
+        fileName: String,
+        mask: String,
+        paths: [String]
+    ) async -> Result<String, SearchFailure> {
+        guard let session, !paths.isEmpty else {
+            return .failure(SearchFailure(message: "Nothing to export"))
+        }
+        let command: String
+        let args: String
+        switch format {
+        case "report":
+            command = "export_report"
+            args = encodeArgs(ReportArg(paths: paths, mask: mask, file_name: fileName))
+        default:
+            command = "export_\(format)"
+            args = encodeArgs(ExportArg(paths: paths, file_name: fileName))
+        }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<String>? = invoke(box, command, args)
+            if let path = reply?.ok { return .success(path) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "the export failed"))
+        }.value
+    }
+
     // MARK: - Duplicates
 
     /// Scan the whole open library for likely duplicates under `criterion`
@@ -1053,6 +1086,17 @@ private struct TransformArgs: Encodable {
 
 private struct CriterionArg: Encodable {
     let criterion: String
+}
+
+private struct ExportArg: Encodable {
+    let paths: [String]
+    let file_name: String
+}
+
+private struct ReportArg: Encodable {
+    let paths: [String]
+    let mask: String
+    let file_name: String
 }
 
 /// Decode a plan (as a JSONValue) into the parts the stand reflects — visible
