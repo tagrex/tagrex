@@ -548,7 +548,10 @@ function toggleVolume() {
   }
   volumePop.hidden = false;
   el("pl-volume-btn").setAttribute("aria-expanded", "true");
-  placeFloating(volumePop, el("pl-volume-btn"), { align: "right" });
+  // Left-aligned now that the volume control sits with the transport on the left
+  // of the bar (#290), so the popover opens rightward into the player, not off
+  // the window's left edge.
+  placeFloating(volumePop, el("pl-volume-btn"), { align: "left" });
   el("pl-volume").focus();
 }
 

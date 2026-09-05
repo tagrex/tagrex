@@ -47,8 +47,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The player belongs to the file table now.** The player and its waveform used
   to stretch the full width of the window, running under the side panel; they now
   sit in a left zone that tracks the table's width, so the waveform ends where the
-  table does. The selection count moved across to sit beside Preview edits under
-  the panel, leaving the player its own clean strip.
+  table does. The selection count moved under the panel — pinned to the panel's
+  left edge, with Preview edits at the right — leaving the player its own clean
+  strip. In the player, the controls lead: transport, volume, then the cover, then
+  the title and waveform.
 
 ### Fixed
 

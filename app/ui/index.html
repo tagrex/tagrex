@@ -622,13 +622,9 @@
            and its own toggle takes over then. -->
       <button id="sb-play" class="icon" hidden data-i18n-title="player.play" title="Play the current track" data-i18n-aria-label="player.play" aria-label="Play the current track"><svg class="ico"><use href="#i-play"/></svg></button>
       <div id="player" hidden>
-        <!-- Now-playing cover (#275): reserves a fixed slot at the head of the
-             player. Shows the track's embedded front cover, or stays transparent
-             (#289) when the track has none, so the transport never shifts as
-             covers come and go between tracks. -->
-        <span id="pl-cover" class="pl-cover" aria-hidden="true"><img id="pl-cover-img" alt="" /></span>
         <!-- Transport cluster (#276): grouped tight so the five glyphs read as one
-             control, with play/pause emphasised as the primary. -->
+             control, with play/pause emphasised as the primary. The volume control
+             sits with them, and the cover follows the controls now (#290). -->
         <div class="pl-transport">
           <button id="pl-prev" class="icon" data-i18n-title="player.prev" title="Previous track" data-i18n-aria-label="player.prev" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
           <button id="pl-toggle" class="icon" data-i18n-title="player.toggle" title="Play / pause" data-i18n-aria-label="player.toggle" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
@@ -636,6 +632,22 @@
           <button id="pl-next" class="icon" data-i18n-title="player.next" title="Next track" data-i18n-aria-label="player.next" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
           <button id="pl-repeat" class="icon" data-i18n-title="player.repeatOff" title="Repeat off" data-i18n-aria-label="player.repeatOff" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
         </div>
+        <!-- Volume folds away behind its own button (the slider took a fixed strip
+             of the row to be used seconds at a time). The button shows the current
+             state, so muted is still readable without opening anything; the
+             popover holds the mute toggle and the slider. -->
+        <div class="pl-vol">
+          <button id="pl-volume-btn" class="icon" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
+          <div id="pl-volume-pop" class="pl-vol-pop" hidden>
+            <button id="pl-mute" class="icon" data-i18n-title="player.mute" title="Mute" data-i18n-aria-label="player.mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
+            <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume" />
+          </div>
+        </div>
+        <!-- Now-playing cover (#275): sits after the controls (#290), between them
+             and the title/waveform. Reserves a fixed slot; shows the track's
+             embedded front cover, or stays transparent (#289) when the track has
+             none, so the transport never shifts as covers come and go. -->
+        <span id="pl-cover" class="pl-cover" aria-hidden="true"><img id="pl-cover-img" alt="" /></span>
         <!-- The title sits ABOVE the seek bar rather than beside it: squeezed into
              a column next to the waveform it was ellipsised after a few words,
              and the one thing a player has to be able to say is what is playing.
@@ -656,18 +668,6 @@
             <canvas id="pl-wave" aria-hidden="true"></canvas>
             <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" data-i18n-aria-label="player.seek" aria-label="Seek" />
           </span>
-        </div>
-        <!-- Volume folds away behind its own button (the slider took a fixed strip
-             of the row to be used seconds at a time). The button shows the current
-             state, so muted is still readable without opening anything; the
-             popover holds the mute toggle and the slider. -->
-        <div class="pl-vol">
-          <button id="pl-volume-btn" class="icon" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
-          <div id="pl-volume-pop" class="pl-vol-pop" hidden>
-            <button id="pl-mute" class="icon" data-i18n-title="player.mute" title="Mute" data-i18n-aria-label="player.mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
-            <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume" />
-          </div>
-        </div>
         </div>
       </div>
       <div class="sb-right">

@@ -1970,8 +1970,13 @@ body.show-checkbox tr.playing td.sel {
   min-width: max-content;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  /* The count pins to the panel's left edge (with the panel's own 14px inset for
+     a consistent margin, #290) and Preview edits to the right, rather than the
+     two crowding together at the right. When the panel is collapsed the zone is
+     only as wide as its content, so they sit together at the far right. */
+  justify-content: space-between;
   gap: 12px;
+  padding-left: 14px;
   padding-right: 14px;
 }
 
