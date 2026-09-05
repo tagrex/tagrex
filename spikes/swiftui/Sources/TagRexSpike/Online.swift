@@ -7,6 +7,8 @@ import SwiftUI
 @MainActor
 struct OnlinePanel: View {
     let library: Library
+    /// The rows selected in the table — the files an import writes onto.
+    let selection: Set<Track.ID>
 
     @State private var source: Source = .musicbrainz
     @State private var artist = ""
@@ -22,6 +24,17 @@ struct OnlinePanel: View {
     @State private var release: Release?
     @State private var isLoadingRelease = false
 
+    /// The alignment of the open release onto the selected files, once run:
+    /// one entry per selected file (in table order), the matched track index.
+    @State private var alignment: [Int?]?
+    @State private var isAligning = false
+    @State private var isStaging = false
+
+    /// Selected file paths in table order — the order the import maps tracks to.
+    private var selectedPaths: [String] {
+        library.tracks.map(\.id).filter(selection.contains)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             queryForm
@@ -29,6 +42,9 @@ struct OnlinePanel: View {
             results
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: selection) { _, _ in
+            if let release { Task { await align(release) } }
+        }
     }
 
     // MARK: - Query
@@ -141,31 +157,93 @@ struct OnlinePanel: View {
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
 
+            importBand(release)
+
             Divider()
 
-            List(release.tracks) { track in
-                HStack(spacing: 8) {
-                    Text(track.position)
-                        .font(AppFonts.mono)
-                        .foregroundStyle(.secondary)
-                        .frame(minWidth: 34, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(track.title)
-                        if let artist = track.artist, !artist.isEmpty, artist != release.artist {
-                            Text(artist).font(.caption).foregroundStyle(.secondary)
-                        }
-                    }
-                    Spacer()
-                    Text(track.length)
-                        .font(AppFonts.mono)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .listStyle(.inset)
+            releaseBody(release)
         }
         .overlay {
             if isLoadingRelease { ProgressView() }
         }
+    }
+
+    /// The import controls: how the release aligned to the selected files, and
+    /// the button that stages it.
+    @ViewBuilder
+    private func importBand(_ release: Release) -> some View {
+        if selectedPaths.isEmpty {
+            Text("Select files in the table to import this release onto.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+        } else {
+            HStack(spacing: 8) {
+                if isAligning {
+                    ProgressView().controlSize(.small)
+                    Text("Aligning…").font(.caption).foregroundStyle(.secondary)
+                } else if let alignment {
+                    let matched = alignment.compactMap { $0 }.count
+                    Text("Matched \(matched) of \(selectedPaths.count) file(s)")
+                        .font(.caption)
+                        .foregroundStyle(matched == selectedPaths.count
+                                         ? AnyShapeStyle(.secondary)
+                                         : AnyShapeStyle(.orange))
+                }
+                Spacer()
+                Button {
+                    stageImport(release)
+                } label: {
+                    if isStaging {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Stage import")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(isStaging || !canStage)
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+        }
+    }
+
+    /// Every selected file matched a track — the only case this first cut stages,
+    /// since the import maps tracks to files by position.
+    private var canStage: Bool {
+        guard let alignment, !selectedPaths.isEmpty else { return false }
+        return alignment.count == selectedPaths.count && alignment.allSatisfy { $0 != nil }
+    }
+
+    /// The tracklist. When aligned, each track that a file mapped to is ticked,
+    /// so the mapping is visible against the list itself.
+    @ViewBuilder
+    private func releaseBody(_ release: Release) -> some View {
+        let matchedTracks = Set((alignment ?? []).compactMap { $0 })
+        List(Array(release.tracks.enumerated()), id: \.element.id) { index, track in
+            HStack(spacing: 8) {
+                Image(systemName: matchedTracks.contains(index) ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(matchedTracks.contains(index) ? AnyShapeStyle(.green) : AnyShapeStyle(.quaternary))
+                    .font(.caption)
+                Text(track.position)
+                    .font(AppFonts.mono)
+                    .foregroundStyle(.secondary)
+                    .frame(minWidth: 34, alignment: .leading)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(track.title)
+                    if let artist = track.artist, !artist.isEmpty, artist != release.artist {
+                        Text(artist).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                Text(track.length)
+                    .font(AppFonts.mono)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .listStyle(.inset)
     }
 
     // MARK: - Actions
@@ -193,15 +271,47 @@ struct OnlinePanel: View {
     private func open(_ candidate: Candidate) {
         openID = candidate.id
         isLoadingRelease = true
+        alignment = nil
         Task {
             let result = await library.fetchRelease(source, id: candidate.id)
             switch result {
             case .success(let fetched):
                 release = fetched
+                await align(fetched)
             case .failure(let failure):
                 error = failure.message
             }
             isLoadingRelease = false
+        }
+    }
+
+    /// Align the release to the selected files. Run when a release opens and
+    /// whenever the selection changes while one is open, so the mapping the
+    /// import will use is always current.
+    private func align(_ release: Release) async {
+        guard !selectedPaths.isEmpty else { alignment = nil; return }
+        isAligning = true
+        defer { isAligning = false }
+        switch await library.alignRelease(paths: selectedPaths, release: release) {
+        case .success(let matches): alignment = matches
+        case .failure(let failure): error = failure.message
+        }
+    }
+
+    private func stageImport(_ release: Release) {
+        guard let alignment, canStage else { return }
+        isStaging = true
+        Task {
+            let result = await library.stageImport(
+                paths: selectedPaths,
+                release: release,
+                source: source,
+                alignment: alignment
+            )
+            if case .failure(let failure) = result {
+                error = failure.message
+            }
+            isStaging = false
         }
     }
 }

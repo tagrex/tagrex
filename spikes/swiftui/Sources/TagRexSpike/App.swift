@@ -416,7 +416,7 @@ struct ModePanel: View {
             }
 
             if mode == .tagger && subtab == 0 {
-                OnlinePanel(library: library)
+                OnlinePanel(library: library, selection: selection)
             } else if mode != .tagger || subtab != 1 {
                 ContentUnavailableView(
                     "Not in this build",

@@ -97,11 +97,14 @@ struct ReleaseTrack: Identifiable, Decodable, Hashable {
     var artist: String?
     var title: String
     var durationSecs: Int?
+    var isrc: String?
+    var bpm: Int?
+    var key: String?
 
     var id: String { "\(disc ?? 0)-\(position)-\(title)" }
 
     enum CodingKeys: String, CodingKey {
-        case position, disc, artist, title
+        case position, disc, artist, title, isrc, bpm, key
         case durationSecs = "duration_secs"
     }
 
@@ -111,7 +114,7 @@ struct ReleaseTrack: Identifiable, Decodable, Hashable {
     }
 }
 
-/// A fetched release. Only the parts the panel shows are decoded.
+/// A fetched release. Only the parts the panel shows or imports are decoded.
 struct Release: Decodable {
     var id: String
     var artist: String
@@ -119,6 +122,18 @@ struct Release: Decodable {
     var year: Int?
     var tracks: [ReleaseTrack]
     var country: String?
+    /// Broad genres and specific styles; the import writes the styles to the
+    /// genre tag by preference, falling back to the genres.
+    var genres: [String]?
+    var styles: [String]?
+
+    /// The value the import writes to the genre tag: the styles joined, else the
+    /// genres.
+    var importGenre: String? {
+        let chosen = (styles?.isEmpty == false ? styles : genres) ?? []
+        let joined = chosen.joined(separator: "/")
+        return joined.isEmpty ? nil : joined
+    }
 }
 
 /// A search or fetch failure, carrying the message to show in the panel.
@@ -179,16 +194,23 @@ final class Library {
     private(set) var isBusy = false
     private(set) var lastMessage = ""
 
-    /// The staged plan: path → field → new value. Nothing is on disk until
-    /// Apply, and this is the only thing Discard has to throw away.
+    /// The staged edit map: path → field → new value. Nothing is on disk until
+    /// Apply. It drives the table diff for both a hand edit and a staged import.
     private(set) var staged: [String: [Field: String]] = [:]
+
+    /// A whole staged plan from an online import (#300). When set, Apply writes
+    /// this plan rather than rebuilding one from `staged` — the plan carries more
+    /// than the table's seven columns (isrc, bpm, catalogue, …), and `staged`
+    /// only mirrors the visible part of it for the diff.
+    private var stagedPlan: JSONValue?
+    private var stagedPlanCount = 0
 
     var filter = ""
     var showsOldValues = false
 
     var rootName: String { root?.lastPathComponent ?? "No folder open" }
-    var stagedFileCount: Int { staged.count }
-    var hasStagedPlan: Bool { !staged.isEmpty }
+    var stagedFileCount: Int { stagedPlan != nil ? stagedPlanCount : staged.count }
+    var hasStagedPlan: Bool { stagedPlan != nil || !staged.isEmpty }
 
     /// The live session. Held across calls, closed when another folder opens.
     /// Not closed on deinit — a `Library` lives for the window's lifetime, and
@@ -262,6 +284,10 @@ final class Library {
     /// value back to what it was cancels the change instead of recording a
     /// no-op the way the web editor does.
     func stage(_ field: Field, to value: String, for ids: [Track.ID]) {
+        // A hand edit supersedes a pending import: the two staging sources must
+        // not mix, and Apply follows whichever is current.
+        stagedPlan = nil
+        stagedPlanCount = 0
         for id in ids {
             guard let track = tracks.first(where: { $0.id == id }) else { continue }
 
@@ -283,15 +309,22 @@ final class Library {
 
     func discard() {
         staged.removeAll()
+        stagedPlan = nil
+        stagedPlanCount = 0
         lastMessage = "Discarded"
     }
 
     // MARK: - Writing
 
-    /// Stage the edits into a plan, then apply that plan — the same two steps the
-    /// interface takes, so the write goes through the gate rather than around it.
+    /// Apply the staged plan. A staged import already has one; a hand edit is
+    /// turned into one first (preview_tag_edits). Either way the write goes
+    /// through apply_plan — one journaled, undoable batch.
     func apply() async {
-        guard let session, !staged.isEmpty else { return }
+        guard let session, hasStagedPlan else { return }
+        if let plan = stagedPlan {
+            await applyStagedPlan(plan, count: stagedPlanCount)
+            return
+        }
         isBusy = true
         defer { isBusy = false }
 
@@ -320,6 +353,29 @@ final class Library {
 
         lastMessage = message
         if message.hasPrefix("Applied") { staged.removeAll() }
+        await rescan()
+    }
+
+    /// Apply a whole staged plan (from an online import) — one journaled batch,
+    /// undoable like any other.
+    private func applyStagedPlan(_ plan: JSONValue, count: Int) async {
+        guard let session else { return }
+        isBusy = true
+        defer { isBusy = false }
+
+        let box = SessionHandle(raw: session)
+        let message: String = await Task.detached(priority: .userInitiated) {
+            let applied: Reply<Batch>? = invoke(box, "apply_plan", encodeArgs(PlanArg(plan: plan)))
+            if applied?.ok != nil { return "Applied to \(count) file(s)" }
+            return applied?.error?.text ?? "the write failed"
+        }.value
+
+        lastMessage = message
+        if message.hasPrefix("Applied") {
+            staged.removeAll()
+            stagedPlan = nil
+            stagedPlanCount = 0
+        }
         await rescan()
     }
 
@@ -395,6 +451,85 @@ final class Library {
         }.value
     }
 
+    /// Align a release's tracks to `paths`. Returns, per file in order, the index
+    /// of the release track it matched — or nil when nothing matched.
+    func alignRelease(paths: [String], release: Release) async -> Result<[Int?], SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "No library open")) }
+        let box = SessionHandle(raw: session)
+        let tracks = release.tracks.map { importTrack(from: $0, albumArtist: release.artist) }
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<[AlignMatch?]>? =
+                invoke(box, "auto_align", encodeArgs(AlignArgs(paths: paths, tracks: tracks)))
+            if let matches = reply?.ok { return .success(matches.map { $0?.track }) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "alignment failed"))
+        }.value
+    }
+
+    /// Build the import plan for `paths` from `release`, aligned track per file,
+    /// and stage it — the table shows the visible changes and the change-plan bar
+    /// takes over, so Apply writes it exactly as a hand edit is written. Every
+    /// file must have a matched track; the caller enables this only then.
+    func stageImport(
+        paths: [String],
+        release: Release,
+        source: Source,
+        alignment: [Int?]
+    ) async -> Result<Int, SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "No library open")) }
+
+        var ordered: [ImportTrack] = []
+        for match in alignment {
+            guard let index = match, release.tracks.indices.contains(index) else {
+                return .failure(SearchFailure(message: "every file must be matched to a track"))
+            }
+            ordered.append(importTrack(from: release.tracks[index], albumArtist: release.artist))
+        }
+
+        let selection = ImportSelection(
+            album: blankToNil(release.title),
+            album_artist: blankToNil(release.artist),
+            year: release.year.map(String.init),
+            genre: release.importGenre,
+            tracks: ordered,
+            release_id: blankToNil(release.id),
+            source: source.rawValue
+        )
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, [String: [Field: String]], Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let args = ImportArgs(paths: paths, selection: selection, vinyl_sides_to_disc: false)
+                let reply: Reply<JSONValue>? = invoke(box, "preview_import", encodeArgs(args))
+                guard let plan = reply?.ok else {
+                    return .failure(SearchFailure(
+                        message: reply?.error?.text ?? "the import could not be prepared"))
+                }
+                guard let data = try? JSONEncoder().encode(plan),
+                      let parsed = try? JSONDecoder().decode(StagedPlanShape.self, from: data)
+                else {
+                    return .failure(SearchFailure(message: "could not read the import plan"))
+                }
+                var diffs: [String: [Field: String]] = [:]
+                for change in parsed.changes {
+                    for tagChange in change.tag_changes where Field(rawValue: tagChange.field) != nil {
+                        diffs[change.path, default: [:]][Field(rawValue: tagChange.field)!] =
+                            tagChange.new ?? ""
+                    }
+                }
+                return .success((plan, diffs, parsed.changes.count))
+            }.value
+
+        switch result {
+        case .success(let (plan, diffs, count)):
+            staged = diffs
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged an import of \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            return .failure(failure)
+        }
+    }
+
     /// The config dir (and so the journal) lives beside the app's own data, not
     /// in the music folder — a stand should leave nothing behind in a library it
     /// was pointed at. One dir per library, keyed by path, so two folders never
@@ -412,8 +547,10 @@ final class Library {
 private struct EmptyOk: Decodable {}
 
 /// An opaque JSON value, to carry a plan back into the next call without the
-/// stand having to model the whole `PlanDto`.
-private struct JSONValue: Codable {
+/// stand having to model the whole `PlanDto`. `@unchecked Sendable`: it holds
+/// immutable JSON data (dictionaries, arrays and scalars decoded once), so it is
+/// safe to hand a staged plan back from a detached task to the main actor.
+private struct JSONValue: Codable, @unchecked Sendable {
     let value: Any
 
     init(from decoder: Decoder) throws {
@@ -538,4 +675,72 @@ private struct FetchArgs: Encodable {
     let source: String
     let token: String
     let release_id: String
+}
+
+// One release track as the backend's ImportTrackDto; snake_case keys are the
+// property names, since the ABI does not convert them.
+private struct ImportTrack: Encodable {
+    let position: String
+    let disc: Int?
+    let artist: String
+    let title: String
+    let duration_secs: Int?
+    let isrc: String?
+    let bpm: Int?
+    let key: String?
+}
+
+private func importTrack(from track: ReleaseTrack, albumArtist: String) -> ImportTrack {
+    let artist = (track.artist?.isEmpty == false) ? track.artist! : albumArtist
+    return ImportTrack(
+        position: track.position,
+        disc: track.disc,
+        artist: artist,
+        title: track.title,
+        duration_secs: track.durationSecs,
+        isrc: track.isrc,
+        bpm: track.bpm,
+        key: track.key
+    )
+}
+
+private struct ImportSelection: Encodable {
+    let album: String?
+    let album_artist: String?
+    let year: String?
+    let genre: String?
+    let tracks: [ImportTrack]
+    let release_id: String?
+    let source: String?
+}
+
+private struct AlignArgs: Encodable {
+    let paths: [String]
+    let tracks: [ImportTrack]
+}
+
+private struct ImportArgs: Encodable {
+    let paths: [String]
+    let selection: ImportSelection
+    let vinyl_sides_to_disc: Bool
+}
+
+/// One `auto_align` result. Only the matched track index is needed here.
+private struct AlignMatch: Decodable {
+    let track: Int
+}
+
+/// The parts of a `PlanDto` the stand reflects in the table diff.
+private struct StagedPlanShape: Decodable {
+    struct FileChange: Decodable {
+        let path: String
+        let tag_changes: [FieldChange]
+    }
+
+    struct FieldChange: Decodable {
+        let field: String
+        let new: String?
+    }
+
+    let changes: [FileChange]
 }

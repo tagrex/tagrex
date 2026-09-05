@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The SwiftUI stand applies an online release to the selected files.** With a
+  release open, the Online panel aligns its tracks to the selected files
+  (`auto_align`, shown as a per-track match) and a "Stage import" builds the
+  import (`preview_import`) and stages it through the same gate a hand edit
+  uses — the table shows the changes, the change-plan bar takes over, and Apply
+  writes one journaled, undoable batch. Enabled only when every selected file
+  matched a track. Spike-only. (#300)
 - **The SwiftUI stand searches the online sources.** Its Online sub-tab is a
   working panel over the session ABI: a source picker (Discogs / MusicBrainz /
   Beatport), artist / album / catalogue fields, a results list of release
