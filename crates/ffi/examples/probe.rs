@@ -60,6 +60,27 @@ fn main() {
             println!("{listed}");
         }
 
+        // The non-interactive Beatport pieces: status, begin (scrapes the
+        // client id and builds the authorize URL), logout.
+        //   probe beatport <folder>
+        "beatport" => {
+            let before = invoke(handle, "beatport_status", &serde_json::json!({}));
+            println!("status before: {}", before["ok"]);
+            let begin = invoke(handle, "beatport_begin", &serde_json::json!({}));
+            match begin.get("ok") {
+                Some(ok) => {
+                    let url = ok["authorize_url"].as_str().unwrap_or("");
+                    println!(
+                        "authorize_url has client_id: {}",
+                        url.contains("client_id=")
+                    );
+                }
+                None => println!("begin error: {}", begin["error"]["text"]),
+            }
+            let out = invoke(handle, "beatport_logout", &serde_json::json!({}));
+            println!("logout: {out}");
+        }
+
         // Play a track, read the status back, and compute its waveform.
         //   probe play <folder> <file>
         "play" => {

@@ -20,6 +20,11 @@ tagrex-commands = { path = "../commands" }
 # The preview player (#297). Linking the bridge links the audio backend, which
 # is the right trade for a shell that plays audio.
 tagrex-player = { path = "../player" }
+# Beatport sign-in (#298): the OAuth token exchange/refresh lives here. The
+# interactive browser half is the shell's, done natively.
+tagrex-providers-beatport = { path = "../providers-beatport" }
 tagrex-core = { path = "../core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Named only to type the request agent the Beatport auth calls share (#298).
+ureq = "3.2.1"

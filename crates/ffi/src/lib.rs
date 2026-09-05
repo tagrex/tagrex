@@ -38,9 +38,12 @@ pub struct Session {
     app: App,
     providers: ProviderHub,
     player: Player,
-    /// Where the journal, settings and the token live — one dir, as on the
+    /// Where the journal, settings and the tokens live — one dir, as on the
     /// desktop. Kept so the settings commands can find their files.
     config_dir: PathBuf,
+    /// The Beatport client id scraped by `beatport_begin`, held until
+    /// `beatport_complete` exchanges the code against it.
+    beatport_client_id: Option<String>,
 }
 
 // ------------------------------------------------------------- string plumbing
@@ -122,6 +125,7 @@ pub unsafe extern "C" fn tagrex_open(
             providers: ProviderHub::default(),
             player: Player::new(),
             config_dir: PathBuf::from(config_dir),
+            beatport_client_id: None,
         }));
         Ok(Value::Null)
     })())
@@ -159,6 +163,7 @@ pub unsafe extern "C" fn tagrex_open_drop(
             providers: ProviderHub::default(),
             player: Player::new(),
             config_dir: PathBuf::from(config_dir),
+            beatport_client_id: None,
         }));
         to_value(dto)
     })())
@@ -325,8 +330,112 @@ fn dispatch(session: &mut Session, cmd: &str, raw: &str) -> Result<Value, ErrorD
             to_value(tagrex_player::waveform(Path::new(&a.path)).map_err(ErrorDto::plain)?)
         }
 
+        // -- Beatport sign-in. The browser half is the shell's, done natively;
+        // these are the pieces around it.
+        "beatport_begin" => {
+            let agent = beatport_agent(&session.config_dir)?;
+            let client_id = beatport_auth::fetch_client_id(&agent).map_err(ErrorDto::from)?;
+            let authorize_url = beatport_auth::authorize_url(&client_id);
+            session.beatport_client_id = Some(client_id);
+            to_value(serde_json::json!({ "authorize_url": authorize_url }))
+        }
+        "beatport_complete" => {
+            let a = args!(raw, BeatportComplete);
+            let code = beatport_auth::code_from_redirect(&a.redirect_url)
+                .ok_or_else(|| ErrorDto::plain("no authorization code in the redirect"))?;
+            // Stashed by beatport_begin; re-scraped if the shell skipped it.
+            let agent = beatport_agent(&session.config_dir)?;
+            let client_id = match session.beatport_client_id.clone() {
+                Some(id) => id,
+                None => beatport_auth::fetch_client_id(&agent).map_err(ErrorDto::from)?,
+            };
+            let token =
+                beatport_auth::exchange_code(&agent, &client_id, &code).map_err(ErrorDto::from)?;
+            let username =
+                beatport_auth::account_username(&agent, &token.access_token).unwrap_or_default();
+            write_beatport_session(
+                &session.config_dir,
+                &BeatportSession {
+                    token,
+                    username: username.clone(),
+                    client_id,
+                },
+            )?;
+            session.beatport_client_id = None;
+            to_value(serde_json::json!({ "username": username }))
+        }
+        "beatport_status" => {
+            let status = match read_beatport_session(&session.config_dir) {
+                Some(s) => serde_json::json!({ "authorized": true, "username": s.username }),
+                None => serde_json::json!({ "authorized": false, "username": "" }),
+            };
+            Ok(status)
+        }
+        "beatport_logout" => {
+            match std::fs::remove_file(beatport_session_path(&session.config_dir)) {
+                Ok(()) => Ok(Value::Null),
+                // Signing out of a session that isn't there is a no-op.
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(Value::Null),
+                Err(err) => Err(ErrorDto::plain(format!("beatport session: {err}"))),
+            }
+        }
+        "beatport_token" => {
+            let mut session_file = read_beatport_session(&session.config_dir)
+                .ok_or_else(|| ErrorDto::plain("Not signed in to Beatport"))?;
+            if !session_file.token.is_expired() {
+                return to_value(session_file.token.access_token);
+            }
+            let agent = beatport_agent(&session.config_dir)?;
+            let token = beatport_auth::refresh(
+                &agent,
+                &session_file.client_id,
+                &session_file.token.refresh_token,
+            )
+            .map_err(ErrorDto::from)?;
+            let access_token = token.access_token.clone();
+            session_file.token = token;
+            write_beatport_session(&session.config_dir, &session_file)?;
+            to_value(access_token)
+        }
+
         _ => dispatch_app(&mut session.app, cmd, raw),
     }
+}
+
+use tagrex_providers_beatport::auth as beatport_auth;
+
+/// The on-disk Beatport sign-in: the tokens, the account name (so a shell can
+/// say who is signed in), and the client id (so a refresh need not re-scrape).
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BeatportSession {
+    #[serde(flatten)]
+    token: beatport_auth::BeatportToken,
+    username: String,
+    client_id: String,
+}
+
+fn beatport_session_path(config_dir: &Path) -> PathBuf {
+    config_dir.join("beatport_session.json")
+}
+
+fn read_beatport_session(config_dir: &Path) -> Option<BeatportSession> {
+    let json = std::fs::read_to_string(beatport_session_path(config_dir)).ok()?;
+    serde_json::from_str(&json).ok()
+}
+
+fn write_beatport_session(config_dir: &Path, session: &BeatportSession) -> Result<(), ErrorDto> {
+    let json = serde_json::to_string(session)
+        .map_err(|err| ErrorDto::plain(format!("serialize: {err}")))?;
+    std::fs::write(beatport_session_path(config_dir), json)
+        .map_err(|err| ErrorDto::plain(format!("beatport session: {err}")))
+}
+
+/// A request agent carrying the proxy from settings, as every provider request
+/// on the desktop does.
+fn beatport_agent(config_dir: &Path) -> Result<ureq::Agent, ErrorDto> {
+    let proxy = read_settings(config_dir).proxy.trim().to_string();
+    let proxy = (!proxy.is_empty()).then_some(proxy);
+    beatport_auth::agent(proxy.as_deref()).map_err(ErrorDto::from)
 }
 
 fn settings_path(config_dir: &Path) -> PathBuf {
@@ -834,6 +943,11 @@ struct PlayerVolume {
 #[derive(Deserialize)]
 struct Waveform {
     path: String,
+}
+
+#[derive(Deserialize)]
+struct BeatportComplete {
+    redirect_url: String,
 }
 
 #[cfg(test)]

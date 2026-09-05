@@ -50,6 +50,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `player_status` and `waveform`. The device opens lazily on the first play, so
   opening a session touches none. A shell can now play a track, read its state,
   and draw the seek bar. Spike-only; nothing about the app changes. (#297)
+- **The native-shell bridge signs in to Beatport.** The dispatcher gains
+  `beatport_begin` (scrape the client id, build the authorize URL),
+  `beatport_complete` (exchange the redirect's code, persist the session),
+  `beatport_status`, `beatport_logout` and `beatport_token` (refresh on expiry).
+  The interactive browser half stays with the shell, done natively. This
+  completes the command surface for the shells. Spike-only; nothing about the app
+  changes. (#298)
 
 ## [0.15.0] - 2026-09-05
 
