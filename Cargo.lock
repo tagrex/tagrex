@@ -4006,11 +4006,11 @@ name = "tagrex"
 version = "0.15.0"
 dependencies = [
  "open",
- "rodio",
  "serde",
  "serde_json",
  "tagrex-commands",
  "tagrex-core",
+ "tagrex-player",
  "tagrex-providers-beatport",
  "tauri",
  "tauri-build",
@@ -4046,6 +4046,15 @@ dependencies = [
  "rusqlite",
  "thiserror 1.0.69",
  "walkdir",
+]
+
+[[package]]
+name = "tagrex-player"
+version = "0.15.0"
+dependencies = [
+ "rodio",
+ "serde",
+ "tagrex-core",
 ]
 
 [[package]]

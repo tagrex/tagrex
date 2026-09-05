@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/core",
     "crates/commands",
+    "crates/player",
     "crates/providers-discogs",
     "crates/providers-musicbrainz",
     "crates/providers-beatport",

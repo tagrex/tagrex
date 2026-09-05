@@ -6,14 +6,11 @@
 //! HTML/JS under `ui/`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod player;
-
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use tauri::{Manager, State};
 
-use player::{Player, PlayerStatus};
 use tagrex_commands::{
     ActionGroupDto, AlignMatchDto, App, AppError, BatchDto, BlockTargetsDto, CandidateDto,
     CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateGroupDto, ErrorDto,
@@ -21,6 +18,7 @@ use tagrex_commands::{
     ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto,
     TransformRuleDto,
 };
+use tagrex_player::{Player, PlayerStatus};
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
 /// the non-`Sync` journal usable as shared Tauri state.
@@ -595,7 +593,7 @@ async fn waveform(cache: State<'_, WaveformState>, path: String) -> Result<Vec<u
         }
     }
     let target = PathBuf::from(&path);
-    let peaks = tauri::async_runtime::spawn_blocking(move || player::waveform(&target))
+    let peaks = tauri::async_runtime::spawn_blocking(move || tagrex_player::waveform(&target))
         .await
         .map_err(shell_error)?
         .map_err(shell_error)?;

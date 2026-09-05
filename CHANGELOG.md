@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   It moves to `crates/commands` unchanged — no behaviour, no signatures, no
   logic — which is what lets a second interface call the same backend without
   linking a browser engine to do it. Nothing about the app changes. (#272)
+- **The preview player is a crate of its own.** `player.rs` — the rodio Sink on
+  its own thread and the waveform decoder — moves to `crates/player` so the
+  native shells can drive playback, the same reason the command layer moved
+  (#272). The rodio audio backend rides with it. Pure relocation; nothing about
+  the app changes. (#296)
 
 ## [0.15.0] - 2026-09-05
 
