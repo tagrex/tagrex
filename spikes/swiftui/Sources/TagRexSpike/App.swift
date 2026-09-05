@@ -154,7 +154,9 @@ struct WorkspaceView: View {
             }
             .inspector(isPresented: $showsInspector) {
                 ModePanel(library: library, mode: mode, selection: visibleSelection)
-                    .inspectorColumnWidth(min: 320, ideal: 380, max: 560)
+                    // A touch wider by default so the Online release cards read
+                    // on one line rather than wrapping the title.
+                    .inspectorColumnWidth(min: 320, ideal: 420, max: 560)
                     // Declared on the inspector, not beside the other items: an
                     // inspector's own toolbar content is what claims the
                     // titlebar strip above its column, and with nothing claiming

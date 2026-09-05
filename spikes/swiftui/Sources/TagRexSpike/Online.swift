@@ -246,21 +246,46 @@ struct OnlinePanel: View {
         .padding(.vertical, 6)
     }
 
+    /// A release candidate card, organised the way the Tauri card is
+    /// (`cardMarkup`, online.js): a cover spanning the card height, then four
+    /// lines — the catalogue number, the artist, the title, and the
+    /// country · year · format meta — with a caret.
     private func candidateRow(_ candidate: Candidate) -> some View {
         HStack(spacing: 10) {
-            CandidateCover(library: library, source: source, url: candidate.imageURL)
+            CandidateCover(library: library, source: source, url: candidate.imageURL, size: 56)
             VStack(alignment: .leading, spacing: 2) {
-                Text(candidate.title).fontWeight(.medium)
-                Text(candidate.artist).foregroundStyle(.secondary)
-                if !candidate.detail.isEmpty {
-                    Text(candidate.detail)
+                if let catalog = candidate.catalogNumber, !catalog.isEmpty {
+                    Text(catalog)
+                        .font(AppFonts.mono)
+                        .foregroundStyle(.tint)
+                }
+                Text(candidate.artist)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(candidate.title)
+                    .fontWeight(.medium)
+                    .lineLimit(2)
+                let meta = candidateMeta(candidate)
+                if !meta.isEmpty {
+                    Text(meta)
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
-        .badge(candidate.year.map(String.init) ?? "")
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
+    }
+
+    /// The candidate's meta line: country · year · format, the parts present.
+    private func candidateMeta(_ candidate: Candidate) -> String {
+        [candidate.country, candidate.year.map(String.init), candidate.format]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: " · ")
     }
 
     // MARK: - Release

@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The SwiftUI stand's Online release cards read like the Tauri cards.** A
+  candidate was a plain list row; it is now a card with the cover spanning its
+  height and four lines — the catalogue number in the accent colour, the artist,
+  the title, and the country · year · format meta — with a caret. The panel is a
+  little wider by default so a title reads on one line. Track/disc/image counts
+  on the card and inline expand-to-tracklist are follow-ups. Spike-only. (#316)
 - **The SwiftUI stand's Online search pages its results.** It fetched one
   undifferentiated batch; it now matches the Tauri controls — a per-page size
   (5 / 10 / 15, default 5), a "Found N entries" count, a "Load more results"
