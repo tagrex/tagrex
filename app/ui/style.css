@@ -1940,17 +1940,43 @@ body.show-checkbox tr.playing td.sel {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 5px 14px;
+  /* No horizontal padding and a 5px gap (the splitter's width): this lets the two
+     zones line up exactly with the columns above (#289) — the left zone flush
+     with the table, the right zone flush with the panel — with the breathing
+     inset moved inside each zone instead. */
+  gap: 5px;
+  padding: 5px 0;
   font-size: 11px;
   background: var(--panel);
   border-top: 1px solid var(--border);
 }
-/* Right-aligned whether or not the player is up: with the player there it sits
-   after it, and with the player down the free space collects here. */
+/* Two zones (#289): the player sits in the left zone, under the file table, so
+   its width tracks the table; the right zone sits under the side panel and holds
+   the selection count and Preview edits. The right zone's width follows the panel
+   width (published as --panel-col-width by the splitter); when the panel is
+   collapsed the variable is 0 and the zone shrinks to its content at the far
+   right, and the player takes the whole (now full-width) table. */
+.sb-left {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 14px;
+}
+.sb-right {
+  flex: 0 0 auto;
+  width: var(--panel-col-width, 480px);
+  min-width: max-content;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-right: 14px;
+}
+
 #preview-edits {
   flex: 0 0 auto;
-  margin-left: auto;
 }
 
 /* The bar's 11px is for the status text; the button is a control, so it takes
@@ -1964,9 +1990,8 @@ body.show-checkbox tr.playing td.sel {
   white-space: nowrap;
 }
 
-/* The player takes the space between the count and Preview edits, which is
-   what puts it in the middle of the bar. No background or border of its own any
-   more — it is inside the status bar now, not a strip under it. */
+/* The player fills the left zone (#289), under the file table. No background or
+   border of its own — it is inside the status bar, not a strip under it. */
 #player {
   flex: 1 1 auto;
   min-width: 0;
@@ -1987,27 +2012,28 @@ body.show-checkbox tr.playing td.sel {
 }
 
 /* Now-playing cover thumbnail (#275): a small square at the head of the player,
-   the visual anchor a player wants. Shows the track's embedded front cover; when
-   the track carries none the element is hidden entirely (#286) rather than
-   standing in a placeholder tile. */
+   the visual anchor a player wants. Shows the track's embedded front cover. The
+   slot is ALWAYS reserved (#289): with no art it is an invisible spacer — no
+   border, background or image — so the transport never shifts as covers come and
+   go; only `.has-art` paints the tile. */
 .pl-cover {
   flex: 0 0 auto;
   width: 34px;
   height: 34px;
   border-radius: 4px;
   overflow: hidden;
+}
+.pl-cover.has-art {
   border: 1px solid var(--border);
   background: var(--panel);
-}
-/* An author `display` beats the UA `[hidden]` rule, so the attribute needs its
-   own display:none to actually hide the tile (same guard as `.lib .path`). */
-.pl-cover[hidden] {
-  display: none;
 }
 .pl-cover img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: none;
+}
+.pl-cover.has-art img {
   display: block;
 }
 

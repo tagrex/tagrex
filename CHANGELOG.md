@@ -41,9 +41,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The player shows the cover of what's playing.** A small thumbnail of the
   current track's embedded front cover now sits at the head of the player bar, so
-  the bar reads as a player at a glance. A track with no embedded art shows no
-  tile at all — the transport sits at the head instead; the cover follows every
+  the bar reads as a player at a glance. A track with no embedded art leaves the
+  slot empty (reserved, so the transport never shifts); the cover follows every
   track change, including gapless auto-advance.
+- **The player belongs to the file table now.** The player and its waveform used
+  to stretch the full width of the window, running under the side panel; they now
+  sit in a left zone that tracks the table's width, so the waveform ends where the
+  table does. The selection count moved across to sit beside Preview edits under
+  the panel, leaving the player its own clean strip.
 
 ### Fixed
 

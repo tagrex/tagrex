@@ -612,21 +612,21 @@
     <input id="cover-file" type="file" accept="image/*" hidden />
 
     <footer class="statusbar">
-      <!-- Kept reachable even with the player row hidden: #31 wanted a Play
-           control always on screen, and the row itself now only appears once a
-           track is actually loaded. Swaps out while the row is up, where the
-           row's own toggle takes over. -->
+      <!-- Two zones mirroring the columns above (#289): the player lives in the
+           left zone, under the file table, so its width tracks the table and its
+           waveform never runs under the side panel; the right zone, under the
+           panel, carries the selection count and Preview edits. -->
+      <div class="sb-left">
+      <!-- Kept reachable even with the player row hidden (#31): a Play control
+           stays on screen; the row itself appears only once a track is loaded,
+           and its own toggle takes over then. -->
       <button id="sb-play" class="icon" hidden data-i18n-title="player.play" title="Play the current track" data-i18n-aria-label="player.play" aria-label="Play the current track"><svg class="ico"><use href="#i-play"/></svg></button>
-      <span id="status-sel" class="muted"></span>
-      <!-- The player lives IN this bar rather than in a second one below it: two
-           strips for what reads as one strip of chrome, and the player is the
-           thing worth the room. It takes the space between the count and
-           Preview edits, which puts it in the middle of the bar. -->
       <div id="player" hidden>
-        <!-- Now-playing cover (#275): the one element that anchors the bar as a
-             player. Reads the playing track's embedded front cover; hidden
-             entirely (#286) when the track carries none. -->
-        <span id="pl-cover" class="pl-cover" aria-hidden="true" hidden><img id="pl-cover-img" alt="" /></span>
+        <!-- Now-playing cover (#275): reserves a fixed slot at the head of the
+             player. Shows the track's embedded front cover, or stays transparent
+             (#289) when the track has none, so the transport never shifts as
+             covers come and go between tracks. -->
+        <span id="pl-cover" class="pl-cover" aria-hidden="true"><img id="pl-cover-img" alt="" /></span>
         <!-- Transport cluster (#276): grouped tight so the five glyphs read as one
              control, with play/pause emphasised as the primary. -->
         <div class="pl-transport">
@@ -669,7 +669,11 @@
           </div>
         </div>
         </div>
-      <button id="preview-edits" disabled data-i18n-title="statusbar.previewEditsTitle" title="Preview the pending inline cell edits" data-i18n="statusbar.previewEdits">Preview edits</button>
+      </div>
+      <div class="sb-right">
+        <span id="status-sel" class="muted"></span>
+        <button id="preview-edits" disabled data-i18n-title="statusbar.previewEditsTitle" title="Preview the pending inline cell edits" data-i18n="statusbar.previewEdits">Preview edits</button>
+      </div>
     </footer>
 
     <div id="toast" class="toast" hidden></div>

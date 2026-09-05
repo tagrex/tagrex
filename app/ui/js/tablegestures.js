@@ -22,6 +22,15 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
   const PANEL_WIDTH_KEY = "tagrex.panelWidthPx";
   let lastWidth = 0;
 
+  // Publish the panel column's current width so the status bar's right zone can
+  // sit under it and the player's zone can track the table (#289). Reads the
+  // rendered width, so a drag, the resize clamp and a collapse (width 0) all feed
+  // through the same value.
+  function syncPanelWidthVar() {
+    const w = Math.round(modeCol.getBoundingClientRect().width);
+    document.documentElement.style.setProperty("--panel-col-width", `${w}px`);
+  }
+
   splitter.addEventListener("mousedown", (e) => {
     e.preventDefault();
     dragging = true;
@@ -38,6 +47,7 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
     const width = Math.min(Math.max(rect.right - e.clientX, 240), rect.width - 360);
     lastWidth = Math.round(width);
     modeCol.style.flexBasis = `${lastWidth}px`;
+    syncPanelWidthVar();
   }
 
   function onUp() {
@@ -84,6 +94,18 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
   window.addEventListener("resize", clampPanel);
   restorePanelWidth(); // a remembered width first (#282), then clamp it to fit
   clampPanel(); // in case the initial window is narrower than the default panel
+  // Track the panel column's width for the status-bar zones (#289): a
+  // ResizeObserver catches the drag, the clamp and a window resize; a
+  // MutationObserver on the body class catches the collapse toggle (which sets
+  // the panel to display:none — width 0 — and doesn't fire the ResizeObserver).
+  if (window.ResizeObserver) new ResizeObserver(syncPanelWidthVar).observe(modeCol);
+  if (window.MutationObserver) {
+    new MutationObserver(syncPanelWidthVar).observe(document.body, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  }
+  syncPanelWidthVar();
 })();
 
 // ---- resize a table column by dragging its header grip (#76) ----
