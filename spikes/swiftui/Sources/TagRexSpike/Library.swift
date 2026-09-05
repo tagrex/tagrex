@@ -530,14 +530,24 @@ final class Library {
     /// sign-in) rather than a silent empty list.
     /// One free-text query, sent as the album term the way the Tauri panel does
     /// (`query: { album }` in online.js) — the provider treats it as the general
-    /// search string.
-    func search(_ source: Source, query text: String) async -> Result<[Candidate], SearchFailure> {
+    /// search string. `format` filters by media (empty = all); `page`/`perPage`
+    /// page the results.
+    func search(
+        _ source: Source,
+        query text: String,
+        format: String,
+        page: Int,
+        perPage: Int
+    ) async -> Result<[Candidate], SearchFailure> {
         guard let session else { return .failure(SearchFailure(message: "No library open")) }
         let box = SessionHandle(raw: session)
         let query = SearchArgs.Query(
             artist: nil,
             album: blankToNil(text),
-            catalog_number: nil
+            catalog_number: nil,
+            format: blankToNil(format),
+            page: page,
+            per_page: perPage
         )
         return await Task.detached(priority: .userInitiated) {
             let token: String
@@ -1187,6 +1197,9 @@ private struct SearchArgs: Encodable {
         let artist: String?
         let album: String?
         let catalog_number: String?
+        let format: String?
+        let page: Int
+        let per_page: Int
     }
 }
 

@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The SwiftUI stand's Online search pages its results.** It fetched one
+  undifferentiated batch; it now matches the Tauri controls — a per-page size
+  (5 / 10 / 15, default 5), a "Found N entries" count, a "Load more results"
+  button that fetches the next page and appends it de-duped, and a media filter
+  (All media / CD / Vinyl / LP / File) sent as the query format. Spike-only.
+  (#315, closes O7 on #310)
 - **The SwiftUI stand's tabs read like the Tauri top bar.** The mode tabs are
   `TAGGER / RENAMER / GENERATOR / DEDUPLICATOR / EXPORTER` again — UPPERCASE, each
   with its icon (a custom tab bar; a segmented picker showed the label without the

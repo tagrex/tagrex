@@ -14,10 +14,20 @@ struct OnlinePanel: View {
     /// One free-text query, the way the Tauri panel searches (#97): a preset
     /// fills it from the selection, or it is typed by hand.
     @State private var query = ""
+    /// Media filter (empty = all), and how many results a page fetches.
+    @State private var mediaFilter = ""
+    @State private var perPage = 5
 
     @State private var candidates: [Candidate] = []
+    @State private var page = 0
+    @State private var hasMore = false
     @State private var error: String?
     @State private var isSearching = false
+
+    /// The media types the filter offers, mirroring the Tauri select.
+    private let mediaOptions: [(value: String, label: String)] = [
+        ("", "All media"), ("CD", "CD"), ("Vinyl", "Vinyl"), ("LP", "LP"), ("File", "File"),
+    ]
 
     /// The release being looked at, and which candidate opened it.
     @State private var openID: Candidate.ID?
@@ -53,17 +63,24 @@ struct OnlinePanel: View {
         VStack(spacing: 8) {
             HStack {
                 Text("Source")
-                Spacer()
                 Picker("Source", selection: $source) {
                     ForEach(Source.allCases) { Text($0.label).tag($0) }
                 }
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .fixedSize()
+                Spacer()
+                Picker("Media", selection: $mediaFilter) {
+                    ForEach(mediaOptions, id: \.value) { Text($0.label).tag($0.value) }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
+                .help("Filter results by media type")
             }
 
             HStack(spacing: 6) {
-                TextField("Search a release…", text: $query).onSubmit(run)
+                TextField("Search a release…", text: $query).onSubmit { run() }
                 Menu {
                     presetItems
                 } label: {
@@ -180,13 +197,53 @@ struct OnlinePanel: View {
                 description: Text("Search a source to see its releases.")
             )
         } else {
-            List(candidates, selection: $openID) { candidate in
-                candidateRow(candidate)
-                    .contentShape(Rectangle())
-                    .onTapGesture { open(candidate) }
+            VStack(spacing: 0) {
+                resultsHeader
+                Divider()
+                List(candidates, selection: $openID) { candidate in
+                    candidateRow(candidate)
+                        .contentShape(Rectangle())
+                        .onTapGesture { open(candidate) }
+                }
+                .listStyle(.inset)
+                if hasMore {
+                    Divider()
+                    Button {
+                        run(reset: false)
+                    } label: {
+                        if isSearching {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Text("Load more results")
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isSearching)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                }
             }
-            .listStyle(.inset)
         }
+    }
+
+    private var resultsHeader: some View {
+        HStack {
+            Text("Found \(candidates.count) \(candidates.count == 1 ? "entry" : "entries")")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text("Show")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Picker("Show", selection: $perPage) {
+                ForEach([5, 10, 15], id: \.self) { Text("\($0)").tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .fixedSize()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
     }
 
     private func candidateRow(_ candidate: Candidate) -> some View {
@@ -363,20 +420,31 @@ struct OnlinePanel: View {
 
     // MARK: - Actions
 
-    private func run() {
+    private func run(reset: Bool = true) {
         guard hasQuery, !isSearching else { return }
         isSearching = true
         error = nil
-        release = nil
-        openID = nil
+        if reset {
+            release = nil
+            openID = nil
+            page = 0
+            candidates = []
+        }
+        let next = page + 1
         Task {
-            let result = await library.search(source, query: query)
+            let result = await library.search(
+                source, query: query, format: mediaFilter, page: next, perPage: perPage
+            )
             switch result {
             case .success(let found):
-                candidates = found
-                if found.isEmpty { error = "No releases matched." }
+                page = next
+                // A full page back suggests there is another to fetch.
+                hasMore = found.count >= perPage
+                let seen = Set(candidates.map(\.id))
+                candidates.append(contentsOf: found.filter { !seen.contains($0.id) })
+                if candidates.isEmpty { error = "No releases matched." }
             case .failure(let failure):
-                candidates = []
+                if reset { candidates = [] }
                 error = failure.message
             }
             isSearching = false
