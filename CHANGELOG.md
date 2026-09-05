@@ -20,6 +20,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   native shells can drive playback, the same reason the command layer moved
   (#272). The rodio audio backend rides with it. Pure relocation; nothing about
   the app changes. (#296)
+- **The native-shell bridge dispatches into the command layer.** `crates/ffi`
+  had three hand-written functions, each reimplementing a slice of the app
+  against the core. It becomes a session — open a library, then invoke commands
+  by name — over the same `App` and the same DTOs the desktop shell uses, so a
+  shell reaches the whole synchronous surface (every `preview_*`, the change
+  plan, Apply, Undo, the exporters, duplicates, field locks) instead of a
+  hand-copied fraction. Nothing about the app changes. (#293)
+- **The native-shell bridge reaches the online sources.** The session gains a
+  provider hub, and the dispatcher gains `provider_search`,
+  `provider_fetch_release`, `provider_fetch_image` and `save_release_images` —
+  synchronous forwards, no runtime, since the provider crates use blocking HTTP.
+  A shell can now search a source, pull a release, and save its cover next to the
+  tracks. Nothing about the app changes. (#294)
+- **The native-shell bridge reads and writes settings.** The session remembers
+  its config dir, and the dispatcher gains `load_settings`, `save_settings`,
+  `saved_discogs_token` and `save_discogs_token`. Saving applies the settings
+  live — proxy and rate limit to the hub, ID3 revision and the rest to the open
+  library — so a proxied, rate-limited, token-authenticated Discogs search is now
+  drivable from a shell. Nothing about the app changes. (#295)
+- **The native-shell bridge drives the player.** The session gains a `Player`,
+  and the dispatcher gains `player_play`, `player_set_next`, `player_pause`,
+  `player_resume`, `player_stop`, `player_seek`, `player_set_volume`,
+  `player_status` and `waveform`. The device opens lazily on the first play, so
+  opening a session touches none. A shell can now play a track, read its state,
+  and draw the seek bar. Nothing about the app changes. (#297)
+- **The native-shell bridge signs in to Beatport.** The dispatcher gains
+  `beatport_begin` (scrape the client id, build the authorize URL),
+  `beatport_complete` (exchange the redirect's code, persist the session),
+  `beatport_status`, `beatport_logout` and `beatport_token` (refresh on expiry).
+  The interactive browser half stays with the shell, done natively. This
+  completes the command surface for the shells. Nothing about the app changes.
+  (#298)
 
 ## [0.15.0] - 2026-09-05
 
