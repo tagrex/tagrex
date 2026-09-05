@@ -15,6 +15,9 @@ tagrex-core.workspace = true
 # The command layer (#272). It used to be this crate's own src/lib.rs; it moved
 # out so the native shells can call it without linking the webview stack.
 tagrex-commands = { path = "../crates/commands" }
+# The preview player and waveform decoder (#296). Moved out of this crate so the
+# native shells can drive playback; the rodio audio backend rides with it.
+tagrex-player = { path = "../crates/player" }
 tagrex-providers-beatport = { path = "../crates/providers-beatport" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -27,18 +30,6 @@ tauri-plugin-dialog = "2"
 # navigator.clipboard.readText() makes WKWebView pop a system "Paste"
 # permission pill; the plugin reads it natively, no pill.
 tauri-plugin-clipboard-manager = "2"
-# Native audio backend for the preview player: a rodio Sink queues tracks
-# back-to-back for gapless playback, decoding every format we handle (incl. OGG)
-# via Symphonia. Linux needs libasound2-dev (see CI).
-# 0.22 for a seek bar that seeks: before it, FLAC decoded through claxon, which
-# has no seek support at all, and the Symphonia route couldn't seek either
-# because the decoder was never told the file's length (#190). Symphonia handles
-# every format here, which is where seek support lives; `recording` and the
-# dither noise generator are not ours to carry.
-rodio = { version = "0.22", default-features = false, features = [
-  "playback",
-  "symphonia-all",
-] }
 # Open a provider release page in the system browser (#92). Cross-platform
 # (`open`/`start`/`xdg-open`); the URL is built + validated in main.rs so only
 # Discogs/MusicBrainz release pages can ever be opened.
