@@ -191,8 +191,6 @@ struct OnlinePanel: View {
             } description: {
                 Text(error)
             }
-        } else if let release {
-            releaseView(release)
         } else if candidates.isEmpty {
             ContentUnavailableView(
                 "Nothing found yet",
@@ -234,19 +232,25 @@ struct OnlinePanel: View {
     /// way the Tauri `.release-card` is, so cards read as distinct and hold a
     /// stable height regardless of how many are loaded.
     private func candidateCard(_ candidate: Candidate) -> some View {
-        candidateRow(candidate)
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(
-                RoundedRectangle(cornerRadius: 8).strokeBorder(Color.cardBorder, lineWidth: 1)
-            )
-            .contentShape(Rectangle())
-            .onTapGesture { open(candidate) }
+        let isOpen = openID == candidate.id
+        return VStack(spacing: 0) {
+            candidateRow(candidate, isOpen: isOpen)
+                .padding(10)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { toggle(candidate) }
+            if isOpen {
+                expandedContent(candidate)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8).strokeBorder(Color.cardBorder, lineWidth: 1)
+        )
     }
 
     private var resultsHeader: some View {
@@ -273,7 +277,7 @@ struct OnlinePanel: View {
     /// (`cardMarkup`, online.js): a cover spanning the card height, then four
     /// lines — the catalogue number, the artist, the title, and the
     /// country · year · format meta — with a caret.
-    private func candidateRow(_ candidate: Candidate) -> some View {
+    private func candidateRow(_ candidate: Candidate, isOpen: Bool) -> some View {
         HStack(alignment: .center, spacing: 10) {
             CandidateCover(library: library, source: source, url: candidate.imageURL)
                 .frame(width: 72, height: 72)
@@ -308,6 +312,7 @@ struct OnlinePanel: View {
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .rotationEffect(.degrees(isOpen ? 90 : 0))
         }
     }
 
@@ -396,75 +401,46 @@ struct OnlinePanel: View {
             .joined(separator: " · ")
     }
 
-    // MARK: - Release
+    // MARK: - Release (inline expansion)
 
-    @ViewBuilder
-    private func releaseView(_ release: Release) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Button {
-                    self.release = nil
-                    openID = nil
-                } label: {
-                    Label("Results", systemImage: "chevron.left")
-                }
-                .buttonStyle(.borderless)
-                Spacer()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            HStack(alignment: .top, spacing: 10) {
-                CandidateCover(library: library, source: source, url: release.coverImageURL)
-                    .frame(width: 64, height: 64)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(release.title).font(.headline)
-                    Text([release.artist, release.year.map(String.init), release.country]
-                        .compactMap { $0 }
-                        .filter { !$0.isEmpty }
-                        .joined(separator: " · "))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
-
-            importBand(release)
-
-            Divider()
-
-            releaseBody(release)
-        }
-        .overlay {
-            if isLoadingRelease { ProgressView() }
+    /// Open the tapped card, or collapse it when it is already open — an
+    /// accordion, one release at a time, the way the Tauri card expands in place.
+    private func toggle(_ candidate: Candidate) {
+        if openID == candidate.id {
+            openID = nil
+            release = nil
+            alignment = nil
+        } else {
+            open(candidate)
         }
     }
 
-    /// The import controls: how the release aligned to the selected files, and
-    /// the button that stages it.
     @ViewBuilder
-    private func importBand(_ release: Release) -> some View {
-        if selectedPaths.isEmpty {
-            Text("Select files in the table to import this release onto.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+    private func expandedContent(_ candidate: Candidate) -> some View {
+        Divider()
+        if let release {
+            importControls(release)
+            Divider()
+            tracklist(release)
         } else {
+            HStack {
+                Spacer()
+                ProgressView().controlSize(.small).padding(12)
+                Spacer()
+            }
+        }
+    }
+
+    /// The import row: Auto-match to re-align the release onto the selection, the
+    /// match summary, and Stage import.
+    @ViewBuilder
+    private func importControls(_ release: Release) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                if isAligning {
-                    ProgressView().controlSize(.small)
-                    Text("Aligning…").font(.caption).foregroundStyle(.secondary)
-                } else if let alignment {
-                    let matched = alignment.compactMap { $0 }.count
-                    Text("Matched \(matched) of \(selectedPaths.count) file(s)")
-                        .font(.caption)
-                        .foregroundStyle(matched == selectedPaths.count
-                                         ? AnyShapeStyle(.secondary)
-                                         : AnyShapeStyle(.orange))
-                }
+                Button("Auto-match") { Task { await align(release) } }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(selectedPaths.isEmpty || isAligning)
                 Spacer()
                 Button {
                     stageImport(release)
@@ -479,8 +455,30 @@ struct OnlinePanel: View {
                 .controlSize(.small)
                 .disabled(isStaging || !canStage)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
+            importStatus
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var importStatus: some View {
+        if selectedPaths.isEmpty {
+            Text("Select files in the table to import this release onto.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if isAligning {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Aligning…").font(.caption).foregroundStyle(.secondary)
+            }
+        } else if let alignment {
+            let matched = alignment.compactMap { $0 }.count
+            Text("\(matched) of \(selectedPaths.count) selected file(s) matched")
+                .font(.caption)
+                .foregroundStyle(matched == selectedPaths.count
+                                 ? AnyShapeStyle(.secondary)
+                                 : AnyShapeStyle(.orange))
         }
     }
 
@@ -525,33 +523,65 @@ struct OnlinePanel: View {
         return alignment.count == selectedPaths.count && alignment.allSatisfy { $0 != nil }
     }
 
-    /// The tracklist. When aligned, each track that a file mapped to is ticked,
-    /// so the mapping is visible against the list itself.
+    /// The tracklist, inline under the card. A `LazyVStack` (not a `List`, which
+    /// scrolls inside itself and cannot nest in the results scroll view): each
+    /// track a selected file mapped to is ticked, so the mapping reads against
+    /// the list.
+    /// A short tracklist (≤ 50) is drawn whole so the card just grows and the
+    /// results scroll carries it; a long one goes in a bounded, lazy `List` with
+    /// its own scrollbar so a 3000-track release neither builds every row up front
+    /// nor stretches the card off-screen.
     @ViewBuilder
-    private func releaseBody(_ release: Release) -> some View {
+    private func tracklist(_ release: Release) -> some View {
         let matchedTracks = Set((alignment ?? []).compactMap { $0 })
-        List(Array(release.tracks.enumerated()), id: \.element.id) { index, track in
-            HStack(spacing: 8) {
-                Image(systemName: matchedTracks.contains(index) ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(matchedTracks.contains(index) ? AnyShapeStyle(.green) : AnyShapeStyle(.quaternary))
-                    .font(.caption)
-                Text(track.position)
-                    .font(AppFonts.mono)
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 34, alignment: .leading)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(track.title)
-                    if let artist = track.artist, !artist.isEmpty, artist != release.artist {
-                        Text(artist).font(.caption).foregroundStyle(.secondary)
+        if release.tracks.count <= 50 {
+            VStack(spacing: 0) {
+                ForEach(Array(release.tracks.enumerated()), id: \.element.id) { index, track in
+                    trackRow(index: index, track: track, release: release, matched: matchedTracks)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 3)
+                    if index < release.tracks.count - 1 {
+                        Divider().padding(.leading, 12)
                     }
                 }
-                Spacer()
-                Text(track.length)
-                    .font(AppFonts.mono)
-                    .foregroundStyle(.tertiary)
             }
+            .padding(.bottom, 6)
+        } else {
+            List {
+                ForEach(Array(release.tracks.enumerated()), id: \.element.id) { index, track in
+                    trackRow(index: index, track: track, release: release, matched: matchedTracks)
+                        .listRowInsets(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
+                        .listRowBackground(Color.clear)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .frame(height: 560)
         }
-        .listStyle(.inset)
+    }
+
+    private func trackRow(index: Int, track: ReleaseTrack, release: Release, matched: Set<Int>) -> some View {
+        let hasArtist = (track.artist.map { !$0.isEmpty && $0 != release.artist }) ?? false
+        return HStack(spacing: 8) {
+            Image(systemName: matched.contains(index) ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(matched.contains(index) ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
+                .font(.caption)
+            Text(track.position)
+                .font(AppFonts.monoSized(11))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 26, alignment: .leading)
+            (Text(track.title).foregroundColor(.primary)
+                + (hasArtist
+                    ? Text(" · \(track.artist ?? "")").foregroundColor(.appAccent)
+                    : Text("")))
+                .font(AppFonts.sans(11))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 6)
+            Text(track.length)
+                .font(AppFonts.monoSized(11))
+                .foregroundStyle(.tertiary)
+        }
     }
 
     // MARK: - Actions

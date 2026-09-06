@@ -73,6 +73,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The SwiftUI stand's Online release opens inline.** A release used to replace
+  the results with its own view; tapping a candidate now expands it in place (an
+  accordion — one at a time, the caret rotates) to its tracklist and import row
+  (Auto-match, the match summary, Stage import). A short tracklist is drawn whole
+  so the card grows; a long one (> 50 tracks) goes in a bounded, lazy list with
+  its own scrollbar so a 3000-track release stays fast. Rows are one compact line
+  — tick, position, title · artist, length. Spike-only. (#325)
 - **The SwiftUI stand's Online cards read cleaner.** The media-type glyph is
   drawn per kind (vinyl / CD / cassette / digital / a plain note) so the types
   tell apart, the cover fits by its longer side instead of cropping, and the text
