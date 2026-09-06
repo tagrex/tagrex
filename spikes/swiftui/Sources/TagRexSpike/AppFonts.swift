@@ -27,13 +27,33 @@ enum AppFonts {
         hasBundledFaces = true
     }
 
+    // The family names from each TTF's name table — NOT "IBMPlexSans", which is
+    // no font's PostScript name (the real one is IBMPlexSans-Regular), so
+    // `.custom` was silently falling back to the system face. A family name also
+    // lets `.weight` pick a weight off the variable font.
+    private static let sansFamily = "IBM Plex Sans"
+    private static let monoFamily = "JetBrains Mono"
+
     static var body: Font {
-        hasBundledFaces ? .custom("IBMPlexSans", size: 12, relativeTo: .body) : .body
+        hasBundledFaces ? .custom(sansFamily, size: 12, relativeTo: .body) : .body
     }
 
     static var mono: Font {
         hasBundledFaces
-            ? .custom("JetBrainsMono-Regular", size: 11.5, relativeTo: .body)
+            ? .custom(monoFamily, size: 11.5, relativeTo: .body)
             : .system(.body, design: .monospaced)
+    }
+
+    /// IBM Plex Sans at an explicit size and weight, falling back to the system
+    /// face — for the release cards, which mix a few sizes.
+    static func sans(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        (hasBundledFaces ? Font.custom(sansFamily, size: size) : .system(size: size))
+            .weight(weight)
+    }
+
+    /// JetBrains Mono at an explicit size.
+    static func monoSized(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        (hasBundledFaces ? Font.custom(monoFamily, size: size) : .system(size: size, design: .monospaced))
+            .weight(weight)
     }
 }
