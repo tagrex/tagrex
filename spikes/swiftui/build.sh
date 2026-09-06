@@ -50,6 +50,22 @@ if compgen -G "$fonts/*.ttf" > /dev/null; then
   cp "$fonts"/*.ttf "$app/Contents/Resources/Fonts/"
 fi
 
+# The AccentColor asset: a native Table draws its row selection with the system
+# accent, which SwiftUI's .tint cannot override — a per-app NSAccentColorName +
+# a compiled catalog can. Needs actool (full Xcode); without it the app falls
+# back to the .tint accent (controls green, selection system-blue).
+echo "==> Accent color"
+if xcrun --find actool > /dev/null 2>&1; then
+  xcrun actool "$here/Assets.xcassets" \
+    --compile "$app/Contents/Resources" \
+    --platform macosx \
+    --minimum-deployment-target 26.0 \
+    --output-partial-info-plist "$here/build/actool-partial.plist" \
+    > /dev/null
+else
+  echo "    (actool unavailable — falling back to the .tint accent)"
+fi
+
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -63,6 +79,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
+  <key>NSAccentColorName</key><string>AccentColor</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSSupportsAutomaticTermination</key><true/>
 </dict>

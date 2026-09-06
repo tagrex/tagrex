@@ -76,8 +76,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The SwiftUI stand uses the brand green as its accent.** It read the system
   blue; it now tints app-wide with the Tauri accent (#0b6b53 light / #0b7d5c
   dark), so buttons, pickers, the active sub-tab and the catalogue number read
-  green. A native table's row-selection highlight still follows the system accent
-  (recolouring it needs a per-app AccentColor asset). Spike-only. (#317)
+  green. Spike-only. (#317)
+- **The SwiftUI stand's table row selection is green too.** A native table draws
+  its selection with the system accent, which `.tint` cannot override; a per-app
+  AccentColor asset (compiled by `actool` in `build.sh`, with `NSAccentColorName`)
+  makes `controlAccentColor` the brand green, so the selected row — and every
+  control — reads green. Falls back to the `.tint` accent where `actool` is
+  unavailable. Spike-only. (#318)
 - **The SwiftUI stand's mode tabs drop the icons, keep the CAPS labels.** The
   icon tab bar is back to a segmented picker with UPPERCASE labels
   (TAGGER / RENAMER / …); the Tagger still opens on ONLINE. Spike-only. (#317)
