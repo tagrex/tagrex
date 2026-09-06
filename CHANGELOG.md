@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The SwiftUI stand's Online cards read cleaner.** The media-type glyph is
+  drawn per kind (vinyl / CD / cassette / digital / a plain note) so the types
+  tell apart, the cover fits by its longer side instead of cropping, and the text
+  column fills the row so the meta line truncates by the same width on every card.
+  Spike-only. (#324)
 - **The SwiftUI stand's Online release cards match the Tauri cards.** Each
   candidate's track/disc/image counts are prefetched (pooled, cached) and the
   card is rebuilt as the Tauri `.release-card`: bordered rounded cards in a scroll

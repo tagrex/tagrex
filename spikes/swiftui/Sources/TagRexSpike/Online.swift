@@ -285,6 +285,8 @@ struct OnlinePanel: View {
                 Text(candidate.artist)
                     .font(AppFonts.sans(12, .semibold))
                     .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Text(candidate.title)
                     .font(AppFonts.sans(12, .semibold))
                     .foregroundStyle(.primary)
@@ -299,7 +301,10 @@ struct OnlinePanel: View {
                         .truncationMode(.tail)
                 }
             }
-            Spacer(minLength: 0)
+            // Fill the row so every line measures against the same width — with
+            // the column sized to content, a card whose longest line was the meta
+            // truncated a *shorter* meta on another card.
+            .frame(maxWidth: .infinity, alignment: .leading)
             Image(systemName: "chevron.right")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -348,7 +353,7 @@ struct OnlinePanel: View {
     private func mediaBadge(_ candidate: Candidate) -> some View {
         let discs = counts[candidate.id]?.discs ?? 1
         HStack(spacing: 2) {
-            Image(systemName: mediaGlyph(candidate.format)).font(.system(size: 18))
+            MediaGlyph(kind: mediaKind(candidate.format), size: 18)
             if discs > 1 {
                 Text("×\(discs)")
                     .font(.system(size: 12, weight: .semibold))
@@ -364,15 +369,15 @@ struct OnlinePanel: View {
         .padding(4)
     }
 
-    /// The media-type glyph, mapped the way the Tauri `mediaKind` does.
-    private func mediaGlyph(_ format: String?) -> String {
+    /// The media kind, classified the way the Tauri `mediaKind` does.
+    private func mediaKind(_ format: String?) -> MediaKind {
         let f = (format ?? "").lowercased()
         func has(_ keys: String...) -> Bool { keys.contains { f.contains($0) } }
-        if has("cassette", "tape") { return "recordingtape" }
-        if has("vinyl", "lp", "ep", "7\"", "10\"", "12\"", "shellac") { return "opticaldisc.fill" }
-        if has("sacd", "hdcd", "cdr", "compact disc", "cd") { return "opticaldisc" }
-        if has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming") { return "waveform" }
-        return "music.note"
+        if has("cassette", "tape") { return .cassette }
+        if has("vinyl", "lp", "ep", "7\"", "10\"", "12\"", "shellac") { return .vinyl }
+        if has("sacd", "hdcd", "cdr", "compact disc", "cd") { return .cd }
+        if has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming") { return .digital }
+        return .generic
     }
 
     /// The prefetched track/disc count for the card's first line, once known:
@@ -655,5 +660,58 @@ struct OnlinePanel: View {
             }
             isStaging = false
         }
+    }
+}
+
+/// The media kinds the card's glyph distinguishes, mirroring the Tauri set.
+enum MediaKind {
+    case vinyl, cd, cassette, digital, generic
+}
+
+/// The media-type glyph, drawn to match the Tauri SVGs (a 16-unit viewBox) so a
+/// record, a CD, a cassette, a digital waveform and a plain note read apart —
+/// SF Symbols has no vinyl/cassette pair distinct enough for this.
+struct MediaGlyph: View {
+    let kind: MediaKind
+    let size: CGFloat
+
+    var body: some View {
+        Canvas { ctx, sz in
+            let u = sz.width / 16.0
+            let white = GraphicsContext.Shading.color(.white)
+            func circle(_ cx: CGFloat, _ cy: CGFloat, _ r: CGFloat) -> Path {
+                Path(ellipseIn: CGRect(x: (cx - r) * u, y: (cy - r) * u, width: 2 * r * u, height: 2 * r * u))
+            }
+            func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ radius: CGFloat = 0) -> Path {
+                Path(roundedRect: CGRect(x: x * u, y: y * u, width: w * u, height: h * u), cornerRadius: radius * u)
+            }
+            switch kind {
+            case .vinyl:
+                ctx.stroke(circle(8, 8, 7), with: white, lineWidth: 1 * u)
+                ctx.stroke(circle(8, 8, 4.2), with: .color(.white.opacity(0.55)), lineWidth: 0.8 * u)
+                ctx.fill(circle(8, 8, 1.4), with: white)
+            case .cd:
+                ctx.stroke(circle(8, 8, 7), with: white, lineWidth: 1 * u)
+                ctx.stroke(circle(8, 8, 2.5), with: white, lineWidth: 1 * u)
+            case .cassette:
+                ctx.stroke(rect(1.5, 3.5, 13, 9, 1.2), with: white, lineWidth: 1 * u)
+                ctx.stroke(circle(5.5, 8, 1.4), with: white, lineWidth: 0.8 * u)
+                ctx.stroke(circle(10.5, 8, 1.4), with: white, lineWidth: 0.8 * u)
+                ctx.fill(rect(4.5, 10.5, 7, 1.2), with: white)
+            case .digital:
+                let bars: [(CGFloat, CGFloat, CGFloat)] = [(2.2, 6, 4), (5.2, 3, 10), (8.2, 5, 6), (11.2, 7, 2)]
+                for (x, y, h) in bars {
+                    ctx.fill(rect(x, y, 1.6, h, 0.8), with: white)
+                }
+            case .generic:
+                ctx.fill(circle(6, 11.5, 2.2), with: white)
+                ctx.fill(rect(7.9, 3, 1.3, 8.5), with: white)
+                var flag = Path()
+                flag.move(to: CGPoint(x: 8.2 * u, y: 3.2 * u))
+                flag.addQuadCurve(to: CGPoint(x: 12.2 * u, y: 7 * u), control: CGPoint(x: 12.2 * u, y: 3.8 * u))
+                ctx.stroke(flag, with: white, lineWidth: 1.3 * u)
+            }
+        }
+        .frame(width: size, height: size)
     }
 }
