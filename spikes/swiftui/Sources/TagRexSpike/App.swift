@@ -51,6 +51,15 @@ private func brandAccent() -> NSColor {
 extension Color {
     /// Applied app-wide with `.tint` so SwiftUI controls read green, not blue.
     static let appAccent = Color(nsColor: brandAccent())
+
+    /// The Tauri card/badge border (`--border`): a faint line that all but blends
+    /// with the surface — #e2e5ea light, #2c313b dark.
+    static let cardBorder = Color(nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return isDark
+            ? NSColor(srgbRed: 0x2c / 255, green: 0x31 / 255, blue: 0x3b / 255, alpha: 1)
+            : NSColor(srgbRed: 0xe2 / 255, green: 0xe5 / 255, blue: 0xea / 255, alpha: 1)
+    })
 }
 
 @main
@@ -66,7 +75,8 @@ struct TagRexSpikeApp: App {
                 .frame(minWidth: 980, minHeight: 620)
                 .tint(.appAccent)
         }
-        .defaultSize(width: 1240, height: 760)
+        // 1728 wide so the 432pt panel opens at 25% — a 75/25 split.
+        .defaultSize(width: 1728, height: 1000)
         .windowToolbarStyle(.unified)
     }
 }
@@ -135,9 +145,10 @@ struct WorkspaceView: View {
             }
             .inspector(isPresented: $showsInspector) {
                 ModePanel(library: library, mode: mode, selection: visibleSelection)
-                    // A touch wider by default so the Online release cards read
-                    // on one line rather than wrapping the title.
-                    .inspectorColumnWidth(min: 320, ideal: 420, max: 560)
+                    // A 75/25 split (table/panel): on the ~1728-wide window the
+                    // panel is 432 = 25%, and that is also its minimum so it never
+                    // gets narrow enough to cramp the release cards.
+                    .inspectorColumnWidth(min: 432, ideal: 432, max: 720)
                     // Declared on the inspector, not beside the other items: an
                     // inspector's own toolbar content is what claims the
                     // titlebar strip above its column, and with nothing claiming

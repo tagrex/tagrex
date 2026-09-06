@@ -23,6 +23,9 @@ struct OnlinePanel: View {
     @State private var hasMore = false
     @State private var error: String?
     @State private var isSearching = false
+    /// Per-candidate track/disc/image counts, filled in the background after a
+    /// search (the Tauri prefetch, #98). Absent until the release is fetched.
+    @State private var counts: [String: ReleaseCounts] = [:]
 
     /// The media types the filter offers, mirroring the Tauri select.
     private let mediaOptions: [(value: String, label: String)] = [
@@ -200,30 +203,50 @@ struct OnlinePanel: View {
             VStack(spacing: 0) {
                 resultsHeader
                 Divider()
-                List(candidates, selection: $openID) { candidate in
-                    candidateRow(candidate)
-                        .contentShape(Rectangle())
-                        .onTapGesture { open(candidate) }
-                }
-                .listStyle(.inset)
-                if hasMore {
-                    Divider()
-                    Button {
-                        run(reset: false)
-                    } label: {
-                        if isSearching {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Text("Load more results")
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(candidates) { candidate in
+                            candidateCard(candidate)
+                        }
+                        if hasMore {
+                            Button {
+                                run(reset: false)
+                            } label: {
+                                if isSearching {
+                                    ProgressView().controlSize(.small)
+                                } else {
+                                    Text("Load more results").font(AppFonts.sans(12))
+                                }
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(isSearching)
+                            .padding(.vertical, 6)
+                            .frame(maxWidth: .infinity)
                         }
                     }
-                    .buttonStyle(.borderless)
-                    .disabled(isSearching)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity)
+                    .padding(12)
                 }
             }
         }
+    }
+
+    /// One release-candidate card: the row in a rounded, outlined container the
+    /// way the Tauri `.release-card` is, so cards read as distinct and hold a
+    /// stable height regardless of how many are loaded.
+    private func candidateCard(_ candidate: Candidate) -> some View {
+        candidateRow(candidate)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8).strokeBorder(Color.cardBorder, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+            .onTapGesture { open(candidate) }
     }
 
     private var resultsHeader: some View {
@@ -251,33 +274,113 @@ struct OnlinePanel: View {
     /// lines — the catalogue number, the artist, the title, and the
     /// country · year · format meta — with a caret.
     private func candidateRow(_ candidate: Candidate) -> some View {
-        HStack(spacing: 10) {
-            CandidateCover(library: library, source: source, url: candidate.imageURL, size: 56)
-            VStack(alignment: .leading, spacing: 2) {
-                if let catalog = candidate.catalogNumber, !catalog.isEmpty {
-                    Text(catalog)
-                        .font(AppFonts.mono)
-                        .foregroundStyle(.tint)
+        HStack(alignment: .center, spacing: 10) {
+            CandidateCover(library: library, source: source, url: candidate.imageURL)
+                .frame(width: 72, height: 72)
+                .overlay(alignment: .bottomLeading) {
+                    mediaBadge(candidate)
                 }
+            VStack(alignment: .leading, spacing: 2) {
+                releaseBadge(candidate)
                 Text(candidate.artist)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFonts.sans(12, .semibold))
+                    .foregroundStyle(.primary)
                 Text(candidate.title)
-                    .fontWeight(.medium)
-                    .lineLimit(2)
+                    .font(AppFonts.sans(12, .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 let meta = candidateMeta(candidate)
                 if !meta.isEmpty {
                     Text(meta)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(AppFonts.sans(11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 4)
+    }
+
+    /// The catalogue-number + track-count badge, the way the Tauri card wears it
+    /// (#124): the catalogue in an accent-tinted pill, the count beside it.
+    @ViewBuilder
+    private func releaseBadge(_ candidate: Candidate) -> some View {
+        let catalog = candidate.catalogNumber ?? ""
+        let count = countLabel(candidate.id)
+        // The Tauri `.rel-badge` (#124): one unified pill with a *neutral*
+        // border, the catalogue segment on a faint accent fill, the count
+        // segment neutral, the two split by that same border colour.
+        HStack(spacing: 0) {
+            if !catalog.isEmpty {
+                Text(catalog)
+                    .font(AppFonts.monoSized(11, .semibold))
+                    .foregroundStyle(.tint)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(.tint.opacity(0.12))
+            }
+            if let count {
+                if !catalog.isEmpty {
+                    Rectangle().fill(Color.cardBorder).frame(width: 1)
+                }
+                Text(count)
+                    .font(AppFonts.monoSized(11))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+            }
+        }
+        .fixedSize()
+        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .overlay(
+            RoundedRectangle(cornerRadius: 5).strokeBorder(Color.cardBorder, lineWidth: 1)
+        )
+    }
+
+    /// The media-type glyph on the cover — a disc for CD/vinyl, a waveform for a
+    /// file — with the disc count when a release spans more than one.
+    @ViewBuilder
+    private func mediaBadge(_ candidate: Candidate) -> some View {
+        let discs = counts[candidate.id]?.discs ?? 1
+        HStack(spacing: 2) {
+            Image(systemName: mediaGlyph(candidate.format)).font(.system(size: 18))
+            if discs > 1 {
+                Text("×\(discs)")
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
+        .fixedSize()
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .foregroundStyle(.white)
+        .background(.black.opacity(0.45), in: Capsule())
+        .padding(4)
+    }
+
+    /// The media-type glyph, mapped the way the Tauri `mediaKind` does.
+    private func mediaGlyph(_ format: String?) -> String {
+        let f = (format ?? "").lowercased()
+        func has(_ keys: String...) -> Bool { keys.contains { f.contains($0) } }
+        if has("cassette", "tape") { return "recordingtape" }
+        if has("vinyl", "lp", "ep", "7\"", "10\"", "12\"", "shellac") { return "opticaldisc.fill" }
+        if has("sacd", "hdcd", "cdr", "compact disc", "cd") { return "opticaldisc" }
+        if has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming") { return "waveform" }
+        return "music.note"
+    }
+
+    /// The prefetched track/disc count for the card's first line, once known:
+    /// "15 tracks", or "30 tracks · 2 discs" for a multi-disc release.
+    private func countLabel(_ id: String) -> String? {
+        guard let count = counts[id] else { return nil }
+        let tracks = "\(count.tracks) track\(count.tracks == 1 ? "" : "s")"
+        return count.discs > 1 ? "\(tracks) · \(count.discs) discs" : tracks
     }
 
     /// The candidate's meta line: country · year · format, the parts present.
@@ -307,7 +410,8 @@ struct OnlinePanel: View {
             .padding(.vertical, 8)
 
             HStack(alignment: .top, spacing: 10) {
-                CandidateCover(library: library, source: source, url: release.coverImageURL, size: 64)
+                CandidateCover(library: library, source: source, url: release.coverImageURL)
+                    .frame(width: 64, height: 64)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(release.title).font(.headline)
                     Text([release.artist, release.year.map(String.init), release.country]
@@ -377,25 +481,27 @@ struct OnlinePanel: View {
 
     // A release-candidate cover: fetched once over the bridge and cached there,
     // a placeholder until it arrives or if the source carries no art.
+    /// The cover art. It fills whatever frame the caller gives — the card sizes
+    /// it to the row's full height (a square), the release header to a fixed box.
     private struct CandidateCover: View {
         let library: Library
         let source: Source
         let url: String?
-        var size: CGFloat = 40
         @State private var image: NSImage?
 
         var body: some View {
             ZStack {
                 RoundedRectangle(cornerRadius: 4).fill(.quaternary)
                 if let image {
-                    Image(nsImage: image).resizable().scaledToFill()
+                    // Fit by the longer side: a square cover fills the box, a
+                    // rectangular one sits whole inside it, never cropped.
+                    Image(nsImage: image).resizable().scaledToFit()
                 } else {
                     Image(systemName: "opticaldisc")
                         .foregroundStyle(.tertiary)
-                        .font(.system(size: size * 0.4))
+                        .font(.system(size: 18))
                 }
             }
-            .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: 4))
             .task(id: url) {
                 image = nil
@@ -454,6 +560,7 @@ struct OnlinePanel: View {
             openID = nil
             page = 0
             candidates = []
+            counts = [:]
         }
         let next = page + 1
         Task {
@@ -466,13 +573,40 @@ struct OnlinePanel: View {
                 // A full page back suggests there is another to fetch.
                 hasMore = found.count >= perPage
                 let seen = Set(candidates.map(\.id))
-                candidates.append(contentsOf: found.filter { !seen.contains($0.id) })
+                let added = found.filter { !seen.contains($0.id) }
+                candidates.append(contentsOf: added)
                 if candidates.isEmpty { error = "No releases matched." }
+                prefetchCounts(added)
             case .failure(let failure):
                 if reset { candidates = [] }
                 error = failure.message
             }
             isSearching = false
+        }
+    }
+
+    /// Fill each new candidate's counts in the background, four at a time (the
+    /// Tauri prefetch pool), so the counts appear without bursting the provider.
+    private func prefetchCounts(_ items: [Candidate]) {
+        guard !items.isEmpty else { return }
+        let src = source
+        Task {
+            let pool = 4
+            var index = 0
+            while index < items.count {
+                let batch = items[index..<min(index + pool, items.count)]
+                await withTaskGroup(of: (String, ReleaseCounts?).self) { group in
+                    for candidate in batch {
+                        group.addTask {
+                            (candidate.id, await library.releaseCounts(src, id: candidate.id))
+                        }
+                    }
+                    for await (id, result) in group {
+                        if let result { counts[id] = result }
+                    }
+                }
+                index += pool
+            }
         }
     }
 

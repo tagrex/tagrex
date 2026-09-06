@@ -140,11 +140,32 @@ struct Release: Decodable {
     /// The release cover. From Cover Art Archive for MusicBrainz (public, no
     /// token) and from the provider for Discogs/Beatport (needs their auth).
     var coverImageURL: String?
+    /// The number of discs, and the release's images — for the card's counts.
+    var discTotal: Int?
+    var images: [ReleaseImageStub]?
 
     enum CodingKeys: String, CodingKey {
-        case id, artist, title, year, tracks, country, genres, styles
+        case id, artist, title, year, tracks, country, genres, styles, images
         case coverImageURL = "cover_image_url"
+        case discTotal = "disc_total"
     }
+
+    var trackCount: Int { tracks.count }
+    var discCount: Int { max(1, discTotal ?? 1) }
+    var imageCount: Int { images?.count ?? 0 }
+}
+
+/// Only the count of images matters on the card; the fields are ignored.
+struct ReleaseImageStub: Decodable, Hashable {}
+
+/// The counts a release card shows once its release is prefetched.
+struct ReleaseCounts: Equatable {
+    let tracks: Int
+    let discs: Int
+    let images: Int
+}
+
+extension Release {
 
     /// The value the import writes to the genre tag: the styles joined, else the
     /// genres.
@@ -306,6 +327,9 @@ final class Library {
     /// results row never re-hits the provider. Mirrors `imageCache` in the Tauri
     /// online.js.
     private var imageCache: [String: Data] = [:]
+    /// Full releases already fetched, keyed by "source/id", so the card-count
+    /// prefetch and opening a release share one fetch.
+    private var releaseCache: [String: Release] = [:]
 
     /// The staged edit map: path → field → new value. Nothing is on disk until
     /// Apply. It drives the table diff for both a hand edit and a staged import.
@@ -562,11 +586,12 @@ final class Library {
         }.value
     }
 
-    /// Fetch a release's full tracklist.
+    /// Fetch a release's full tracklist, cached by "source/id".
     func fetchRelease(_ source: Source, id: String) async -> Result<Release, SearchFailure> {
         guard let session else { return .failure(SearchFailure(message: "No library open")) }
+        if let cached = releaseCache["\(source.rawValue)/\(id)"] { return .success(cached) }
         let box = SessionHandle(raw: session)
-        return await Task.detached(priority: .userInitiated) {
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<Release, SearchFailure> in
             let token: String
             switch resolveToken(box, source) {
             case .success(let resolved): token = resolved
@@ -577,6 +602,22 @@ final class Library {
             if let release = reply?.ok { return .success(release) }
             return .failure(SearchFailure(message: reply?.error?.text ?? "could not load the release"))
         }.value
+        if case .success(let release) = result { releaseCache["\(source.rawValue)/\(id)"] = release }
+        return result
+    }
+
+    /// The card counts for a candidate — track / disc / image — fetched (and
+    /// cached) through `fetchRelease`. Nil on any failure, leaving the card
+    /// without counts, the way the Tauri prefetch does.
+    func releaseCounts(_ source: Source, id: String) async -> ReleaseCounts? {
+        if case .success(let release) = await fetchRelease(source, id: id) {
+            return ReleaseCounts(
+                tracks: release.trackCount,
+                discs: release.discCount,
+                images: release.imageCount
+            )
+        }
+        return nil
     }
 
     /// Fetch a release cover's bytes over `provider_fetch_image`, cached by URL so
@@ -1120,12 +1161,22 @@ private struct JSONValue: Codable, @unchecked Sendable {
 
 // MARK: - Bridge plumbing
 
+/// Serializes every `tagrex_invoke`. The backend session is single-threaded —
+/// concurrent calls (the card-count prefetch's pool, cover fetches and the
+/// player poll all run off the main actor) panic across the C ABI, which cannot
+/// unwind and aborts the app. One lock around the call makes the FFI sequential
+/// regardless of how many callers overlap.
+private let ffiLock = NSLock()
+
 /// Invoke a command and decode its envelope. Runs off the main actor; the
-/// pointer is boxed Sendable and access is serialized by the caller.
+/// pointer is boxed Sendable and the call is serialized by `ffiLock`.
 private func invoke<T: Decodable>(_ session: SessionHandle, _ cmd: String, _ args: String) -> Reply<T>? {
     cmd.withCString { cmdPtr in
         args.withCString { argsPtr in
-            guard let raw = tagrex_invoke(session.raw, cmdPtr, argsPtr) else { return nil }
+            ffiLock.lock()
+            let raw = tagrex_invoke(session.raw, cmdPtr, argsPtr)
+            ffiLock.unlock()
+            guard let raw else { return nil }
             defer { tagrex_string_free(raw) }
             return decode(Reply<T>.self, from: raw)
         }

@@ -73,6 +73,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The SwiftUI stand's Online release cards match the Tauri cards.** Each
+  candidate's track/disc/image counts are prefetched (pooled, cached) and the
+  card is rebuilt as the Tauri `.release-card`: bordered rounded cards in a scroll
+  view with a stable height, a fixed cover fitted by its longer side, the
+  catalogue + count badge with the neutral `--border`, a media-type glyph, and
+  IBM Plex / JetBrains Mono at the Tauri weights and sizes. The table/panel split
+  is 75/25 with a 432pt minimum panel. Spike-only. (#321)
 - **The SwiftUI stand uses the brand green as its accent.** It read the system
   blue; it now tints app-wide with the Tauri accent (#0b6b53 light / #0b7d5c
   dark), so buttons, pickers, the active sub-tab and the catalogue number read
@@ -157,6 +164,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The SwiftUI stand renders in its bundled faces again.** `AppFonts` asked for
+  `IBMPlexSans`, which is no face's name (the family is `IBM Plex Sans`), so every
+  body label silently fell back to the system face. It now uses the family names,
+  and weights resolve off the variable fonts. Spike-only. (#319)
+- **The SwiftUI stand no longer crashes on Load more.** The Online card-count
+  prefetch and the cover fetches issued several `tagrex_invoke` calls at once on
+  the single-threaded backend session; concurrent access panicked across the C
+  ABI, which cannot unwind, and aborted the app. Every FFI call is serialized
+  behind one lock. Spike-only. (#320)
 - **The Discogs token in the SwiftUI stand's Settings is masked.** It was a plain
   text field showing the credential in the clear; it is now a secure field.
   Spike-only. (#313)
