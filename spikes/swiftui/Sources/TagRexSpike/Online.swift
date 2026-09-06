@@ -560,9 +560,17 @@ struct OnlinePanel: View {
         }
     }
 
-    private func trackRow(index: Int, track: ReleaseTrack, release: Release, matched: Set<Int>) -> some View {
+    /// The title · artist for a track — title in the text colour, a differing
+    /// track artist appended in the accent colour after a dot.
+    private func titleText(_ track: ReleaseTrack, _ release: Release) -> Text {
         let hasArtist = (track.artist.map { !$0.isEmpty && $0 != release.artist }) ?? false
-        return HStack(spacing: 8) {
+        return Text(track.title).foregroundColor(.primary)
+            + (hasArtist ? Text(" · \(track.artist ?? "")").foregroundColor(.appAccent) : Text(""))
+    }
+
+    /// A row with its own sideways scroll on the title · artist cell.
+    private func trackRow(index: Int, track: ReleaseTrack, release: Release, matched: Set<Int>) -> some View {
+        HStack(spacing: 8) {
             Image(systemName: matched.contains(index) ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(matched.contains(index) ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
                 .font(.caption)
@@ -570,14 +578,13 @@ struct OnlinePanel: View {
                 .font(AppFonts.monoSized(11))
                 .foregroundStyle(.secondary)
                 .frame(minWidth: 26, alignment: .leading)
-            (Text(track.title).foregroundColor(.primary)
-                + (hasArtist
-                    ? Text(" · \(track.artist ?? "")").foregroundColor(.appAccent)
-                    : Text("")))
-                .font(AppFonts.sans(11))
-                .lineLimit(1)
-                .truncationMode(.tail)
-            Spacer(minLength: 6)
+            ScrollView(.horizontal, showsIndicators: false) {
+                titleText(track, release)
+                    .font(AppFonts.sans(11))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Text(track.length)
                 .font(AppFonts.monoSized(11))
                 .foregroundStyle(.tertiary)
@@ -697,6 +704,7 @@ struct OnlinePanel: View {
 enum MediaKind {
     case vinyl, cd, cassette, digital, generic
 }
+
 
 /// The media-type glyph, drawn to match the Tauri SVGs (a 16-unit viewBox) so a
 /// record, a CD, a cassette, a digital waveform and a plain note read apart —

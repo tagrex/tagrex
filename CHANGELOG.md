@@ -73,6 +73,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A long track title scrolls sideways in the SwiftUI stand's tracklist.** The
+  `title · artist` cell is in a horizontal scroll, so the row under the cursor
+  reveals a long title without widening the panel; the number and length stay put
+  and each row scrolls on its own. Spike-only. (#327)
 - **The SwiftUI stand's Online release opens inline.** A release used to replace
   the results with its own view; tapping a candidate now expands it in place (an
   accordion — one at a time, the caret rotates) to its tracklist and import row
