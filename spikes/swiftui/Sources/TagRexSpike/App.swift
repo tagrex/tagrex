@@ -60,6 +60,25 @@ extension Color {
             ? NSColor(srgbRed: 0x2c / 255, green: 0x31 / 255, blue: 0x3b / 255, alpha: 1)
             : NSColor(srgbRed: 0xe2 / 255, green: 0xe5 / 255, blue: 0xea / 255, alpha: 1)
     })
+
+    /// The Tauri diff-green (`--add`): #15803d light, #3fca74 dark. Used for a
+    /// length delta that matches and the "N lengths match" tally.
+    static let diffAdd = Color(nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return isDark
+            ? NSColor(srgbRed: 0x3f / 255, green: 0xca / 255, blue: 0x74 / 255, alpha: 1)
+            : NSColor(srgbRed: 0x15 / 255, green: 0x80 / 255, blue: 0x3d / 255, alpha: 1)
+    })
+
+    /// The Tauri diff-red (`--del`): #dc2626 light, #f87171 dark. Used for a
+    /// length delta that is off by more than the near band and the "no lengths
+    /// match" tally.
+    static let diffDel = Color(nsColor: NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return isDark
+            ? NSColor(srgbRed: 0xf8 / 255, green: 0x71 / 255, blue: 0x71 / 255, alpha: 1)
+            : NSColor(srgbRed: 0xdc / 255, green: 0x26 / 255, blue: 0x26 / 255, alpha: 1)
+    })
 }
 
 @main

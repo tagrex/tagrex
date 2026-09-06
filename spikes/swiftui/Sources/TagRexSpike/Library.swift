@@ -137,15 +137,27 @@ struct Release: Decodable {
     /// genre tag by preference, falling back to the genres.
     var genres: [String]?
     var styles: [String]?
+    /// Label / catalogue-number pairs the release lists (#90). A release can carry
+    /// several — even from the same label — so the caller picks which one to write
+    /// (label → Publisher, catno → CatalogNumber). Listing order; first is primary.
+    var labels: [ReleaseLabel]?
+    /// Physical/source format descriptor, e.g. `Vinyl, 12", 33 ⅓ RPM` or `CD`
+    /// (#106). Drives the media-type tag and the media badge.
+    var format: String?
+    /// Public webpage for the release (the provider's release page), if any.
+    var url: String?
     /// The release cover. From Cover Art Archive for MusicBrainz (public, no
     /// token) and from the provider for Discogs/Beatport (needs their auth).
     var coverImageURL: String?
     /// The number of discs, and the release's images — for the card's counts.
     var discTotal: Int?
-    var images: [ReleaseImageStub]?
+    /// Every image the release carries, primary first (#102): each one's URL and
+    /// its dimensions when the provider states them (0 = unknown). Used for the
+    /// cover resolution/count readout and to save the images to disk.
+    var images: [ReleaseImage]?
 
     enum CodingKeys: String, CodingKey {
-        case id, artist, title, year, tracks, country, genres, styles, images
+        case id, artist, title, year, tracks, country, genres, styles, labels, format, images, url
         case coverImageURL = "cover_image_url"
         case discTotal = "disc_total"
     }
@@ -155,8 +167,29 @@ struct Release: Decodable {
     var imageCount: Int { images?.count ?? 0 }
 }
 
-/// Only the count of images matters on the card; the fields are ignored.
-struct ReleaseImageStub: Decodable, Hashable {}
+/// One label imprint of a release, with its catalogue number when stated (#90).
+struct ReleaseLabel: Decodable, Hashable {
+    var name: String
+    var catalogNumber: String?
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case catalogNumber = "catalog_number"
+    }
+
+    /// "Antler-Subway — AS 5606", the parts present, for the picker.
+    var label: String {
+        catalogNumber.map { "\(name) — \($0)" } ?? name
+    }
+}
+
+/// One image of a release: a download handle plus its pixel dimensions when the
+/// provider states them (0 = unknown). Ordered with the primary first (#102).
+struct ReleaseImage: Decodable, Hashable {
+    var url: String
+    var width: Int
+    var height: Int
+}
 
 /// The counts a release card shows once its release is prefetched.
 struct ReleaseCounts: Equatable {
@@ -173,6 +206,27 @@ extension Release {
         let chosen = (styles?.isEmpty == false ? styles : genres) ?? []
         let joined = chosen.joined(separator: "/")
         return joined.isEmpty ? nil : joined
+    }
+
+    /// The value written to the media tag on import (#106), mirroring the Tauri
+    /// `mediaTagValue`: a clean normalized label for a kind we recognise, else the
+    /// provider's own format text, else nothing.
+    var mediaTagValue: String? {
+        let f = (format ?? "").lowercased()
+        func has(_ keys: String...) -> Bool { keys.contains { f.contains($0) } }
+        let label: String?
+        if has("cassette", "tape") {
+            label = "Cassette"
+        } else if has("vinyl", "lp", "ep", "7\"", "10\"", "12\"", "shellac") {
+            label = "Vinyl"
+        } else if has("sacd", "hdcd", "cdr", "compact disc", "cd") {
+            label = "CD"
+        } else if has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming") {
+            label = "File"
+        } else {
+            label = nil
+        }
+        return label ?? blankToNil(format ?? "")
     }
 }
 
@@ -322,6 +376,10 @@ final class Library {
     private(set) var errors: [String] = []
     private(set) var isBusy = false
     private(set) var lastMessage = ""
+
+    /// Post a status-bar note from a panel — the outcome of an action that stages
+    /// nothing (a saved image, say), where `lastMessage` is otherwise `private`.
+    func note(_ message: String) { lastMessage = message }
 
     /// Release-cover bytes already fetched, keyed by image URL, so re-rendering a
     /// results row never re-hits the provider. Mirrors `imageCache` in the Tauri
@@ -703,7 +761,8 @@ final class Library {
         paths: [String],
         release: Release,
         source: Source,
-        alignment: [Int?]
+        alignment: [Int?],
+        labelIndex: Int = 0
     ) async -> Result<Int, SearchFailure> {
         guard let session else { return .failure(SearchFailure(message: "No library open")) }
 
@@ -715,6 +774,10 @@ final class Library {
             ordered.append(importTrack(from: release.tracks[index], albumArtist: release.artist))
         }
 
+        // The chosen label / catalogue-number pair (#90): the picker's selection,
+        // or the first pair when there is no picker (0 or 1 label).
+        let labels = release.labels ?? []
+        let chosen = labels.indices.contains(labelIndex) ? labels[labelIndex] : labels.first
         let selection = ImportSelection(
             album: blankToNil(release.title),
             album_artist: blankToNil(release.artist),
@@ -722,7 +785,14 @@ final class Library {
             genre: release.importGenre,
             tracks: ordered,
             release_id: blankToNil(release.id),
-            source: source.rawValue
+            source: source.rawValue,
+            label: chosen.flatMap { blankToNil($0.name) },
+            catalog_number: chosen?.catalogNumber.flatMap(blankToNil),
+            country: release.country.flatMap(blankToNil),
+            track_total: release.tracks.isEmpty ? nil : String(release.tracks.count),
+            disc_total: release.discTotal.map(String.init),
+            url: release.url.flatMap(blankToNil),
+            media_type: release.mediaTagValue
         )
         let box = SessionHandle(raw: session)
         let result: Result<(JSONValue, [String: [Field: String]], Int), SearchFailure> =
@@ -758,6 +828,102 @@ final class Library {
         case .failure(let failure):
             return .failure(failure)
         }
+    }
+
+    /// Fetch the release's full-resolution cover and stage a plan that embeds it
+    /// into `paths` (`preview_cover_embed`, the Tauri "Embed cover" button, #207).
+    /// The cover has no table column, so nothing per-cell is shown — the plan is
+    /// staged and the change-plan bar's Apply writes it, one journaled batch. The
+    /// count is the files the cover actually changes (already-matching files are
+    /// left out by the backend).
+    func embedCover(paths: [String], coverURL: String?, source: Source) async
+        -> Result<Int, SearchFailure>
+    {
+        guard let session else { return .failure(SearchFailure(message: "No library open")) }
+        guard let coverURL, !coverURL.isEmpty else {
+            return .failure(SearchFailure(message: "This release carries no cover to embed"))
+        }
+        guard !paths.isEmpty else {
+            return .failure(SearchFailure(message: "Select files in the table to embed the cover into"))
+        }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let token: String
+                switch resolveToken(box, source) {
+                case .success(let resolved): token = resolved
+                case .failure(let failure): return .failure(failure)
+                }
+                let fetchArgs = FetchImageArgs(source: source.rawValue, token: token, url: coverURL)
+                let image: Reply<ProviderImage>? = invoke(box, "provider_fetch_image", encodeArgs(fetchArgs))
+                guard let cover = image?.ok else {
+                    return .failure(SearchFailure(
+                        message: image?.error?.text ?? "could not fetch the cover"))
+                }
+                let args = CoverEmbedArgs(
+                    paths: paths,
+                    cover: CoverArtArg(mime: cover.mime, data_base64: cover.data_base64)
+                )
+                let reply: Reply<JSONValue>? = invoke(box, "preview_cover_embed", encodeArgs(args))
+                guard let plan = reply?.ok else {
+                    return .failure(SearchFailure(
+                        message: reply?.error?.text ?? "the cover embed could not be prepared"))
+                }
+                guard let parsed = decodePlan(plan) else {
+                    return .failure(SearchFailure(message: "could not read the cover plan"))
+                }
+                return .success((plan, parsed.changes.count))
+            }.value
+
+        switch result {
+        case .success(let (plan, count)):
+            guard count > 0 else {
+                lastMessage = "Selected files already have this cover"
+                return .success(0)
+            }
+            staged.removeAll()
+            stagedRenames.removeAll()
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged a cover embed for \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            lastMessage = failure.message
+            return .failure(failure)
+        }
+    }
+
+    /// Save a release's image(s) to disk next to `path` (#102). `all` saves every
+    /// image (primary → folder.jpg, then cover.jpg, cover-1.jpg…); otherwise just
+    /// the primary. Reports the files it would overwrite in `conflicts` when
+    /// `overwrite` is false, so the caller can confirm before a second call.
+    func saveReleaseImages(
+        source: Source,
+        path: String,
+        urls: [String],
+        overwrite: Bool
+    ) async -> Result<SaveImagesResult, SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "No library open")) }
+        guard !urls.isEmpty else {
+            return .failure(SearchFailure(message: "This release carries no images to save"))
+        }
+        let box = SessionHandle(raw: session)
+        let result: Result<SaveImagesResult, SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let token: String
+                switch resolveToken(box, source) {
+                case .success(let resolved): token = resolved
+                case .failure(let failure): return .failure(failure)
+                }
+                let args = SaveImagesArgs(
+                    source: source.rawValue, token: token, path: path, urls: urls, overwrite: overwrite
+                )
+                let reply: Reply<SaveImagesResult>? = invoke(box, "save_release_images", encodeArgs(args))
+                if let result = reply?.ok { return .success(result) }
+                return .failure(SearchFailure(message: reply?.error?.text ?? "could not save the images"))
+            }.value
+        if case .failure(let failure) = result { lastMessage = failure.message }
+        return result
     }
 
     // MARK: - Renamer
@@ -1292,6 +1458,33 @@ private struct ProviderImage: Decodable {
     let data_base64: String
 }
 
+/// A cover crossing to `preview_cover_embed` as the backend `CoverArtDto`; the
+/// `kind`/`description` fields default on the backend, so only these two are sent.
+private struct CoverArtArg: Encodable {
+    let mime: String
+    let data_base64: String
+}
+
+private struct CoverEmbedArgs: Encodable {
+    let paths: [String]
+    let cover: CoverArtArg
+}
+
+private struct SaveImagesArgs: Encodable {
+    let source: String
+    let token: String
+    let path: String
+    let urls: [String]
+    let overwrite: Bool
+}
+
+/// The reply from `save_release_images`: the files written, and the ones that
+/// already exist (only reported when `overwrite` was false).
+struct SaveImagesResult: Decodable {
+    let written: [String]
+    let conflicts: [String]
+}
+
 // One release track as the backend's ImportTrackDto; snake_case keys are the
 // property names, since the ABI does not convert them.
 private struct ImportTrack: Encodable {
@@ -1327,6 +1520,15 @@ private struct ImportSelection: Encodable {
     let tracks: [ImportTrack]
     let release_id: String?
     let source: String?
+    // The chosen label imprint (#90) and the rest of the album-level fields the
+    // Tauri import writes; omitted by the encoder when nil.
+    let label: String?
+    let catalog_number: String?
+    let country: String?
+    let track_total: String?
+    let disc_total: String?
+    let url: String?
+    let media_type: String?
 }
 
 private struct AlignArgs: Encodable {

@@ -29,7 +29,8 @@ struct OnlinePanel: View {
 
     /// The media types the filter offers, mirroring the Tauri select.
     private let mediaOptions: [(value: String, label: String)] = [
-        ("", "All media"), ("CD", "CD"), ("Vinyl", "Vinyl"), ("LP", "LP"), ("File", "File"),
+        ("", "All media"), ("CD", "CD"), ("Vinyl", "Vinyl"), ("LP", "LP"),
+        ("Cassette", "Cassette"), ("File", "File"),
     ]
 
     /// The release being looked at, and which candidate opened it.
@@ -42,6 +43,24 @@ struct OnlinePanel: View {
     @State private var alignment: [Int?]?
     @State private var isAligning = false
     @State private var isStaging = false
+
+    /// The chosen label / catalogue-number pair for the open release (#90); the
+    /// index into `release.labels`. Reset to the primary when a release opens.
+    @State private var labelIndex = 0
+    @State private var isEmbedding = false
+    @State private var isSavingImages = false
+    /// A pending "save images" call the user must confirm because it would
+    /// overwrite files already in the folder (#102).
+    @State private var saveConflict: SaveConflict?
+
+    /// A save-images call held for confirmation: the urls it would write and the
+    /// existing files it would overwrite.
+    private struct SaveConflict: Identifiable {
+        let id = UUID()
+        let path: String
+        let urls: [String]
+        let names: [String]
+    }
 
     /// Selected file paths in table order — the order the import maps tracks to.
     private var selectedPaths: [String] {
@@ -58,6 +77,18 @@ struct OnlinePanel: View {
         .onChange(of: selection) { _, _ in
             if let release { Task { await align(release) } }
         }
+        .alert("Overwrite artwork?", isPresented: overwritePresented, presenting: saveConflict) { conflict in
+            Button("Overwrite", role: .destructive) { confirmSave(conflict) }
+            Button("Cancel", role: .cancel) { saveConflict = nil }
+        } message: { conflict in
+            Text("\(conflict.names.joined(separator: ", ")) already "
+                + (conflict.names.count == 1 ? "exists" : "exist")
+                + " in that folder.")
+        }
+    }
+
+    private var overwritePresented: Binding<Bool> {
+        Binding(get: { saveConflict != nil }, set: { if !$0 { saveConflict = nil } })
     }
 
     // MARK: - Query
@@ -420,6 +451,9 @@ struct OnlinePanel: View {
         Divider()
         if let release {
             importControls(release)
+            if (release.labels?.count ?? 0) > 1 {
+                labelPicker(release)
+            }
             Divider()
             tracklist(release)
         } else {
@@ -431,8 +465,9 @@ struct OnlinePanel: View {
         }
     }
 
-    /// The import row: Auto-match to re-align the release onto the selection, the
-    /// match summary, and Stage import.
+    /// The import row: Auto-match to re-align the release onto the selection,
+    /// Embed cover and Save artwork (#102, #207), the match summary, and Stage
+    /// import.
     @ViewBuilder
     private func importControls(_ release: Release) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -441,6 +476,9 @@ struct OnlinePanel: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(selectedPaths.isEmpty || isAligning)
+                    .help("Reorder the selected files to line up with this tracklist")
+                embedButton(release)
+                saveImagesControl(release)
                 Spacer()
                 Button {
                     stageImport(release)
@@ -459,6 +497,107 @@ struct OnlinePanel: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
+    }
+
+    /// "Embed cover" — stage a plan that writes this release's cover into the
+    /// selected files (#207). Disabled without a cover or a selection.
+    @ViewBuilder
+    private func embedButton(_ release: Release) -> some View {
+        Button {
+            embedCover(release)
+        } label: {
+            if isEmbedding {
+                ProgressView().controlSize(.small)
+            } else {
+                Text("Embed cover")
+            }
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .disabled(isEmbedding || selectedPaths.isEmpty || (release.coverImageURL ?? "").isEmpty)
+        .help("Embed this release's cover into the selected files")
+    }
+
+    /// Save this release's artwork to disk next to the selected tracks (#102): a
+    /// plain button for a single image, a menu offering "all N" when there are
+    /// more. The primary image's resolution rides in the tooltip.
+    @ViewBuilder
+    private func saveImagesControl(_ release: Release) -> some View {
+        let images = release.images ?? []
+        let title = saveArtTooltip(release)
+        if images.count <= 1 {
+            Button {
+                saveImages(release, all: false)
+            } label: {
+                saveLabel(count: images.count)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(isSavingImages || selectedPaths.isEmpty || images.isEmpty)
+            .help(title)
+        } else {
+            Menu {
+                Button("Save as folder.jpg") { saveImages(release, all: false) }
+                Button("Save all \(images.count) images") { saveImages(release, all: true) }
+            } label: {
+                saveLabel(count: images.count)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .controlSize(.small)
+            .disabled(isSavingImages || selectedPaths.isEmpty)
+            .help(title)
+        }
+    }
+
+    @ViewBuilder
+    private func saveLabel(count: Int) -> some View {
+        if isSavingImages {
+            ProgressView().controlSize(.small)
+        } else {
+            HStack(spacing: 4) {
+                Image(systemName: "photo")
+                if count > 1 {
+                    Text("\(count)").font(AppFonts.monoSized(10))
+                }
+            }
+        }
+    }
+
+    /// The tooltip on the save-artwork control: what it writes and, for the
+    /// primary image, its resolution when the provider states it.
+    private func saveArtTooltip(_ release: Release) -> String {
+        let images = release.images ?? []
+        var text = "Save this release's artwork next to the selected tracks"
+        if let primary = images.first, primary.width > 0, primary.height > 0 {
+            text += " — front cover \(primary.width)×\(primary.height)"
+        }
+        if images.count > 1 { text += " · \(images.count) images" }
+        return text
+    }
+
+    /// Label / catalogue-number picker (#90): a release can list several pairs
+    /// (even from one label); the user picks the single one the import writes.
+    @ViewBuilder
+    private func labelPicker(_ release: Release) -> some View {
+        let labels = release.labels ?? []
+        HStack(spacing: 6) {
+            Text("Label · cat#")
+                .font(AppFonts.sans(11))
+                .foregroundStyle(.secondary)
+            Picker("Label · cat#", selection: $labelIndex) {
+                ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
+                    Text(label.label).tag(index)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .help("Which label and catalogue number to write")
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 6)
     }
 
     @ViewBuilder
@@ -523,6 +662,91 @@ struct OnlinePanel: View {
         return alignment.count == selectedPaths.count && alignment.allSatisfy { $0 != nil }
     }
 
+    // MARK: - Length match against the selection (#188)
+    // A release card says what each track should run to; the table knows what the
+    // selected files really run to. The difference tells a CD rip filed under a
+    // vinyl catalogue number from the vinyl itself — and it has to read BEFORE an
+    // import, because after one the wrong lengths are already written as tags.
+    // Both sides are in memory, so this is arithmetic, not I/O, and it follows the
+    // selection as it changes (the view recomputes when `selection` does).
+
+    /// Within this many seconds two lengths are the same recording; up to `near` a
+    /// plausible other master; past `pairLimit` nothing is paired at all.
+    private static let matchSecs = 2
+    private static let nearSecs = 10
+    private static let pairLimitSecs = 120
+
+    /// One release track paired with the selected file closest to it in length.
+    private struct DeltaPair {
+        let delta: Int  // file seconds minus track seconds
+        let path: String
+        let secs: Int
+    }
+
+    /// Pair each release track with the selected file closest to it in length, one
+    /// file to one track, closest pairs claimed first — the same rule as the Tauri
+    /// `durationPairs`. Returns the map (track index → pair) and how many selected
+    /// files could take part at all.
+    private func durationPairs(_ release: Release) -> (pairs: [Int: DeltaPair], files: Int) {
+        let byPath = Dictionary(library.tracks.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var files: [(path: String, secs: Int)] = []
+        for path in selectedPaths {
+            if let secs = byPath[path]?.durationSecs, secs > 0 {
+                files.append((path, Int(secs)))
+            }
+        }
+        guard !files.isEmpty else { return ([:], 0) }
+        var pairs: [(i: Int, j: Int, delta: Int)] = []
+        for (i, track) in release.tracks.enumerated() {
+            guard let ts = track.durationSecs, ts > 0 else { continue }
+            for (j, file) in files.enumerated() {
+                let delta = file.secs - ts
+                if abs(delta) <= Self.pairLimitSecs { pairs.append((i, j, delta)) }
+            }
+        }
+        pairs.sort { abs($0.delta) < abs($1.delta) }
+        var byTrack: [Int: DeltaPair] = [:]
+        var takenFiles = Set<Int>()
+        for p in pairs where byTrack[p.i] == nil && !takenFiles.contains(p.j) {
+            byTrack[p.i] = DeltaPair(delta: p.delta, path: files[p.j].path, secs: files[p.j].secs)
+            takenFiles.insert(p.j)
+        }
+        return (byTrack, files.count)
+    }
+
+    private enum DeltaBand { case match, near, off }
+
+    private func deltaBand(_ delta: Int) -> DeltaBand {
+        let d = abs(delta)
+        if d <= Self.matchSecs { return .match }
+        if d <= Self.nearSecs { return .near }
+        return .off
+    }
+
+    private func deltaColor(_ band: DeltaBand) -> Color {
+        switch band {
+        case .match: .diffAdd
+        case .near: .secondary
+        case .off: .diffDel
+        }
+    }
+
+    /// "+2s" / "-1:14" — seconds while they read as seconds, m:ss beyond a minute.
+    private func deltaLabel(_ delta: Int) -> String {
+        let d = abs(delta)
+        let sign = delta > 0 ? "+" : delta < 0 ? "-" : ""
+        return "\(sign)\(d < 60 ? "\(d)s" : String(format: "%d:%02d", d / 60, d % 60))"
+    }
+
+    /// The "N of M lengths match" tally, and whether it is a hit — nil when there
+    /// is nothing to compare (no selected files, or the release states no lengths).
+    private func fitTally(_ release: Release, pairs: [Int: DeltaPair], files: Int) -> (text: String, hit: Bool)? {
+        let stated = release.tracks.filter { ($0.durationSecs ?? 0) > 0 }.count
+        guard files > 0, stated > 0 else { return nil }
+        let hits = pairs.values.filter { deltaBand($0.delta) == .match }.count
+        return hits > 0 ? ("\(hits) of \(stated) lengths match", true) : ("no lengths match", false)
+    }
+
     /// The tracklist, inline under the card. A `LazyVStack` (not a `List`, which
     /// scrolls inside itself and cannot nest in the results scroll view): each
     /// track a selected file mapped to is ticked, so the mapping reads against
@@ -534,10 +758,20 @@ struct OnlinePanel: View {
     @ViewBuilder
     private func tracklist(_ release: Release) -> some View {
         let matchedTracks = Set((alignment ?? []).compactMap { $0 })
+        let dur = durationPairs(release)
+        if let tally = fitTally(release, pairs: dur.pairs, files: dur.files) {
+            Text(tally.text)
+                .font(AppFonts.sans(11, .semibold))
+                .foregroundStyle(tally.hit ? AnyShapeStyle(Color.diffAdd) : AnyShapeStyle(Color.diffDel))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+        }
         if release.tracks.count <= 50 {
             VStack(spacing: 0) {
                 ForEach(Array(release.tracks.enumerated()), id: \.element.id) { index, track in
-                    trackRow(index: index, track: track, release: release, matched: matchedTracks)
+                    trackRow(index: index, track: track, release: release,
+                             matched: matchedTracks, pair: dur.pairs[index])
                         .padding(.horizontal, 12)
                         .padding(.vertical, 3)
                     if index < release.tracks.count - 1 {
@@ -549,7 +783,8 @@ struct OnlinePanel: View {
         } else {
             List {
                 ForEach(Array(release.tracks.enumerated()), id: \.element.id) { index, track in
-                    trackRow(index: index, track: track, release: release, matched: matchedTracks)
+                    trackRow(index: index, track: track, release: release,
+                             matched: matchedTracks, pair: dur.pairs[index])
                         .listRowInsets(EdgeInsets(top: 3, leading: 12, bottom: 3, trailing: 12))
                         .listRowBackground(Color.clear)
                 }
@@ -568,8 +803,12 @@ struct OnlinePanel: View {
             + (hasArtist ? Text(" · \(track.artist ?? "")").foregroundColor(.appAccent) : Text(""))
     }
 
-    /// A row with its own sideways scroll on the title · artist cell.
-    private func trackRow(index: Int, track: ReleaseTrack, release: Release, matched: Set<Int>) -> some View {
+    /// A row with its own sideways scroll on the title · artist cell. The length
+    /// cell carries the release's own time and, when a selected file pairs with
+    /// this track by length (#188), the difference to it — coloured by how close.
+    private func trackRow(
+        index: Int, track: ReleaseTrack, release: Release, matched: Set<Int>, pair: DeltaPair?
+    ) -> some View {
         HStack(spacing: 8) {
             Image(systemName: matched.contains(index) ? "checkmark.circle.fill" : "circle")
                 .foregroundStyle(matched.contains(index) ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
@@ -585,10 +824,22 @@ struct OnlinePanel: View {
                     .fixedSize(horizontal: true, vertical: false)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text(track.length)
-                .font(AppFonts.monoSized(11))
-                .foregroundStyle(.tertiary)
+            HStack(spacing: 4) {
+                Text(track.length.isEmpty ? "—" : track.length)
+                    .foregroundStyle(.tertiary)
+                if let pair {
+                    Text(deltaLabel(pair.delta))
+                        .foregroundStyle(deltaColor(deltaBand(pair.delta)))
+                        .help("\((pair.path as NSString).lastPathComponent) runs \(formatTime(pair.secs))")
+                }
+            }
+            .font(AppFonts.monoSized(11))
         }
+    }
+
+    /// m:ss for a whole number of seconds.
+    private func formatTime(_ secs: Int) -> String {
+        String(format: "%d:%02d", secs / 60, secs % 60)
     }
 
     // MARK: - Actions
@@ -656,6 +907,7 @@ struct OnlinePanel: View {
         openID = candidate.id
         isLoadingRelease = true
         alignment = nil
+        labelIndex = 0
         Task {
             let result = await library.fetchRelease(source, id: candidate.id)
             switch result {
@@ -690,12 +942,64 @@ struct OnlinePanel: View {
                 paths: selectedPaths,
                 release: release,
                 source: source,
-                alignment: alignment
+                alignment: alignment,
+                labelIndex: labelIndex
             )
             if case .failure(let failure) = result {
                 error = failure.message
             }
             isStaging = false
+        }
+    }
+
+    /// Stage the release's cover onto the selected files (#207). Outcomes land in
+    /// the status bar (`lastMessage`), leaving the results list in place.
+    private func embedCover(_ release: Release) {
+        guard !selectedPaths.isEmpty else { return }
+        isEmbedding = true
+        Task {
+            _ = await library.embedCover(
+                paths: selectedPaths, coverURL: release.coverImageURL, source: source
+            )
+            isEmbedding = false
+        }
+    }
+
+    /// Save the release's primary (or all) image(s) next to the first selected
+    /// file (#102). On a conflict the backend reports the existing files and the
+    /// call is held for the overwrite alert.
+    private func saveImages(_ release: Release, all: Bool) {
+        let images = release.images ?? []
+        guard let first = selectedPaths.first, !images.isEmpty else { return }
+        let urls = all ? images.map(\.url) : [images[0].url]
+        isSavingImages = true
+        Task {
+            let result = await library.saveReleaseImages(
+                source: source, path: first, urls: urls, overwrite: false
+            )
+            isSavingImages = false
+            if case .success(let saved) = result {
+                if saved.conflicts.isEmpty {
+                    library.note("Saved \(saved.written.count) image(s)")
+                } else {
+                    saveConflict = SaveConflict(path: first, urls: urls, names: saved.conflicts)
+                }
+            }
+        }
+    }
+
+    /// The second half of an overwrite: re-run the held save with `overwrite`.
+    private func confirmSave(_ conflict: SaveConflict) {
+        saveConflict = nil
+        isSavingImages = true
+        Task {
+            let result = await library.saveReleaseImages(
+                source: source, path: conflict.path, urls: conflict.urls, overwrite: true
+            )
+            isSavingImages = false
+            if case .success(let saved) = result {
+                library.note("Saved \(saved.written.count) image(s)")
+            }
         }
     }
 }

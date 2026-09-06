@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   filter offered CD / Vinyl / LP / File but no Cassette, so cassette releases
   could not be filtered to; `mediaKind` already classifies them. Added to the
   shipping Tauri UI (`#search-format`), localized in all three catalogues. (#322)
+- **A Cassette option in the SwiftUI stand's media filter.** The mirror of the
+  Tauri gap: the stand's `mediaOptions` now offers Cassette too, so the two stay
+  in step. Spike-only. (#323)
+- **The SwiftUI stand shows per-track length deltas in the Online tracklist.**
+  Each release track's length cell also shows the difference to the closest-length
+  selected file — one file to one track, closest pairs claimed first — coloured by
+  band (match ≤ 2 s green, near ≤ 10 s muted, off beyond red), with a
+  "N of M lengths match" tally above the list. It reads before an import, when the
+  wrong lengths can still be told from the right ones, and follows the selection.
+  Ported from the Tauri `durationPairs` (#188). Spike-only. (#330)
+- **The SwiftUI stand picks a release's label · cat# and writes the fuller import.**
+  When a release lists more than one label / catalogue-number pair, a "Label · cat#"
+  picker in the expanded release chooses the one to write (#90). The staged import
+  selection is brought to Tauri parity too — it now carries the chosen label,
+  catalogue number, country, track total, disc total, release URL and media type
+  alongside album / artist / year / genre. Spike-only. (#331)
+- **The SwiftUI stand embeds a release cover and saves its artwork.** "Embed
+  cover" fetches the full-resolution cover and stages a plan that writes it into
+  the selected files (`preview_cover_embed`), applied through the same change-plan
+  gate. A save-artwork control (`save_release_images`) writes the primary image as
+  folder.jpg — or, when the release carries several, a menu offers "Save all N
+  images"; a folder conflict is confirmed before overwriting, and the primary
+  image's resolution rides in the tooltip. Mirrors the Tauri cover controls
+  (#102, #207). Spike-only. (#332)
 
 - **The SwiftUI stand has a Settings screen.** A gear in the toolbar opens a
   sheet over `load_settings` / `save_settings` and the Discogs token commands:
