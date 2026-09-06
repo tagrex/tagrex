@@ -3,6 +3,7 @@
 // the same discipline: an edit is staged, shown in the table as a diff, and
 // written only when Apply is pressed.
 
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -36,41 +37,20 @@ enum Mode: String, CaseIterable, Identifiable {
     }
 }
 
-/// The mode tabs, matching the Tauri top bar: an icon and an UPPERCASE label per
-/// mode, the active one tinted. A custom control rather than a segmented Picker,
-/// which shows text or icon but not both.
-@MainActor
-struct ModeTabBar: View {
-    @Binding var selection: Mode
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(Mode.allCases) { mode in
-                let isOn = mode == selection
-                Button {
-                    selection = mode
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: mode.symbol)
-                        Text(mode.title.uppercased())
-                            .fontWeight(.medium)
-                    }
-                    .font(.system(size: 11))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
-                    .background {
-                        if isOn {
-                            RoundedRectangle(cornerRadius: 6).fill(.tint.opacity(0.15))
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .help(mode.title)
-            }
-        }
+/// The brand green the Tauri UI uses as its accent (`--accent`), lighter on a
+/// dark appearance the way the web theme brightens it.
+private func brandAccent() -> NSColor {
+    NSColor(name: nil) { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        return isDark
+            ? NSColor(srgbRed: 0x0b / 255, green: 0x7d / 255, blue: 0x5c / 255, alpha: 1)
+            : NSColor(srgbRed: 0x0b / 255, green: 0x6b / 255, blue: 0x53 / 255, alpha: 1)
     }
+}
+
+extension Color {
+    /// Applied app-wide with `.tint` so SwiftUI controls read green, not blue.
+    static let appAccent = Color(nsColor: brandAccent())
 }
 
 @main
@@ -84,6 +64,7 @@ struct TagRexSpikeApp: App {
         WindowGroup {
             WorkspaceView(library: library)
                 .frame(minWidth: 980, minHeight: 620)
+                .tint(.appAccent)
         }
         .defaultSize(width: 1240, height: 760)
         .windowToolbarStyle(.unified)
@@ -214,7 +195,13 @@ struct WorkspaceView: View {
                 }
 
                 ToolbarItem(placement: .principal) {
-                    ModeTabBar(selection: $mode)
+                    Picker("Tool", selection: $mode) {
+                        ForEach(Mode.allCases) { mode in
+                            Text(mode.title.uppercased()).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
 
                 // The filter is a toolbar item of its own rather than

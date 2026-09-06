@@ -73,6 +73,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The SwiftUI stand uses the brand green as its accent.** It read the system
+  blue; it now tints app-wide with the Tauri accent (#0b6b53 light / #0b7d5c
+  dark), so buttons, pickers, the active sub-tab and the catalogue number read
+  green. A native table's row-selection highlight still follows the system accent
+  (recolouring it needs a per-app AccentColor asset). Spike-only. (#317)
+- **The SwiftUI stand's mode tabs drop the icons, keep the CAPS labels.** The
+  icon tab bar is back to a segmented picker with UPPERCASE labels
+  (TAGGER / RENAMER / …); the Tagger still opens on ONLINE. Spike-only. (#317)
 - **The SwiftUI stand's Online release cards read like the Tauri cards.** A
   candidate was a plain list row; it is now a card with the cover spanning its
   height and four lines — the catalogue number in the accent colour, the artist,
