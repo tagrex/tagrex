@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A Cassette option in the Online media filter.** The search's media-type
+  filter offered CD / Vinyl / LP / File but no Cassette, so cassette releases
+  could not be filtered to; `mediaKind` already classifies them. Added to the
+  shipping Tauri UI (`#search-format`), localized in all three catalogues. (#322)
+
 - **The SwiftUI stand has a Settings screen.** A gear in the toolbar opens a
   sheet over `load_settings` / `save_settings` and the Discogs token commands:
   the Discogs token, a proxy, the search rate limit, and the ID3v2 write revision

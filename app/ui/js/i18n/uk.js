@@ -97,6 +97,7 @@ export const uk = {
   "generator.splitSide": "Розділити сторону → диск",
   "action.cancel": "Скасувати",
   "media.vinyl": "Вініл",
+  "media.cassette": "Касета",
   "media.file": "Файл",
   "tagger.mode": "Режим тегування",
   "tagger.online": "ОНЛАЙН",

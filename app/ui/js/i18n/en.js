@@ -96,6 +96,7 @@ export const en = {
   "generator.splitSide": "Split side → disc",
   "action.cancel": "Cancel",
   "media.vinyl": "Vinyl",
+  "media.cassette": "Cassette",
   "media.file": "File",
   "tagger.mode": "Tagging mode",
   "tagger.online": "ONLINE",

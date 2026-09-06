@@ -96,6 +96,7 @@ export const ru = {
   "generator.splitSide": "Разделить сторону → диск",
   "action.cancel": "Отмена",
   "media.vinyl": "Винил",
+  "media.cassette": "Кассета",
   "media.file": "Файл",
   "tagger.mode": "Режим тегирования",
   "tagger.online": "ОНЛАЙН",
