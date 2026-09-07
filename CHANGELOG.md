@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A Cassette option in the Online media filter.** The search's media-type
+  filter offered CD / Vinyl / LP / File but no Cassette, so cassette releases
+  could not be filtered to, even though `mediaKind` already classifies
+  cassette / tape. Added a Cassette `<option>` to `#search-format` and a
+  `media.cassette` string to the en/ru/uk catalogues. (#322)
+
 ### Changed
 
 - **The command layer is a crate of its own.** It sat in the same crate as the
