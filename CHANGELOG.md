@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The Online media badge is a dark scrim.** Following #333, the media-type
+  badge moved from an 18 px glyph on a solid light pill to a 16 px glyph on a
+  dark translucent capsule with a white glyph — the way the SwiftUI stand draws
+  it — so the cover art reads through and the glyph stays legible over light,
+  dark and busy art alike. (#334)
 - **The Online media-badge glyph is larger.** The media-type glyph in the cover
   badge was drawn at 10 px with a 10 px disc-count; on the same 72 px cover it now
   matches the SwiftUI stand at 18 px with a 12 px count, and the badge height

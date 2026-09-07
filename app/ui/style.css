@@ -3589,26 +3589,27 @@ button.release-import {
   z-index: 1;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  /* Height follows the glyph now that it is 18px (#333); vertical padding keeps
-     it off the pill's border the way the SwiftUI stand's badge does. */
-  padding: 2px 3px;
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  color: var(--text);
+  gap: 2px;
+  /* Height follows the glyph; a little padding rounds the capsule out. */
+  padding: 2px 5px;
+  border-radius: 999px;
+  /* A dark translucent scrim with a white glyph, the way the SwiftUI stand's
+     badge is drawn (#334): the cover art reads through, and white-on-dark stays
+     legible over light, dark and busy art alike — which a light pill did not. */
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
   font-family: var(--font-mono-bundled);
-  /* The disc-count sits at the stand's 12px next to the larger glyph (#333). */
-  font-size: 12px;
+  /* The disc-count next to the glyph (#334). */
+  font-size: var(--text-xs);
   line-height: 1;
 }
 
 .media-badge svg {
-  /* 18px to match the SwiftUI stand on the same 72px cover (#333); the glyph
-     geometry is the shared 16-unit viewBox. */
-  width: 18px;
-  height: 18px;
+  /* 16px — larger than the old 10px for legibility, a touch under the stand's
+     18px so it doesn't dominate the 72px cover (#334). Geometry is the shared
+     16-unit viewBox. */
+  width: 16px;
+  height: 16px;
   display: block;
   flex: none;
 }
@@ -3617,7 +3618,7 @@ button.release-import {
 .media-badge .n {
   padding-left: 3px;
   margin-left: 1px;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
   font-weight: var(--fw-medium);
 }
 
