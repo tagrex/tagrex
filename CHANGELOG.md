@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A cleaner app icon at small sizes.** At 16 / 24 / 32 px the eighth-note
+  cutout blurred into the tag hole and read as noise; those sizes now use a
+  note-less tag silhouette (`assets/icon-small.svg`), while everything ≥ 48 px
+  keeps the detailed mark. Applied to the Windows `.ico` (16/24/32 frames), the
+  macOS `.icns` (16 and 32 px) and the standalone 32 px PNG, composed from both
+  sources by `assets/gen-icons.sh` (with `pack-ico.py`). The favicon variant
+  waits for a site to publish it to. (#67)
 - **The Online media badge is a rounded rectangle, not a capsule.** #334 gave it
   a full-capsule radius to mirror the SwiftUI stand's `Capsule()`; the Tauri UI's
   shape language is rounded rectangles — the cards and the catalogue-number pill —
