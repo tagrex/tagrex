@@ -92,6 +92,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The import no longer writes a bogus DiscTotal for a digital release.** The
+  Online import sent `disc_total` unconditionally, but for a digital release
+  Discogs states the file count there — so a 4-track "File, FLAC, EP" would have
+  written `DiscTotal = 4` onto every file. It is now sent only for physical media
+  (the same guard as #337); `track_total` is unaffected. (#339)
 - **The top-bar icon buttons keep their square in a narrow window.** They set a
   fixed 28×28 but no `flex-shrink`, so when the top bar overflowed the flex row
   squeezed them below their size (≈26 px) instead of truncating the folder-path

@@ -233,9 +233,7 @@ function discCount(release) {
   // 4-track "File, FLAC, EP" is 4, a hard-drive compilation thousands — so honour
   // it as discs only when the medium is physical (#337). The position-derived
   // count still covers a multi-disc CD numbered "1-…"/"2-…".
-  const kind = mediaKind(release.format);
-  const physical = kind === "vinyl" || kind === "cd" || kind === "cassette";
-  let max = physical && release.disc_total > 1 ? release.disc_total : 1;
+  let max = isPhysicalMedia(release.format) && release.disc_total > 1 ? release.disc_total : 1;
   for (const t of release.tracks) {
     const m = /^(\d+)-/.exec(t.position || "");
     if (m) max = Math.max(max, Number(m[1]));
@@ -257,6 +255,14 @@ function mediaKind(format) {
 }
 
 const MEDIA_LABEL = { vinyl: "Vinyl", cd: "CD", cassette: "Cassette", digital: "Digital", generic: "" };
+
+// Whether the medium is a physical disc/record set, so a Discogs format quantity
+// is a disc count rather than a file count (#337, #339): true for vinyl / CD /
+// cassette, false for a digital "File" release (where the quantity is files).
+function isPhysicalMedia(format) {
+  const kind = mediaKind(format);
+  return kind === "vinyl" || kind === "cd" || kind === "cassette";
+}
 
 // The value written to the MEDIA tag on import (#106): a clean normalized label,
 // or the raw provider format string when the kind is unrecognised (so nothing is
@@ -1233,8 +1239,11 @@ async function importRelease(card) {
     country: release.country || null,
     // Total tracks on the release (album-level), so a file reads as N/total.
     track_total: release.tracks && release.tracks.length ? String(release.tracks.length) : null,
-    // Discs in the set (album-level), so a file reads as N/total (#146).
-    disc_total: release.disc_total ? String(release.disc_total) : null,
+    // Discs in the set (album-level), so a file reads as N/total (#146). Only for
+    // physical media: for a digital release `disc_total` holds the file count, not
+    // a disc count, so writing it would put a bogus DiscTotal on every file (#339).
+    disc_total:
+      isPhysicalMedia(release.format) && release.disc_total ? String(release.disc_total) : null,
     url: release.url || null,
     // Physical medium → drives the vinyl side view (#106).
     media_type: mediaTagValue(release.format),
