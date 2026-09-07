@@ -3590,9 +3590,11 @@ button.release-import {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  /* Height follows the glyph; a little padding rounds the capsule out. */
-  padding: 2px 5px;
-  border-radius: 999px;
+  /* Height follows the glyph; vertical padding keeps it off the corners. */
+  padding: 2px 4px;
+  /* A rounded rectangle like the cards and the catalogue pill, not a capsule
+     (#335) — the app's shape language is rounded-rect, so a pill read foreign. */
+  border-radius: var(--radius-sm);
   /* A dark translucent scrim with a white glyph, the way the SwiftUI stand's
      badge is drawn (#334): the cover art reads through, and white-on-dark stays
      legible over light, dark and busy art alike — which a light pill did not. */
