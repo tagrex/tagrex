@@ -92,6 +92,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The Online media badge no longer counts digital files as discs.** After #336
+  honoured `disc_total` for the `×N` badge, digital releases over-counted: Discogs
+  states the FILE count as the format quantity for a `File` release, so a 4-track
+  "File, FLAC, EP" read as 4 discs and a hard-drive compilation as thousands.
+  `disc_total` is now honoured only for physical media (CD / Vinyl / Cassette),
+  which `mediaKind` already tells apart. (#337)
 - **The Online media badge now shows the disc count on a multi-record vinyl set.**
   The `×N` count was derived only from `1-…`/`2-…` track positions (multi-disc
   CDs), so a 2×LP — numbered by side letter (A1, B2, C1, D3) — showed the vinyl

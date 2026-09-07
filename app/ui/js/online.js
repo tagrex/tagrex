@@ -226,12 +226,16 @@ function countLabel(id) {
 
 // Highest disc number across track positions ("2-1" -> disc 2); 1 if unmarked.
 function discCount(release) {
-  // The provider's own count leads: a multi-record vinyl set (a 2×LP) numbers
-  // its tracks by side letter (A1, B2, C1, D3), not "1-"/"2-", so the record
-  // count can only come from `disc_total` — take it whenever it says more than
-  // one. Still fold in the highest disc a "N-" position names, so a multi-disc CD
-  // is covered even if `disc_total` is absent or lower than the positions imply.
-  let max = release.disc_total > 1 ? release.disc_total : 1;
+  // `disc_total` is a real disc/record count only for physical media (CD, Vinyl,
+  // Cassette): a multi-record vinyl set (a 2×LP) numbers its tracks by side
+  // letter (A1, B2, C1, D3), so the record count can only come from there. For a
+  // DIGITAL release Discogs states the FILE count in `disc_total` instead — a
+  // 4-track "File, FLAC, EP" is 4, a hard-drive compilation thousands — so honour
+  // it as discs only when the medium is physical (#337). The position-derived
+  // count still covers a multi-disc CD numbered "1-…"/"2-…".
+  const kind = mediaKind(release.format);
+  const physical = kind === "vinyl" || kind === "cd" || kind === "cassette";
+  let max = physical && release.disc_total > 1 ? release.disc_total : 1;
   for (const t of release.tracks) {
     const m = /^(\d+)-/.exec(t.position || "");
     if (m) max = Math.max(max, Number(m[1]));
