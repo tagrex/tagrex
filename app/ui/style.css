@@ -555,6 +555,10 @@ button.icon {
   align-items: center;
   justify-content: center;
   box-shadow: none;
+  /* Hold the square: without this the top-bar flex row squeezes the icon
+     buttons below 28px when it overflows (a narrow window), instead of letting
+     the folder-path box — which truncates with an ellipsis — give way (#338). */
+  flex: none;
 }
 
 /* SVG glyphs inside icon buttons render at a fixed size in currentColor. */

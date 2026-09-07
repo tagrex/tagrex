@@ -92,6 +92,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The top-bar icon buttons keep their square in a narrow window.** They set a
+  fixed 28×28 but no `flex-shrink`, so when the top bar overflowed the flex row
+  squeezed them below their size (≈26 px) instead of truncating the folder-path
+  box, which is what should give way. `button.icon` is now `flex: none`; the path
+  box (with its ellipsis and min-width) absorbs the shrink. (#338)
 - **The Online media badge no longer counts digital files as discs.** After #336
   honoured `disc_total` for the `×N` badge, digital releases over-counted: Discogs
   states the FILE count as the format quantity for a `File` release, so a 4-track
