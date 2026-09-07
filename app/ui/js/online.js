@@ -226,7 +226,12 @@ function countLabel(id) {
 
 // Highest disc number across track positions ("2-1" -> disc 2); 1 if unmarked.
 function discCount(release) {
-  let max = 1;
+  // The provider's own count leads: a multi-record vinyl set (a 2×LP) numbers
+  // its tracks by side letter (A1, B2, C1, D3), not "1-"/"2-", so the record
+  // count can only come from `disc_total` — take it whenever it says more than
+  // one. Still fold in the highest disc a "N-" position names, so a multi-disc CD
+  // is covered even if `disc_total` is absent or lower than the positions imply.
+  let max = release.disc_total > 1 ? release.disc_total : 1;
   for (const t of release.tracks) {
     const m = /^(\d+)-/.exec(t.position || "");
     if (m) max = Math.max(max, Number(m[1]));

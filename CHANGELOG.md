@@ -90,6 +90,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   completes the command surface for the shells. Nothing about the app changes.
   (#298)
 
+### Fixed
+
+- **The Online media badge now shows the disc count on a multi-record vinyl set.**
+  The `×N` count was derived only from `1-…`/`2-…` track positions (multi-disc
+  CDs), so a 2×LP — numbered by side letter (A1, B2, C1, D3) — showed the vinyl
+  glyph with no `×2`, even though the release states two records. `discCount` now
+  also honours `release.disc_total` (which the provider fills from the Discogs
+  format quantity). (#336)
+
 ## [0.15.0] - 2026-09-05
 
 This release is a visual pass over the workspace. The top bar absorbs the mode
