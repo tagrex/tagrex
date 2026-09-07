@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The Online media-badge glyph is larger.** The media-type glyph in the cover
+  badge was drawn at 10 px with a 10 px disc-count; on the same 72 px cover it now
+  matches the SwiftUI stand at 18 px with a 12 px count, and the badge height
+  follows the glyph. The glyph geometry (the shared 16-unit SVGs) is unchanged. (#333)
 - **The command layer is a crate of its own.** It sat in the same crate as the
   desktop shell, which also carries the webview stack and the audio backend, so
   everything the app can do was reachable from that one shell and nothing else.

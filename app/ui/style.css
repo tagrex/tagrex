@@ -3587,24 +3587,28 @@ button.release-import {
   left: 3px;
   bottom: 3px;
   z-index: 1;
-  height: 15px;
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 0 3px;
+  /* Height follows the glyph now that it is 18px (#333); vertical padding keeps
+     it off the pill's border the way the SwiftUI stand's badge does. */
+  padding: 2px 3px;
   border-radius: var(--radius-sm);
   background: var(--panel);
   border: 1px solid var(--border);
   box-shadow: var(--shadow);
   color: var(--text);
   font-family: var(--font-mono-bundled);
-  font-size: var(--text-2xs);
+  /* The disc-count sits at the stand's 12px next to the larger glyph (#333). */
+  font-size: 12px;
   line-height: 1;
 }
 
 .media-badge svg {
-  width: 10px;
-  height: 10px;
+  /* 18px to match the SwiftUI stand on the same 72px cover (#333); the glyph
+     geometry is the shared 16-unit viewBox. */
+  width: 18px;
+  height: 18px;
   display: block;
   flex: none;
 }
