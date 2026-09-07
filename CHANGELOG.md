@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-09-07
+
+This release sharpens the Online panel. The media-type badge gets a visual pass —
+a larger glyph on a dark, rounded scrim — with a LAB switch to trial whole icon
+families (Phosphor, Tabler, Bootstrap) before settling on one, and the tracklist
+now groups a release into its labelled sub-sections (a boxed compilation, a
+multi-disc set). Several disc-count bugs are fixed along the way: a 2×LP shows its
+`×2`, digital "File" releases no longer read their file count as discs, and the
+import stops writing a bogus DiscTotal for them. Under the hood, the command
+layer, the preview player and the native-shell bridge move into their own crates,
+so a second interface can drive the whole backend without linking a browser
+engine — groundwork the app itself doesn't feel.
+
 ### Added
 
 - **A LAB switch for the Online media-glyph family.** Settings › LAB › Media

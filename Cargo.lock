@@ -4003,7 +4003,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "open",
  "serde",
@@ -4023,7 +4023,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-commands"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -4038,7 +4038,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-core"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "image",
  "lofty",
@@ -4050,7 +4050,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-ffi"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4063,7 +4063,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-player"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "rodio",
  "serde",
@@ -4072,7 +4072,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-providers-beatport"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -4082,7 +4082,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-providers-discogs"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "serde_json",
  "tagrex-core",
@@ -4091,7 +4091,7 @@ dependencies = [
 
 [[package]]
 name = "tagrex-providers-musicbrainz"
-version = "0.15.0"
+version = "0.16.0"
 dependencies = [
  "serde_json",
  "tagrex-core",
