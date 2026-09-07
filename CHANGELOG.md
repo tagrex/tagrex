@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A LAB switch for the Online media-glyph family.** Settings › LAB › Media
+  glyphs picks the icon family that draws the media-type badge on the Online
+  cards — the shipped hand-drawn set, an "Ours+" variant (Tabler vinyl + a smaller
+  CD centre), Phosphor (thin / light / regular), Tabler, or Bootstrap Icons —
+  switching live and remembered per browser. The external families are MIT-licensed
+  (texts in `assets/THIRD-PARTY-ICON-LICENSES.md`); the glyph SVGs are inlined in
+  `app/ui/js/mediaglyphs.js`. Experimental — a way to settle on a family. (#340)
 - **The Online tracklist shows a release's sub-sections.** A Discogs tracklist
   `heading` — a disc name, or one sub-release of a box/hard-drive compilation that
   bundles many under their own headings — and a MusicBrainz medium title were

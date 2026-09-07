@@ -13,6 +13,8 @@ import { hooks } from "./hooks.js";
 import { fmtTime } from "./player.js";
 import { refreshFieldEditor } from "./editor.js";
 import { updateSettingsDot } from "./settings.js";
+import { MEDIA_GLYPH_SETS } from "./mediaglyphs.js";
+import { mediaGlyphSet } from "./prefs.js";
 import {
   edits,
   previewPlan,
@@ -272,14 +274,13 @@ function mediaTagValue(format) {
   return label || (format || "").trim() || null;
 }
 
-// Inline SVG glyphs (currentColor, CSP-safe) — from the Design deliverable.
-const MEDIA_GLYPH = {
-  vinyl: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="8" r="4.2" fill="none" stroke="currentColor" stroke-width=".8" opacity=".55"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/></svg>`,
-  cd: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="8" cy="8" r="2.5" fill="none" stroke="currentColor" stroke-width="1"/></svg>`,
-  cassette: `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1.5" y="3.5" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1"/><circle cx="5.5" cy="8" r="1.4" fill="none" stroke="currentColor" stroke-width=".8"/><circle cx="10.5" cy="8" r="1.4" fill="none" stroke="currentColor" stroke-width=".8"/><rect x="4.5" y="10.5" width="7" height="1.2" fill="currentColor"/></svg>`,
-  digital: `<svg viewBox="0 0 16 16" aria-hidden="true"><g fill="currentColor"><rect x="2.2" y="6" width="1.6" height="4" rx=".8"/><rect x="5.2" y="3" width="1.6" height="10" rx=".8"/><rect x="8.2" y="5" width="1.6" height="6" rx=".8"/><rect x="11.2" y="7" width="1.6" height="2" rx=".8"/></g></svg>`,
-  generic: `<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6" cy="11.5" r="2.2" fill="currentColor"/><rect x="7.9" y="3" width="1.3" height="8.5" fill="currentColor"/><path d="M8.2 3.2q4 .6 4 3.8" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>`,
-};
+// The inline SVG glyphs (currentColor, CSP-safe) come from mediaglyphs.js, which
+// holds the shipped hand-drawn set plus the icon families being trialled in the
+// LAB. The chosen family is a display pref; an unknown value falls back to the
+// shipped set.
+function activeGlyphs() {
+  return MEDIA_GLYPH_SETS[mediaGlyphSet()] || MEDIA_GLYPH_SETS.ours;
+}
 
 // The badge for a candidate. The media glyph is known up front (from `format`);
 // the ×N disc count only appears once the release is fetched (disc count needs
@@ -290,8 +291,15 @@ function mediaBadgeMarkup(c) {
   const discs = release ? discCount(release) : 1;
   const n = discs > 1 ? `<span class="n">×${discs}</span>` : "";
   const label = MEDIA_LABEL[kind];
-  return `<span class="media-badge"${label ? ` title="${label}"` : ""}>${MEDIA_GLYPH[kind]}${n}</span>`;
+  return `<span class="media-badge"${label ? ` title="${label}"` : ""}>${activeGlyphs()[kind]}${n}</span>`;
 }
+
+// Swap every visible card's glyph when the LAB glyph-set pref changes, without a
+// full re-render — the pref is read fresh by mediaBadgeMarkup, so re-emitting the
+// badges is enough.
+document.addEventListener("tagrex:mediaglyphset", () => {
+  for (const c of releaseCandidates) updateMediaBadge(c);
+});
 
 // Refresh the badge (its ×N) for one release after its tracklist is fetched.
 function updateMediaBadge(c) {

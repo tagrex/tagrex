@@ -24,10 +24,13 @@ import {
   checkboxColEnabled,
   tableFontPx,
   langMode,
+  mediaGlyphSet,
+  setMediaGlyphSet,
   themeMode,
   tracklistFontPx,
   valueFont,
 } from "./prefs.js";
+import { MEDIA_GLYPH_SET_OPTIONS } from "./mediaglyphs.js";
 
 // ---- settings slide-over (#79) ----
 // App-wide preferences, opened from the top-bar gear. The Discogs token lives
@@ -308,8 +311,23 @@ async function openSettings() {
   el("set-tracklist-font").value = tracklistFontPx();
   el("set-tracklist-font-val").textContent = `${tracklistFontPx()}px`;
   setBadgeFontChoice(badgeFont());
+  setMediaGlyphChoice();
   renderPrioList();
   el("settings").hidden = false;
+}
+
+// Populate (once) and select the current value of the LAB media-glyph picker.
+function setMediaGlyphChoice() {
+  const sel = el("set-media-glyphs");
+  if (!sel.options.length) {
+    for (const opt of MEDIA_GLYPH_SET_OPTIONS) {
+      const o = document.createElement("option");
+      o.value = opt.value;
+      o.textContent = opt.label;
+      sel.append(o);
+    }
+  }
+  sel.value = mediaGlyphSet();
 }
 
 function closeSettings() {
@@ -415,6 +433,12 @@ el("set-tracklist-font").addEventListener("input", (e) => {
 el("set-badge-font").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-badge-font]");
   if (btn) setBadgeFontChoice(btn.dataset.badgeFont);
+});
+// LAB media-glyph family: persist and repaint the Online badges live so the
+// change shows behind the sheet (online.js listens for the event).
+el("set-media-glyphs").addEventListener("change", (e) => {
+  setMediaGlyphSet(e.target.value);
+  document.dispatchEvent(new CustomEvent("tagrex:mediaglyphset"));
 });
 el("set-table-font").addEventListener("input", (e) => {
   const px = clampTableFont(parseInt(e.target.value, 10));

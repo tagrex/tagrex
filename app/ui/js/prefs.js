@@ -149,6 +149,28 @@ function applyTracklistFont(px) {
   }
 }
 
+// Which media-glyph family the Online cover badge draws (LAB experiment): the
+// shipped hand-drawn set, or one of the permissively-licensed families in
+// mediaglyphs.js. A display choice, so it lives in localStorage. The set keys
+// are validated by online.js against MEDIA_GLYPH_SETS; an unknown value there
+// falls back to "ours".
+const MEDIA_GLYPH_SET_STORAGE_KEY = "tagrex.mediaGlyphSet";
+const MEDIA_GLYPH_SET_DEFAULT = "ours";
+function mediaGlyphSet() {
+  try {
+    return localStorage.getItem(MEDIA_GLYPH_SET_STORAGE_KEY) || MEDIA_GLYPH_SET_DEFAULT;
+  } catch (e) {
+    return MEDIA_GLYPH_SET_DEFAULT;
+  }
+}
+function setMediaGlyphSet(name) {
+  try {
+    localStorage.setItem(MEDIA_GLYPH_SET_STORAGE_KEY, name);
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+}
+
 const BADGE_FONT_STORAGE_KEY = "tagrex.badgeFont";
 const BADGE_FONTS = ["mono", "sans"];
 function badgeFont() {
@@ -297,6 +319,8 @@ export {
   applyTracklistFont,
   TRACKLIST_FONT_MIN,
   TRACKLIST_FONT_MAX,
+  mediaGlyphSet,
+  setMediaGlyphSet,
   badgeFont,
   applyBadgeFont,
   BADGE_FONTS,
