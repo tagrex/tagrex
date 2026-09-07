@@ -363,13 +363,23 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
                         .and_then(Value::as_u64)
                         .and_then(|n| u32::try_from(n).ok())
                         .unwrap_or(index as u32 + 1);
+                    // A medium can carry its own title (#328) — "Bonus Disc",
+                    // "Live In Tokyo" — which labels the sub-section its tracks
+                    // belong to, the parallel of a Discogs heading. Absent for an
+                    // ordinary untitled disc.
+                    let section = medium
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|title| !title.is_empty())
+                        .map(str::to_string);
                     medium
                         .get("tracks")
                         .and_then(Value::as_array)
                         .map(Vec::as_slice)
                         .unwrap_or_default()
                         .iter()
-                        .map(move |track| parse_track(track, disc))
+                        .map(move |track| parse_track(track, disc, section.clone()))
                 })
                 .collect()
         })
@@ -407,8 +417,9 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
     })
 }
 
-/// One track, told which medium it was flattened out of (#146).
-fn parse_track(track: &Value, disc: u32) -> ReleaseTrack {
+/// One track, told which medium it was flattened out of (#146) and that
+/// medium's title, when it has one, as the sub-section it belongs to (#328).
+fn parse_track(track: &Value, disc: u32, section: Option<String>) -> ReleaseTrack {
     ReleaseTrack {
         disc: Some(disc),
         // `number` is the printed position ("1", "A1", "1-05"); fall back to the
@@ -453,6 +464,7 @@ fn parse_track(track: &Value, disc: u32) -> ReleaseTrack {
         // Tempo and key are not part of the MusicBrainz release data.
         bpm: None,
         key: None,
+        section,
     }
 }
 
@@ -777,6 +789,33 @@ mod tests {
         let discs: Vec<Option<u32>> = release.tracks.iter().map(|t| t.disc).collect();
         assert_eq!(discs, vec![Some(1), Some(2)]);
         assert_eq!(release.disc_total, Some(2));
+    }
+
+    /// A medium's own title (#328) labels the sub-section its tracks belong to,
+    /// the MusicBrainz parallel of a Discogs heading; an untitled medium leaves
+    /// its tracks unsectioned.
+    #[test]
+    fn a_medium_title_becomes_the_track_section() {
+        let body = r#"{
+            "id": "aeb1c1c0-0000-0000-0000-000000000004",
+            "title": "With A Bonus Disc",
+            "artist-credit": [{ "name": "Various" }],
+            "media": [
+                { "format": "CD", "tracks": [{ "number": "1", "title": "First" }] },
+                {
+                    "format": "CD",
+                    "title": "Bonus Disc",
+                    "tracks": [{ "number": "1", "title": "Extra" }]
+                }
+            ]
+        }"#;
+        let release = parse_release(body).unwrap();
+        let sections: Vec<Option<&str>> = release
+            .tracks
+            .iter()
+            .map(|t| t.section.as_deref())
+            .collect();
+        assert_eq!(sections, vec![None, Some("Bonus Disc")]);
     }
 
     #[test]

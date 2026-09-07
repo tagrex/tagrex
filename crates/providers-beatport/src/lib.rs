@@ -333,6 +333,8 @@ fn parse_release(release_body: &str, tracks_body: &str) -> Result<Release, Provi
                 .filter(|bpm| *bpm > 0)
                 .map(|bpm| bpm as u16),
             key: track_key(value),
+            // A Beatport release is a flat single-medium listing — no sub-sections.
+            section: None,
         });
         // Genre lives on the track, not the release; collected in listing order,
         // deduplicated, so a release that mixes two styles keeps both.

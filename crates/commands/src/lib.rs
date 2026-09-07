@@ -1048,6 +1048,11 @@ pub struct ReleaseTrackDto {
     /// (#162).
     #[serde(default)]
     pub key: Option<String>,
+    /// The labelled sub-section this track belongs to, when the release states
+    /// one (#328) — a Discogs tracklist heading or a MusicBrainz medium title.
+    /// Display-only; it groups the Online tracklist and is never written.
+    #[serde(default)]
+    pub section: Option<String>,
 }
 
 /// A fully fetched release.
@@ -5081,6 +5086,7 @@ impl From<&tagrex_core::provider::Release> for ReleaseDto {
                     isrc: track.isrc.clone(),
                     bpm: track.bpm,
                     key: track.key.clone(),
+                    section: track.section.clone(),
                 })
                 .collect(),
             labels: release

@@ -95,6 +95,12 @@ pub struct ReleaseTrack {
     /// [`crate::transform::KeyNotation`], so the value here is ready to write
     /// and can be converted to Camelot or Open Key like any other key value.
     pub key: Option<String>,
+    /// The labelled sub-section this track belongs to, when the release states
+    /// one (#328): a Discogs tracklist `heading` (a disc name, or one sub-release
+    /// of a box/hard-drive compilation) or a MusicBrainz medium title. Carried
+    /// for display only — it groups the Online tracklist and is never written to
+    /// a tag. `None` for a flat, unsectioned tracklist.
+    pub section: Option<String>,
 }
 
 /// A fully fetched release, ready to be mapped onto local files.

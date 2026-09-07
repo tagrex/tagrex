@@ -714,18 +714,32 @@ function refreshReleaseMatches() {
 }
 
 function renderTracklist(card, release) {
+  // A sub-section header row (#328) precedes the first track of each labelled
+  // run — a Discogs heading or a MusicBrainz medium title. It carries no
+  // checkbox and no `.tk-dur` cell, so the index-based logic (data-i, the delta
+  // pass over `td.tk-dur`) still lines up one-to-one with `release.tracks`.
+  let lastSection = null;
   const rows = release.tracks
     .map((t, i) => {
       // Show the per-track artist only when it differs from the album artist —
       // otherwise it's noise on every row; it truncates before the title.
       const differs = t.artist && t.artist !== release.artist;
       const artistEl = differs ? `<span class="tk-a">${escapeHtml(t.artist)}</span>` : "";
-      return `
+      const section = t.section || null;
+      const header =
+        section && section !== lastSection
+          ? `<tr class="tk-section"><td colspan="3"><span class="tk-section-label" title="${escapeHtml(section)}">${escapeHtml(section)}</span></td></tr>`
+          : "";
+      lastSection = section;
+      return (
+        header +
+        `
       <tr>
         <td class="tk-lead"><span class="tk-lead-inner"><input type="checkbox" checked data-i="${i}" /><span class="tk-num">${escapeHtml(t.position)}</span></span></td>
         <td class="tk-track"><span class="tk-track-inner"><span class="tk-t" title="${escapeHtml(t.title)}">${escapeHtml(t.title)}</span>${artistEl}</span></td>
         <td class="tk-dur">${t.duration_secs ? fmtTime(t.duration_secs) : "—"}</td>
-      </tr>`;
+      </tr>`
+      );
     })
     .join("");
   // Label / catalogue-number picker (#90): a release can list several pairs

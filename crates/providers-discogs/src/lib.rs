@@ -359,39 +359,55 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         .get("tracklist")
         .and_then(Value::as_array)
         .map(|entries| {
-            entries
-                .iter()
-                .filter(|entry| is_track(entry))
-                .map(|entry| {
-                    let position = entry
-                        .get("position")
+            // Walk the whole tracklist, not just the playable tracks, so a
+            // `heading` entry (#328) can open a labelled sub-section that applies
+            // to every track after it until the next heading — a disc name, or one
+            // sub-release of a box/hard-drive compilation.
+            let mut current_section: Option<String> = None;
+            let mut tracks = Vec::new();
+            for entry in entries {
+                if entry.get("type_").and_then(Value::as_str) == Some("heading") {
+                    current_section = entry
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|title| !title.is_empty())
+                        .map(str::to_string);
+                    continue;
+                }
+                if !is_track(entry) {
+                    continue;
+                }
+                let position = entry
+                    .get("position")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+                tracks.push(ReleaseTrack {
+                    // A multi-disc Discogs release carries the disc in the
+                    // position itself (`1-05`), which is the only place it says
+                    // so — the tracklist is flat (#146).
+                    disc: disc_from_position(&position),
+                    position,
+                    artist: join_artists(entry.get("artists"), &cleaner),
+                    title: entry
+                        .get("title")
                         .and_then(Value::as_str)
                         .unwrap_or_default()
-                        .to_string();
-                    ReleaseTrack {
-                        // A multi-disc Discogs release carries the disc in the
-                        // position itself (`1-05`), which is the only place it says
-                        // so — the tracklist is flat (#146).
-                        disc: disc_from_position(&position),
-                        position,
-                        artist: join_artists(entry.get("artists"), &cleaner),
-                        title: entry
-                            .get("title")
-                            .and_then(Value::as_str)
-                            .unwrap_or_default()
-                            .to_string(),
-                        duration_secs: entry
-                            .get("duration")
-                            .and_then(Value::as_str)
-                            .and_then(parse_duration),
-                        // Discogs tracklists don't carry ISRCs, and a database
-                        // of physical releases states neither tempo nor key.
-                        isrc: None,
-                        bpm: None,
-                        key: None,
-                    }
-                })
-                .collect()
+                        .to_string(),
+                    duration_secs: entry
+                        .get("duration")
+                        .and_then(Value::as_str)
+                        .and_then(parse_duration),
+                    // Discogs tracklists don't carry ISRCs, and a database
+                    // of physical releases states neither tempo nor key.
+                    isrc: None,
+                    bpm: None,
+                    key: None,
+                    section: current_section.clone(),
+                });
+            }
+            tracks
         })
         .unwrap_or_default();
 
@@ -829,6 +845,45 @@ mod tests {
         assert_eq!(release.disc_total, Some(2));
         let discs: Vec<Option<u32>> = release.tracks.iter().map(|t| t.disc).collect();
         assert_eq!(discs, vec![Some(1), Some(1), Some(2)]);
+    }
+
+    /// A `heading` entry opens a labelled sub-section that applies to every track
+    /// after it until the next heading (#328) — a box/hard-drive compilation of
+    /// several sub-releases. The heading rows are not tracks, and a track before
+    /// the first heading belongs to no section.
+    #[test]
+    fn heading_rows_become_track_sections() {
+        let body = r#"{
+            "id": 42,
+            "title": "Boxed",
+            "artists": [{"name": "Various"}],
+            "tracklist": [
+                {"type_": "track", "position": "1", "title": "Intro"},
+                {"type_": "heading", "position": "", "title": "Disc One — SZCD 001"},
+                {"type_": "track", "position": "2", "title": "A"},
+                {"type_": "track", "position": "3", "title": "B"},
+                {"type_": "heading", "position": "", "title": "Disc Two — SZCD 002"},
+                {"type_": "track", "position": "4", "title": "C"}
+            ]
+        }"#;
+        let release = parse_release(body).unwrap();
+
+        let titles: Vec<&str> = release.tracks.iter().map(|t| t.title.as_str()).collect();
+        assert_eq!(titles, vec!["Intro", "A", "B", "C"]);
+        let sections: Vec<Option<&str>> = release
+            .tracks
+            .iter()
+            .map(|t| t.section.as_deref())
+            .collect();
+        assert_eq!(
+            sections,
+            vec![
+                None,
+                Some("Disc One \u{2014} SZCD 001"),
+                Some("Disc One \u{2014} SZCD 001"),
+                Some("Disc Two \u{2014} SZCD 002"),
+            ]
+        );
     }
 
     /// The release that raised #146 turned out NOT to be multi-disc: one CD,

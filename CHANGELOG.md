@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The Online tracklist shows a release's sub-sections.** A Discogs tracklist
+  `heading` — a disc name, or one sub-release of a box/hard-drive compilation that
+  bundles many under their own headings — and a MusicBrainz medium title were
+  dropped, flattening a clearly sectioned release into one list. The providers now
+  carry the section each track belongs to (filled from the nearest preceding
+  Discogs heading, or the MusicBrainz medium title), and the tracklist renders a
+  labelled band before each run of tracks, mirroring the file table's folder group
+  band. Display-only — the section is never written to a tag. (#328)
 - **A Cassette option in the Online media filter.** The search's media-type
   filter offered CD / Vinyl / LP / File but no Cassette, so cassette releases
   could not be filtered to, even though `mediaKind` already classifies

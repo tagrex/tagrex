@@ -3996,6 +3996,28 @@ button.tk-art-btn > .ico:last-child {
   background: var(--row-hover);
 }
 
+/* A sub-section header row (#328): a labelled band before each run of tracks —
+   a Discogs heading or a MusicBrainz medium title. Mirrors the file table's
+   folder group band (accent tint + accent-ink label); the label stays pinned to
+   the left through the row's own horizontal scroll, like the leading column. */
+.release-tracklist tr.tk-section td,
+.release-tracklist tr.tk-section:hover td {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg));
+  border-top: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+.tk-section-label {
+  position: sticky;
+  left: var(--space-2);
+  display: inline-block;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--accent-ink);
+}
+
 /* Leading group, pinned left: checkbox + track number. */
 .release-tracklist td.tk-lead {
   position: sticky;
