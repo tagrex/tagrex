@@ -3513,9 +3513,10 @@ td.unreadable-note {
 /* `button.` prefix so display:none beats the shared `button.icon` display. */
 button.release-import {
   position: absolute;
-  top: 50%;
-  right: 42px; /* just left of the caret */
-  transform: translateY(-50%);
+  /* Top-right corner, out of the vertically-centred text band, so a long title
+     keeps its width instead of truncating around the button (#347). */
+  top: 6px;
+  right: 6px;
   z-index: 2;
   display: none;
   width: 30px;
@@ -3528,12 +3529,18 @@ button.release-import {
 .release-card.tracklist-loaded[aria-expanded="true"] .release-import {
   display: inline-flex;
 }
-/* The import button is absolutely positioned over the header row (it can't nest
-   in the .release-head <button>), so when it is shown it sits on top of the
-   info column's right edge — a long artist/title ran under it (#344). Reserve
-   its footprint on the info so the text truncates before the button instead. */
-.release-card.tracklist-loaded[aria-expanded="true"] .release-info {
-  padding-right: 56px;
+/* With the import button in the top-right corner (#347), the caret drops to the
+   bottom-right on an expanded card so the two right-side controls stack rather
+   than collide; the text band between them is clear, so the title reserves only
+   the caret's own small column and no longer truncates around the button. */
+.release-card.tracklist-loaded[aria-expanded="true"] .release-caret {
+  align-self: flex-end;
+}
+/* Only the artist line shares the button's top band, so a long artist gets a
+   small right reservation to clear it (#347); the title and meta sit below the
+   button and keep their full width. */
+.release-card.tracklist-loaded[aria-expanded="true"] .release-artist {
+  padding-right: 28px;
 }
 .release-import:hover {
   background: var(--sel-tint);

@@ -18,10 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   file table the browser's own select-all fired and highlighted every label on
   the page; it now selects every row the table lists (or, while diffing, the whole
   apply scope), and leaves text fields their own select-all. (#345)
-- **The Online import button no longer overlaps a long release title.** The
-  button is absolutely positioned over the header row, so a long artist/title ran
-  under it; the info column now reserves the button's footprint so the text
-  truncates before it. (#344)
+- **The Online import button no longer overlaps or truncates the title.** The
+  button, absolutely positioned over the header row, sat in the vertically-centred
+  text band and ran under a long artist/title. It moves to the card's top-right
+  corner (the caret drops to the bottom-right), out of the text band — so the
+  title and meta keep their full width and only the short top lines clear it.
+  (#344, #347)
 - **The Online count label names the medium, not always "discs".** A multi-cassette
   set read "N tracks · 3 discs"; the unit is now chosen by media kind — cassettes
   for a cassette set, discs for CD / vinyl / LP (a vinyl record is a disc). Digital
