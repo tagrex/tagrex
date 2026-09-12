@@ -2098,6 +2098,10 @@ async function browseForFolder() {
 // the macOS Tauri webview, doesn't drive native DnD reliably. Mouse events
 // behave identically everywhere.
 let dragPath = null;
+// Every path being dragged (#349): the whole selection when the grabbed row is
+// part of it, otherwise just that one row. A Set for the hover test; the drop
+// recovers their order from `tracks`.
+let dragPaths = new Set();
 // Where the dragged row would land: { path: hovered row, below: true if it
 // drops after that row (cursor in its lower half), false if before it }.
 let dropInfo = null;
@@ -2118,7 +2122,14 @@ tracksBody.addEventListener("mousedown", (e) => {
   if (!cell) return;
   e.preventDefault(); // don't start a text selection
   dragPath = cell.closest("tr").dataset.path;
-  cell.closest("tr").classList.add("dragging");
+  // Drag the whole selection when the grabbed row belongs to it (#349),
+  // otherwise just the row under the cursor. Dragging an unselected row does
+  // not change what is selected.
+  dragPaths =
+    selection.has(dragPath) && selection.size > 1 ? new Set(selection) : new Set([dragPath]);
+  for (const tr of tracksBody.querySelectorAll("tr")) {
+    if (dragPaths.has(tr.dataset.path)) tr.classList.add("dragging");
+  }
   document.addEventListener("mousemove", onDragMove);
   document.addEventListener("mouseup", onDragUp);
 });
@@ -2127,7 +2138,8 @@ function onDragMove(e) {
   clearDropMarkers();
   dropInfo = null;
   const row = rowUnder(e.clientX, e.clientY);
-  if (!row || !row.dataset.path || row.dataset.path === dragPath) return; // skip group headers
+  // Skip group headers and any row being dragged — a block can't drop onto itself.
+  if (!row || !row.dataset.path || dragPaths.has(row.dataset.path)) return;
   const rect = row.getBoundingClientRect();
   const below = e.clientY > rect.top + rect.height / 2;
   row.classList.add(below ? "drop-below" : "drop-above");
@@ -2139,21 +2151,23 @@ function onDragUp() {
   document.removeEventListener("mouseup", onDragUp);
   clearDropMarkers();
   tracksBody.querySelectorAll("tr").forEach((tr) => tr.classList.remove("dragging"));
-  const source = dragPath;
+  const moving = dragPaths;
   const drop = dropInfo;
   dragPath = null;
+  dragPaths = new Set();
   dropInfo = null;
-  if (!source || !drop) return;
+  if (!moving.size || !drop) return;
 
-  const from = tracks.findIndex((t) => t.path === source);
-  if (from < 0) return;
-  const [moved] = tracks.splice(from, 1);
-  const targetIndex = tracks.findIndex((t) => t.path === drop.path);
-  if (targetIndex < 0) {
-    tracks.splice(from, 0, moved); // target vanished; put it back
-    return;
-  }
-  tracks.splice(drop.below ? targetIndex + 1 : targetIndex, 0, moved);
+  // The dragged rows in their current order, and everything else. The drop
+  // target is never one of the dragged rows (the hover test skips them), so it
+  // is in `rest`.
+  const moved = tracks.filter((t) => moving.has(t.path));
+  const rest = tracks.filter((t) => !moving.has(t.path));
+  if (!moved.length) return;
+  const targetIndex = rest.findIndex((t) => t.path === drop.path);
+  if (targetIndex < 0) return; // target vanished; leave the order untouched
+  rest.splice(drop.below ? targetIndex + 1 : targetIndex, 0, ...moved);
+  tracks.splice(0, tracks.length, ...rest); // rewrite the shared array in place
   reindexTracks(); // the list is the same files in a new order (#184)
   // The dragged row supersedes the sort for itself, not for the library (#198):
   // clearing the sort key also released the folder order, so moving one file

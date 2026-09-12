@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Dragging a multi-row selection moves the whole selection.** Reordering by
+  dragging a selected row moved only the row actually grabbed, leaving the rest
+  of the selection behind to be dragged one by one. When the grabbed row is part
+  of the selection, all selected rows now move together as a block, keeping their
+  relative order; dragging an unselected row still moves just that row and leaves
+  the selection alone. (#349)
 - **Interface chrome is no longer text-selectable.** The mode tabs, panel labels,
   headings and column-header labels could be selected with a click-drag, painting
   a stray native highlight that was never useful. Selection is now off across the
