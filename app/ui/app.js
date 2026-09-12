@@ -1754,14 +1754,16 @@ el("panel-toggle").addEventListener("click", () => {
 // natural width is the yardstick — no oscillation. Keeps a fifth/longer mode
 // (DEDUPLICATOR) from ever truncating the bar.
 function updateCompactTabs() {
-  const bar = document.querySelector(".topbar");
+  // Measure row 1 (#343): the tabs now share their row only with the brand and
+  // the app actions — the path box dropped to its own row — so the tab-collapse
+  // signal is that row overflowing, not the whole (two-row) top bar.
+  const bar = document.querySelector(".topbar-main");
   const tabs = document.querySelector(".mode-tabs");
   if (!bar || !tabs) return;
   document.body.classList.remove("compact-tabs");
-  // The tabs share the top bar with the brand, the path box and the action icons
-  // now (#280). On a shrink the spacer collapses and the path box gives way to its
-  // floor; once both are spent the bar overflows its own width — that overflow,
-  // measured with labels shown, is the signal to fall back to icon-only tabs.
+  // On a shrink the spacer collapses first; once it is spent the row overflows
+  // its own width — that overflow, measured with labels shown, is the signal to
+  // fall back to icon-only tabs (#280).
   if (bar.scrollWidth > bar.clientWidth) document.body.classList.add("compact-tabs");
 }
 // The bar can overflow rather than shrink, so observing it never fires on a

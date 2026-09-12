@@ -272,11 +272,27 @@ body {
 /* ---- top bar ---- */
 .topbar {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  /* Two rows (#343): the tabs + app actions, then the library path on its own
+     full-width line below. */
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+}
+/* Row 1: brand, mode tabs, and the app-level actions (#343). */
+.topbar-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+/* Row 2: the path box spans the full width now that it has its own row, so drop
+   the single-row basis and 620px cap it carried when it shared the top row (#343). */
+.topbar > .lib {
+  flex: none;
+  max-width: none;
 }
 
 /* LAB group marker — a quiet chip on the heading so the section reads as

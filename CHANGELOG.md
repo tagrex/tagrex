@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The folder path has its own row in the top bar.** It shared the top row with
+  the mode tabs and the action buttons, so a long folder name truncated early and
+  crowded the tabs — forcing icon-only labels and reshuffling the buttons as the
+  window narrowed. The path now sits on its own full-width row below the tabs,
+  with the library actions (open, re-read) beside it, while the tabs and the
+  app-level actions (panel toggle, undo, settings) keep the top row. Costs one
+  row of height, buys a readable path and a stable top row. (#343)
+
 ### Fixed
 
 - **A plain click below the table clears the selection.** The counterpart to
