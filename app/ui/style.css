@@ -1707,16 +1707,16 @@ body:not(.show-checkbox) #tracks td.sel {
   gap: 6px;
 }
 
+/* Mask/pattern inputs read in the UI font, not the bundled monospace (#351).
+   The monospace was there to align %placeholders%, but it read as out of place
+   against the rest of the interface — the release-search box (`#discogs-query`)
+   was already carved back out to the UI font for that reason, and the
+   placeholder reference (#148) makes tokens discoverable without column
+   alignment. Genuine filesystem-path displays (e.g. `#move-dest`) keep the
+   monospace elsewhere; those read as paths, not patterns. */
 .mask-row input {
   flex: 1;
   min-width: 0; /* shrink below intrinsic size so the row can't overflow a narrow panel */
-  font-family: var(--font-mono-bundled);
-}
-
-/* The release-search box reads as plain text (a title/artist), not a mask, so it
-   uses the UI font — the monospace looked out of place. The RENAMER mask input
-   keeps the monospace above (it aligns %placeholders%). */
-#discogs-query {
   font-family: var(--font-ui);
 }
 
@@ -3353,7 +3353,7 @@ td.unreadable-note {
   border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-mono-bundled);
+  font-family: var(--font-ui); /* a pattern/name field, not a path (#351) */
   font-size: var(--text-xs);
 }
 
@@ -3394,7 +3394,7 @@ td.unreadable-note {
   border-radius: var(--radius-md);
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-mono-bundled);
+  font-family: var(--font-ui); /* a pattern/name field, not a path (#351) */
   font-size: var(--text-xs);
 }
 

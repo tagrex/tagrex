@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Mask and pattern inputs use the UI font, not monospace.** The rename mask,
+  the reorganize folder pattern, the FROM NAME mask and the EXPORTER mask / file
+  name were set in the bundled monospace to align `%placeholders%`; it read as
+  out of place, and the placeholder reference already makes tokens discoverable.
+  They now match the rest of the interface. Filesystem-path displays (e.g. the
+  reorganize destination) stay monospace — they read as paths, not patterns.
+  (#351)
 - **The folder path has its own row in the top bar.** It shared the top row with
   the mode tabs and the action buttons, so a long folder name truncated early and
   crowded the tabs — forcing icon-only labels and reshuffling the buttons as the
