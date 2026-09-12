@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Online count label names the medium, not always "discs".** A multi-cassette
+  set read "N tracks · 3 discs"; the unit is now chosen by media kind — cassettes
+  for a cassette set, discs for CD / vinyl / LP (a vinyl record is a disc). Digital
+  releases still show no such count (#337). (#341)
+
 ## [0.16.0] - 2026-09-07
 
 This release sharpens the Online panel. The media-type badge gets a visual pass —

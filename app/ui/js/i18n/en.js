@@ -265,6 +265,7 @@ export const en = {
   // ---- the online source: search, matching, import ----
   "online.foundNone": "Found 0 entries",
   "unit.disc": { one: "{n} disc", other: "{n} discs" },
+  "unit.cassette": { one: "{n} cassette", other: "{n} cassettes" },
   "unit.entry": { one: "{n} entry", other: "{n} entries" },
   "unit.releaseTrack": { one: "{n} release track", other: "{n} release tracks" },
   "unit.lengthDisagrees": { one: "{n} length disagrees", other: "{n} lengths disagree" },

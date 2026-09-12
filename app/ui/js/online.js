@@ -223,7 +223,11 @@ function countLabel(id) {
   if (!release) return "— tracks";
   const discs = discCount(release);
   const tracks = tn("unit.track", release.tracks.length);
-  return discs > 1 ? `${tracks} · ${tn("unit.disc", discs)}` : tracks;
+  // Name the unit by medium (#341): a cassette set is "N cassettes", not discs.
+  // Only physical media reach `discs > 1` (digital is guarded out in discCount),
+  // and a vinyl record is a disc, so everything else stays `unit.disc`.
+  const unit = mediaKind(release.format) === "cassette" ? "unit.cassette" : "unit.disc";
+  return discs > 1 ? `${tracks} · ${tn(unit, discs)}` : tracks;
 }
 
 // Highest disc number across track positions ("2-1" -> disc 2); 1 if unmarked.

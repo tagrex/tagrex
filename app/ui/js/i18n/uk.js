@@ -266,6 +266,7 @@ export const uk = {
   // ---- the online source: search, matching, import ----
   "online.foundNone": "Знайдено: 0 записів",
   "unit.disc": { one: "{n} диск", few: "{n} диски", many: "{n} дисків" },
+  "unit.cassette": { one: "{n} касета", few: "{n} касети", many: "{n} касет" },
   "unit.entry": { one: "{n} запис", few: "{n} записи", many: "{n} записів" },
   "unit.releaseTrack": { one: "{n} трек релізу", few: "{n} треки релізу", many: "{n} треків релізу" },
   "unit.lengthDisagrees": { one: "{n} тривалість розходиться", few: "{n} тривалості розходяться", many: "{n} тривалостей розходяться" },

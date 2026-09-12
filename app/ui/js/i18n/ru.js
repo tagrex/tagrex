@@ -265,6 +265,7 @@ export const ru = {
   // ---- the online source: search, matching, import ----
   "online.foundNone": "Найдено: 0 записей",
   "unit.disc": { one: "{n} диск", few: "{n} диска", many: "{n} дисков" },
+  "unit.cassette": { one: "{n} кассета", few: "{n} кассеты", many: "{n} кассет" },
   "unit.entry": { one: "{n} запись", few: "{n} записи", many: "{n} записей" },
   "unit.releaseTrack": { one: "{n} трек релиза", few: "{n} трека релиза", many: "{n} треков релиза" },
   "unit.lengthDisagrees": { one: "{n} длительность расходится", few: "{n} длительности расходятся", many: "{n} длительностей расходятся" },
