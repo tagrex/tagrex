@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Editing a file with an unsynchronised cover no longer poisons it.** A frame
+  the model carries over untouched (a cover, cue-point/loop blobs, ratings,
+  foreign-language lyrics) kept its per-frame flags — and a frame flagged
+  *unsynchronised* was written flag-set but with a plain payload, because the tag
+  library reads unsynchronised data but never re-applies it on write. The next
+  read then rejected the contradiction and the whole file became unreadable
+  ("couldn't read tags — file left untouched"). Carried frames now have their
+  unsynchronisation flag cleared before writing, so they go out plainly. Files
+  already broken this way are recoverable — only the frame's flag byte was
+  wrong, the payload is intact. (#348)
 - **A plain click below the table clears the selection.** The counterpart to
   ⌘/Ctrl+A: a plain click in the empty area under the rows (or a windowing spacer)
   now deselects, like a file manager. Clicks on rows, group headers, checkboxes

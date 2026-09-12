@@ -1732,7 +1732,21 @@ fn write_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), Ta
                     continue;
                 }
             }
-            updated.insert(frame.clone());
+            // Carry the frame over with its per-frame unsynchronisation cleared
+            // (#348). lofty does NOT re-apply unsynchronisation when it writes —
+            // it keeps whatever flag the frame arrived with but emits plain,
+            // synchronised data (its own source flags this as a footgun). A frame
+            // the file already carried unsynchronised (a cover is the usual one)
+            // would then go out flag-set but plain, and the next read rejects it
+            // as `InvalidUnsynchronisation` — poisoning the whole file so lofty
+            // can neither read nor rewrite it. Write it plainly instead, clearing
+            // the data-length indicator that the unsynchronisation flag pairs with.
+            let mut carried = frame.clone();
+            let mut flags = carried.flags();
+            flags.unsynchronisation = false;
+            flags.data_length_indicator = None;
+            carried.set_flags(flags);
+            updated.insert(carried);
         }
     }
     updated.save_to_path(path, id3_write_options())?;
@@ -2618,5 +2632,105 @@ mod tests {
             None
         );
         assert_eq!(choose_priority_type(&present, &[]), None);
+    }
+
+    /// Build a self-contained MP3 in memory: an ID3v2.4 tag dumped by lofty
+    /// followed by the silent MPEG frames [`TagEngine::restore_id3v2_bytes`]
+    /// uses, so the backend recognizes the bytes as an MP3 and hands the tag
+    /// back.
+    fn mp3_with_tag(tag: &Id3v2Tag) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        tag.dump_to(&mut bytes, WriteOptions::default())
+            .expect("dump the tag");
+        let mut silence = vec![0xFF, 0xFB, 0x90, 0x00];
+        silence.resize(SILENT_MPEG_FRAME_LEN, 0);
+        for _ in 0..SILENT_MPEG_FRAMES {
+            bytes.extend_from_slice(&silence);
+        }
+        bytes
+    }
+
+    /// The unsynchronisation flag of the file's cover frame, or `None` when it
+    /// has no cover. Also the readability oracle: a poisoned file fails to parse
+    /// as an MP3 here, so a `Some` at all means the whole file still reads.
+    fn cover_unsync_flag(path: &Path) -> Option<bool> {
+        let tag = read_id3v2(path, FileType::Mpeg, tag_only_options())
+            .expect("the file must still parse as an MP3")?;
+        tag.into_iter().find_map(|frame| match frame {
+            Frame::Picture(_) => Some(frame.flags().unsynchronisation),
+            _ => None,
+        })
+    }
+
+    /// #348: a frame carried over on write must lose ID3v2's per-frame
+    /// unsynchronisation flag. lofty reads unsynchronised frame data but never
+    /// re-applies the unsynchronisation when it writes (its own source flags
+    /// this as a footgun) — so a frame left flagged goes out flag-set but plain,
+    /// and the next read rejects the whole file as `InvalidUnsynchronisation`. A
+    /// "Clear tags" poisoned three of a user's files exactly this way, through
+    /// the cover frame each carried over.
+    #[test]
+    fn a_write_clears_a_carried_frames_unsynchronisation_flag() {
+        use lofty::id3::v2::{AttachedPictureFrame, FrameFlags};
+
+        // A cover whose bytes contain no 0xFF: for such data the plain and the
+        // unsynchronised encodings are byte-identical, so a frame flagged
+        // unsynchronised is genuinely valid and lofty reads it back — the
+        // precondition the bug needs. (A real JPEG is full of 0xFF, which is why
+        // the wild files turned unreadable the moment the flag was written
+        // without the matching stuffing.)
+        let cover = vec![
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01, 0x02, 0x03,
+        ];
+        let picture = Picture::unchecked(cover.clone())
+            .pic_type(PictureType::CoverFront)
+            .mime_type(MimeType::Png)
+            .build();
+        let mut apic = Frame::Picture(AttachedPictureFrame::new(TextEncoding::UTF8, picture));
+        apic.set_flags(FrameFlags {
+            unsynchronisation: true,
+            ..FrameFlags::default()
+        });
+
+        let mut tag = Id3v2Tag::new();
+        tag.set_title("Before".to_string());
+        tag.insert(apic);
+
+        let path = std::env::temp_dir().join(format!(
+            "tagrex-unsync-carry-{}-{}.mp3",
+            std::process::id(),
+            SILENT_MPEG_FRAMES // any stable suffix; the pid already makes it unique
+        ));
+        std::fs::write(&path, mp3_with_tag(&tag)).expect("write the fixture");
+
+        // The file reads, and its cover frame arrives unsynchronised — the exact
+        // state a write must not carry through unchanged.
+        assert_eq!(cover_unsync_flag(&path), Some(true), "fixture precondition");
+
+        // A perfectly ordinary edit: change the title, nothing about the cover.
+        let mut tags = TagMap::new();
+        tags.insert(TagField::Title, "After".to_string());
+        write_id3v2(&path, FileType::Mpeg, &tags).expect("the write must succeed");
+
+        // Before the fix this read failed outright (InvalidUnsynchronisation);
+        // now the file still parses and the cover frame is written plainly.
+        assert_eq!(
+            cover_unsync_flag(&path),
+            Some(false),
+            "the carried cover frame must be written with unsynchronisation cleared"
+        );
+
+        // And the write did what it was asked, keeping the cover intact.
+        let saved = read_id3v2(&path, FileType::Mpeg, tag_only_options())
+            .expect("parse")
+            .expect("tag present");
+        assert_eq!(saved.title().as_deref(), Some("After"));
+        let saved_cover = saved.into_iter().find_map(|frame| match frame {
+            Frame::Picture(p) => Some(p.picture.data().to_vec()),
+            _ => None,
+        });
+        assert_eq!(saved_cover.as_deref(), Some(cover.as_slice()));
+
+        std::fs::remove_file(&path).ok();
     }
 }
