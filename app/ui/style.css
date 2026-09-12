@@ -3528,6 +3528,13 @@ button.release-import {
 .release-card.tracklist-loaded[aria-expanded="true"] .release-import {
   display: inline-flex;
 }
+/* The import button is absolutely positioned over the header row (it can't nest
+   in the .release-head <button>), so when it is shown it sits on top of the
+   info column's right edge — a long artist/title ran under it (#344). Reserve
+   its footprint on the info so the text truncates before the button instead. */
+.release-card.tracklist-loaded[aria-expanded="true"] .release-info {
+  padding-right: 56px;
+}
 .release-import:hover {
   background: var(--sel-tint);
 }

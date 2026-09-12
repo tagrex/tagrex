@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The Online import button no longer overlaps a long release title.** The
+  button is absolutely positioned over the header row, so a long artist/title ran
+  under it; the info column now reserves the button's footprint so the text
+  truncates before it. (#344)
 - **The Online count label names the medium, not always "discs".** A multi-cassette
   set read "N tracks · 3 discs"; the unit is now chosen by media kind — cassettes
   for a cassette set, discs for CD / vinyl / LP (a vinyl record is a disc). Digital
