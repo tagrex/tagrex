@@ -2041,6 +2041,34 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// ⌘/Ctrl+A selects every row the table lists, not the whole page (#345). Without
+// this the browser's own select-all fires and text-highlights the entire UI.
+// A text field keeps its own select-all, so bail when focus is in one.
+document.addEventListener("keydown", (e) => {
+  if ((e.key !== "a" && e.key !== "A") || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+  const ae = document.activeElement;
+  if (
+    ae &&
+    (ae.isContentEditable || ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.tagName === "SELECT")
+  ) {
+    return;
+  }
+  if (!el("settings").hidden) return; // the settings sheet owns the keyboard
+  e.preventDefault();
+  // While diffing, the sel column is the apply scope (#117), so select all of it.
+  if (diffByPath) {
+    setApplySelection(new Set(diffByPath.keys()));
+    for (const tr of tracksBody.querySelectorAll("tr.staged")) {
+      const cb = tr.querySelector(".apply-tick");
+      if (cb) cb.checked = true;
+    }
+    updateDiffBar();
+    return;
+  }
+  for (const path of viewPaths) selection.add(path);
+  syncSelectionUI();
+});
+
 // Open a native folder chooser (Tauri dialog plugin). The scanner recurses into
 // subfolders, so picking a folder loads everything under it. Outside Tauri
 // (browser dev) there's no native dialog — fall back to focusing the path field.

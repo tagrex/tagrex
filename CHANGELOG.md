@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **⌘/Ctrl+A selects all rows instead of text-selecting the whole UI.** In the
+  file table the browser's own select-all fired and highlighted every label on
+  the page; it now selects every row the table lists (or, while diffing, the whole
+  apply scope), and leaves text fields their own select-all. (#345)
 - **The Online import button no longer overlaps a long release title.** The
   button is absolutely positioned over the header row, so a long artist/title ran
   under it; the info column now reserves the button's footprint so the text
