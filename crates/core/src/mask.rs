@@ -60,6 +60,12 @@ use thiserror::Error;
 use crate::model::{AudioFormat, AudioProps, TagField, TagMap};
 use functions::{function_from_name, Function, ALL_FUNCTIONS};
 
+/// The custom-tag key the provider's raw track position is stored under on
+/// import (#352), and the value `%position%` renders. A portable, cross-format
+/// custom field (`TXXX:POSITION` on ID3v2), the same shape as `RELEASECOUNTRY`.
+/// Shared with the import writer so the two spellings can never drift.
+pub const POSITION_CUSTOM_FIELD: &str = "POSITION";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Segment {
     Literal(String),
@@ -80,6 +86,13 @@ enum Segment {
     /// or empty for other media (#106). A computed presentation value, not a
     /// field, so it renders but a mask containing it can't extract.
     Side,
+    /// `%position%` — the provider's raw track position, verbatim (`A1`, `1-05`,
+    /// `B`), read from the [`POSITION_CUSTOM_FIELD`] tag the import writes (#352).
+    /// Unlike [`Side`](Self::Side), which reconstructs a side letter from the
+    /// disc number, this is the ground truth the release stated. Render-only:
+    /// it renders when the file carries the tag, empty otherwise, and a mask
+    /// containing it can't extract (there is no reliable way back from a name).
+    Position,
     /// `%skip%` — a discard placeholder (#70): on extract it matches a run of
     /// text and throws it away (filenames are full of junk that maps to no tag);
     /// it may repeat, each occurrence independent. It's the inverse of `%side%`
@@ -236,8 +249,10 @@ impl Mask {
         let segments = parse_segments(pattern)?;
         let mut previous = None;
         let adjacent_placeholders = has_ambiguous_adjacency(&segments, &mut previous);
-        let render_only =
-            has_side(&segments) || has_file(&segments, |_| true) || has_call(&segments);
+        let render_only = has_side(&segments)
+            || has_position(&segments)
+            || has_file(&segments, |_| true)
+            || has_call(&segments);
         let extract_only = has_skip(&segments);
         let needs_audio_props = has_file(&segments, FileValue::needs_audio_props);
         let needs_metadata = has_file(&segments, FileValue::needs_metadata);
@@ -483,6 +498,9 @@ fn parse_placeholder(spec: &str) -> Result<Segment, MaskError> {
     if spec.eq_ignore_ascii_case("side") {
         return Ok(Segment::Side);
     }
+    if spec.eq_ignore_ascii_case("position") {
+        return Ok(Segment::Position);
+    }
     if spec.eq_ignore_ascii_case("skip") {
         return Ok(Segment::Skip);
     }
@@ -554,9 +572,9 @@ fn build_regex_into(segments: &[Segment], index: &mut usize, out: &mut String) {
                 build_regex_into(inner, index, out);
                 out.push_str(")?");
             }
-            // `%side%` is render-only (a mask carrying it refuses to extract), so
-            // it contributes no capture group and no index.
-            Segment::Side => {}
+            // `%side%` and `%position%` are render-only (a mask carrying either
+            // refuses to extract), so they contribute no capture group and no index.
+            Segment::Side | Segment::Position => {}
             // `%skip%` matches a run of text but keeps none of it: a non-capturing
             // group, so it consumes no index in either this walk or collect_captures.
             Segment::Skip => out.push_str("(?:.+?)"),
@@ -587,7 +605,7 @@ fn collect_captures(
             }
             Segment::Section(inner) => collect_captures(inner, captures, index, tags),
             // Render-only; extraction is refused before reaching here.
-            Segment::Side => {}
+            Segment::Side | Segment::Position => {}
             // Matched a run of text but writes no tag (a non-capturing group, #70).
             Segment::Skip => {}
             // Render-only; extraction is refused before reaching here (#147).
@@ -639,6 +657,19 @@ fn render_segments(
                 if let Some(letter) = side_letter_for(tags) {
                     out.push(letter);
                     produced = true;
+                }
+            }
+            // `%position%` renders the provider's raw position from the tag the
+            // import stored it under, and nothing when the file has none -- like
+            // `%side%`, empty is a valid outcome, never an error (#352).
+            Segment::Position => {
+                if let Some(value) = tags.get(&TagField::Custom(POSITION_CUSTOM_FIELD.to_string()))
+                {
+                    let clean = sanitize_for_filename(value);
+                    if !clean.is_empty() {
+                        produced = true;
+                    }
+                    out.push_str(&clean);
                 }
             }
             // `%skip%` has no render value; render() refuses the mask before we
@@ -840,6 +871,17 @@ fn has_side(segments: &[Segment]) -> bool {
     })
 }
 
+/// Whether any segment is a `%position%` (makes the mask render-only, #352 —
+/// like `%side%`, the provider position can't be recovered from a filename).
+fn has_position(segments: &[Segment]) -> bool {
+    segments.iter().any(|segment| match segment {
+        Segment::Position => true,
+        Segment::Section(inner) => has_position(inner),
+        Segment::Call(_, arguments) => arguments.iter().any(|a| has_position(a)),
+        _ => false,
+    })
+}
+
 /// Whether any segment is a `%skip%` (makes the mask extract-only, #70).
 fn has_skip(segments: &[Segment]) -> bool {
     segments.iter().any(|segment| match segment {
@@ -891,7 +933,11 @@ fn has_ambiguous_adjacency(segments: &[Segment], previous: &mut Option<bool>) ->
         // and neither can state a width.
         let stated = match segment {
             Segment::Placeholder(_, _, stated) => Some(*stated),
-            Segment::Side | Segment::Skip | Segment::File(_) | Segment::Call(..) => Some(false),
+            Segment::Side
+            | Segment::Position
+            | Segment::Skip
+            | Segment::File(_)
+            | Segment::Call(..) => Some(false),
             _ => None,
         };
         if let Some(stated) = stated {
@@ -1234,6 +1280,14 @@ pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
         extract: false,
     });
     docs.push(PlaceholderDoc {
+        token: "%position%".to_string(),
+        name: "position",
+        description: "Release track position, e.g. A1 — stored on import",
+        group: PlaceholderGroup::Special,
+        render: true,
+        extract: false,
+    });
+    docs.push(PlaceholderDoc {
         token: "%skip%".to_string(),
         name: "skip",
         description: "Matches and discards a run of text",
@@ -1539,6 +1593,45 @@ mod tests {
     fn side_makes_a_mask_render_only() {
         let mask = Mask::parse("%side% %title%").unwrap();
         assert!(matches!(mask.extract("A Rose"), Err(MaskError::RenderOnly)));
+    }
+
+    #[test]
+    fn position_renders_the_stored_raw_position_verbatim() {
+        // The import stores the provider's raw position under POSITION; %position%
+        // renders it exactly, whatever its shape (#352).
+        let mask = Mask::parse("%position% - %title%").unwrap();
+        let vinyl = tags(&[
+            (TagField::Custom("POSITION".to_string()), "A1"),
+            (TagField::Title, "Rose"),
+        ]);
+        assert_eq!(mask.render(&vinyl).unwrap(), "A1 - Rose");
+        // A file the import never touched has no POSITION tag: renders empty,
+        // never an error (like %side% on a CD).
+        let plain = tags(&[(TagField::Title, "Rose")]);
+        assert_eq!(mask.render(&plain).unwrap(), " - Rose");
+    }
+
+    #[test]
+    fn position_builds_the_side_and_track_name_the_user_asked_for() {
+        // The #352 motivating case: `1a1` from disc 1 + lower-cased position A1.
+        let mask = Mask::parse("%disc%$lower(%position%)_%artist% - %title%").unwrap();
+        let track = tags(&[
+            (TagField::DiscNumber, "1"),
+            (TagField::Custom("POSITION".to_string()), "A1"),
+            (TagField::Artist, "II Real"),
+            (TagField::Title, "The Rattle"),
+        ]);
+        assert_eq!(mask.render(&track).unwrap(), "1a1_II Real - The Rattle");
+    }
+
+    #[test]
+    fn position_makes_a_mask_render_only() {
+        // There is no reliable way back from a filename to a provider position.
+        let mask = Mask::parse("%position% %title%").unwrap();
+        assert!(matches!(
+            mask.extract("A1 Rose"),
+            Err(MaskError::RenderOnly)
+        ));
     }
 
     #[test]

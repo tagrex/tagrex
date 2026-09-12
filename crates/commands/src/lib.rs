@@ -4180,6 +4180,19 @@ impl App {
                 if disc.is_some() || current.tags.contains_key(&TagField::DiscNumber) {
                     desired.push((TagField::DiscTotal, non_empty(selection.disc_total.clone())));
                 }
+                // The provider's raw position ("A1", "1-05", "B") -> a portable
+                // POSITION custom tag, so a rename mask can name a file by its
+                // vinyl side/position with %position% (#352). Only when the
+                // position carries more than a plain number: a bare ordinal is
+                // just the track number under another name, and writing it would
+                // clutter every digital file for nothing.
+                let raw_position = track.position.trim();
+                if !raw_position.is_empty() && !raw_position.bytes().all(|b| b.is_ascii_digit()) {
+                    desired.push((
+                        TagField::Custom(tagrex_core::mask::POSITION_CUSTOM_FIELD.to_string()),
+                        Some(raw_position.to_string()),
+                    ));
+                }
             }
 
             let mut tag_changes = Vec::new();
@@ -4599,6 +4612,7 @@ pub fn import_fields() -> Vec<ImportFieldDto> {
         one("url", "Release webpage"),
         one("media", "Media type"),
         one("custom:RELEASECOUNTRY", "Release country"),
+        one("custom:POSITION", "Track position (vinyl side, …)"),
         ImportFieldDto {
             keys: vec![
                 "custom:DISCOGS_RELEASE_ID".to_string(),
@@ -7184,6 +7198,44 @@ mod tests {
         let off = app.preview_import(&[a1, a2, b], &selection, false).unwrap();
         assert_eq!(td(&off.changes[2]).1, Some("<none>".into())); // no disc change
         assert_eq!(td(&off.changes[2]).0, Some("3".into())); // index-based fallback
+    }
+
+    #[test]
+    fn import_stores_the_raw_position_only_when_it_is_more_than_a_number() {
+        let dir = TempDir::new("import-position");
+        // One vinyl-side position ("A1") and one plain ordinal ("2").
+        let side = dir.tagged_flac("f1.flac", "Old", "Old");
+        let plain = dir.tagged_flac("f2.flac", "Old", "Old");
+        let app = open_app(&dir);
+        let track = |position: &str| ImportTrackDto {
+            disc: None,
+            position: position.into(),
+            artist: "X".into(),
+            title: "T".into(),
+            duration_secs: None,
+            isrc: None,
+            bpm: None,
+            key: None,
+        };
+        let selection = ImportSelectionDto {
+            album: Some("Album".into()),
+            tracks: vec![track("A1"), track("2")],
+            ..ImportSelectionDto::default()
+        };
+        let position_change = |change: &FileChangeDto| {
+            change
+                .tag_changes
+                .iter()
+                .find(|fc| fc.field == "custom:POSITION")
+                .and_then(|fc| fc.new.clone())
+        };
+        let plan = app
+            .preview_import(&[side, plain], &selection, false)
+            .unwrap();
+        // "A1" carries a side letter -> stored verbatim, so %position% can name it.
+        assert_eq!(position_change(&plan.changes[0]), Some("A1".into()));
+        // "2" is just the track number under another name -> nothing written.
+        assert_eq!(position_change(&plan.changes[1]), None);
     }
 
     /// The disc the release itself states (#146): a Discogs `1-05` position or a

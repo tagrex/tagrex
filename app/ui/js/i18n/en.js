@@ -414,6 +414,7 @@ export const en = {
   "placeholder.technical._filedate": "Modified date, YYYY-MM-DD",
   "placeholder.special.side": "Vinyl side letter, from the disc number",
   "placeholder.group.special": "Special",
+  "placeholder.special.position": "Release track position, e.g. A1 — stored on import",
   "placeholder.special.skip": "Matches and discards a run of text",
   "placeholder.function.lower": "$lower(x) — lower case",
   "placeholder.group.function": "Functions",

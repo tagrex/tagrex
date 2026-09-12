@@ -414,6 +414,7 @@ export const ru = {
   "placeholder.technical._filedate": "Дата изменения, ГГГГ-ММ-ДД",
   "placeholder.special.side": "Буква стороны винила, из номера диска",
   "placeholder.group.special": "Особые",
+  "placeholder.special.position": "Позиция трека в релизе, напр. A1 — сохраняется при импорте",
   "placeholder.special.skip": "Совпадает с куском текста и отбрасывает его",
   "placeholder.function.lower": "$lower(x) — нижний регистр",
   "placeholder.group.function": "Функции",

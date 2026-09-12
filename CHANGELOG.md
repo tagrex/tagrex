@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`%position%` — the release track position in a rename mask.** An import now
+  stores the provider's raw position (a vinyl side + number like `A1`, or a
+  `1-05`) in a portable `POSITION` tag, and the new `%position%` placeholder
+  renders it. So a vinyl track can be named `1a1_…` with
+  `%disc%$lower(%position%)`, where before only the numeric `%disc%%track%`
+  (`101`) was possible. Written only when the position carries more than a plain
+  number — a bare ordinal is just the track number — and it is one of the import
+  fields, so it can be turned off. Render-only, like `%side%`: there is no
+  reliable way back from a filename. (#352)
+
 ### Changed
 
 - **Mask and pattern inputs use the UI font, not monospace.** The rename mask,
