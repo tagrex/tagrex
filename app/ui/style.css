@@ -263,6 +263,33 @@ body {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  /* The interface chrome is not text-selectable — dragging across a tab, a
+     heading, a panel label or a button painted a stray native selection that
+     was never useful (#350). The file table already opted out for its own
+     reason (#131); this extends the same stance to the rest of the shell.
+     Selection is switched back on below only where text is meant to reach the
+     clipboard. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Where selecting text is the point: fields the user types into, and the value
+   and path surfaces they may want to copy (#350). A plain `.selectable` is here
+   for anything that needs it without its own rule. Editable table cells keep
+   their own, more specific re-enable (they toggle it per edit). */
+input,
+textarea,
+select,
+[contenteditable="true"],
+.selectable,
+.dup-path,
+.probe-subject,
+.probe-value,
+#move-dest,
+.ph-token,
+.ph-desc {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 .spacer {

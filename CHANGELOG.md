@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Interface chrome is no longer text-selectable.** The mode tabs, panel labels,
+  headings and column-header labels could be selected with a click-drag, painting
+  a stray native highlight that was never useful. Selection is now off across the
+  shell (as it already was in the file table) and stays on where text is meant to
+  be copied — inputs, editable cells, and value/path displays. (#350)
 - **Editing a file with an unsynchronised cover no longer poisons it.** A frame
   the model carries over untouched (a cover, cue-point/loop blobs, ratings,
   foreign-language lyrics) kept its per-frame flags — and a frame flagged
