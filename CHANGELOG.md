@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A plain click below the table clears the selection.** The counterpart to
+  ⌘/Ctrl+A: a plain click in the empty area under the rows (or a windowing spacer)
+  now deselects, like a file manager. Clicks on rows, group headers, checkboxes
+  and the column header keep their behaviour; a modified click keeps the
+  selection. (#346)
 - **⌘/Ctrl+A selects all rows instead of text-selecting the whole UI.** In the
   file table the browser's own select-all fired and highlighted every label on
   the page; it now selects every row the table lists (or, while diffing, the whole

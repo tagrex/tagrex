@@ -2384,6 +2384,23 @@ tracksBody.addEventListener("click", (e) => {
   selectRow(tr, e);
 });
 
+// A plain click in the empty area below the rows deselects, like a file manager
+// (#346) — the counterpart to ⌘/Ctrl+A. The click lands on the `#files-view`
+// background (few files, no bottom spacer) or a windowing spacer row; clicks on
+// a real row, group header, checkbox or the column header are left to their own
+// handlers, and a modified click keeps the selection for range/add.
+el("files-view").addEventListener("click", (e) => {
+  if (diffByPath || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  if (e.target.closest("thead") || e.target.closest("td.sel")) return;
+  const tr = e.target.closest("tr");
+  if (tr && (tr.dataset.path || tr.classList.contains("group-head"))) return;
+  if (selection.size) {
+    selection.clear();
+    selAnchor = null;
+    syncSelectionUI();
+  }
+});
+
 tracksBody.addEventListener("dblclick", (e) => {
   if (diffByPath) return; // no editing/playing while reviewing a staged diff
   const head = e.target.closest("tr.group-head");
