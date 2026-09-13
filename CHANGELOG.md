@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The manual vinyl split now keeps the raw position too.** GENERATOR's
+  *Vinyl sides → disc* splits a value like `A1` into a track number plus a disc,
+  and until now discarded the `A1`. It now also stores it verbatim in the same
+  `POSITION` tag an import fills, so `%position%` renaming works for hand-split
+  files exactly as it does after an online import — the two paths to the same
+  state no longer disagree. (#353)
 - **Mask and pattern inputs use the UI font, not monospace.** The rename mask,
   the reorganize folder pattern, the FROM NAME mask and the EXPORTER mask / file
   name were set in the bundled monospace to align `%placeholders%`; it read as

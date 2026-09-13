@@ -5302,6 +5302,33 @@ mod tests {
         );
     }
 
+    // #353: the manual vinyl split stages the raw side position into a
+    // `custom:POSITION` edit (so %position% works for hand-split files, like it
+    // does after an import, #352). That relies on a custom-field edit flowing
+    // through preview_tag_edits to the file's POSITION tag — this locks it.
+    #[test]
+    fn a_custom_field_edit_writes_the_position_tag() {
+        let dir = TempDir::new("custom-position-edit");
+        let path = dir.tagged_flac("x.flac", "placeholder", "Title");
+        let mut app = open_app(&dir);
+        let plan = app
+            .preview_tag_edits(&[TagEditDto {
+                path: path.to_string_lossy().into_owned(),
+                field: "custom:POSITION".into(),
+                value: Some("A1".into()),
+            }])
+            .unwrap();
+        app.apply(&plan).unwrap();
+        let after = TagEngine::read(&path).unwrap();
+        assert_eq!(
+            after
+                .tags
+                .get(&TagField::Custom("POSITION".into()))
+                .map(String::as_str),
+            Some("A1")
+        );
+    }
+
     // #46: a multi-value field reaches masks and exports as the one joined
     // string the table shows — the point of the canonical form is that nothing
     // downstream has to learn about it.

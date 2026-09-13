@@ -202,12 +202,17 @@ async function splitVinylSides() {
   }
   let changed = 0;
   for (const path of paths) {
-    const parsed = parseVinylPosition(currentFieldValue(path, "track"));
+    const raw = currentFieldValue(path, "track");
+    const parsed = parseVinylPosition(raw);
     if (!parsed) continue;
     if (!edits.has(path)) edits.set(path, new Map());
     const fields = edits.get(path);
     fields.set("track", parsed.track ?? "1");
     fields.set("disc", parsed.disc);
+    // Keep the raw side position (A1, B2) verbatim in POSITION — the same tag an
+    // online import fills (#352) — so %position% renaming works for hand-split
+    // files too (#353). Only side values reach here, never a bare ordinal.
+    fields.set("custom:POSITION", raw.trim());
     changed += 1;
   }
   if (changed === 0) {
