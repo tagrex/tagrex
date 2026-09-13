@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-09-13
+
+This release closes a data-corruption bug: editing an MP3 whose embedded cover
+was stored unsynchronised could leave the whole file unreadable, and a Clear
+tags run hit three of a user's files this way — the write now clears that flag,
+and files already broken by it are recoverable. It also adds a `%position%`
+rename token that carries a vinyl side position (like `A1`) from both an online
+import and the manual side → disc split, so a track can be named by its side
+(`%disc%$lower(%position%)` → `1a1`). The rest is interface polish: a two-row
+top bar with the folder path on its own line, multi-row drag reordering, chrome
+that no longer text-selects, mask inputs in the UI font, and a batch of
+Online-panel fixes.
+
 ### Added
 
 - **`%position%` — the release track position in a rename mask.** An import now
