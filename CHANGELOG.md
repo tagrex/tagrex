@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Soundeo as a metadata source.** A fifth Online source, alongside Bandcamp,
+  for electronic releases missing from the other providers. No API, so it reads
+  the search results page and the album page's info table (Release, Artists,
+  Label, Styles, Date, Catalog #), with the cover and URL from OpenGraph tags and
+  the tracklist from the page's track rows. Pasting a release URL imports it
+  directly. Artist, title, year, genre, label, catalogue number, tracklist with
+  durations and a large cover come through; BPM and key aren't on Soundeo. In its
+  own isolated crate. (Traxsource, the third store considered, is blocked by a
+  Cloudflare bot-wall and isn't attempted.) (#355)
 - **Bandcamp as a metadata source.** A fourth Online source, for releases that
   are on none of Discogs / MusicBrainz / Beatport — common for underground and
   self-released electronic music. Bandcamp has no public API, so the provider

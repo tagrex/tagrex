@@ -9,6 +9,7 @@ members = [
     "crates/providers-musicbrainz",
     "crates/providers-beatport",
     "crates/providers-bandcamp",
+    "crates/providers-soundeo",
     "app",
 ]
 

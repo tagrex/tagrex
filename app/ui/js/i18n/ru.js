@@ -527,6 +527,7 @@ export const ru = {
   "plan.importMusicBrainz": "Импорт релиза с MusicBrainz",
   "plan.importBeatport": "Импорт релиза с Beatport",
   "plan.importBandcamp": "Импорт релиза с Bandcamp",
+  "plan.importSoundeo": "Импорт релиза с Soundeo",
   "plan.carryingExtras": { one: "переносится {n} лишний файл", few: "переносится {n} лишних файла", many: "переносится {n} лишних файлов" },
   "plan.cleanedUp": "причёсано",
   // ---- the settings sheet ----

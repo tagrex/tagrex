@@ -527,6 +527,7 @@ export const en = {
   "plan.importMusicBrainz": "Import MusicBrainz release",
   "plan.importBeatport": "Import Beatport release",
   "plan.importBandcamp": "Import Bandcamp release",
+  "plan.importSoundeo": "Import Soundeo release",
   "plan.carryingExtras": { one: "carrying {n} extra file", other: "carrying {n} extra files" },
   "plan.cleanedUp": "cleaned up",
   // ---- the settings sheet ----

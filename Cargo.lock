@@ -4033,6 +4033,7 @@ dependencies = [
  "tagrex-providers-beatport",
  "tagrex-providers-discogs",
  "tagrex-providers-musicbrainz",
+ "tagrex-providers-soundeo",
  "thiserror 1.0.69",
  "trash",
 ]
@@ -4104,6 +4105,15 @@ name = "tagrex-providers-musicbrainz"
 version = "0.17.0"
 dependencies = [
  "serde_json",
+ "tagrex-core",
+ "ureq",
+]
+
+[[package]]
+name = "tagrex-providers-soundeo"
+version = "0.17.0"
+dependencies = [
+ "regex",
  "tagrex-core",
  "ureq",
 ]

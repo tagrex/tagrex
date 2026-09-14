@@ -41,6 +41,7 @@ use tagrex_providers_bandcamp::BandcampProvider;
 use tagrex_providers_beatport::BeatportProvider;
 use tagrex_providers_discogs::DiscogsProvider;
 use tagrex_providers_musicbrainz::MusicBrainzProvider;
+use tagrex_providers_soundeo::SoundeoProvider;
 
 /// One audio file as the table view sees it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -447,6 +448,7 @@ impl PlanMessage {
                 Some("musicbrainz") => "plan.importMusicBrainz",
                 Some("beatport") => "plan.importBeatport",
                 Some("bandcamp") => "plan.importBandcamp",
+                Some("soundeo") => "plan.importSoundeo",
                 _ => "plan.importRelease",
             },
             Self::CarryingExtras { .. } => "plan.carryingExtras",
@@ -522,6 +524,7 @@ impl PlanMessage {
                 Some("musicbrainz") => "Import MusicBrainz release".to_string(),
                 Some("beatport") => "Import Beatport release".to_string(),
                 Some("bandcamp") => "Import Bandcamp release".to_string(),
+                Some("soundeo") => "Import Soundeo release".to_string(),
                 _ => "Import release".to_string(),
             },
             Self::CarryingExtras { files } => match files {
@@ -1383,6 +1386,10 @@ pub struct ProviderHub {
     /// limit, so it gets a modest politeness floor of its own in
     /// [`throttle_bandcamp`](ProviderHub::throttle_bandcamp).
     last_bandcamp_request: Cell<Option<Instant>>,
+    /// When the last Soundeo request went out. Like Bandcamp, a scraped site
+    /// with no documented limit, so it gets a politeness floor in
+    /// [`throttle_soundeo`](ProviderHub::throttle_soundeo).
+    last_soundeo_request: Cell<Option<Instant>>,
 }
 
 impl ProviderHub {
@@ -1435,12 +1442,19 @@ impl ProviderHub {
         )?)
     }
 
+    /// Build a Soundeo provider. No token — Soundeo's pages are anonymous.
+    /// Reuses the same network proxy as the others.
+    fn soundeo_provider(&self) -> Result<SoundeoProvider, AppError> {
+        Ok(SoundeoProvider::with_proxy(self.proxy.borrow().as_deref())?)
+    }
+
     /// Throttle the next provider request for `source`.
     fn throttle(&self, source: &str) {
         match source {
             "musicbrainz" => self.throttle_musicbrainz(),
             "beatport" => self.throttle_beatport(),
             "bandcamp" => self.throttle_bandcamp(),
+            "soundeo" => self.throttle_soundeo(),
             _ => self.throttle_discogs(),
         }
     }
@@ -1519,6 +1533,23 @@ impl ProviderHub {
         self.last_bandcamp_request.set(Some(Instant::now()));
     }
 
+    /// Space Soundeo requests out. Scraped site, no documented limit, so a
+    /// politeness floor of half a second (or the user's stricter setting).
+    fn throttle_soundeo(&self) {
+        let floor = Duration::from_millis(500);
+        let min = self
+            .min_interval
+            .get()
+            .map_or(floor, |user| user.max(floor));
+        if let Some(last) = self.last_soundeo_request.get() {
+            let elapsed = last.elapsed();
+            if elapsed < min {
+                std::thread::sleep(min - elapsed);
+            }
+        }
+        self.last_soundeo_request.set(Some(Instant::now()));
+    }
+
     /// Search a metadata provider (`source` = "discogs" | "musicbrainz" |
     /// "beatport") with the given token: the personal token for Discogs, the
     /// OAuth access token for Beatport, ignored by token-less MusicBrainz.
@@ -1538,6 +1569,7 @@ impl ProviderHub {
             "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
             "beatport" => self.beatport_provider(token)?.search(&search)?,
             "bandcamp" => self.bandcamp_provider()?.search(&search)?,
+            "soundeo" => self.soundeo_provider()?.search(&search)?,
             _ => self.discogs_provider(token)?.search(&search)?,
         };
         let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
@@ -1574,6 +1606,7 @@ impl ProviderHub {
             "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
             "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
             "bandcamp" => self.bandcamp_provider()?.fetch_release(&rid)?,
+            "soundeo" => self.soundeo_provider()?.fetch_release(&rid)?,
             _ => self.discogs_provider(token)?.fetch_release(&rid)?,
         };
         Ok(ReleaseDto::from(&release))
@@ -1596,6 +1629,7 @@ impl ProviderHub {
             "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
             "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
             "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
+            "soundeo" => self.soundeo_provider()?.fetch_image(url)?,
             _ => self.discogs_provider(token)?.fetch_image(url)?,
         };
         Ok(CoverArtDto {
@@ -1620,6 +1654,7 @@ impl ProviderHub {
             "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
             "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
             "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
+            "soundeo" => self.soundeo_provider()?.fetch_image(url)?,
             _ => self.discogs_provider(token)?.fetch_image(url)?,
         })
     }
@@ -4342,6 +4377,7 @@ fn release_id_field(source: Option<&str>) -> TagField {
         Some("musicbrainz") => TagField::Custom("MUSICBRAINZ_ALBUMID".to_string()),
         Some("beatport") => TagField::Custom("BEATPORT_RELEASE_ID".to_string()),
         Some("bandcamp") => TagField::Custom("BANDCAMP_ALBUM_URL".to_string()),
+        Some("soundeo") => TagField::Custom("SOUNDEO_RELEASE_URL".to_string()),
         _ => TagField::Custom("DISCOGS_RELEASE_ID".to_string()),
     }
 }
@@ -4660,6 +4696,7 @@ pub fn import_fields() -> Vec<ImportFieldDto> {
                 "custom:MUSICBRAINZ_ALBUMID".to_string(),
                 "custom:BEATPORT_RELEASE_ID".to_string(),
                 "custom:BANDCAMP_ALBUM_URL".to_string(),
+                "custom:SOUNDEO_RELEASE_URL".to_string(),
             ],
             label: "Release id".to_string(),
         },
@@ -7717,6 +7754,7 @@ mod tests {
                     "custom:MUSICBRAINZ_ALBUMID"
                         | "custom:BEATPORT_RELEASE_ID"
                         | "custom:BANDCAMP_ALBUM_URL"
+                        | "custom:SOUNDEO_RELEASE_URL"
                 )
             })
             .collect();

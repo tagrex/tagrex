@@ -528,6 +528,7 @@ export const uk = {
   "plan.importMusicBrainz": "Імпорт релізу з MusicBrainz",
   "plan.importBeatport": "Імпорт релізу з Beatport",
   "plan.importBandcamp": "Імпорт релізу з Bandcamp",
+  "plan.importSoundeo": "Імпорт релізу з Soundeo",
   "plan.carryingExtras": { one: "переноситься {n} зайвий файл", few: "переносяться {n} зайві файли", many: "переноситься {n} зайвих файлів" },
   "plan.cleanedUp": "причесано",
   // ---- the settings sheet ----
