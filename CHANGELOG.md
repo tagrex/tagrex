@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Bandcamp search cards show their cover thumbnail again.** A Bandcamp result's
+  collapsed card showed only the placeholder until it was expanded, because the
+  thumbnail URL taken from the search endpoint was missing the prefix the image
+  CDN requires and 404'd. The thumbnail is now built from the release's art id,
+  like the full cover, so it loads on the collapsed card. (#359)
 - **AIFF cover art and repeated edits are reliable now.** The tag library's own
   AIFF writer left a run of empty chunks after the tag on a rewrite, which made
   the built-in player refuse to play the file (other players tolerated it) and,

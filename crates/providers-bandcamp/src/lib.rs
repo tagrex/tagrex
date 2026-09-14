@@ -239,17 +239,19 @@ fn parse_search(body: &str) -> Result<Vec<ReleaseCandidate>, ProviderError> {
         .filter(|result| result.get("type").and_then(Value::as_str) == Some("a"))
         .filter_map(|result| {
             let url = str_field(result, "item_url_path")?;
+            let art_id = result.get("art_id").and_then(Value::as_u64);
             Some(ReleaseCandidate {
                 id: ReleaseId(url),
                 artist: str_field(result, "band_name").unwrap_or_default(),
                 title: str_field(result, "name").unwrap_or_default(),
                 year: None, // autocomplete states no year; the release fetch has it
                 score: 0.0, // the app re-scores against the query text (#53)
-                thumb_url: str_field(result, "img"),
-                cover_url: result
-                    .get("art_id")
-                    .and_then(Value::as_u64)
-                    .map(|art| cover_url(art, 16)),
+                // Both thumbnails come from the art id, not the autocomplete's
+                // own `img` field: that field is missing the `a` prefix the CDN
+                // needs (`0702…_3.jpg` 404s; `a0702…_3.jpg` is the real URL), so
+                // the collapsed card showed only a placeholder (#359).
+                thumb_url: art_id.map(|art| cover_url(art, 3)),
+                cover_url: art_id.map(|art| cover_url(art, 16)),
                 country: None,
                 label: None,
                 format: None,
@@ -515,9 +517,11 @@ mod tests {
         );
         assert_eq!(hit.artist, "Mad.Again & Max Stedeford");
         assert_eq!(hit.title, "KC001 - CROSSBREEDS");
+        // The thumbnail is built from the art id with the `a` prefix the CDN
+        // needs, not from the autocomplete's own (broken) `img` field (#359).
         assert_eq!(
             hit.thumb_url.as_deref(),
-            Some("https://f4.bcbits.com/img/0702813439_3.jpg")
+            Some("https://f4.bcbits.com/img/a0702813439_3.jpg")
         );
         assert_eq!(
             hit.cover_url.as_deref(),
