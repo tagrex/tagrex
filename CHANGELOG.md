@@ -30,6 +30,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and are left empty rather than guessed. In its own isolated crate, so a
   Bandcamp markup change can only break this one provider. (#354)
 
+### Fixed
+
+- **A tag write that doesn't persist now reports an error, not success.** On a
+  structurally broken container — an AIFF whose chunk chain is severed after the
+  audio by junk another encoder appended — the tag library accepted the write and
+  kept none of it, so an edit looked applied in the preview and then reappeared
+  unchanged on the next read. Every ID3v2 write is now verified, and a write that
+  didn't land fails loudly instead of pretending. (#356)
+- **Malformed AIFF files can now be tagged.** The AIFF exports some stores ship
+  (Bandcamp among them) append junk past the standard chunks — a chunk claiming
+  to be larger than the file, a dangling ID3 tag — which every parser reads but
+  none can rewrite, so tags silently wouldn't stick. When a write to an AIFF is
+  found not to have landed, the container is repaired once: the valid leading
+  chunks through the audio are kept byte for byte, the unreadable trailing junk
+  is dropped, and the write retried. A healthy AIFF is never touched. (#357)
+
 ## [0.17.0] - 2026-09-13
 
 This release closes a data-corruption bug: editing an MP3 whose embedded cover

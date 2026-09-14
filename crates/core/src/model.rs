@@ -1666,7 +1666,47 @@ fn sync_id3v1(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
     Ok(())
 }
 
+/// Write text tags into an MP3's ID3v2 tag, then confirm they actually landed.
+///
+/// A structurally broken container — most often an AIFF whose chunk chain is
+/// severed after the audio by junk another encoder appended (Bandcamp's AIFF
+/// export does this) — lets lofty read what it can but silently swallows the
+/// write: `save_to_path` returns `Ok` while adding nothing readable, so an edit
+/// would look applied and then vanish on the next read. This verifies the write
+/// took; for an AIFF it first tries to repair the container and write again, and
+/// only then gives up with an honest error rather than a false success.
 fn write_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), TagIoError> {
+    save_id3v2(path, container, tags)?;
+    if id3v2_write_landed(path, container, tags)? {
+        return Ok(());
+    }
+    // The write was a silent no-op. Repair a broken AIFF once and retry.
+    if container == FileType::Aiff && repair_aiff_container(path)? {
+        save_id3v2(path, container, tags)?;
+        if id3v2_write_landed(path, container, tags)? {
+            return Ok(());
+        }
+    }
+    Err(TagIoError::Malformed(format!(
+        "could not write tags to {}: its container is malformed and could not be repaired",
+        path.display()
+    )))
+}
+
+/// Whether an ID3v2 write actually persisted. When the write set any non-empty
+/// text field, the file must read back an ID3v2 block that holds something;
+/// clearing everything has nothing to confirm. This is what catches a container
+/// that accepts the write and keeps none of it.
+fn id3v2_write_landed(path: &Path, container: FileType, tags: &TagMap) -> Result<bool, TagIoError> {
+    let wrote_something = tags.values().any(|value| !value.trim().is_empty());
+    if !wrote_something {
+        return Ok(true);
+    }
+    let readback = read_id3v2(path, container, tag_only_options())?;
+    Ok(readback.is_some_and(|tag| tag.len() > 0))
+}
+
+fn save_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), TagIoError> {
     let mut generic = Tag::new(TagType::Id3v2);
     for (field, value) in tags {
         push_field_items(&mut generic, field, value);
@@ -1754,6 +1794,82 @@ fn write_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), Ta
     // thing (#194).
     sync_id3v1(path, tags)?;
     Ok(())
+}
+
+/// Rebuild a malformed AIFF whose chunk chain is severed after the audio.
+///
+/// The trigger is real: an AIFF export that appends its own metadata as junk
+/// past the standard chunks (a bogus chunk with a length larger than the file,
+/// a dangling ID3 tag) leaves a file every parser reads — the audio and the
+/// leading chunks are intact — but none can rewrite, because the walk hits the
+/// break. This keeps the leading chunks that parse cleanly (through `SSND`, the
+/// audio) and drops everything from the break onward, then rewrites a clean
+/// `FORM`. The audio and the standard metadata chunks are preserved byte for
+/// byte; only the unreadable trailing junk is lost, which is exactly what a tag
+/// write is about to replace.
+///
+/// Returns `true` when it rebuilt the file, `false` when there was nothing to
+/// repair (a well-formed AIFF, or one this can't safely rewrite). Never touches
+/// a file whose chunks all parse to its end, so a healthy AIFF is left alone.
+/// Atomic: the rebuild is written to a sibling temp file and renamed over the
+/// original only after it is complete.
+fn repair_aiff_container(path: &Path) -> Result<bool, TagIoError> {
+    let bytes = std::fs::read(path)?;
+    // A FORM/AIFF (or AIFF-C) header, or there is nothing here to repair.
+    if bytes.len() < 12 || &bytes[0..4] != b"FORM" {
+        return Ok(false);
+    }
+    let form_type = &bytes[8..12];
+    if form_type != b"AIFF" && form_type != b"AIFC" {
+        return Ok(false);
+    }
+
+    // Walk the chunks, keeping the valid leading run. A chunk is valid when its
+    // four-byte id is printable and its payload fits inside the file; the first
+    // one that isn't is the break.
+    let mut pos = 12usize;
+    let mut kept_end = 12usize;
+    let mut saw_ssnd = false;
+    while pos + 8 <= bytes.len() {
+        let id = &bytes[pos..pos + 4];
+        let size = u32::from_be_bytes([
+            bytes[pos + 4],
+            bytes[pos + 5],
+            bytes[pos + 6],
+            bytes[pos + 7],
+        ]) as usize;
+        let payload_end = pos + 8 + size;
+        let id_ok = id.iter().all(|b| b.is_ascii_graphic() || *b == b' ');
+        if !id_ok || payload_end > bytes.len() {
+            break;
+        }
+        if id == b"SSND" {
+            saw_ssnd = true;
+        }
+        // Chunks are word-aligned: an odd length carries a pad byte.
+        kept_end = (payload_end + (size & 1)).min(bytes.len());
+        pos = kept_end;
+    }
+
+    // Repair only a file that actually broke *after* its audio: no audio means
+    // this isn't a file we can safely shorten, and a chain that reached the end
+    // is well-formed and must be left untouched.
+    if !saw_ssnd || kept_end >= bytes.len() {
+        return Ok(false);
+    }
+
+    let body = &bytes[12..kept_end];
+    let form_size = (4 + body.len()) as u32; // the form-type plus the kept chunks
+    let mut rebuilt = Vec::with_capacity(12 + body.len());
+    rebuilt.extend_from_slice(b"FORM");
+    rebuilt.extend_from_slice(&form_size.to_be_bytes());
+    rebuilt.extend_from_slice(form_type);
+    rebuilt.extend_from_slice(body);
+
+    let tmp = path.with_extension("tagrex-repair-tmp");
+    std::fs::write(&tmp, &rebuilt)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(true)
 }
 
 /// The Vorbis comment that names what encoded the file. Provenance, and the one
@@ -2731,6 +2847,96 @@ mod tests {
         });
         assert_eq!(saved_cover.as_deref(), Some(cover.as_slice()));
 
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// Build a FORM/AIFF from `(chunk-id, payload)` pairs, for the repair tests.
+    fn aiff_bytes(chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+        let mut body = Vec::new();
+        for (id, payload) in chunks {
+            body.extend_from_slice(*id);
+            body.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+            body.extend_from_slice(payload);
+            if payload.len() % 2 == 1 {
+                body.push(0); // word-align
+            }
+        }
+        let mut out = Vec::new();
+        out.extend_from_slice(b"FORM");
+        out.extend_from_slice(&((4 + body.len()) as u32).to_be_bytes());
+        out.extend_from_slice(b"AIFF");
+        out.extend_from_slice(&body);
+        out
+    }
+
+    #[test]
+    fn repair_rebuilds_an_aiff_broken_after_the_audio() {
+        // A well-formed COMM + SSND, then a junk chunk whose length runs past the
+        // file — the shape a Bandcamp AIFF export leaves (#357).
+        let mut bytes = aiff_bytes(&[(b"COMM", &[1, 2, 3, 4]), (b"SSND", &[5, 6, 7, 8])]);
+        bytes.extend_from_slice(b"SBRE"); // a plausible id …
+        bytes.extend_from_slice(&u32::MAX.to_be_bytes()); // … with an impossible length
+        bytes.extend_from_slice(b"trailing junk metadata");
+
+        let path = std::env::temp_dir().join(format!("tagrex-repair-{}.aiff", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(
+            repair_aiff_container(&path).unwrap(),
+            "a broken file is repaired"
+        );
+
+        let fixed = std::fs::read(&path).unwrap();
+        // FORM header rebuilt, junk gone, audio chunks kept byte for byte.
+        assert_eq!(&fixed[0..4], b"FORM");
+        assert_eq!(&fixed[8..12], b"AIFF");
+        assert_eq!(
+            u32::from_be_bytes([fixed[4], fixed[5], fixed[6], fixed[7]]) as usize,
+            fixed.len() - 8
+        );
+        assert_eq!(
+            fixed,
+            aiff_bytes(&[(b"COMM", &[1, 2, 3, 4]), (b"SSND", &[5, 6, 7, 8])])
+        );
+        assert!(!fixed.windows(4).any(|w| w == b"SBRE"));
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn repair_leaves_a_well_formed_aiff_untouched() {
+        // Every chunk parses to the end — nothing to repair, so the file must not
+        // be rewritten (a healthy AIFF is never shortened).
+        let bytes = aiff_bytes(&[(b"COMM", &[1, 2, 3, 4]), (b"SSND", &[5, 6, 7, 8])]);
+        let path =
+            std::env::temp_dir().join(format!("tagrex-repair-ok-{}.aiff", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(
+            !repair_aiff_container(&path).unwrap(),
+            "a healthy file is left alone"
+        );
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            bytes,
+            "the file is byte-for-byte unchanged"
+        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn repair_declines_a_non_aiff_or_audioless_file() {
+        // Not a FORM/AIFF at all.
+        let path =
+            std::env::temp_dir().join(format!("tagrex-repair-non-{}.bin", std::process::id()));
+        std::fs::write(&path, b"not an aiff at all").unwrap();
+        assert!(!repair_aiff_container(&path).unwrap());
+        // A broken chain but no SSND — nothing safe to keep, so declined.
+        let mut bytes = aiff_bytes(&[(b"COMM", &[1, 2, 3, 4])]);
+        bytes.extend_from_slice(b"SBRE");
+        bytes.extend_from_slice(&u32::MAX.to_be_bytes());
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(
+            !repair_aiff_container(&path).unwrap(),
+            "no audio chunk -> not repaired"
+        );
         std::fs::remove_file(&path).ok();
     }
 }
