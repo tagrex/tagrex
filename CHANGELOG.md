@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-09-14
+
+This release adds two more Online metadata sources — Bandcamp and Soundeo — for
+the underground and self-released electronic music that is on none of Discogs,
+MusicBrainz or Beatport; search or paste a release URL and the tags, tracklist
+and cover come across. It also overhauls AIFF: TagRex now writes the AIFF tag and
+cover itself instead of through the tag library, whose AIFF writer left files
+unplayable and dropped the cover on a second edit — so covers now survive any
+number of edits, the malformed AIFFs some stores ship repair themselves, and a
+write that can't land says so instead of silently doing nothing. And a mask you
+reach for often can now be saved as a named preset and dropped into any mask
+field with a click.
+
 ### Added
 
 - **Mask presets.** A mask you use often — a rename pattern, a FROM NAME reader,
@@ -16,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   same everywhere; it saves next to the transform action groups and persists
   across restarts. A presets button sits beside the placeholder-reference button
   on every mask input. (#360)
-
 - **Soundeo as a metadata source.** A fifth Online source, alongside Bandcamp,
   for electronic releases missing from the other providers. No API, so it reads
   the search results page and the album page's info table (Release, Artists,

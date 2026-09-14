@@ -15,7 +15,7 @@
 
 ---
 
-> **Status: 0.17.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.18.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
 > preview player, a transactional undo journal, and an interface that speaks
@@ -67,8 +67,10 @@ ago and forgot would be worse than none.
 
 **Modes**, each a verb applied to that table:
 
-- **TAGGER** — edit tags by hand, or pull them from Discogs (personal token) or
-  MusicBrainz. Paged search, release cards with cover browser and tracklist,
+- **TAGGER** — edit tags by hand, or pull them from Discogs (personal token),
+  MusicBrainz, Beatport, Bandcamp or Soundeo — the last two for underground and
+  self-released electronic music the databases don't carry. Paged search, release
+  cards with cover browser and tracklist,
   content-based candidate matching plus exact ISRC matching, auto-align and
   auto-numbering on import. A **FROM NAME** sub-tab runs a mask the other way
   round — the file's own name read back into tags, with `%skip%` for the junk
