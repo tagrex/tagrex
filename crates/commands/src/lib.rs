@@ -37,6 +37,7 @@ use tagrex_core::transform::{
     CaseStyle, ChangeCase, KeyNotation, KeyStyle, RemoveDiacritics, Replace, ReplaceOptions,
     TransformChain, Transliterate, Untransliterate,
 };
+use tagrex_providers_bandcamp::BandcampProvider;
 use tagrex_providers_beatport::BeatportProvider;
 use tagrex_providers_discogs::DiscogsProvider;
 use tagrex_providers_musicbrainz::MusicBrainzProvider;
@@ -445,6 +446,7 @@ impl PlanMessage {
                 Some("discogs") => "plan.importDiscogs",
                 Some("musicbrainz") => "plan.importMusicBrainz",
                 Some("beatport") => "plan.importBeatport",
+                Some("bandcamp") => "plan.importBandcamp",
                 _ => "plan.importRelease",
             },
             Self::CarryingExtras { .. } => "plan.carryingExtras",
@@ -519,6 +521,7 @@ impl PlanMessage {
                 Some("discogs") => "Import Discogs release".to_string(),
                 Some("musicbrainz") => "Import MusicBrainz release".to_string(),
                 Some("beatport") => "Import Beatport release".to_string(),
+                Some("bandcamp") => "Import Bandcamp release".to_string(),
                 _ => "Import release".to_string(),
             },
             Self::CarryingExtras { files } => match files {
@@ -1376,6 +1379,10 @@ pub struct ProviderHub {
     /// modest floor of its own in
     /// [`throttle_beatport`](ProviderHub::throttle_beatport).
     last_beatport_request: Cell<Option<Instant>>,
+    /// When the last Bandcamp request went out. Bandcamp documents no rate
+    /// limit, so it gets a modest politeness floor of its own in
+    /// [`throttle_bandcamp`](ProviderHub::throttle_bandcamp).
+    last_bandcamp_request: Cell<Option<Instant>>,
 }
 
 impl ProviderHub {
@@ -1420,11 +1427,20 @@ impl ProviderHub {
         )?)
     }
 
+    /// Build a Bandcamp provider. No token — Bandcamp needs none. Reuses the same
+    /// network proxy as the others.
+    fn bandcamp_provider(&self) -> Result<BandcampProvider, AppError> {
+        Ok(BandcampProvider::with_proxy(
+            self.proxy.borrow().as_deref(),
+        )?)
+    }
+
     /// Throttle the next provider request for `source`.
     fn throttle(&self, source: &str) {
         match source {
             "musicbrainz" => self.throttle_musicbrainz(),
             "beatport" => self.throttle_beatport(),
+            "bandcamp" => self.throttle_bandcamp(),
             _ => self.throttle_discogs(),
         }
     }
@@ -1483,6 +1499,26 @@ impl ProviderHub {
         self.last_beatport_request.set(Some(Instant::now()));
     }
 
+    /// Space Bandcamp requests out. Bandcamp documents no rate limit, so this is
+    /// a politeness floor rather than an enforced limit: half a second, or the
+    /// user's own rate-limit setting when that is stricter. Like Beatport, the
+    /// release picker prefetches one request per candidate, which is the burst
+    /// worth smoothing.
+    fn throttle_bandcamp(&self) {
+        let floor = Duration::from_millis(500);
+        let min = self
+            .min_interval
+            .get()
+            .map_or(floor, |user| user.max(floor));
+        if let Some(last) = self.last_bandcamp_request.get() {
+            let elapsed = last.elapsed();
+            if elapsed < min {
+                std::thread::sleep(min - elapsed);
+            }
+        }
+        self.last_bandcamp_request.set(Some(Instant::now()));
+    }
+
     /// Search a metadata provider (`source` = "discogs" | "musicbrainz" |
     /// "beatport") with the given token: the personal token for Discogs, the
     /// OAuth access token for Beatport, ignored by token-less MusicBrainz.
@@ -1501,6 +1537,7 @@ impl ProviderHub {
         let candidates = match source {
             "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
             "beatport" => self.beatport_provider(token)?.search(&search)?,
+            "bandcamp" => self.bandcamp_provider()?.search(&search)?,
             _ => self.discogs_provider(token)?.search(&search)?,
         };
         let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
@@ -1536,6 +1573,7 @@ impl ProviderHub {
         let release = match source {
             "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
             "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
+            "bandcamp" => self.bandcamp_provider()?.fetch_release(&rid)?,
             _ => self.discogs_provider(token)?.fetch_release(&rid)?,
         };
         Ok(ReleaseDto::from(&release))
@@ -1557,6 +1595,7 @@ impl ProviderHub {
         let image = match source {
             "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
             "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
+            "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
             _ => self.discogs_provider(token)?.fetch_image(url)?,
         };
         Ok(CoverArtDto {
@@ -1580,6 +1619,7 @@ impl ProviderHub {
         Ok(match source {
             "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
             "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
+            "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
             _ => self.discogs_provider(token)?.fetch_image(url)?,
         })
     }
@@ -4301,6 +4341,7 @@ fn release_id_field(source: Option<&str>) -> TagField {
     match source {
         Some("musicbrainz") => TagField::Custom("MUSICBRAINZ_ALBUMID".to_string()),
         Some("beatport") => TagField::Custom("BEATPORT_RELEASE_ID".to_string()),
+        Some("bandcamp") => TagField::Custom("BANDCAMP_ALBUM_URL".to_string()),
         _ => TagField::Custom("DISCOGS_RELEASE_ID".to_string()),
     }
 }
@@ -4618,6 +4659,7 @@ pub fn import_fields() -> Vec<ImportFieldDto> {
                 "custom:DISCOGS_RELEASE_ID".to_string(),
                 "custom:MUSICBRAINZ_ALBUMID".to_string(),
                 "custom:BEATPORT_RELEASE_ID".to_string(),
+                "custom:BANDCAMP_ALBUM_URL".to_string(),
             ],
             label: "Release id".to_string(),
         },
@@ -7672,7 +7714,9 @@ mod tests {
             .filter(|key| {
                 !matches!(
                     key.as_str(),
-                    "custom:MUSICBRAINZ_ALBUMID" | "custom:BEATPORT_RELEASE_ID"
+                    "custom:MUSICBRAINZ_ALBUMID"
+                        | "custom:BEATPORT_RELEASE_ID"
+                        | "custom:BANDCAMP_ALBUM_URL"
                 )
             })
             .collect();

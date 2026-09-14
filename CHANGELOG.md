@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Bandcamp as a metadata source.** A fourth Online source, for releases that
+  are on none of Discogs / MusicBrainz / Beatport — common for underground and
+  self-released electronic music. Bandcamp has no public API, so the provider
+  reads structured data the site serves rather than scraping markup: search goes
+  through Bandcamp's own autocomplete endpoint, and a release is read from the
+  album page's embedded `data-tralbum` and `application/ld+json` blocks. Pasting
+  a Bandcamp release URL into the search box imports it directly. No token
+  needed. Artist, album, year, genre, tracklist with durations, cover and format
+  come through; ISRC, BPM, key, catalogue number and label aren't on Bandcamp
+  and are left empty rather than guessed. In its own isolated crate, so a
+  Bandcamp markup change can only break this one provider. (#354)
+
 ## [0.17.0] - 2026-09-13
 
 This release closes a data-corruption bug: editing an MP3 whose embedded cover

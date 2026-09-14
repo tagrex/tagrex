@@ -4029,6 +4029,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tagrex-core",
+ "tagrex-providers-bandcamp",
  "tagrex-providers-beatport",
  "tagrex-providers-discogs",
  "tagrex-providers-musicbrainz",
@@ -4068,6 +4069,15 @@ dependencies = [
  "rodio",
  "serde",
  "tagrex-core",
+]
+
+[[package]]
+name = "tagrex-providers-bandcamp"
+version = "0.17.0"
+dependencies = [
+ "serde_json",
+ "tagrex-core",
+ "ureq",
 ]
 
 [[package]]

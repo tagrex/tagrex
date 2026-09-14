@@ -8,6 +8,7 @@ members = [
     "crates/providers-discogs",
     "crates/providers-musicbrainz",
     "crates/providers-beatport",
+    "crates/providers-bandcamp",
     "app",
 ]
 

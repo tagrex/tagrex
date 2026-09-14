@@ -13,6 +13,7 @@ tagrex-core.workspace = true
 tagrex-providers-discogs = { path = "../providers-discogs" }
 tagrex-providers-musicbrainz = { path = "../providers-musicbrainz" }
 tagrex-providers-beatport = { path = "../providers-beatport" }
+tagrex-providers-bandcamp = { path = "../providers-bandcamp" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror.workspace = true

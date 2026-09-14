@@ -1,0 +1,14 @@
+[package]
+name = "tagrex-providers-bandcamp"
+description = "Bandcamp metadata provider for TagRex (no token; internal search JSON + album-page embedded JSON)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde_json = "1.0.150"
+tagrex-core.workspace = true
+ureq = "3.2.1"
