@@ -1547,7 +1547,9 @@ impl TagEngine {
             for cover in covers {
                 tag.insert_picture(picture_from_cover(cover));
             }
-            tag.save_to_path(path, id3_write_options())?;
+            // AIFF gets the hand-written `ID3 ` chunk (#358), same as the text
+            // write, so lofty's AIFF writer can't drop the cover on a later edit.
+            save_id3v2_tag(path, container, &tag)?;
             return Ok(());
         }
         let mut tag = load_or_new_tag(path)?;
@@ -1789,10 +1791,89 @@ fn save_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), Tag
             updated.insert(carried);
         }
     }
-    updated.save_to_path(path, id3_write_options())?;
+    save_id3v2_tag(path, container, &updated)?;
     // Whatever the file also carries in an ID3v1 block has to say the same
     // thing (#194).
     sync_id3v1(path, tags)?;
+    Ok(())
+}
+
+/// Persist an [`Id3v2Tag`] to a file, choosing the writer by container.
+///
+/// AIFF goes through [`write_aiff_id3`] rather than lofty's `save_to_path`: the
+/// backend's own AIFF writer leaves a run of zero-length chunks after the tag on
+/// a rewrite, which strict decoders reject and which, on the *next* write, makes
+/// it drop the embedded cover (#358). Writing the `ID3 ` chunk into the container
+/// directly sidesteps that entirely — the audio is preserved byte for byte and
+/// the tag is clean every time. Every other ID3v2 container keeps lofty's
+/// container-aware save, which is well-behaved for them.
+fn save_id3v2_tag(path: &Path, container: FileType, tag: &Id3v2Tag) -> Result<(), TagIoError> {
+    if container == FileType::Aiff {
+        let mut bytes = Vec::new();
+        tag.dump_to(&mut bytes, id3_write_options())?;
+        write_aiff_id3(path, &bytes)?;
+        return Ok(());
+    }
+    tag.save_to_path(path, id3_write_options())?;
+    Ok(())
+}
+
+/// Write `id3_bytes` (a complete serialized ID3v2 tag) into an AIFF as its
+/// `ID3 ` chunk, rebuilding the container by hand.
+///
+/// The standard chunks — `COMM`/`SSND` (the audio), `FLLR`, `COMT` and the rest
+/// — are kept byte for byte; any existing `ID3 ` chunk is replaced, and anything
+/// past the first unreadable chunk (junk another encoder appended, #357) is
+/// dropped. The fresh `ID3 ` chunk goes last, with no reserved padding, so the
+/// file stays clean and playable across repeated edits. Atomic: written to a
+/// sibling temp file and renamed over the original.
+fn write_aiff_id3(path: &Path, id3_bytes: &[u8]) -> Result<(), TagIoError> {
+    let raw = std::fs::read(path)?;
+    if raw.len() < 12 || &raw[0..4] != b"FORM" {
+        return Err(TagIoError::UnsupportedFormat(
+            path.to_string_lossy().into_owned(),
+        ));
+    }
+    let form_type = &raw[8..12];
+
+    // Keep every valid chunk except an existing `ID3 `; stop at the first chunk
+    // that isn't well-formed, which is where a broken container's junk begins.
+    let mut body: Vec<u8> = Vec::new();
+    let mut pos = 12usize;
+    while pos + 8 <= raw.len() {
+        let id = &raw[pos..pos + 4];
+        let size =
+            u32::from_be_bytes([raw[pos + 4], raw[pos + 5], raw[pos + 6], raw[pos + 7]]) as usize;
+        let payload_end = pos + 8 + size;
+        let id_ok = id.iter().all(|b| b.is_ascii_graphic() || *b == b' ');
+        if !id_ok || payload_end > raw.len() {
+            break;
+        }
+        let chunk_end = (payload_end + (size & 1)).min(raw.len());
+        if id != b"ID3 " {
+            body.extend_from_slice(&raw[pos..chunk_end]);
+        }
+        pos = chunk_end;
+    }
+
+    // The fresh ID3 chunk, word-aligned.
+    body.extend_from_slice(b"ID3 ");
+    body.extend_from_slice(&(id3_bytes.len() as u32).to_be_bytes());
+    body.extend_from_slice(id3_bytes);
+    if id3_bytes.len() % 2 == 1 {
+        body.push(0);
+    }
+
+    let form_size = (4 + body.len()) as u32; // the form-type plus the chunks
+    let mut out = Vec::with_capacity(12 + body.len());
+    out.extend_from_slice(b"FORM");
+    out.extend_from_slice(&form_size.to_be_bytes());
+    out.extend_from_slice(form_type);
+    out.extend_from_slice(&body);
+
+    let tmp = path.with_extension("tagrex-aiff-tmp");
+    std::fs::write(&tmp, &out)?;
+    std::fs::rename(&tmp, path)?;
     Ok(())
 }
 
@@ -2937,6 +3018,44 @@ mod tests {
             !repair_aiff_container(&path).unwrap(),
             "no audio chunk -> not repaired"
         );
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn write_aiff_id3_replaces_the_tag_keeps_audio_drops_junk() {
+        // COMM + SSND (audio), an old ID3 to replace, then junk to drop (#358).
+        let mut bytes = aiff_bytes(&[
+            (b"COMM", &[1, 2, 3, 4]),
+            (b"SSND", &[5, 6, 7, 8]),
+            (b"ID3 ", b"old-tag-bytes"),
+        ]);
+        bytes.extend_from_slice(b"SBRE");
+        bytes.extend_from_slice(&u32::MAX.to_be_bytes()); // trailing junk
+
+        let path =
+            std::env::temp_dir().join(format!("tagrex-aiff-id3-{}.aiff", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+        write_aiff_id3(&path, b"NEW-ID3-BYTES").unwrap();
+
+        let out = std::fs::read(&path).unwrap();
+        // Well-formed FORM/AIFF with the size field matching the file.
+        assert_eq!(&out[0..4], b"FORM");
+        assert_eq!(&out[8..12], b"AIFF");
+        assert_eq!(
+            u32::from_be_bytes([out[4], out[5], out[6], out[7]]) as usize,
+            out.len() - 8
+        );
+        // Audio kept, the old tag and the junk gone, exactly one fresh ID3 with
+        // the new bytes as its payload.
+        let expected = aiff_bytes(&[
+            (b"COMM", &[1, 2, 3, 4]),
+            (b"SSND", &[5, 6, 7, 8]),
+            (b"ID3 ", b"NEW-ID3-BYTES"),
+        ]);
+        assert_eq!(out, expected);
+        assert_eq!(out.windows(4).filter(|w| *w == b"ID3 ").count(), 1);
+        assert!(!out.windows(13).any(|w| w == b"old-tag-bytes"));
+        assert!(!out.windows(4).any(|w| w == b"SBRE"));
         std::fs::remove_file(&path).ok();
     }
 }

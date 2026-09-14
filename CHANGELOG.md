@@ -32,6 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **AIFF cover art and repeated edits are reliable now.** The tag library's own
+  AIFF writer left a run of empty chunks after the tag on a rewrite, which made
+  the built-in player refuse to play the file (other players tolerated it) and,
+  on the *next* edit, dropped the embedded cover — sometimes wiping the tags.
+  TagRex now writes the `ID3` chunk into the AIFF itself instead of going through
+  that writer: the audio is kept byte for byte, an existing tag is replaced, junk
+  is dropped, and no padding is reserved — so the cover survives any number of
+  edits and the file stays playable. (#358)
 - **A tag write that doesn't persist now reports an error, not success.** On a
   structurally broken container — an AIFF whose chunk chain is severed after the
   audio by junk another encoder appended — the tag library accepted the write and
