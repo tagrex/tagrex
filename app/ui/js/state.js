@@ -200,6 +200,12 @@ export let actionGroups = [];
 export function setActionGroups(value) {
   actionGroups = value;
 }
+
+// Saved mask presets (#360): one shared pool the user drops into any mask input.
+export let maskPresets = [];
+export function setMaskPresets(value) {
+  maskPresets = value;
+}
 export let builtinGroups = [];
 export function setBuiltinGroups(value) {
   builtinGroups = value;

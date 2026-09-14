@@ -55,6 +55,7 @@ import { refreshGenerator, syncTransformPlacement } from "./js/generator.js";
 import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
 import { initPlaceholderReference } from "./js/placeholders.js";
+import { initMaskPresets } from "./js/maskpresets.js";
 import { initTooltips } from "./js/tooltip.js";
 import { isFieldLocked, loadFieldLocks, pushFieldLocks } from "./js/locks.js";
 import {
@@ -2846,6 +2847,7 @@ syncFilterControls();
 // headers can name their placeholder without an await per header. The head is
 // already drawn by then, so it is redrawn once the names are available.
 initPlaceholderReference().then(renderTableHead);
+initMaskPresets();
 // Put the interface into the chosen language before anything else paints (#50).
 // Early, because the panels below read their own labels back out of the DOM.
 applyStaticText();

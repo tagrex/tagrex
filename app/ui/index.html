@@ -222,6 +222,7 @@
             <div class="mask-row">
               <input id="mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
               <button class="icon ph-btn" type="button" data-ph-target="mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              <button class="icon preset-btn" type="button" data-preset-target="mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
             </div>
             <p class="hint muted" data-i18n="renamer.maskHint" data-i18n-html>
               The <b>?</b> button lists every placeholder — tags, the file itself
@@ -248,6 +249,7 @@
               ><span data-i18n="renamer.pattern">Pattern</span>
               <input id="move-mask" type="text" spellcheck="false" value="%albumartist%/%year% - %album%/%track% - %title%" />
               <button class="icon ph-btn" type="button" data-ph-target="move-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              <button class="icon preset-btn" type="button" data-preset-target="move-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
             </label>
             <!-- Destination (#153): the folder the pattern is built under. Empty
                  means the opened library, which is what this always did. A folder
@@ -419,6 +421,7 @@
               <div class="mask-row">
                 <input id="from-name-mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
                 <button class="icon ph-btn" type="button" data-ph-target="from-name-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+                <button class="icon preset-btn" type="button" data-preset-target="from-name-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
               </div>
               <!-- Live read-out of what the pattern pulls out of the current
                    row, so the mask can be tuned without staging a plan. The
@@ -602,6 +605,7 @@
               <label for="export-mask" data-i18n="exporter.mask">Mask</label>
               <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
               <button class="icon ph-btn" type="button" data-ph-target="export-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              <button class="icon preset-btn" type="button" data-preset-target="export-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
             </div>
             <div class="exp-row">
               <label for="export-name" id="export-name-label">File name</label>
@@ -772,6 +776,17 @@
       </div>
       <div id="ph-body" class="ph-body"></div>
       <p class="ph-foot muted" data-i18n="ph.foot">Click one to insert it at the caret.</p>
+    </div>
+
+    <!-- Saved mask presets (#360): a shared pool dropped into any mask input.
+         Driven by maskpresets.js; the same fixed-popover shape as #ph-menu. -->
+    <div id="preset-menu" class="ph-menu preset-menu" hidden role="dialog" data-i18n-aria-label="preset.title" aria-label="Mask presets">
+      <div class="ph-head preset-save-row">
+        <input id="preset-name" type="text" data-i18n-placeholder="preset.namePlaceholder" placeholder="Name this mask…" spellcheck="false" autocomplete="off" />
+        <button id="preset-save" class="btn" type="button" data-i18n="preset.save">Save</button>
+      </div>
+      <div id="preset-list" class="ph-body preset-list"></div>
+      <p class="ph-foot muted" data-i18n="preset.foot">Click a preset to use it in this field.</p>
     </div>
 
     <!-- Confirm dialog (#102): a small modal for yes/no prompts (e.g. overwriting

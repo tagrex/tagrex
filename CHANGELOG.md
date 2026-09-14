@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Mask presets.** A mask you use often — a rename pattern, a FROM NAME reader,
+  an export name — can be saved under a name and dropped back into any mask field
+  with a click, instead of being retyped each time. One shared pool across
+  RENAMER, reorganize, FROM NAME and EXPORTER, since the mask vocabulary is the
+  same everywhere; it saves next to the transform action groups and persists
+  across restarts. A presets button sits beside the placeholder-reference button
+  on every mask input. (#360)
+
 - **Soundeo as a metadata source.** A fifth Online source, alongside Bandcamp,
   for electronic releases missing from the other providers. No API, so it reads
   the search results page and the album page's info table (Release, Artists,

@@ -899,6 +899,13 @@ pub struct SettingsDto {
     /// reads it from `load_settings` and rewrites it via `save_settings`.
     #[serde(default)]
     pub action_groups: Vec<ActionGroupDto>,
+    /// Saved mask presets (#360): each a named pattern the user can drop into any
+    /// mask input (rename, reorganize, FROM NAME, export). One shared pool. Stored
+    /// data only, like [`action_groups`](Self::action_groups) — `apply_settings`
+    /// ignores it; the UI reads it from `load_settings` and rewrites it via
+    /// `save_settings`.
+    #[serde(default)]
+    pub mask_presets: Vec<MaskPresetDto>,
     /// Whether a rename/move carries matching sidecar files along (#58).
     /// Defaults on.
     #[serde(default = "default_carry_sidecars")]
@@ -963,6 +970,7 @@ impl Default for SettingsDto {
             cover_quality: 0,
             import_cover: default_import_cover(),
             action_groups: Vec::new(),
+            mask_presets: Vec::new(),
             carry_sidecars: default_carry_sidecars(),
             sidecar_extensions: default_sidecar_extensions(),
             carry_folder_extras: default_carry_folder_extras(),
@@ -1251,6 +1259,15 @@ pub struct ActionGroupDto {
     /// groups the user saved, whose name is their own shorthand.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note: String,
+}
+
+/// A named, saved mask pattern (#360) the user can drop into any mask input.
+/// One shared pool across RENAMER / reorganize / FROM NAME / EXPORTER, persisted
+/// in settings.json. Stored data only; the backend never runs it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct MaskPresetDto {
+    pub name: String,
+    pub mask: String,
 }
 
 /// What a drag-and-drop of paths resolves to (#127), reported to the frontend so
@@ -5892,6 +5909,7 @@ mod tests {
             cover_quality: 90,
             import_cover: "never".into(),
             action_groups: Vec::new(),
+            mask_presets: Vec::new(),
             carry_sidecars: true,
             sidecar_extensions: Vec::new(),
             carry_folder_extras: true,
@@ -5964,6 +5982,25 @@ mod tests {
         assert_eq!(group.name, "Cleanup");
         assert_eq!(group.scope, "tags");
         assert!(group.rules[0].enabled, "omitted `enabled` defaults to true");
+    }
+
+    #[test]
+    fn settings_round_trip_mask_presets() {
+        // Saved mask presets persist in settings.json, and an older settings.json
+        // with no `mask_presets` field deserializes to an empty pool (#360).
+        let json = r#"{
+            "mask_presets": [ { "name": "Vinyl", "mask": "%disc%$lower(%position%)_%artist% - %title%" } ]
+        }"#;
+        let settings: SettingsDto = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.mask_presets.len(), 1);
+        assert_eq!(settings.mask_presets[0].name, "Vinyl");
+        assert_eq!(
+            settings.mask_presets[0].mask,
+            "%disc%$lower(%position%)_%artist% - %title%"
+        );
+        // Absent field -> empty, so older settings still load.
+        let empty: SettingsDto = serde_json::from_str("{}").unwrap();
+        assert!(empty.mask_presets.is_empty());
     }
 
     #[test]

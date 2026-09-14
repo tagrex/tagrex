@@ -5213,6 +5213,63 @@ td[data-field="year"],
   font-size: var(--text-2xs);
 }
 
+/* ---- mask presets (#360) ---- the save row, the saved list, one row each. */
+.preset-save-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.preset-save-row input {
+  flex: 1;
+  min-width: 0;
+}
+.preset-save-row .btn {
+  flex: none;
+}
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
+}
+.preset-row:hover {
+  background: var(--row-hover);
+}
+.preset-apply {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.preset-name {
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preset-mask {
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.preset-del {
+  flex: none;
+}
+.preset-empty {
+  padding: var(--space-2);
+  font-size: var(--text-xs);
+}
+
 /* ---- drag-and-drop-to-open overlay (#127) ---------------------------------
    Hidden until files are dragged over the window; body.drag-active reveals it
    as a dimmed backdrop with a dashed accent frame, echoing the cover well's
