@@ -205,6 +205,14 @@ Rust core ([lofty](https://github.com/Serial-ATA/lofty-rs) for tag I/O,
 [docs/architecture.md](docs/architecture.md) for the module layout and the
 reasoning behind it.
 
+## Attribution
+
+TagRex reads metadata from the third-party sources you choose. Their data belongs
+to them and to the people who contribute it.
+
+This application uses Discogs' API but is not affiliated with, sponsored or
+endorsed by Discogs. "Discogs" is a trademark of Zink Media, LLC.
+
 ## License
 
 [GPL-3.0](LICENSE). Free software stays free: forks and derivatives must remain

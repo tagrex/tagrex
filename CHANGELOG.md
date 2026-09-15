@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The Discogs API attribution notice.** Discogs' API Terms of Use require the
+  application to state that it uses Discogs' API and is not affiliated with them;
+  it now appears in the README and the TAGGER guide (the terms allow it to live in
+  the documentation). The provider itself was already using the API the sanctioned
+  way — the user's own token, a descriptive User-Agent, rate limiting — this is
+  just the missing notice. (#361)
+
 ## [0.18.0] - 2026-09-14
 
 This release adds two more Online metadata sources — Bandcamp and Soundeo — for

@@ -60,8 +60,12 @@ and quality limits in [Settings › Cover art](settings.md#cover-art).
 
 ## ONLINE — pulling tags from a source
 
-Pick a **Source** — Discogs or MusicBrainz — and search. Discogs needs a personal
-token; see [Settings › Discogs](settings.md#discogs).
+Pick a **Source** — Discogs, MusicBrainz, Beatport, Bandcamp or Soundeo — and
+search. Discogs needs a personal token; see
+[Settings › Discogs](settings.md#discogs). The rest need none.
+
+> This application uses Discogs' API but is not affiliated with, sponsored or
+> endorsed by Discogs. "Discogs" is a trademark of Zink Media, LLC.
 
 ### Building the query
 
