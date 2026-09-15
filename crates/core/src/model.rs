@@ -1705,7 +1705,7 @@ fn id3v2_write_landed(path: &Path, container: FileType, tags: &TagMap) -> Result
         return Ok(true);
     }
     let readback = read_id3v2(path, container, tag_only_options())?;
-    Ok(readback.is_some_and(|tag| tag.len() > 0))
+    Ok(readback.is_some_and(|tag| !tag.is_empty()))
 }
 
 fn save_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), TagIoError> {
