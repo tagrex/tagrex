@@ -14,8 +14,8 @@ The stand is now a real second interface, not a demonstration subset. The whole
 dispatcher). Each mode's ✅ rows below say what shipped.
 
 **Remaining:** G-4 (transform over a staged plan / ticked groups), F1 (from-name
-through a transform chain), cell autocomplete (needs an editable table),
-configurable columns (§8 T2), and assorted P3 polish.
+through a transform chain), cell autocomplete (needs an editable table), column
+order/width/custom columns (T2 shipped visibility), and assorted P3 polish.
 
 The original verdict, for history: the stand was built free-hand, a happy-path
 subset of the Tauri modules; almost every gap was UI-side, since the dispatcher
@@ -66,7 +66,7 @@ The stand is **one rule**. The Tauri generator is a rule-chain engine.
 | G-2 | ✅ **Done** — a Number sub-tab: start value, write-total, optional disc, numbers the selection in table order (`Generator.swift`, `Library.numberTracks`) | **Number tracks** (`numberTracks`, generator.js:125) | P2 | ready (builds a `preview_transform_groups` payload) |
 | G-3 | ✅ **Done** — a Vinyl sub-tab that splits an A1/B2 track tag into a disc + track number (`Generator.swift`, `Library.splitVinylSides` + `parseVinylPosition`) | **Split vinyl sides** A/B (`splitVinylSides`, generator.js:197; vinyl.js) | P2 | ready |
 | G-4 | Preview only over files | Transform **over a staged plan** and over **ticked groups** (`preview_transform_over_plan`, `runTickedGroups`, generator.js:233/259) | P2 | ready |
-| G-5 | Stage enabled on no-op | `nothingChanged()` guards the run (generator.js:106) | P3 | n/a |
+| G-5 | ✅ **Done** — Stage is disabled when the preview finds nothing to change | `nothingChanged()` guards the run (generator.js:106) | P3 | n/a |
 
 ## 4. Renamer — `renamer.js` (170) vs `Renamer.swift` (132)
 
@@ -83,7 +83,7 @@ Closest to parity, but:
 |---|-----------|-----------------|-----|---------|
 | F1 | Captured fields staged as-is | Captured fields run **through a transform chain** before staging (`throughChain`, fromname.js:86) | P2 | ready |
 | F2 | ✅ **Done** — the from-name mask persists across sessions via `@AppStorage` (`FromName.swift`) | Mask **persisted** (`loadFromNamePrefs`/`saveFromNamePrefs`, fromname.js:29/38) | P3 | n/a |
-| F3 | Stage enabled on no-match | guard staging when the probe does not match | P3 | n/a |
+| F3 | ✅ **Done** — Stage is disabled unless the probe matches the name | guard staging when the probe does not match | P3 | n/a |
 
 ## 6. Deduplicator — `dedup.js` (88) vs `Duplicates.swift` (124)
 
@@ -109,7 +109,7 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
 | T1 | ✅ **Done** — rows grouped by folder into `Table` sections, header = the root-relative folder path (`gui-test/CD1`); a toolbar toggle flattens it. On by default like the web UI. | Rows **grouped by folder** with section headers (`groupKeyOf`, `folderGroupLabel`, grouping.js); the v0.15 accent band | P1 | ready (paths are in `list_tracks`) |
-| T2 | Fixed 5 columns | **Configurable columns** — which, order, width, custom (`columns.js`, `render_column`) | P2 | `render_column` ready |
+| T2 | ✅ **Done (visibility)** — a Columns picker toggles which modeled columns show (Artist/Title/Album/Album Artist/Track/Year/Genre), sortable and persisted via `@AppStorage` (`App.swift`). Order/width/custom columns still to come. | **Configurable columns** — which, order, width, custom (`columns.js`, `render_column`) | P2 | `render_column` ready |
 | T3 | Empty-area zebra bands (dark) read as unloaded rows | — | P3 | n/a |
 | T4 | — | Table gestures / row reorder (`tablegestures.js`, `reorder.js`) | P3 | — |
 

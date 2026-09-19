@@ -112,6 +112,8 @@ struct WorkspaceView: View {
     @State private var showingSettings = false
     /// Group the table by folder (#129, T1). On by default, like the web UI.
     @State private var groupByFolder = true
+    /// Which optional columns show (#43, T2), persisted in display order as CSV.
+    @AppStorage("table.columns") private var columnsCSV = "artist,title,album,year"
     /// Bumped to ask the filter field for the keyboard. A counter rather
     /// than a Bool: focus is an event, and a Bool that is already true
     /// cannot fire a second time.
@@ -139,6 +141,17 @@ struct WorkspaceView: View {
     /// silently dropped, so an empty panel with rows selected is explained.
     private var hiddenSelectionCount: Int { selection.count - visibleSelection.count }
 
+    private var visibleColumns: Set<String> {
+        Set(columnsCSV.split(separator: ",").map(String.init))
+    }
+
+    /// Toggle a column, rewriting the CSV in the picker's display order.
+    private func toggleColumn(_ key: String) {
+        var set = visibleColumns
+        if set.contains(key) { set.remove(key) } else { set.insert(key) }
+        columnsCSV = TrackTable.optionalColumns.map(\.key).filter(set.contains).joined(separator: ",")
+    }
+
     var body: some View {
         @Bindable var library = library
 
@@ -150,7 +163,8 @@ struct WorkspaceView: View {
             renames: library.stagedRenames,
             showsOldValues: library.showsOldValues,
             grouped: groupByFolder,
-            rootPath: library.root?.path
+            rootPath: library.root?.path,
+            visibleColumns: visibleColumns
         )
             .overlay(alignment: .bottom) {
                 if library.hasStagedPlan { ChangePlanBar(library: library) }
@@ -234,6 +248,18 @@ struct WorkspaceView: View {
                               ? "rectangle.grid.1x2.fill" : "rectangle.grid.1x2")
                     }
                     .help(groupByFolder ? "Grouping by folder — click to flatten" : "Group the table by folder")
+
+                    Menu {
+                        ForEach(TrackTable.optionalColumns, id: \.key) { column in
+                            Toggle(column.label, isOn: Binding(
+                                get: { visibleColumns.contains(column.key) },
+                                set: { _ in toggleColumn(column.key) }
+                            ))
+                        }
+                    } label: {
+                        Label("Columns", systemImage: "tablecells")
+                    }
+                    .help("Choose which columns to show")
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -378,6 +404,16 @@ struct TrackTable: View {
     /// The open library root, so a folder header reads relative to it
     /// ("gui-test/CD1") rather than as an absolute path.
     let rootPath: String?
+    /// Which optional columns are shown (#43, T2). File is always present.
+    let visibleColumns: Set<String>
+
+    /// The optional columns the picker offers, in display order — each a modeled
+    /// field with its own keypath so the column stays sortable.
+    static let optionalColumns: [(key: String, label: String)] = [
+        ("artist", "Artist"), ("title", "Title"), ("album", "Album"),
+        ("albumartist", "Album Artist"), ("track", "Track"),
+        ("year", "Year"), ("genre", "Genre"),
+    ]
 
     var body: some View {
         Table(of: Track.self, selection: $selection, sortOrder: $sortOrder) {
@@ -390,14 +426,34 @@ struct TrackTable: View {
             }
             .width(min: 180, ideal: 300)
 
-            TableColumn("Artist", value: \.artist) { cell($0, .artist) }
-                .width(min: 90, ideal: 150)
-            TableColumn("Title", value: \.title) { cell($0, .title) }
-                .width(min: 90, ideal: 190)
-            TableColumn("Album", value: \.album) { cell($0, .album) }
-                .width(min: 90, ideal: 160)
-            TableColumn("Year", value: \.year) { cell($0, .year) }
-                .width(56)
+            if visibleColumns.contains("artist") {
+                TableColumn("Artist", value: \.artist) { cell($0, .artist) }
+                    .width(min: 90, ideal: 150)
+            }
+            if visibleColumns.contains("title") {
+                TableColumn("Title", value: \.title) { cell($0, .title) }
+                    .width(min: 90, ideal: 190)
+            }
+            if visibleColumns.contains("album") {
+                TableColumn("Album", value: \.album) { cell($0, .album) }
+                    .width(min: 90, ideal: 160)
+            }
+            if visibleColumns.contains("albumartist") {
+                TableColumn("Album Artist", value: \.albumartist) { cell($0, .albumartist) }
+                    .width(min: 90, ideal: 150)
+            }
+            if visibleColumns.contains("track") {
+                TableColumn("Track", value: \.track) { cell($0, .track) }
+                    .width(56)
+            }
+            if visibleColumns.contains("year") {
+                TableColumn("Year", value: \.year) { cell($0, .year) }
+                    .width(56)
+            }
+            if visibleColumns.contains("genre") {
+                TableColumn("Genre", value: \.genre) { cell($0, .genre) }
+                    .width(min: 80, ideal: 130)
+            }
         } rows: {
             if grouped {
                 ForEach(folderGroups, id: \.key) { group in
