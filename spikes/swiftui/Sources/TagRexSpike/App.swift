@@ -537,6 +537,8 @@ struct ModePanel: View {
     private var editor: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                TagBlocksBar(library: library, tracks: tracks)
+
                 ForEach(EditorFields.groups(presentKeys: presentKeys)) { fieldGroup($0) }
 
                 addFieldRow

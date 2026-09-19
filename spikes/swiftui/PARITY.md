@@ -45,10 +45,10 @@ Year, Genre, Track) + read-only File block. The Tauri editor is dynamic.
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
 | E1 | ✅ **Done** — dynamic field editor over the file's real tags, grouped Core / Standard / Advanced with duo (n/total) rows and inline numeric validation (`EditorFields.swift`) | **Dynamic field editor** over the file's real tags, grouped into collapsible sections (`renderFieldEditor`, `fieldGroup`, editor.js:431/487) | P1 | ready (`list_tracks` carries the tags) |
-| E2 | No tag-block UI | **Tag blocks** shown with **strip** buttons (`preview_remove_tag_block`, editor.js:130/159) | P1 | `preview_remove_tag_block` ready |
-| E3 | No convert | **Convert a block** between kinds / ID3 revisions (`tag_block_targets`, `preview_convert_tag_block`, editor.js:192/218/292) — the #47/#205 feature | P1 | both ready |
-| E4 | No custom fields | **Add an arbitrary field** (`openAddField`, `addCustomField`, `populateKnownFields`, editor.js:353/373/693) | P2 | ready (`preview_tag_edits`) |
-| E5 | Single-file only | **Multi-file editing** with a per-field count "— N files" and mixed-value handling (`refreshFieldEditor`, editor.js:40) | P2 | ready |
+| E2 | ✅ **Done** — a "Remove <block>" per spare block the selection carries, with a loss confirmation for an inexact strip (`TagBlocks.swift`) | **Tag blocks** shown with **strip** buttons (`preview_remove_tag_block`, editor.js:130/159) | P1 | `preview_remove_tag_block` ready |
+| E3 | ✅ **Done** — a Convert picker (kind + ID3v2 revision) over the read block, gated to a single read kind, with a per-file loss confirmation (`TagBlocks.swift`) | **Convert a block** between kinds / ID3 revisions (`tag_block_targets`, `preview_convert_tag_block`, editor.js:192/218/292) — the #47/#205 feature | P1 | both ready |
+| E4 | ✅ **Done** — an Add-field row that stages an arbitrary custom frame across the selection (`App.swift`) | **Add an arbitrary field** (`openAddField`, `addCustomField`, `populateKnownFields`, editor.js:353/373/693) | P2 | ready (`preview_tag_edits`) |
+| E5 | ✅ **Done** — the dynamic editor edits the whole selection, shows `<multiple values>` where it disagrees and stages across all | **Multi-file editing** with a per-field count "— N files" and mixed-value handling (`refreshFieldEditor`, editor.js:40) | P2 | ready |
 | E6 | No paired rows | **Duo rows** — track/total etc. on one line (`fieldDuoRow`, editor.js:602) | P3 | ready |
 | E7 | No validation feedback | **Per-field validation** (`validateFieldValue`, editor.js:417) | P3 | ready |
 | E8 | No cover well | see §9 (cover editing entirely absent) | P1 | mostly ready |

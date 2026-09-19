@@ -15,6 +15,9 @@ struct Track: Identifiable, Decodable, Hashable {
     var tags: [String: String]
     var unreadable: Bool
     var durationSecs: UInt64?
+    /// The tag blocks the file carries, in the order it carries them (#47) — what
+    /// the editor's block bar strips and converts.
+    var tagBlocks: [TagBlock]
 
     var id: String { path }
 
@@ -51,6 +54,31 @@ struct Track: Identifiable, Decodable, Hashable {
     enum CodingKeys: String, CodingKey {
         case path, format, tags, unreadable
         case durationSecs = "duration_secs"
+        case tagBlocks = "tag_blocks"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        path = try c.decode(String.self, forKey: .path)
+        format = try c.decode(String.self, forKey: .format)
+        tags = try c.decode([String: String].self, forKey: .tags)
+        unreadable = try c.decodeIfPresent(Bool.self, forKey: .unreadable) ?? false
+        durationSecs = try c.decodeIfPresent(UInt64.self, forKey: .durationSecs)
+        tagBlocks = try c.decodeIfPresent([TagBlock].self, forKey: .tagBlocks) ?? []
+    }
+}
+
+/// One tag block a file carries (#47): a display label, the storage key of its
+/// kind (`id3v1`, `id3v2`, `vorbis`, …), and whether it is the block the app
+/// reads from and writes to.
+struct TagBlock: Decodable, Hashable {
+    var label: String
+    var kind: String
+    var readFrom: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case label, kind
+        case readFrom = "read_from"
     }
 }
 
@@ -1131,6 +1159,111 @@ final class Library {
         }
     }
 
+    // MARK: - Tag blocks (#47, #205)
+
+    /// What the selection can be converted to: the block kinds every selected
+    /// file can be given, and the ID3v2 revisions the app writes.
+    struct BlockTargets {
+        let kinds: [BlockOption]
+        let revisions: [BlockOption]
+    }
+
+    struct BlockOption: Decodable, Hashable, Identifiable {
+        let kind: String
+        let label: String
+        var id: String { kind }
+    }
+
+    private struct BlockTargetsReply: Decodable {
+        let kinds: [BlockOption]
+        let revisions: [BlockOption]
+    }
+
+    /// A previewed block plan held for the View to confirm and commit: the plan,
+    /// the file count, whether undo would be lossy (`inexact`), and what a lossy
+    /// change would drop — so the confirmation names it before anything stages.
+    struct BlockPreview {
+        let plan: JSONValue
+        let count: Int
+        let inexact: Bool
+        let lostFields: [String]
+        let lostPictures: Bool
+    }
+
+    /// The block kinds and revisions the selection can convert to (`tag_block_targets`).
+    func tagBlockTargets(paths: [String]) async -> BlockTargets? {
+        guard let session, !paths.isEmpty else { return nil }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<BlockTargetsReply>? =
+                invoke(box, "tag_block_targets", encodeArgs(PathsArg(paths: paths)))
+            guard let ok = reply?.ok else { return nil }
+            return BlockTargets(kinds: ok.kinds, revisions: ok.revisions)
+        }.value
+    }
+
+    /// Preview stripping one tag block from the selection (`preview_remove_tag_block`).
+    /// The plan is not staged yet — the View confirms a lossy removal first.
+    func previewRemoveTagBlock(kind: String, paths: [String]) async -> Result<BlockPreview, SearchFailure> {
+        await previewBlockPlan(command: "preview_remove_tag_block",
+                               args: encodeArgs(RemoveBlockArg(paths: paths, kind: kind)))
+    }
+
+    /// Preview converting the selection's read block into another kind or ID3v2
+    /// revision (`preview_convert_tag_block`).
+    func previewConvertTagBlock(
+        from: String, to: String, revision: String?, paths: [String]
+    ) async -> Result<BlockPreview, SearchFailure> {
+        await previewBlockPlan(
+            command: "preview_convert_tag_block",
+            args: encodeArgs(ConvertBlockArg(paths: paths, from: from, to: to, revision: revision)))
+    }
+
+    private func previewBlockPlan(command: String, args: String) async -> Result<BlockPreview, SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "no library open")) }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<JSONValue>? = invoke(box, command, args)
+            guard let plan = reply?.ok else {
+                return .failure(SearchFailure(message: reply?.error?.text ?? "the change could not be prepared"))
+            }
+            guard let parsed = decodePlan(plan) else {
+                return .failure(SearchFailure(message: "could not read the plan"))
+            }
+            var inexact = false
+            var lostFields = Set<String>()
+            var lostPictures = false
+            for change in parsed.changes {
+                for block in change.block_changes ?? [] {
+                    if block.exact == false { inexact = true }
+                    (block.lost_fields ?? []).forEach { lostFields.insert($0) }
+                    if block.lost_pictures == true { lostPictures = true }
+                }
+            }
+            return .success(BlockPreview(
+                plan: plan, count: parsed.changes.count, inexact: inexact,
+                lostFields: lostFields.sorted(), lostPictures: lostPictures))
+        }.value
+    }
+
+    /// Stage a previewed block plan — one journaled batch, applied by the change
+    /// bar like any other. The tag diff (if the change moves values) fills the
+    /// table; the block change itself rides in the plan.
+    func commitBlockPreview(_ preview: BlockPreview) {
+        guard let parsed = decodePlan(preview.plan) else { return }
+        var diffs: [String: [String: String]] = [:]
+        for change in parsed.changes {
+            for tag in change.tag_changes {
+                diffs[change.path, default: [:]][tag.field] = tag.new ?? ""
+            }
+        }
+        staged = diffs
+        stagedRenames.removeAll()
+        stagedPlan = preview.plan
+        stagedPlanCount = preview.count
+        lastMessage = "Staged a tag-block change for \(preview.count) file(s)"
+    }
+
     // MARK: - Export
 
     /// Write an export of `paths` into the library folder and return the path
@@ -1293,7 +1426,9 @@ private struct EmptyOk: Decodable {}
 /// stand having to model the whole `PlanDto`. `@unchecked Sendable`: it holds
 /// immutable JSON data (dictionaries, arrays and scalars decoded once), so it is
 /// safe to hand a staged plan back from a detached task to the main actor.
-private struct JSONValue: Codable, @unchecked Sendable {
+// Internal (not private): the tag-block preview holds a plan of this type and is
+// read from `TagBlocks.swift`, so the type has to be visible across the module.
+struct JSONValue: Codable, @unchecked Sendable {
     let value: Any
 
     init(from decoder: Decoder) throws {
@@ -1365,6 +1500,22 @@ private struct EditsArg: Encodable {
 
 private struct PlanArg: Encodable {
     let plan: JSONValue
+}
+
+private struct PathsArg: Encodable {
+    let paths: [String]
+}
+
+private struct RemoveBlockArg: Encodable {
+    let paths: [String]
+    let kind: String
+}
+
+private struct ConvertBlockArg: Encodable {
+    let paths: [String]
+    let from: String
+    let to: String
+    let revision: String?
 }
 
 private struct UndoArg: Encodable {
@@ -1614,12 +1765,22 @@ private struct StagedPlanShape: Decodable {
         let path: String
         let rename_to: String?
         let tag_changes: [FieldChange]
+        /// Whole-block changes (#47, #205). Present on a strip/convert plan; the
+        /// `exact` flag says whether undo can restore the block byte-for-byte.
+        let block_changes: [BlockChange]?
     }
 
     struct FieldChange: Decodable {
         let field: String
         let old: String?
         let new: String?
+    }
+
+    struct BlockChange: Decodable {
+        let label: String?
+        let exact: Bool?
+        let lost_fields: [String]?
+        let lost_pictures: Bool?
     }
 
     let changes: [FileChange]
