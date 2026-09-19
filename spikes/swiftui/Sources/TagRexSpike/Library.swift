@@ -558,6 +558,7 @@ final class Library {
             lockedFields = []
             await rescan()
             await loadLockedFields()
+            _ = await loadOnlineSettings()
         } else {
             tracks = []
             errors = ["the library could not be opened"]
@@ -833,40 +834,73 @@ final class Library {
 
     // MARK: - Settings
 
+    /// The exposed settings last loaded/saved, cached so a save that only changes
+    /// the saved groups still writes the current proxy/rate/revision back.
+    private var currentOnline = OnlineSettings()
+    /// The user's saved rule chains (#57), persisted in the stand's settings.json.
+    private(set) var savedActionGroups: [ActionGroup] = []
+
     /// Load the settings the stand exposes plus the saved Discogs token.
     func loadOnlineSettings() async -> OnlineSettings {
         guard let session else { return OnlineSettings() }
         let box = SessionHandle(raw: session)
-        return await Task.detached(priority: .userInitiated) { () -> OnlineSettings in
+        let result: (OnlineSettings, [ActionGroup]) = await Task.detached(priority: .userInitiated) {
             var settings = OnlineSettings()
+            var groups: [ActionGroup] = []
             let loaded: Reply<LoadedSettings>? = invoke(box, "load_settings", "{}")
             if let ok = loaded?.ok {
                 settings.proxy = ok.proxy ?? ""
                 settings.rateLimitPerMin = ok.rate_limit_per_min ?? 0
                 settings.id3v23 = ok.id3_v23 ?? false
+                groups = ok.action_groups ?? []
             }
             let token: Reply<String>? = invoke(box, "saved_discogs_token", "{}")
             settings.discogsToken = token?.ok ?? ""
-            return settings
+            return (settings, groups)
         }.value
+        currentOnline = result.0
+        savedActionGroups = result.1
+        return result.0
     }
 
-    /// Save the exposed settings and the Discogs token. Only the managed fields
-    /// are written; the backend defaults the rest (nothing else in the stand sets
-    /// them). Applied live in the session, so a new token or proxy takes effect
-    /// on the next search without reopening.
+    /// Save the exposed settings and the Discogs token. Applied live in the
+    /// session, so a new token or proxy takes effect on the next search without
+    /// reopening. The saved groups ride along so a settings save never drops them.
     func saveOnlineSettings(_ settings: OnlineSettings) async {
+        currentOnline = settings
+        await persistSettings()
         guard let session else { return }
         let box = SessionHandle(raw: session)
         await Task.detached(priority: .userInitiated) {
-            let payload = SaveSettingsArgs(settings: .init(
-                proxy: settings.proxy.trimmingCharacters(in: .whitespaces),
-                rate_limit_per_min: settings.rateLimitPerMin,
-                id3_v23: settings.id3v23
-            ))
-            _ = invoke(box, "save_settings", encodeArgs(payload)) as Reply<EmptyOk>?
             let token = SaveTokenArgs(token: settings.discogsToken.trimmingCharacters(in: .whitespaces))
             _ = invoke(box, "save_discogs_token", encodeArgs(token)) as Reply<EmptyOk>?
+        }.value
+    }
+
+    /// Save the current chain as a named group, replacing one of the same name.
+    func saveActionGroup(_ group: ActionGroup) async {
+        savedActionGroups.removeAll { $0.name == group.name }
+        savedActionGroups.append(group)
+        await persistSettings()
+    }
+
+    func deleteActionGroup(named name: String) async {
+        savedActionGroups.removeAll { $0.name == name }
+        await persistSettings()
+    }
+
+    /// Write the exposed settings + saved groups back as the whole SettingsDto.
+    private func persistSettings() async {
+        guard let session else { return }
+        let box = SessionHandle(raw: session)
+        let payload = SaveSettingsArgs(settings: .init(
+            proxy: currentOnline.proxy.trimmingCharacters(in: .whitespaces),
+            rate_limit_per_min: currentOnline.rateLimitPerMin,
+            id3_v23: currentOnline.id3v23,
+            action_groups: savedActionGroups
+        ))
+        await Task.detached(priority: .userInitiated) {
+            _ = invoke(box, "save_settings", encodeArgs(payload)) as Reply<EmptyOk>?
         }.value
     }
 
@@ -2107,6 +2141,7 @@ private struct LoadedSettings: Decodable {
     let proxy: String?
     let rate_limit_per_min: Int?
     let id3_v23: Bool?
+    let action_groups: [ActionGroup]?
 }
 
 private struct SaveSettingsArgs: Encodable {
@@ -2114,6 +2149,10 @@ private struct SaveSettingsArgs: Encodable {
         let proxy: String
         let rate_limit_per_min: Int
         let id3_v23: Bool
+        // The stand owns its own settings.json, so round-tripping the saved
+        // groups keeps a settings save from wiping them (save replaces the whole
+        // SettingsDto).
+        let action_groups: [ActionGroup]
     }
     let settings: Payload
 }

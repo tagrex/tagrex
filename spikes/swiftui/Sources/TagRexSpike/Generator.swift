@@ -59,6 +59,10 @@ struct GeneratorPanel: View {
     @State private var numberTotal = true
     @State private var numberDisc = ""
 
+    // Save-chain-as-group prompt.
+    @State private var savingGroup = false
+    @State private var newGroupName = ""
+
     @State private var pairs: [TransformPair] = []
     @State private var error: String?
     @State private var isStaging = false
@@ -104,6 +108,21 @@ struct GeneratorPanel: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: refreshKey) { await refresh() }
         .task { builtins = await library.builtinActionGroups() }
+        .alert("Save chain", isPresented: $savingGroup) {
+            TextField("Name", text: $newGroupName)
+            Button("Save") {
+                let name = newGroupName.trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty {
+                    var saved = group
+                    saved.name = name
+                    Task { await library.saveActionGroup(saved) }
+                }
+                newGroupName = ""
+            }
+            Button("Cancel", role: .cancel) { newGroupName = "" }
+        } message: {
+            Text("Save the current \(enabledCount)-step chain to reuse later.")
+        }
     }
 
     // MARK: - Number tracks (#G-2)
@@ -221,14 +240,27 @@ struct GeneratorPanel: View {
     @ViewBuilder
     private var presetMenu: some View {
         Menu {
-            if builtins.isEmpty {
-                Text("No presets").disabled(true)
-            } else {
-                ForEach(builtins) { preset in
-                    Button {
-                        loadPreset(preset)
-                    } label: {
-                        Text(preset.note.isEmpty ? preset.name : "\(preset.name) — \(preset.note)")
+            Button("Save current chain…") { savingGroup = true }
+            if !library.savedActionGroups.isEmpty {
+                Section("Saved") {
+                    ForEach(library.savedActionGroups) { preset in
+                        Menu(preset.name) {
+                            Button("Load") { loadPreset(preset) }
+                            Button("Delete", role: .destructive) {
+                                Task { await library.deleteActionGroup(named: preset.name) }
+                            }
+                        }
+                    }
+                }
+            }
+            if !builtins.isEmpty {
+                Section("Built-in") {
+                    ForEach(builtins) { preset in
+                        Button {
+                            loadPreset(preset)
+                        } label: {
+                            Text(preset.note.isEmpty ? preset.name : "\(preset.name) — \(preset.note)")
+                        }
                     }
                 }
             }
@@ -237,7 +269,7 @@ struct GeneratorPanel: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Load a shipped rule chain")
+        .help("Save or load a rule chain")
     }
 
     // MARK: - Rule card
