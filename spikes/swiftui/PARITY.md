@@ -44,7 +44,7 @@ Year, Genre, Track) + read-only File block. The Tauri editor is dynamic.
 
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
-| E1 | Fixed 7 fields | **Dynamic field editor** over the file's real tags, grouped into collapsible sections (`renderFieldEditor`, `fieldGroup`, editor.js:431/487) | P1 | ready (`list_tracks` carries the tags) |
+| E1 | ✅ **Done** — dynamic field editor over the file's real tags, grouped Core / Standard / Advanced with duo (n/total) rows and inline numeric validation (`EditorFields.swift`) | **Dynamic field editor** over the file's real tags, grouped into collapsible sections (`renderFieldEditor`, `fieldGroup`, editor.js:431/487) | P1 | ready (`list_tracks` carries the tags) |
 | E2 | No tag-block UI | **Tag blocks** shown with **strip** buttons (`preview_remove_tag_block`, editor.js:130/159) | P1 | `preview_remove_tag_block` ready |
 | E3 | No convert | **Convert a block** between kinds / ID3 revisions (`tag_block_targets`, `preview_convert_tag_block`, editor.js:192/218/292) — the #47/#205 feature | P1 | both ready |
 | E4 | No custom fields | **Add an arbitrary field** (`openAddField`, `addCustomField`, `populateKnownFields`, editor.js:353/373/693) | P2 | ready (`preview_tag_edits`) |

@@ -355,7 +355,7 @@ struct TrackTable: View {
     /// closure escapes the view's environment chain, so an @Environment read
     /// inside a cell trips the "no value for key" assertion the moment the table
     /// re-lays out — which is what a click on a column header does.
-    let staged: [String: [Field: String]]
+    let staged: [String: [String: String]]
     /// path → the new name a staged rename gives it, shown in the File column as
     /// a diff the way a tag change shows in its column.
     let renames: [String: String]
@@ -385,7 +385,7 @@ struct TrackTable: View {
     }
 
     private func cell(_ track: Track, _ field: Field) -> DiffCell {
-        let stagedValue = staged[track.id]?[field]
+        let stagedValue = staged[track.id]?[field.rawValue]
         return DiffCell(
             value: stagedValue ?? track.value(for: field),
             old: stagedValue == nil ? nil : track.value(for: field),
@@ -468,7 +468,11 @@ struct ModePanel: View {
     let selection: Set<Track.ID>
     // ONLINE first, matching the Tauri default (its `subtab active` is online).
     @State private var subtab = 0
-    @State private var drafts: [Field: String] = [:]
+    /// In-flight edits, keyed by storage key, not yet staged (Return stages).
+    @State private var drafts: [String: String] = [:]
+    /// Which collapsible editor groups are folded. Advanced starts folded, the
+    /// way the web editor opens it (#136); Standard opens.
+    @State private var collapsedGroups: Set<String> = ["advanced"]
 
     private var tracks: [Track] {
         library.tracks.filter { selection.contains($0.id) }
@@ -520,28 +524,18 @@ struct ModePanel: View {
         .onChange(of: selection) { _, _ in drafts = [:] }
     }
 
-    /// Laid out by hand rather than with Form: the grouped form style trails the
-    /// value, sizes the label column per row and ignores the field's own frame,
-    /// so a column of fields came out ragged and right-aligned. This panel edits
-    /// a table and should read like one.
+    /// A dynamic field editor over the selection's real tags (E1), grouped the
+    /// way the web editor groups them (`renderFieldEditor`): Core always open,
+    /// Standard and Advanced collapsible. Laid out by hand rather than with Form:
+    /// the grouped form style trails the value and sizes the label column per row,
+    /// so a column of fields came out ragged. This panel edits a table and reads
+    /// like one — a fixed label column, the control filling the rest.
     private var editor: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                group("Tag fields") {
-                    ForEach(Field.allCases) { field in
-                        row(field.label) {
-                            TextField("", text: binding(field), prompt: prompt(field))
-                                .textFieldStyle(.roundedBorder)
-                                .font(AppFonts.body)
-                                .foregroundStyle(isStaged(field)
-                                                 ? AnyShapeStyle(.green)
-                                                 : AnyShapeStyle(.primary))
-                                .onSubmit { stage(field) }
-                        }
-                    }
-                }
+            VStack(alignment: .leading, spacing: 18) {
+                ForEach(EditorFields.groups(presentKeys: presentKeys)) { fieldGroup($0) }
 
-                group("File") {
+                group("File", collapsible: false) {
                     fact("Format", shared { $0.format })
                     fact("Length", shared { $0.duration })
                 }
@@ -554,17 +548,98 @@ struct ModePanel: View {
         }
     }
 
+    /// The tag keys the editor lays out: every key present on a selected file,
+    /// plus any key already staged for one — so a field staged a moment ago (or a
+    /// custom frame) still lists after the selection redraws.
+    private var presentKeys: Set<String> {
+        var keys = Set<String>()
+        for track in tracks {
+            keys.formUnion(track.tags.keys)
+            keys.formUnion((library.staged[track.id] ?? [:]).keys)
+        }
+        return keys
+    }
+
+    @ViewBuilder
+    private func fieldGroup(_ fieldGroup: EditorFields.Group) -> some View {
+        let collapsed = fieldGroup.collapsible && collapsedGroups.contains(fieldGroup.id)
+        group(fieldGroup.title, collapsible: fieldGroup.collapsible,
+              count: fieldGroup.rows.count, collapsed: collapsed,
+              toggle: { toggleGroup(fieldGroup.id) }) {
+            if !collapsed {
+                ForEach(fieldGroup.rows) { fieldRow($0) }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func fieldRow(_ fieldRow: EditorFields.Row) -> some View {
+        switch fieldRow {
+        case .single(let key):
+            row(EditorFields.label(for: key)) { fieldInput(key) }
+        case .duo(let label, let numberKey, let totalKey):
+            row(label) {
+                HStack(spacing: 6) {
+                    fieldInput(numberKey).frame(width: 64)
+                    Text("/").foregroundStyle(.tertiary)
+                    fieldInput(totalKey).frame(width: 64)
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    /// One field's text input, with the staged-green tint, the shared/multiple
+    /// prompt, and an inline validation hint for the numeric/typed fields.
+    @ViewBuilder
+    private func fieldInput(_ key: String) -> some View {
+        let hint = EditorFields.validationHint(for: key, value: currentValue(key))
+        VStack(alignment: .leading, spacing: 2) {
+            TextField("", text: binding(key), prompt: prompt(key))
+                .textFieldStyle(.roundedBorder)
+                .font(EditorFields.numericKeys.contains(key) ? AppFonts.monoSized(13) : AppFonts.body)
+                .multilineTextAlignment(EditorFields.numericKeys.contains(key) ? .trailing : .leading)
+                .foregroundStyle(isStaged(key) ? AnyShapeStyle(.green) : AnyShapeStyle(.primary))
+                .onSubmit { stage(key) }
+            if let hint {
+                Text(hint).font(.caption2).foregroundStyle(.red)
+            }
+        }
+    }
+
     private func group<Content: View>(
         _ title: String,
+        collapsible: Bool,
+        count: Int? = nil,
+        collapsed: Bool = false,
+        toggle: (() -> Void)? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                Text(title)
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                if let count, collapsible {
+                    Text("\(count)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(collapsed ? -90 : 0))
+                }
+                Spacer()
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { if collapsible { toggle?() } }
             content()
         }
+    }
+
+    private func toggleGroup(_ id: String) {
+        if collapsedGroups.contains(id) { collapsedGroups.remove(id) } else { collapsedGroups.insert(id) }
     }
 
     /// One panel row: a fixed label column, then the control filling the rest —
@@ -589,26 +664,33 @@ struct ModePanel: View {
         }
     }
 
-    private func binding(_ field: Field) -> Binding<String> {
+    private func binding(_ key: String) -> Binding<String> {
         Binding(
-            get: {
-                if let draft = drafts[field] { return draft }
-                if let staged = stagedShared(field) { return staged }
-                return shared { $0.value(for: field) }
-            },
-            set: { drafts[field] = $0 }
+            get: { currentValue(key) },
+            set: { drafts[key] = $0 }
         )
     }
 
-    private func stage(_ field: Field) {
-        guard let draft = drafts[field] else { return }
-        library.stage(field, to: draft, for: tracks.map(\.id))
-        drafts.removeValue(forKey: field)
+    /// What a field shows: the in-flight draft, else the staged value the whole
+    /// selection shares, else the selection's own shared value.
+    private func currentValue(_ key: String) -> String {
+        if let draft = drafts[key] { return draft }
+        if let staged = stagedShared(key) { return staged }
+        return shared { $0.value(forKey: key) }
+    }
+
+    private func stage(_ key: String) {
+        guard let draft = drafts[key] else { return }
+        // A value that would not write (a non-numeric year, say) is not staged —
+        // the same gate the web editor puts before staging.
+        if EditorFields.validationHint(for: key, value: draft) != nil { return }
+        library.stage(key, to: draft, for: tracks.map(\.id))
+        drafts.removeValue(forKey: key)
     }
 
     /// A staged value the whole selection shares, when there is one.
-    private func stagedShared(_ field: Field) -> String? {
-        let values = tracks.compactMap { library.stagedValue(field, for: $0.id) }
+    private func stagedShared(_ key: String) -> String? {
+        let values = tracks.compactMap { library.stagedValue(key, for: $0.id) }
         guard values.count == tracks.count, Set(values).count == 1 else { return nil }
         return values.first
     }
@@ -623,13 +705,13 @@ struct ModePanel: View {
 
     /// What an empty field shows: the app's own <multiple values> when the
     /// selection disagrees, nothing when it is simply empty.
-    private func prompt(_ field: Field) -> Text {
-        let values = Set(tracks.map { $0.value(for: field) })
+    private func prompt(_ key: String) -> Text {
+        let values = Set(tracks.map { $0.value(forKey: key) })
         return Text(values.count > 1 ? "<multiple values>" : "")
     }
 
-    private func isStaged(_ field: Field) -> Bool {
-        tracks.contains { library.stagedValue(field, for: $0.id) != nil }
+    private func isStaged(_ key: String) -> Bool {
+        tracks.contains { library.stagedValue(key, for: $0.id) != nil }
     }
 }
 

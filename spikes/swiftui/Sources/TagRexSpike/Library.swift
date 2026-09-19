@@ -39,6 +39,12 @@ struct Track: Identifiable, Decodable, Hashable {
         tags[key.rawValue] ?? ""
     }
 
+    /// The value under an arbitrary storage key — what the dynamic tag editor
+    /// reads, since it edits the file's real tags, not just the modeled columns.
+    func value(forKey key: String) -> String {
+        tags[key] ?? ""
+    }
+
     // Mapped by hand rather than through a snake-case decoding strategy: that
     // strategy also rewrites dictionary keys, which would mangle the `tags` map
     // and any plan the bridge round-trips back into a later call.
@@ -389,9 +395,11 @@ final class Library {
     /// prefetch and opening a release share one fetch.
     private var releaseCache: [String: Release] = [:]
 
-    /// The staged edit map: path → field → new value. Nothing is on disk until
-    /// Apply. It drives the table diff for both a hand edit and a staged import.
-    private(set) var staged: [String: [Field: String]] = [:]
+    /// The staged edit map: path → storage-key → new value. Nothing is on disk
+    /// until Apply. It drives the table diff for both a hand edit and a staged
+    /// import. Keyed by the raw storage key (not the modeled `Field` enum) so the
+    /// dynamic editor can stage any tag the file carries, not only the columns.
+    private(set) var staged: [String: [String: String]] = [:]
 
     /// A whole staged plan from an online import (#300). When set, Apply writes
     /// this plan rather than rebuilding one from `staged` — the plan carries more
@@ -482,7 +490,7 @@ final class Library {
     /// value equal to what the file already holds stages nothing, so typing a
     /// value back to what it was cancels the change instead of recording a
     /// no-op the way the web editor does.
-    func stage(_ field: Field, to value: String, for ids: [Track.ID]) {
+    func stage(_ key: String, to value: String, for ids: [Track.ID]) {
         // A hand edit supersedes a pending import or rename: the staging sources
         // must not mix, and Apply follows whichever is current.
         stagedPlan = nil
@@ -491,10 +499,10 @@ final class Library {
         for id in ids {
             guard let track = tracks.first(where: { $0.id == id }) else { continue }
 
-            if track.value(for: field) == value {
-                staged[id]?.removeValue(forKey: field)
+            if track.value(forKey: key) == value {
+                staged[id]?.removeValue(forKey: key)
             } else {
-                staged[id, default: [:]][field] = value
+                staged[id, default: [:]][key] = value
             }
             if staged[id]?.isEmpty == true {
                 staged.removeValue(forKey: id)
@@ -503,8 +511,8 @@ final class Library {
     }
 
     /// The staged value for a cell, or nil when the cell is unchanged.
-    func stagedValue(_ field: Field, for id: Track.ID) -> String? {
-        staged[id]?[field]
+    func stagedValue(_ key: String, for id: Track.ID) -> String? {
+        staged[id]?[key]
     }
 
     func discard() {
@@ -531,7 +539,7 @@ final class Library {
 
         let edits: [[String: String]] = staged.flatMap { path, fields in
             fields.map { field, value in
-                ["path": path, "field": field.rawValue, "value": value]
+                ["path": path, "field": field, "value": value]
             }
         }
         let count = staged.count
@@ -795,7 +803,7 @@ final class Library {
             media_type: release.mediaTagValue
         )
         let box = SessionHandle(raw: session)
-        let result: Result<(JSONValue, [String: [Field: String]], Int), SearchFailure> =
+        let result: Result<(JSONValue, [String: [String: String]], Int), SearchFailure> =
             await Task.detached(priority: .userInitiated) {
                 let args = ImportArgs(paths: paths, selection: selection, vinyl_sides_to_disc: false)
                 let reply: Reply<JSONValue>? = invoke(box, "preview_import", encodeArgs(args))
@@ -808,11 +816,10 @@ final class Library {
                 else {
                     return .failure(SearchFailure(message: "could not read the import plan"))
                 }
-                var diffs: [String: [Field: String]] = [:]
+                var diffs: [String: [String: String]] = [:]
                 for change in parsed.changes {
-                    for tagChange in change.tag_changes where Field(rawValue: tagChange.field) != nil {
-                        diffs[change.path, default: [:]][Field(rawValue: tagChange.field)!] =
-                            tagChange.new ?? ""
+                    for tagChange in change.tag_changes {
+                        diffs[change.path, default: [:]][tagChange.field] = tagChange.new ?? ""
                     }
                 }
                 return .success((plan, diffs, parsed.changes.count))
@@ -1008,7 +1015,7 @@ final class Library {
     func stageFromName(mask: String, paths: [String]) async -> Result<Int, SearchFailure> {
         guard let session, !mask.isEmpty, !paths.isEmpty else { return .success(0) }
         let box = SessionHandle(raw: session)
-        let result: Result<(JSONValue, [String: [Field: String]], Int), SearchFailure> =
+        let result: Result<(JSONValue, [String: [String: String]], Int), SearchFailure> =
             await Task.detached(priority: .userInitiated) {
                 let reply: Reply<JSONValue>? = invoke(
                     box, "preview_tags_from_name",
@@ -1020,10 +1027,10 @@ final class Library {
                 guard let parsed = decodePlan(plan) else {
                     return .failure(SearchFailure(message: "could not read the plan"))
                 }
-                var diffs: [String: [Field: String]] = [:]
+                var diffs: [String: [String: String]] = [:]
                 for change in parsed.changes {
-                    for tag in change.tag_changes where Field(rawValue: tag.field) != nil {
-                        diffs[change.path, default: [:]][Field(rawValue: tag.field)!] = tag.new ?? ""
+                    for tag in change.tag_changes {
+                        diffs[change.path, default: [:]][tag.field] = tag.new ?? ""
                     }
                 }
                 return .success((plan, diffs, parsed.changes.count))
@@ -1088,7 +1095,7 @@ final class Library {
     ) async -> Result<Int, SearchFailure> {
         guard let session, !rules.isEmpty, !paths.isEmpty else { return .success(0) }
         let box = SessionHandle(raw: session)
-        let result: Result<(JSONValue, [String: [Field: String]], [String: String], Int), SearchFailure> =
+        let result: Result<(JSONValue, [String: [String: String]], [String: String], Int), SearchFailure> =
             await Task.detached(priority: .userInitiated) {
                 let reply: Reply<JSONValue>? = invoke(
                     box, "preview_transform",
@@ -1100,12 +1107,12 @@ final class Library {
                 guard let parsed = decodePlan(plan) else {
                     return .failure(SearchFailure(message: "could not read the transform plan"))
                 }
-                var diffs: [String: [Field: String]] = [:]
+                var diffs: [String: [String: String]] = [:]
                 var renames: [String: String] = [:]
                 for change in parsed.changes {
                     if let to = change.rename_to { renames[change.path] = baseName(to) }
-                    for tag in change.tag_changes where Field(rawValue: tag.field) != nil {
-                        diffs[change.path, default: [:]][Field(rawValue: tag.field)!] = tag.new ?? ""
+                    for tag in change.tag_changes {
+                        diffs[change.path, default: [:]][tag.field] = tag.new ?? ""
                     }
                 }
                 return .success((plan, diffs, renames, parsed.changes.count))
