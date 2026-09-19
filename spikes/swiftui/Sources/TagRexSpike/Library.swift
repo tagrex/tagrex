@@ -339,7 +339,7 @@ struct NameProbe: Decodable {
 
 /// One transform rule, as the backend's TransformRuleDto. snake_case keys are
 /// the property names, since the ABI does not convert them.
-struct TransformRule: Encodable {
+struct TransformRule: Codable {
     var kind: String
     var from = ""
     var to = ""
@@ -348,6 +348,65 @@ struct TransformRule: Encodable {
     var case_sensitive = false
     var style = ""
     var enabled = true
+    /// What this step acts on, overriding the group's scope (#250): a field key,
+    /// `tags`, `filename`/`fileext`, or nil to follow the group.
+    var scope: String?
+
+    init(kind: String, from: String = "", to: String = "", regex: Bool = false,
+         whole_word: Bool = false, case_sensitive: Bool = false, style: String = "",
+         enabled: Bool = true, scope: String? = nil) {
+        self.kind = kind
+        self.from = from
+        self.to = to
+        self.regex = regex
+        self.whole_word = whole_word
+        self.case_sensitive = case_sensitive
+        self.style = style
+        self.enabled = enabled
+        self.scope = scope
+    }
+
+    // Manual decode so a builtin group missing an optional field still loads
+    // (synthesized Decodable ignores the property defaults above).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try c.decode(String.self, forKey: .kind)
+        from = try c.decodeIfPresent(String.self, forKey: .from) ?? ""
+        to = try c.decodeIfPresent(String.self, forKey: .to) ?? ""
+        regex = try c.decodeIfPresent(Bool.self, forKey: .regex) ?? false
+        whole_word = try c.decodeIfPresent(Bool.self, forKey: .whole_word) ?? false
+        case_sensitive = try c.decodeIfPresent(Bool.self, forKey: .case_sensitive) ?? false
+        style = try c.decodeIfPresent(String.self, forKey: .style) ?? ""
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        scope = try c.decodeIfPresent(String.self, forKey: .scope)
+    }
+}
+
+/// A named chain of transform steps run as one previewable batch (#57): the
+/// group's default scope, its rules (each optionally overriding that scope), and
+/// a one-line note the shipped presets carry.
+struct ActionGroup: Codable, Identifiable {
+    var name: String
+    var scope: String
+    var rules: [TransformRule]
+    var note: String = ""
+
+    var id: String { name }
+
+    init(name: String, scope: String, rules: [TransformRule], note: String = "") {
+        self.name = name
+        self.scope = scope
+        self.rules = rules
+        self.note = note
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        scope = try c.decodeIfPresent(String.self, forKey: .scope) ?? "tags"
+        rules = try c.decode([TransformRule].self, forKey: .rules)
+        note = try c.decodeIfPresent(String.self, forKey: .note) ?? ""
+    }
 }
 
 /// One line of a transform preview: what changed (a field name or "file"), its
@@ -1224,6 +1283,84 @@ final class Library {
         }
     }
 
+    /// The shipped rule chains (`builtin_action_groups`), to load into the editor.
+    func builtinActionGroups() async -> [ActionGroup] {
+        guard let session else { return [] }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<[ActionGroup]>? = invoke(box, "builtin_action_groups", "{}")
+            return reply?.ok ?? []
+        }.value
+    }
+
+    /// Preview an action-group chain over the selection (`preview_transform_groups`):
+    /// every rule in order, each on its own scope or the group's. Read-only.
+    func transformGroupsPreview(
+        groups: [ActionGroup], paths: [String]
+    ) async -> Result<[TransformPair], SearchFailure> {
+        guard let session, !groups.isEmpty, !paths.isEmpty else { return .success([]) }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<JSONValue>? = invoke(
+                box, "preview_transform_groups", encodeArgs(TransformGroupsArg(paths: paths, groups: groups)))
+            guard let plan = reply?.ok else {
+                return .failure(SearchFailure(message: reply?.error?.text ?? "the chain could not be previewed"))
+            }
+            guard let parsed = decodePlan(plan) else {
+                return .failure(SearchFailure(message: "could not read the chain plan"))
+            }
+            var pairs: [TransformPair] = []
+            for change in parsed.changes {
+                if let to = change.rename_to {
+                    pairs.append(TransformPair(label: "file", old: baseName(change.path), new: baseName(to)))
+                }
+                for tag in change.tag_changes {
+                    pairs.append(TransformPair(label: tag.field, old: tag.old ?? "", new: tag.new ?? ""))
+                }
+            }
+            return .success(pairs)
+        }.value
+    }
+
+    /// Build the action-group plan and stage it (`preview_transform_groups`), the
+    /// change bar applies it — one journaled batch.
+    func stageTransformGroups(groups: [ActionGroup], paths: [String]) async -> Result<Int, SearchFailure> {
+        guard let session, !groups.isEmpty, !paths.isEmpty else { return .success(0) }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, [String: [String: String]], [String: String], Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let reply: Reply<JSONValue>? = invoke(
+                    box, "preview_transform_groups", encodeArgs(TransformGroupsArg(paths: paths, groups: groups)))
+                guard let plan = reply?.ok else {
+                    return .failure(SearchFailure(message: reply?.error?.text ?? "the chain could not be prepared"))
+                }
+                guard let parsed = decodePlan(plan) else {
+                    return .failure(SearchFailure(message: "could not read the chain plan"))
+                }
+                var diffs: [String: [String: String]] = [:]
+                var renames: [String: String] = [:]
+                for change in parsed.changes {
+                    if let to = change.rename_to { renames[change.path] = baseName(to) }
+                    for tag in change.tag_changes {
+                        diffs[change.path, default: [:]][tag.field] = tag.new ?? ""
+                    }
+                }
+                return .success((plan, diffs, renames, parsed.changes.count))
+            }.value
+
+        switch result {
+        case .success(let (plan, diffs, renames, count)):
+            staged = diffs
+            stagedRenames = renames
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged a transform of \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            return .failure(failure)
+        }
+    }
+
     // MARK: - Tag blocks (#47, #205)
 
     /// What the selection can be converted to: the block kinds every selected
@@ -1903,6 +2040,11 @@ private struct TransformArgs: Encodable {
     let paths: [String]
     let rules: [TransformRule]
     let scope: String
+}
+
+private struct TransformGroupsArg: Encodable {
+    let paths: [String]
+    let groups: [ActionGroup]
 }
 
 private struct CriterionArg: Encodable {

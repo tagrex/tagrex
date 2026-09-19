@@ -1,6 +1,8 @@
-// The Generator panel (#303): pick a scope and one transform rule, preview what
-// it changes, and stage it through the same gate. One rule for now; a chain of
-// them is a later step.
+// The Generator panel (#303, #57): build a chain of transform rules — a case
+// change, a find & replace, an accent strip — each optionally targeting its own
+// field, preview what the whole chain changes, and stage it through the same
+// gate. Shipped presets (builtin action groups) load into the editor. One
+// action group, run through preview_transform_groups.
 
 import SwiftUI
 
@@ -9,8 +11,9 @@ struct GeneratorPanel: View {
     let library: Library
     let selection: Set<Track.ID>
 
-    /// scope key → label, in menu order.
-    private static let scopes: [(String, String)] = [
+    /// scope key → label, in menu order. The first entries are the whole-tag /
+    /// filename scopes; the field scopes let a rule target one column.
+    static let scopes: [(String, String)] = [
         ("tags", "All tags"),
         ("artist", "Artist"),
         ("title", "Title"),
@@ -23,16 +26,19 @@ struct GeneratorPanel: View {
         ("fileext", "Extension"),
     ]
 
-    @State private var scope = "title"
-    @State private var kind = "case"
+    /// The rule kinds the editor offers args for. Others (loaded from a preset)
+    /// still run; they just show no arg row.
+    private static let kinds: [(String, String)] = [
+        ("case", "Change case"),
+        ("replace", "Find & replace"),
+        ("diacritics", "Strip accents"),
+        ("transliterate", "Transliterate"),
+        ("key", "Musical key"),
+    ]
 
-    // Rule args.
-    @State private var caseStyle = "title"
-    @State private var replaceFrom = ""
-    @State private var replaceTo = ""
-    @State private var regex = false
-    @State private var wholeWord = false
-    @State private var caseSensitive = false
+    @State private var groupScope = "title"
+    @State private var rules: [ChainRule] = [ChainRule()]
+    @State private var builtins: [ActionGroup] = []
 
     @State private var pairs: [TransformPair] = []
     @State private var error: String?
@@ -43,22 +49,16 @@ struct GeneratorPanel: View {
         return selected.isEmpty ? library.visibleTracks.map(\.id) : selected
     }
 
-    /// The rule the current controls describe.
-    private var rule: TransformRule {
-        switch kind {
-        case "case":
-            TransformRule(kind: "case", style: caseStyle)
-        case "replace":
-            TransformRule(
-                kind: "replace", from: replaceFrom, to: replaceTo,
-                regex: regex, whole_word: wholeWord, case_sensitive: caseSensitive)
-        default:
-            TransformRule(kind: kind)
-        }
+    /// The action group the chain describes.
+    private var group: ActionGroup {
+        ActionGroup(name: "chain", scope: groupScope, rules: rules.map(\.transformRule))
     }
 
+    private var enabledCount: Int { rules.filter(\.enabled).count }
+
     private var refreshKey: String {
-        "\(scope)|\(kind)|\(caseStyle)|\(replaceFrom)|\(replaceTo)|\(regex)\(wholeWord)\(caseSensitive)|\(paths.count)|\(paths.first ?? "")"
+        let sig = rules.map { "\($0.kind)\($0.style)\($0.from)\($0.to)\($0.regex)\($0.wholeWord)\($0.caseSensitive)\($0.enabled)\($0.scopeOverride ?? "")" }.joined()
+        return "\(groupScope)|\(sig)|\(paths.count)|\(paths.first ?? "")"
     }
 
     var body: some View {
@@ -69,28 +69,31 @@ struct GeneratorPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: refreshKey) { await refresh() }
+        .task { builtins = await library.builtinActionGroups() }
     }
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 10) {
-            labeled("Apply to") {
-                Picker("", selection: $scope) {
+            HStack(spacing: 8) {
+                Text("Apply to").foregroundStyle(.secondary)
+                Picker("", selection: $groupScope) {
                     ForEach(Self.scopes, id: \.0) { Text($0.1).tag($0.0) }
                 }
                 .labelsHidden()
+                Spacer()
+                presetMenu
             }
 
-            labeled("Rule") {
-                Picker("", selection: $kind) {
-                    Text("Change case").tag("case")
-                    Text("Find & replace").tag("replace")
-                    Text("Strip accents").tag("diacritics")
-                    Text("Transliterate").tag("transliterate")
-                }
-                .labelsHidden()
+            ForEach($rules) { $rule in
+                ruleCard($rule)
             }
 
-            ruleArgs
+            Button {
+                rules.append(ChainRule())
+            } label: {
+                Label("Add rule", systemImage: "plus")
+            }
+            .buttonStyle(.borderless)
 
             HStack {
                 Text(scopeLabel).font(.caption).foregroundStyle(.secondary)
@@ -110,10 +113,83 @@ struct GeneratorPanel: View {
     }
 
     @ViewBuilder
-    private var ruleArgs: some View {
-        switch kind {
+    private var presetMenu: some View {
+        Menu {
+            if builtins.isEmpty {
+                Text("No presets").disabled(true)
+            } else {
+                ForEach(builtins) { preset in
+                    Button {
+                        loadPreset(preset)
+                    } label: {
+                        Text(preset.note.isEmpty ? preset.name : "\(preset.name) — \(preset.note)")
+                    }
+                }
+            }
+        } label: {
+            Label("Presets", systemImage: "square.stack.3d.up")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Load a shipped rule chain")
+    }
+
+    // MARK: - Rule card
+
+    @ViewBuilder
+    private func ruleCard(_ rule: Binding<ChainRule>) -> some View {
+        let index = rules.firstIndex { $0.id == rule.wrappedValue.id } ?? 0
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Picker("", selection: rule.kind) {
+                    ForEach(Self.kinds, id: \.0) { Text($0.1).tag($0.0) }
+                    // Keep a loaded preset's unknown kind selectable, not blanked.
+                    if !Self.kinds.contains(where: { $0.0 == rule.wrappedValue.kind }) {
+                        Text(rule.wrappedValue.kind).tag(rule.wrappedValue.kind)
+                    }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                Spacer()
+                Toggle("On", isOn: rule.enabled)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .labelsHidden()
+                    .help("Include this step")
+                Button { move(index, by: -1) } label: { Image(systemName: "chevron.up") }
+                    .buttonStyle(.borderless).controlSize(.small).disabled(index == 0)
+                Button { move(index, by: 1) } label: { Image(systemName: "chevron.down") }
+                    .buttonStyle(.borderless).controlSize(.small).disabled(index == rules.count - 1)
+                Button { rules.removeAll { $0.id == rule.wrappedValue.id } } label: {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.borderless).controlSize(.small).disabled(rules.count == 1)
+            }
+
+            ruleArgs(rule)
+
+            HStack(spacing: 6) {
+                Text("on").font(.caption).foregroundStyle(.tertiary)
+                Picker("", selection: rule.scopeOverride) {
+                    Text("(group scope)").tag(String?.none)
+                    ForEach(Self.scopes, id: \.0) { Text($0.1).tag(String?.some($0.0)) }
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+            }
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.cardBorder, lineWidth: 1))
+        .opacity(rule.wrappedValue.enabled ? 1 : 0.5)
+    }
+
+    @ViewBuilder
+    private func ruleArgs(_ rule: Binding<ChainRule>) -> some View {
+        switch rule.wrappedValue.kind {
         case "case":
-            Picker("", selection: $caseStyle) {
+            Picker("", selection: rule.style) {
                 Text("lower case").tag("lower")
                 Text("UPPER CASE").tag("upper")
                 Text("Title Case").tag("title")
@@ -121,27 +197,50 @@ struct GeneratorPanel: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
+            .controlSize(.small)
         case "replace":
-            VStack(alignment: .leading, spacing: 6) {
-                TextField("Find", text: $replaceFrom).textFieldStyle(.roundedBorder)
-                TextField("Replace with", text: $replaceTo).textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("Find", text: rule.from).textFieldStyle(.roundedBorder)
+                TextField("Replace with", text: rule.to).textFieldStyle(.roundedBorder)
                 HStack(spacing: 12) {
-                    Toggle("Regex", isOn: $regex)
-                    Toggle("Whole word", isOn: $wholeWord)
-                    Toggle("Case", isOn: $caseSensitive)
+                    Toggle("Regex", isOn: rule.regex)
+                    Toggle("Whole word", isOn: rule.wholeWord)
+                    Toggle("Case", isOn: rule.caseSensitive)
                 }
                 .toggleStyle(.checkbox)
                 .font(.caption)
             }
+        case "key":
+            Picker("", selection: rule.style) {
+                Text("Camelot").tag("camelot")
+                Text("Open Key").tag("openkey")
+                Text("Musical").tag("musical")
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
         default:
             EmptyView()
         }
     }
 
+    private func move(_ index: Int, by delta: Int) {
+        let target = index + delta
+        guard rules.indices.contains(index), rules.indices.contains(target) else { return }
+        rules.swapAt(index, target)
+    }
+
+    private func loadPreset(_ preset: ActionGroup) {
+        groupScope = preset.scope
+        rules = preset.rules.map(ChainRule.init(from:))
+        if rules.isEmpty { rules = [ChainRule()] }
+    }
+
     private var scopeLabel: String {
         let selected = library.tracks.map(\.id).filter(selection.contains)
         let base = selected.isEmpty ? "all \(paths.count) file(s)" : "\(paths.count) selected"
-        return pairs.isEmpty ? base : "\(pairs.count) change · \(base)"
+        let steps = "\(enabledCount) step\(enabledCount == 1 ? "" : "s")"
+        return pairs.isEmpty ? "\(steps) · \(base)" : "\(pairs.count) change · \(base)"
     }
 
     @ViewBuilder
@@ -156,7 +255,7 @@ struct GeneratorPanel: View {
             ContentUnavailableView(
                 "Nothing to change",
                 systemImage: "wand.and.stars",
-                description: Text("This rule leaves every value as it is.")
+                description: Text("This chain leaves every value as it is.")
             )
         } else {
             List(pairs) { pair in
@@ -181,18 +280,11 @@ struct GeneratorPanel: View {
         }
     }
 
-    private func labeled<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {
-        HStack(spacing: 10) {
-            Text(label).frame(width: 68, alignment: .leading).foregroundStyle(.secondary)
-            content()
-        }
-    }
-
     private func refresh() async {
         try? await Task.sleep(for: .milliseconds(250))
         if Task.isCancelled { return }
         error = nil
-        switch await library.transformPreview(rules: [rule], scope: scope, paths: paths) {
+        switch await library.transformGroupsPreview(groups: [group], paths: paths) {
         case .success(let found): pairs = found
         case .failure(let failure): pairs = []; error = failure.message
         }
@@ -201,11 +293,47 @@ struct GeneratorPanel: View {
     private func stage() {
         isStaging = true
         Task {
-            if case .failure(let failure) = await library.stageTransform(
-                rules: [rule], scope: scope, paths: paths) {
+            if case .failure(let failure) = await library.stageTransformGroups(groups: [group], paths: paths) {
                 error = failure.message
             }
             isStaging = false
         }
+    }
+}
+
+/// One editable step in the chain. Holds every rule kind's args; `transformRule`
+/// projects the fields the current kind uses into the backend rule.
+struct ChainRule: Identifiable {
+    let id = UUID()
+    var kind = "case"
+    var style = "title"
+    var from = ""
+    var to = ""
+    var regex = false
+    var wholeWord = false
+    var caseSensitive = false
+    var enabled = true
+    /// nil = follow the group's scope; a scope key overrides it for this step.
+    var scopeOverride: String?
+
+    var transformRule: TransformRule {
+        TransformRule(
+            kind: kind, from: from, to: to, regex: regex, whole_word: wholeWord,
+            case_sensitive: caseSensitive, style: style, enabled: enabled, scope: scopeOverride)
+    }
+
+    init() {}
+
+    /// Build an editable step from a backend rule (loading a preset).
+    init(from rule: TransformRule) {
+        kind = rule.kind
+        style = rule.style
+        from = rule.from
+        to = rule.to
+        regex = rule.regex
+        wholeWord = rule.whole_word
+        caseSensitive = rule.case_sensitive
+        enabled = rule.enabled
+        scopeOverride = rule.scope
     }
 }
