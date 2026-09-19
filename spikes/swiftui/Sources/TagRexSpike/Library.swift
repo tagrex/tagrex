@@ -1022,6 +1022,71 @@ final class Library {
         }
     }
 
+    /// Preview reorganising files into folders (#37): the mask is a folder
+    /// pattern (`%albumartist%/%album%/%track% - %title%`), each file's new home
+    /// shown relative to the destination (or the library root). Read-only.
+    func movePreview(
+        mask: String, paths: [String], destination: String?, copy: Bool
+    ) async -> Result<[RenamePair], SearchFailure> {
+        guard let session, !mask.isEmpty, !paths.isEmpty else { return .success([]) }
+        let box = SessionHandle(raw: session)
+        let base = destination ?? root?.path
+        return await Task.detached(priority: .userInitiated) {
+            let args = MoveArg(mask: mask, paths: paths, destination: destination,
+                               copy: copy, prune_empty_dirs: false)
+            let reply: Reply<JSONValue>? = invoke(box, "preview_move", encodeArgs(args))
+            guard let plan = reply?.ok else {
+                return .failure(SearchFailure(message: reply?.error?.text ?? "the move could not be previewed"))
+            }
+            guard let parsed = decodePlan(plan) else {
+                return .failure(SearchFailure(message: "could not read the move plan"))
+            }
+            let pairs = parsed.changes.compactMap { change -> RenamePair? in
+                guard let to = change.rename_to else { return nil }
+                return RenamePair(old: baseName(change.path), new: relativePath(to, under: base))
+            }
+            return .success(pairs)
+        }.value
+    }
+
+    /// Build the move plan and stage it: the File column shows each new name, the
+    /// change bar applies it — one journaled batch, undoable like any other.
+    func stageMove(
+        mask: String, paths: [String], destination: String?, copy: Bool, prune: Bool
+    ) async -> Result<Int, SearchFailure> {
+        guard let session, !mask.isEmpty, !paths.isEmpty else { return .success(0) }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, [String: String], Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let args = MoveArg(mask: mask, paths: paths, destination: destination,
+                                   copy: copy, prune_empty_dirs: copy ? false : prune)
+                let reply: Reply<JSONValue>? = invoke(box, "preview_move", encodeArgs(args))
+                guard let plan = reply?.ok else {
+                    return .failure(SearchFailure(message: reply?.error?.text ?? "the move could not be prepared"))
+                }
+                guard let parsed = decodePlan(plan) else {
+                    return .failure(SearchFailure(message: "could not read the move plan"))
+                }
+                var renames: [String: String] = [:]
+                for change in parsed.changes {
+                    if let to = change.rename_to { renames[change.path] = baseName(to) }
+                }
+                return .success((plan, renames, renames.count))
+            }.value
+
+        switch result {
+        case .success(let (plan, renames, count)):
+            staged.removeAll()
+            stagedRenames = renames
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged a \(copy ? "copy" : "move") of \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            return .failure(failure)
+        }
+    }
+
     // MARK: - Tags from name
 
     /// Probe one file's name through a mask: what the mask captures. Read-only.
@@ -1640,6 +1705,14 @@ private struct ReadCoverImageArg: Encodable {
     let path: String
 }
 
+private struct MoveArg: Encodable {
+    let mask: String
+    let paths: [String]
+    let destination: String?
+    let copy: Bool
+    let prune_empty_dirs: Bool
+}
+
 private struct CoverSetArg: Encodable {
     let paths: [String]
     let covers: [Library.CoverArt]
@@ -1861,6 +1934,19 @@ private func decodePlan(_ plan: JSONValue) -> StagedPlanShape? {
 
 private func baseName(_ path: String) -> String {
     (path as NSString).lastPathComponent
+}
+
+/// A path shown relative to `base` (the move destination or library root), so a
+/// reorganise preview reads as the folder tree it builds rather than a long
+/// absolute path. Falls back to the last two components when `base` isn't a
+/// prefix (a move outside the root).
+private func relativePath(_ path: String, under base: String?) -> String {
+    if var base, !base.isEmpty {
+        while base.count > 1, base.hasSuffix("/") { base.removeLast() }
+        if path.hasPrefix(base + "/") { return String(path.dropFirst(base.count + 1)) }
+    }
+    let parts = (path as NSString).pathComponents
+    return parts.suffix(2).joined(separator: "/")
 }
 
 private struct PathArg: Encodable {

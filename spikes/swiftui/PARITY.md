@@ -69,7 +69,7 @@ The stand is **one rule**. The Tauri generator is a rule-chain engine.
 
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
-| R1 | Rename in place only | **Move / reorganise into folders** — move modes + destination picker (`previewMove`, `setMoveMode`, `pickDestination`, renamer.js:62/96/127) | P1 | `preview_move` ready |
+| R1 | ✅ **Done** — a Move-into-folders sub-mode: folder pattern, destination picker, Move/Copy, prune-empty toggle, and a preview of each file's new folder path (`Renamer.swift`) | **Move / reorganise into folders** — move modes + destination picker (`previewMove`, `setMoveMode`, `pickDestination`, renamer.js:62/96/127) | P1 | `preview_move` ready |
 | R2 | Mask not remembered | Mask + destination **persisted** (`writeStored`/`readStored`, renamer.js:108) | P3 | n/a |
 
 ## 5. From name — `fromname.js` (168) vs `FromName.swift` (143)
