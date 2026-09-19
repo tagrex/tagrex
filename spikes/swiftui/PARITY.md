@@ -89,7 +89,7 @@ formatting). Gap: acting on a group.
 
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
-| D1 | Read-only scan | **Trash** the redundant files in a group (`trash_files`) | P2 | `trash_files` ready |
+| D1 | ✅ **Done** — the first file in each group is badged "keep"; a per-file trash button and a group "Trash extras" move the rest to the Trash (`trash_files`), behind a confirmation, then re-scan (`Duplicates.swift`) | **Trash** the redundant files in a group (`trash_files`) | P2 | `trash_files` ready |
 | D2 | Two "no duplicates" messages | one empty state | P3 | n/a |
 
 ## 7. Exporter — `exporters.js` (139) vs `Export.swift` (119)

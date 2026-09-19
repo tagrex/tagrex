@@ -21,6 +21,14 @@ struct DuplicatesPanel: View {
     @State private var error: String?
     @State private var isScanning = false
     @State private var scanned = false
+    @State private var pendingTrash: TrashRequest?
+
+    /// A trash held for confirmation: which files, and how to word the prompt.
+    private struct TrashRequest: Identifiable {
+        let id = UUID()
+        let paths: [String]
+        let message: String
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -30,6 +38,16 @@ struct DuplicatesPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: criterion) { await scan() }
+        .alert("Move to Trash?", isPresented: trashPresented, presenting: pendingTrash) { request in
+            Button("Move to Trash", role: .destructive) { trash(request.paths) }
+            Button("Cancel", role: .cancel) {}
+        } message: { request in
+            Text(request.message)
+        }
+    }
+
+    private var trashPresented: Binding<Bool> {
+        Binding(get: { pendingTrash != nil }, set: { if !$0 { pendingTrash = nil } })
     }
 
     private var form: some View {
@@ -77,11 +95,20 @@ struct DuplicatesPanel: View {
             List {
                 ForEach(groups) { group in
                     Section {
-                        ForEach(group.files) { file in
-                            row(file)
+                        ForEach(Array(group.files.enumerated()), id: \.element.id) { index, file in
+                            row(file, isFirst: index == 0)
                         }
                     } header: {
-                        Text(group.key).font(.caption)
+                        HStack {
+                            Text(group.key).font(.caption)
+                            Spacer()
+                            if group.files.count > 1 {
+                                Button("Trash extras") { confirmTrashExtras(group) }
+                                    .buttonStyle(.borderless)
+                                    .controlSize(.small)
+                                    .help("Move every file but the first in this group to the Trash")
+                            }
+                        }
                     }
                 }
             }
@@ -89,26 +116,57 @@ struct DuplicatesPanel: View {
         }
     }
 
-    private func row(_ file: DuplicateFile) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(file.file)
-                .font(AppFonts.mono)
-                .lineLimit(1)
-            HStack(spacing: 6) {
-                Text([file.artist, file.title].filter { !$0.isEmpty }.joined(separator: " — "))
-                    .lineLimit(1)
-                Spacer()
-                Text(file.duration).monospacedDigit()
-                Text("·")
-                Text(file.size).monospacedDigit()
-                if let kbps = file.bitrateKbps {
-                    Text("· \(kbps)k").monospacedDigit()
+    private func row(_ file: DuplicateFile, isFirst: Bool) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(file.file)
+                        .font(AppFonts.mono)
+                        .lineLimit(1)
+                    if isFirst {
+                        Text("keep")
+                            .font(.caption2)
+                            .foregroundStyle(.tint)
+                    }
                 }
+                HStack(spacing: 6) {
+                    Text([file.artist, file.title].filter { !$0.isEmpty }.joined(separator: " — "))
+                        .lineLimit(1)
+                    Spacer()
+                    Text(file.duration).monospacedDigit()
+                    Text("·")
+                    Text(file.size).monospacedDigit()
+                    if let kbps = file.bitrateKbps {
+                        Text("· \(kbps)k").monospacedDigit()
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            Button {
+                pendingTrash = TrashRequest(paths: [file.path], message: "Move \(file.file) to the Trash?")
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .controlSize(.small)
+            .help("Move this file to the Trash")
         }
         .padding(.vertical, 1)
+    }
+
+    private func confirmTrashExtras(_ group: DuplicateGroup) {
+        let extras = Array(group.files.dropFirst()).map(\.path)
+        guard !extras.isEmpty else { return }
+        pendingTrash = TrashRequest(
+            paths: extras,
+            message: "Move \(extras.count) file(s) to the Trash, keeping \(group.files[0].file)?")
+    }
+
+    private func trash(_ paths: [String]) {
+        Task {
+            if case .success = await library.trashFiles(paths) { await scan() }
+        }
     }
 
     private func scan() async {

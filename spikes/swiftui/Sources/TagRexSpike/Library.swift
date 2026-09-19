@@ -1632,6 +1632,26 @@ final class Library {
         }.value
     }
 
+    /// Move `paths` to the Trash (`trash_files`) — recoverable, not a delete.
+    /// Returns the paths actually trashed; the library is re-read after so the
+    /// table drops them.
+    func trashFiles(_ paths: [String]) async -> Result<[String], SearchFailure> {
+        guard let session, !paths.isEmpty else { return .success([]) }
+        isBusy = true
+        defer { isBusy = false }
+        let box = SessionHandle(raw: session)
+        let result: Result<[String], SearchFailure> = await Task.detached(priority: .userInitiated) {
+            let reply: Reply<[String]>? = invoke(box, "trash_files", encodeArgs(PathsArg(paths: paths)))
+            if let trashed = reply?.ok { return .success(trashed) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "the files could not be trashed"))
+        }.value
+        if case .success(let trashed) = result {
+            lastMessage = "Moved \(trashed.count) file(s) to the Trash"
+            await rescan()
+        }
+        return result
+    }
+
     // MARK: - Player
 
     /// The last status read from the player, or nil when nothing is loaded.
