@@ -114,7 +114,7 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 
 | Area | Tauri | Sev | Backend |
 |------|-------|-----|---------|
-| **Cover editing** | `cover.js` (499): choose/embed/add/remove cover, external-cover detection, cover well (`preview_cover_set/embed/remove`, `read_external_cover`, `read_cover_summary`) | P1 | mostly ready; `read_cover_image` **missing in dispatcher** |
+| **Cover editing** | ✅ **Done** — a cover well showing the selection's shared/mixed/absent artwork, with Replace (pick an image → `read_cover_image` → `preview_cover_set`), Remove (`preview_cover_remove`) and From-folder (`read_external_cover`) (`Cover.swift`) | `cover.js` (499): choose/embed/add/remove cover, external-cover detection, cover well (`preview_cover_set/embed/remove`, `read_external_cover`, `read_cover_summary`) | P1 | ready (`read_cover_image` now in the dispatcher) |
 | **Settings screen** | `settings.js` (425) + `prefs.js` (315): Discogs token, proxy, rate limit, ID3 revision, display size, … | P1 | `load_settings`/`save_settings`/token commands ready |
 | **Field locks** | `locks.js` (103): lock a field so every plan skips it (`set_locked_fields`, `locked_fields`) | P2 | ready |
 | **Cell autocomplete** | `suggest.js` (250): inline cell editing with suggestions | P2 | — |
@@ -122,8 +122,11 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 
 ## 10. Missing dispatcher commands (backend work, small)
 
-- `read_cover_image` — embed a cover read from an arbitrary file (cover.js:140, O5/§9).
-- `builtin_action_groups` — the generator's builtin rule chains (chain.js:71, G-1).
+- ~~`read_cover_image`~~ — now in the dispatcher (used by §9 cover editing).
+- ~~`builtin_action_groups`~~ — now in the dispatcher (for the generator's builtin chains).
+
+Both commands the audit flagged as missing have since been added to
+`crates/ffi/src/lib.rs`, so the whole command surface is now reachable from Swift.
 
 ## Suggested order
 

@@ -1264,6 +1264,124 @@ final class Library {
         lastMessage = "Staged a tag-block change for \(preview.count) file(s)"
     }
 
+    // MARK: - Cover editing (#56)
+
+    /// One embedded image: its bytes as base64, its media type, and which cover
+    /// it depicts. Codable both ways — decoded from a read, encoded into a set.
+    struct CoverArt: Codable, Hashable {
+        var mime: String
+        var dataBase64: String
+        var kind: String = ""
+        var description: String = ""
+
+        enum CodingKeys: String, CodingKey {
+            case mime, kind, description
+            case dataBase64 = "data_base64"
+        }
+
+        /// The bytes, for the cover well to render (decoded in the view layer,
+        /// which owns AppKit).
+        var data: Data? { Data(base64Encoded: dataBase64) }
+    }
+
+    /// Cover state across the selection, for the editor's cover well: how many
+    /// files carry any image, whether they differ, the distinct fronts to fan out
+    /// when mixed, and the shared set when they all carry the same one.
+    struct CoverSummary: Decodable {
+        var total: Int
+        var withCover: Int
+        var distinct: Bool
+        var samples: [CoverArt]
+        var sharedSet: [CoverArt]
+
+        enum CodingKeys: String, CodingKey {
+            case total, distinct, samples
+            case withCover = "with_cover"
+            case sharedSet = "shared_set"
+        }
+    }
+
+    /// Read the selection's cover state (`read_cover_summary`).
+    func coverSummary(paths: [String]) async -> CoverSummary? {
+        guard let session, !paths.isEmpty else { return nil }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<CoverSummary>? =
+                invoke(box, "read_cover_summary", encodeArgs(PathsArg(paths: paths)))
+            return reply?.ok
+        }.value
+    }
+
+    /// A cover found beside the selection on disk (`read_external_cover`) — a
+    /// sibling `cover.jpg`/`folder.jpg` the app can embed. Nil when there is none.
+    func externalCover(paths: [String]) async -> CoverArt? {
+        guard let session, !paths.isEmpty else { return nil }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<CoverArt?>? =
+                invoke(box, "read_external_cover", encodeArgs(PathsArg(paths: paths)))
+            return reply?.ok ?? nil
+        }.value
+    }
+
+    /// Read and validate an image file, returning it as a cover (`read_cover_image`).
+    func readCoverImage(path: String) async -> Result<CoverArt, SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "no library open")) }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<CoverArt>? =
+                invoke(box, "read_cover_image", encodeArgs(ReadCoverImageArg(path: path)))
+            if let cover = reply?.ok { return .success(cover) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "could not read the image"))
+        }.value
+    }
+
+    /// Stage setting the selection's whole image set to `covers` (`preview_cover_set`).
+    func stageCoverSet(paths: [String], covers: [CoverArt]) async -> Result<Int, SearchFailure> {
+        await stageCoverPlan(command: "preview_cover_set",
+                             args: encodeArgs(CoverSetArg(paths: paths, covers: covers)),
+                             verb: "cover set")
+    }
+
+    /// Stage stripping every embedded image from the selection (`preview_cover_remove`).
+    func stageCoverRemove(paths: [String]) async -> Result<Int, SearchFailure> {
+        await stageCoverPlan(command: "preview_cover_remove",
+                             args: encodeArgs(PathsArg(paths: paths)),
+                             verb: "cover removal")
+    }
+
+    private func stageCoverPlan(command: String, args: String, verb: String) async -> Result<Int, SearchFailure> {
+        guard let session else { return .failure(SearchFailure(message: "no library open")) }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, Int), SearchFailure> = await Task.detached(priority: .userInitiated) {
+            let reply: Reply<JSONValue>? = invoke(box, command, args)
+            guard let plan = reply?.ok else {
+                return .failure(SearchFailure(message: reply?.error?.text ?? "the change could not be prepared"))
+            }
+            guard let parsed = decodePlan(plan) else {
+                return .failure(SearchFailure(message: "could not read the plan"))
+            }
+            return .success((plan, parsed.changes.count))
+        }.value
+
+        switch result {
+        case .success(let (plan, count)):
+            guard count > 0 else {
+                lastMessage = "No file needed that \(verb)"
+                return .success(0)
+            }
+            staged.removeAll()
+            stagedRenames.removeAll()
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged a \(verb) for \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            lastMessage = failure.message
+            return .failure(failure)
+        }
+    }
+
     // MARK: - Export
 
     /// Write an export of `paths` into the library folder and return the path
@@ -1516,6 +1634,15 @@ private struct ConvertBlockArg: Encodable {
     let from: String
     let to: String
     let revision: String?
+}
+
+private struct ReadCoverImageArg: Encodable {
+    let path: String
+}
+
+private struct CoverSetArg: Encodable {
+    let paths: [String]
+    let covers: [Library.CoverArt]
 }
 
 private struct UndoArg: Encodable {

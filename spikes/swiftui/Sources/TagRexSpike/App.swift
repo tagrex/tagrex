@@ -600,6 +600,8 @@ struct ModePanel: View {
             VStack(alignment: .leading, spacing: 18) {
                 TagBlocksBar(library: library, tracks: tracks)
 
+                CoverWell(library: library, tracks: tracks)
+
                 ForEach(EditorFields.groups(presentKeys: presentKeys)) { fieldGroup($0) }
 
                 addFieldRow
