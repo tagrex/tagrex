@@ -12,6 +12,17 @@ struct FromNamePanel: View {
     @State private var probe: NameProbe?
     @State private var error: String?
     @State private var isStaging = false
+    /// An optional clean-up chain the captured values run through before staging
+    /// (#F1) — e.g. title-casing a name read out of a file. Empty = staged as-is.
+    @State private var showCleanup = false
+    @State private var cleanupRules: [ChainRule] = []
+
+    /// The chain as an action group over the captured tags.
+    private var cleanupGroups: [ActionGroup] {
+        let enabled = cleanupRules.filter(\.enabled)
+        guard !enabled.isEmpty else { return [] }
+        return [ActionGroup(name: "fromname", scope: "tags", rules: cleanupRules.map(\.transformRule))]
+    }
 
     /// The files to write onto: the selection, or every visible row.
     private var paths: [String] {
@@ -46,6 +57,16 @@ struct FromNamePanel: View {
             Text("The mask reads values out of the file's name into its tags.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+
+            DisclosureGroup(isExpanded: $showCleanup) {
+                ChainEditor(rules: $cleanupRules, showsScope: false)
+                    .padding(.top, 4)
+            } label: {
+                Label("Clean up captured values", systemImage: "wand.and.stars")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             HStack {
                 Text(scopeLabel).font(.caption).foregroundStyle(.secondary)
                 Spacer()
@@ -134,9 +155,8 @@ struct FromNamePanel: View {
     private func stage() {
         isStaging = true
         Task {
-            if case .failure(let failure) = await library.stageFromName(mask: mask, paths: paths) {
-                error = failure.message
-            }
+            let result = await library.stageFromName(mask: mask, paths: paths, groups: cleanupGroups)
+            if case .failure(let failure) = result { error = failure.message }
             isStaging = false
         }
     }

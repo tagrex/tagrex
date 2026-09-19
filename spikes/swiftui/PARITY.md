@@ -13,9 +13,9 @@ The stand is now a real second interface, not a demonstration subset. The whole
 `builtin_action_groups`, flagged below as "missing", were in fact already in the
 dispatcher). Each mode's ✅ rows below say what shipped.
 
-**Remaining:** G-4 (transform over a staged plan / ticked groups), F1 (from-name
-through a transform chain), cell autocomplete (needs an editable table), column
-order/width/custom columns (T2 shipped visibility), and assorted P3 polish.
+**Remaining:** cell autocomplete (needs an editable table), column order/width/
+custom columns (T2 shipped visibility), G-4 ticked multi-group runs (over-plan
+shipped), and assorted P3 polish.
 
 The original verdict, for history: the stand was built free-hand, a happy-path
 subset of the Tauri modules; almost every gap was UI-side, since the dispatcher
@@ -65,7 +65,7 @@ The stand is **one rule**. The Tauri generator is a rule-chain engine.
 | G-1 | ✅ **Done** — a chain editor: add/remove/reorder/enable steps, each with a per-rule scope override, run as one action group through `preview_transform_groups`; the Presets menu loads the shipped builtin chains **and the user's own saved groups**, which the chain saves to and deletes from settings.json (`Generator.swift`, `Library` action-group round-trip). | **Chains of rules** — saved & builtin action groups, group menus, a chain editor (`createRuleChain`, `initActionGroups`, `initBuiltinGroups`, chain.js) | P1 | `preview_transform_groups`/`_over_plan` + `builtin_action_groups` ready |
 | G-2 | ✅ **Done** — a Number sub-tab: start value, write-total, optional disc, numbers the selection in table order (`Generator.swift`, `Library.numberTracks`) | **Number tracks** (`numberTracks`, generator.js:125) | P2 | ready (builds a `preview_transform_groups` payload) |
 | G-3 | ✅ **Done** — a Vinyl sub-tab that splits an A1/B2 track tag into a disc + track number (`Generator.swift`, `Library.splitVinylSides` + `parseVinylPosition`) | **Split vinyl sides** A/B (`splitVinylSides`, generator.js:197; vinyl.js) | P2 | ready |
-| G-4 | Preview only over files | Transform **over a staged plan** and over **ticked groups** (`preview_transform_over_plan`, `runTickedGroups`, generator.js:233/259) | P2 | ready |
+| G-4 | ✅ **Done (over-plan)** — when a plan is staged, an "Apply chain to staged changes" button layers the chain over it via `preview_transform_over_plan` (`Generator.swift`, `Library.transformOverStagedPlan`). Ticked multi-group runs still to come. | Transform **over a staged plan** and over **ticked groups** (`preview_transform_over_plan`, `runTickedGroups`, generator.js:233/259) | P2 | ready |
 | G-5 | ✅ **Done** — Stage is disabled when the preview finds nothing to change | `nothingChanged()` guards the run (generator.js:106) | P3 | n/a |
 
 ## 4. Renamer — `renamer.js` (170) vs `Renamer.swift` (132)
@@ -81,7 +81,7 @@ Closest to parity, but:
 
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
-| F1 | Captured fields staged as-is | Captured fields run **through a transform chain** before staging (`throughChain`, fromname.js:86) | P2 | ready |
+| F1 | ✅ **Done** — a "Clean up captured values" chain (the shared `ChainEditor`) runs the captured fields through `preview_transform_over_plan` before staging (`FromName.swift`) | Captured fields run **through a transform chain** before staging (`throughChain`, fromname.js:86) | P2 | ready |
 | F2 | ✅ **Done** — the from-name mask persists across sessions via `@AppStorage` (`FromName.swift`) | Mask **persisted** (`loadFromNamePrefs`/`saveFromNamePrefs`, fromname.js:29/38) | P3 | n/a |
 | F3 | ✅ **Done** — Stage is disabled unless the probe matches the name | guard staging when the probe does not match | P3 | n/a |
 

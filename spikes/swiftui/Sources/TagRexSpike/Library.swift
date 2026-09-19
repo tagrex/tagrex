@@ -1233,8 +1233,12 @@ final class Library {
     }
 
     /// Build the tags-from-name plan and stage it: captured values fill the table
-    /// diff, the change-plan bar takes over, Apply writes one journaled batch.
-    func stageFromName(mask: String, paths: [String]) async -> Result<Int, SearchFailure> {
+    /// diff, the change-plan bar takes over, Apply writes one journaled batch. When
+    /// `groups` is non-empty the captured values run through that chain before
+    /// staging (#F1, `preview_transform_over_plan`) — e.g. title-casing a name.
+    func stageFromName(
+        mask: String, paths: [String], groups: [ActionGroup] = []
+    ) async -> Result<Int, SearchFailure> {
         guard let session, !mask.isEmpty, !paths.isEmpty else { return .success(0) }
         let box = SessionHandle(raw: session)
         let result: Result<(JSONValue, [String: [String: String]], Int), SearchFailure> =
@@ -1242,9 +1246,20 @@ final class Library {
                 let reply: Reply<JSONValue>? = invoke(
                     box, "preview_tags_from_name",
                     encodeArgs(MaskPathsArg(mask: mask, paths: paths)))
-                guard let plan = reply?.ok else {
+                guard var plan = reply?.ok else {
                     return .failure(SearchFailure(
                         message: reply?.error?.text ?? "the tags could not be prepared"))
+                }
+                // Run the captured values through the chain before staging.
+                if !groups.isEmpty {
+                    let over: Reply<JSONValue>? = invoke(
+                        box, "preview_transform_over_plan",
+                        encodeArgs(TransformOverPlanArg(plan: plan, groups: groups)))
+                    guard let transformed = over?.ok else {
+                        return .failure(SearchFailure(
+                            message: over?.error?.text ?? "the clean-up chain could not be applied"))
+                    }
+                    plan = transformed
                 }
                 guard let parsed = decodePlan(plan) else {
                     return .failure(SearchFailure(message: "could not read the plan"))
@@ -1474,6 +1489,48 @@ final class Library {
             lastMessage = "Staged a transform of \(count) file(s)"
             return .success(count)
         case .failure(let failure):
+            return .failure(failure)
+        }
+    }
+
+    /// Run a chain over the already-staged plan (#G-4, `preview_transform_over_plan`):
+    /// the transform layers on top of a staged import or from-name, so its values
+    /// can be cleaned up before Apply. Replaces the staged plan with the result.
+    func transformOverStagedPlan(groups: [ActionGroup]) async -> Result<Int, SearchFailure> {
+        guard let session, let plan = stagedPlan, !groups.isEmpty else { return .success(0) }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, [String: [String: String]], [String: String], Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let reply: Reply<JSONValue>? = invoke(
+                    box, "preview_transform_over_plan",
+                    encodeArgs(TransformOverPlanArg(plan: plan, groups: groups)))
+                guard let newPlan = reply?.ok else {
+                    return .failure(SearchFailure(message: reply?.error?.text ?? "the transform could not be applied"))
+                }
+                guard let parsed = decodePlan(newPlan) else {
+                    return .failure(SearchFailure(message: "could not read the transformed plan"))
+                }
+                var diffs: [String: [String: String]] = [:]
+                var renames: [String: String] = [:]
+                for change in parsed.changes {
+                    if let to = change.rename_to { renames[change.path] = baseName(to) }
+                    for tag in change.tag_changes {
+                        diffs[change.path, default: [:]][tag.field] = tag.new ?? ""
+                    }
+                }
+                return .success((newPlan, diffs, renames, parsed.changes.count))
+            }.value
+
+        switch result {
+        case .success(let (newPlan, diffs, renames, count)):
+            staged = diffs
+            stagedRenames = renames
+            stagedPlan = newPlan
+            stagedPlanCount = count
+            lastMessage = "Applied the chain to \(count) staged change(s)"
+            return .success(count)
+        case .failure(let failure):
+            lastMessage = failure.message
             return .failure(failure)
         }
     }
@@ -2258,6 +2315,11 @@ private struct TransformArgs: Encodable {
 
 private struct TransformGroupsArg: Encodable {
     let paths: [String]
+    let groups: [ActionGroup]
+}
+
+private struct TransformOverPlanArg: Encodable {
+    let plan: JSONValue
     let groups: [ActionGroup]
 }
 
