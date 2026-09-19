@@ -98,7 +98,7 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
-| X1 | One playlist | **Split** playlists per folder/album (`setExportSplit`, `export_playlists`, exporters.js:82/100) | P2 | `export_playlists` ready |
+| X1 | ✅ **Done** — a Split control on the playlist format (One / By folder / By album) with a name mask; splitting writes one playlist per group via `export_playlists` (`Export.swift`) | **Split** playlists per folder/album (`setExportSplit`, `export_playlists`, exporters.js:82/100) | P2 | `export_playlists` ready |
 | X2 | — | Per-kind hint copy (`exportHint`, exporters.js:25) | P3 | n/a |
 
 ## 8. File table — `columns.js` (779) + `grouping.js` (88) + `tablegestures.js` + `reorder.js` vs inline table in `App.swift`

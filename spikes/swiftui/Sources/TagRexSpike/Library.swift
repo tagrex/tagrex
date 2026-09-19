@@ -1617,6 +1617,25 @@ final class Library {
         }.value
     }
 
+    /// Write one playlist per group (`export_playlists`, #46): `grouping` is
+    /// "folder" or "album", `nameMask` names each playlist from that group's
+    /// tags. Returns the files written.
+    func exportPlaylists(
+        grouping: String, nameMask: String, paths: [String]
+    ) async -> Result<[String], SearchFailure> {
+        guard let session, !paths.isEmpty else {
+            return .failure(SearchFailure(message: "Nothing to export"))
+        }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<[String]>? = invoke(
+                box, "export_playlists",
+                encodeArgs(ExportPlaylistsArg(paths: paths, grouping: grouping, name_mask: nameMask)))
+            if let written = reply?.ok { return .success(written) }
+            return .failure(SearchFailure(message: reply?.error?.text ?? "the export failed"))
+        }.value
+    }
+
     // MARK: - Duplicates
 
     /// Scan the whole open library for likely duplicates under `criterion`
@@ -2085,6 +2104,12 @@ private struct ReportArg: Encodable {
     let paths: [String]
     let mask: String
     let file_name: String
+}
+
+private struct ExportPlaylistsArg: Encodable {
+    let paths: [String]
+    let grouping: String
+    let name_mask: String
 }
 
 /// Decode a plan (as a JSONValue) into the parts the stand reflects — visible
