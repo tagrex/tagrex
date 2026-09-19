@@ -1717,6 +1717,37 @@ final class Library {
     private var playQueue: [String] = []
     private var fedNextFor: String?
     private var polling: Task<Void, Never>?
+    /// Last polled position, to notice a loop (position wraps while the path
+    /// stays) so repeat-one and repeat-all can re-queue the next track.
+    private var lastPosition: Double = 0
+
+    /// How playback advances at the end of a track (#player repeat).
+    enum RepeatMode: String { case off, all, one }
+    var repeatMode: RepeatMode = .off
+
+    func cycleRepeat() {
+        repeatMode = switch repeatMode {
+        case .off: .all
+        case .all: .one
+        case .one: .off
+        }
+        // Re-decide what follows the current track under the new mode.
+        fedNextFor = nil
+    }
+
+    /// The track to queue after `current`, under the repeat mode: itself for
+    /// "one", the next row (wrapping for "all"), or the next row / nothing for
+    /// "off". Mirrors the Tauri `nextPath`.
+    private func nextPath(after current: String) -> String? {
+        guard let index = playQueue.firstIndex(of: current) else {
+            return repeatMode == .one ? current : nil
+        }
+        switch repeatMode {
+        case .one: return current
+        case .all: return index + 1 < playQueue.count ? playQueue[index + 1] : playQueue.first
+        case .off: return index + 1 < playQueue.count ? playQueue[index + 1] : nil
+        }
+    }
 
     var isPlaying: Bool {
         guard let status = playerStatus else { return false }
@@ -1784,16 +1815,34 @@ final class Library {
         let reply: Reply<PlayerStatus>? =
             await Task.detached(priority: .userInitiated) { invoke(box, "player_status", "{}") }.value
         guard let status = reply?.ok else { return }
+
+        // A wrapped position on the same track means it looped or was restarted:
+        // clear the fed-next latch so repeat can queue the follow-up again.
+        if let current = status.path, current == playerStatus?.path,
+           status.positionSecs + 2 < lastPosition {
+            fedNextFor = nil
+        }
+        lastPosition = status.positionSecs
         playerStatus = status
 
         // Gapless: when the player asks for a next track and one hasn't been fed
-        // for the current track yet, queue the following row.
+        // for the current track yet, queue the follow-up the repeat mode picks.
         if status.wantsNext, let current = status.path, fedNextFor != current {
             fedNextFor = current
-            if let index = playQueue.firstIndex(of: current), index + 1 < playQueue.count {
-                fire(session, "player_set_next", encodeArgs(PathArg(path: playQueue[index + 1])))
+            if let next = nextPath(after: current) {
+                fire(session, "player_set_next", encodeArgs(PathArg(path: next)))
             }
         }
+    }
+
+    /// The amplitude envelope of a track (`waveform`): 1000 buckets, each 0…255.
+    func waveform(path: String) async -> [UInt8]? {
+        guard let session else { return nil }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) {
+            let reply: Reply<[UInt8]>? = invoke(box, "waveform", encodeArgs(PathArg(path: path)))
+            return reply?.ok
+        }.value
     }
 
     /// The config dir (and so the journal) lives beside the app's own data, not
