@@ -110,6 +110,8 @@ struct WorkspaceView: View {
     @State private var showsInspector = true
     @State private var choosingFolder = false
     @State private var showingSettings = false
+    /// Group the table by folder (#129, T1). On by default, like the web UI.
+    @State private var groupByFolder = true
     /// Bumped to ask the filter field for the keyboard. A counter rather
     /// than a Bool: focus is an event, and a Bool that is already true
     /// cannot fire a second time.
@@ -146,7 +148,9 @@ struct WorkspaceView: View {
             sortOrder: $sortOrder,
             staged: library.staged,
             renames: library.stagedRenames,
-            showsOldValues: library.showsOldValues
+            showsOldValues: library.showsOldValues,
+            grouped: groupByFolder,
+            rootPath: library.root?.path
         )
             .overlay(alignment: .bottom) {
                 if library.hasStagedPlan { ChangePlanBar(library: library) }
@@ -222,6 +226,14 @@ struct WorkspaceView: View {
                     }
                     .disabled(library.root == nil)
                     .help("Re-read the open folder")
+
+                    Button {
+                        groupByFolder.toggle()
+                    } label: {
+                        Label("Group by folder", systemImage: groupByFolder
+                              ? "rectangle.grid.1x2.fill" : "rectangle.grid.1x2")
+                    }
+                    .help(groupByFolder ? "Grouping by folder — click to flatten" : "Group the table by folder")
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -360,9 +372,15 @@ struct TrackTable: View {
     /// a diff the way a tag change shows in its column.
     let renames: [String: String]
     let showsOldValues: Bool
+    /// Group rows by their containing folder under a section header (#129, T1).
+    /// On by default, matching the web UI's `groupBy = "folder"`.
+    let grouped: Bool
+    /// The open library root, so a folder header reads relative to it
+    /// ("gui-test/CD1") rather than as an absolute path.
+    let rootPath: String?
 
     var body: some View {
-        Table(rows, selection: $selection, sortOrder: $sortOrder) {
+        Table(of: Track.self, selection: $selection, sortOrder: $sortOrder) {
             TableColumn("File", value: \.file) { track in
                 DiffCell(
                     value: renames[track.id] ?? track.file,
@@ -380,8 +398,51 @@ struct TrackTable: View {
                 .width(min: 90, ideal: 160)
             TableColumn("Year", value: \.year) { cell($0, .year) }
                 .width(56)
+        } rows: {
+            if grouped {
+                ForEach(folderGroups, id: \.key) { group in
+                    Section(group.label) {
+                        ForEach(group.tracks) { TableRow($0) }
+                    }
+                }
+            } else {
+                ForEach(rows) { TableRow($0) }
+            }
         }
         .tableStyle(.inset(alternatesRowBackgrounds: true))
+    }
+
+    /// Rows bucketed by their parent folder, folders in path order and each
+    /// folder's rows kept in the incoming sort order. A view overlay — it never
+    /// reorders `rows` itself, the way the web grouping is "a view overlay".
+    private var folderGroups: [(key: String, label: String, tracks: [Track])] {
+        var byFolder: [String: [Track]] = [:]
+        var order: [String] = []
+        for track in rows {
+            let folder = (track.path as NSString).deletingLastPathComponent
+            if byFolder[folder] == nil { order.append(folder) }
+            byFolder[folder, default: []].append(track)
+        }
+        return order.sorted().map { (key: $0, label: folderLabel($0), tracks: byFolder[$0]!) }
+    }
+
+    /// A folder header relative to the session root, starting with the root's own
+    /// name (`gui-test/CD1`), so nested folders read as a tree (`folderGroupLabel`).
+    private func folderLabel(_ key: String) -> String {
+        // Trailing-slash trim only, no symlink resolution: standardizingPath can
+        // rewrite /private/tmp to /tmp, and then the root no longer prefixes the
+        // track paths (which keep /private) and every header falls back to a leaf.
+        guard var root = rootPath, !root.isEmpty else {
+            return (key as NSString).lastPathComponent
+        }
+        while root.count > 1, root.hasSuffix("/") { root.removeLast() }
+        let rootLeaf = (root as NSString).lastPathComponent
+        if key == root { return rootLeaf }
+        if key.hasPrefix(root + "/") {
+            let rel = String(key.dropFirst(root.count + 1))
+            return "\(rootLeaf)/\(rel)"
+        }
+        return (key as NSString).lastPathComponent
     }
 
     private func cell(_ track: Track, _ field: Field) -> DiffCell {

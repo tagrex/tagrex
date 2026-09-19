@@ -105,7 +105,7 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
-| T1 | **No folder grouping** — flat table | Rows **grouped by folder** with section headers (`groupKeyOf`, `folderGroupLabel`, grouping.js); the v0.15 accent band | P1 | ready (paths are in `list_tracks`) |
+| T1 | ✅ **Done** — rows grouped by folder into `Table` sections, header = the root-relative folder path (`gui-test/CD1`); a toolbar toggle flattens it. On by default like the web UI. | Rows **grouped by folder** with section headers (`groupKeyOf`, `folderGroupLabel`, grouping.js); the v0.15 accent band | P1 | ready (paths are in `list_tracks`) |
 | T2 | Fixed 5 columns | **Configurable columns** — which, order, width, custom (`columns.js`, `render_column`) | P2 | `render_column` ready |
 | T3 | Empty-area zebra bands (dark) read as unloaded rows | — | P3 | n/a |
 | T4 | — | Table gestures / row reorder (`tablegestures.js`, `reorder.js`) | P3 | — |
