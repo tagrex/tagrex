@@ -736,7 +736,12 @@ struct ModePanel: View {
     private func fieldRow(_ fieldRow: EditorFields.Row) -> some View {
         switch fieldRow {
         case .single(let key):
-            row(EditorFields.label(for: key)) { fieldInput(key) }
+            row(EditorFields.label(for: key)) {
+                HStack(spacing: 6) {
+                    fieldInput(key)
+                    lockButton([key])
+                }
+            }
         case .duo(let label, let numberKey, let totalKey):
             row(label) {
                 HStack(spacing: 6) {
@@ -744,9 +749,26 @@ struct ModePanel: View {
                     Text("/").foregroundStyle(.tertiary)
                     fieldInput(totalKey).frame(width: 64)
                     Spacer()
+                    // Lock the pair as a unit — half a "3 / 12" protects nothing.
+                    lockButton([numberKey, totalKey])
                 }
             }
         }
+    }
+
+    /// A padlock that locks a field (#63): a locked field is skipped by every
+    /// plan the backend builds, so it survives imports, transforms and edits.
+    private func lockButton(_ keys: [String]) -> some View {
+        let on = keys.allSatisfy(library.isLocked)
+        return Button {
+            Task { await library.toggleLock(keys) }
+        } label: {
+            Image(systemName: on ? "lock.fill" : "lock.open")
+                .font(.caption)
+                .foregroundStyle(on ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+        }
+        .buttonStyle(.borderless)
+        .help(on ? "Locked — plans skip this field" : "Lock this field against changes")
     }
 
     /// One field's text input, with the staged-green tint, the shared/multiple
@@ -754,6 +776,7 @@ struct ModePanel: View {
     @ViewBuilder
     private func fieldInput(_ key: String) -> some View {
         let hint = EditorFields.validationHint(for: key, value: currentValue(key))
+        let locked = library.isLocked(key)
         VStack(alignment: .leading, spacing: 2) {
             TextField("", text: binding(key), prompt: prompt(key))
                 .textFieldStyle(.roundedBorder)
@@ -761,6 +784,10 @@ struct ModePanel: View {
                 .multilineTextAlignment(EditorFields.numericKeys.contains(key) ? .trailing : .leading)
                 .foregroundStyle(isStaged(key) ? AnyShapeStyle(.green) : AnyShapeStyle(.primary))
                 .onSubmit { stage(key) }
+                // A locked field is inert — the backend gate drops it from every
+                // plan anyway, so editing it here would only mislead.
+                .disabled(locked)
+                .opacity(locked ? 0.5 : 1)
             if let hint {
                 Text(hint).font(.caption2).foregroundStyle(.red)
             }

@@ -499,6 +499,11 @@ final class Library {
     /// show the rename as a diff the way a tag change shows in its column.
     private(set) var stagedRenames: [String: String] = [:]
 
+    /// Storage keys the user has locked (#63): every plan the backend builds
+    /// skips them, so a locked field is protected from imports, transforms and
+    /// hand edits alike. Session-wide, pushed with `set_locked_fields`.
+    private(set) var lockedFields: Set<String> = []
+
     var filter = ""
     var showsOldValues = false
 
@@ -550,7 +555,9 @@ final class Library {
 
         if opened, handle != nil {
             session = handle
+            lockedFields = []
             await rescan()
+            await loadLockedFields()
         } else {
             tracks = []
             errors = ["the library could not be opened"]
@@ -600,6 +607,35 @@ final class Library {
     /// The staged value for a cell, or nil when the cell is unchanged.
     func stagedValue(_ key: String, for id: Track.ID) -> String? {
         staged[id]?[key]
+    }
+
+    // MARK: - Field locks (#63)
+
+    func isLocked(_ key: String) -> Bool { lockedFields.contains(key) }
+
+    /// Read back what the session holds — called after opening a library.
+    func loadLockedFields() async {
+        guard let session else { lockedFields = []; return }
+        let box = SessionHandle(raw: session)
+        let fields: [String] = await Task.detached(priority: .userInitiated) {
+            let reply: Reply<[String]>? = invoke(box, "locked_fields", "{}")
+            return reply?.ok ?? []
+        }.value
+        lockedFields = Set(fields)
+    }
+
+    /// Toggle a set of keys as a unit (a duo like track/tracktotal locks whole),
+    /// then push the new set to the session so its plan gate honours it.
+    func toggleLock(_ keys: [String]) async {
+        guard let session else { return }
+        let turningOn = !keys.allSatisfy(lockedFields.contains)
+        if turningOn { keys.forEach { lockedFields.insert($0) } }
+        else { keys.forEach { lockedFields.remove($0) } }
+        let box = SessionHandle(raw: session)
+        let fields = Array(lockedFields)
+        await Task.detached(priority: .userInitiated) {
+            _ = invoke(box, "set_locked_fields", encodeArgs(LockedFieldsArg(fields: fields))) as Reply<JSONValue>?
+        }.value
     }
 
     func discard() {
@@ -1879,6 +1915,10 @@ private struct ConvertBlockArg: Encodable {
 
 private struct ReadCoverImageArg: Encodable {
     let path: String
+}
+
+private struct LockedFieldsArg: Encodable {
+    let fields: [String]
 }
 
 private struct MoveArg: Encodable {

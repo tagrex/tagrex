@@ -116,7 +116,7 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 |------|-------|-----|---------|
 | **Cover editing** | ✅ **Done** — a cover well showing the selection's shared/mixed/absent artwork, with Replace (pick an image → `read_cover_image` → `preview_cover_set`), Remove (`preview_cover_remove`) and From-folder (`read_external_cover`) (`Cover.swift`) | `cover.js` (499): choose/embed/add/remove cover, external-cover detection, cover well (`preview_cover_set/embed/remove`, `read_external_cover`, `read_cover_summary`) | P1 | ready (`read_cover_image` now in the dispatcher) |
 | **Settings screen** | `settings.js` (425) + `prefs.js` (315): Discogs token, proxy, rate limit, ID3 revision, display size, … | P1 | `load_settings`/`save_settings`/token commands ready |
-| **Field locks** | `locks.js` (103): lock a field so every plan skips it (`set_locked_fields`, `locked_fields`) | P2 | ready |
+| **Field locks** | ✅ **Done** — a padlock beside each editor field toggles a session-wide lock (`set_locked_fields`); a locked field dims, goes inert, and every plan skips it (`App.swift`, `Library.swift`) | `locks.js` (103): lock a field so every plan skips it (`set_locked_fields`, `locked_fields`) | P2 | ready |
 | **Cell autocomplete** | `suggest.js` (250): inline cell editing with suggestions | P2 | — |
 | **Player** | `player.js` (618) vs `Player.swift` (116): **waveform** canvas, now-playing cover, repeat modes, themed peaks (`waveform`, `read_cover_summary`, `applyRepeatMode`) | P2 | `waveform`/`read_cover_summary` ready |
 
