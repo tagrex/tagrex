@@ -26,7 +26,7 @@ struct ExportPanel: View {
     /// else "folder" or "album". Only meaningful for the playlist format.
     @State private var split = ""
     /// The mask each split playlist is named from.
-    @State private var splitMask = "%albumartist% - %album%"
+    @AppStorage("export.splitMask") private var splitMask = "%albumartist% - %album%"
     @State private var result: String?
     @State private var splitCount: Int?
     @State private var error: String?
@@ -51,6 +51,10 @@ struct ExportPanel: View {
                     result = nil
                 }
             }
+
+            Text(formatHint)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
 
             if format == "playlist" {
                 labeled("Split") {
@@ -131,6 +135,19 @@ struct ExportPanel: View {
     private var scopeLabel: String {
         let selected = library.tracks.map(\.id).filter(selection.contains)
         return selected.isEmpty ? "all \(paths.count) file(s)" : "\(paths.count) selected"
+    }
+
+    /// A one-line note on what the chosen format writes (`exportHint`).
+    private var formatHint: String {
+        switch format {
+        case "playlist": "An M3U8 playlist of the tracks, in order."
+        case "cue": "A CUE sheet indexing the tracks as one album."
+        case "csv": "A CSV table of the tags, one row per track."
+        case "html": "An HTML table of the tags for a browser."
+        case "xml": "An XML document of the tags."
+        case "report": "A text report, one line per track from the mask."
+        default: ""
+        }
     }
 
     private func labeled<Content: View>(_ label: String, @ViewBuilder _ content: () -> Content) -> some View {

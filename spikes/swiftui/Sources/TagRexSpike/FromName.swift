@@ -8,7 +8,7 @@ struct FromNamePanel: View {
     let library: Library
     let selection: Set<Track.ID>
 
-    @State private var mask = "%artist% - %title%"
+    @AppStorage("fromname.mask") private var mask = "%artist% - %title%"
     @State private var probe: NameProbe?
     @State private var error: String?
     @State private var isStaging = false

@@ -19,9 +19,9 @@ struct RenamerPanel: View {
 
     @State private var renamerMode: RenamerMode = .rename
 
-    @State private var mask = "%artist% - %title%"
+    @AppStorage("renamer.mask") private var mask = "%artist% - %title%"
     // A folder pattern: separators become folders under the destination.
-    @State private var moveMask = "%albumartist%/%album%/%track% - %title%"
+    @AppStorage("renamer.moveMask") private var moveMask = "%albumartist%/%album%/%track% - %title%"
     @State private var destination: String?
     @State private var copy = false
     @State private var prune = false

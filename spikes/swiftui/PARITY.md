@@ -7,16 +7,19 @@ line count.
 
 ## Verdict
 
-The stand is a **demonstration subset**, not a port. Every mode exercises the
-happy path of one or two ABI commands and stops there; the Tauri modules carry
-several times more behaviour each. Crucially, **almost every gap is UI-side, not
-backend-side**: the `crates/ffi` dispatcher already exposes the whole command
-surface (`preview_move`, `export_playlists`, `preview_convert_tag_block`,
-`preview_remove_tag_block`, `preview_cover_*`, `set_locked_fields`,
-`preview_transform_groups/over_plan`, `tag_block_targets`, `trash_files`,
-`render_column`, …). The stand simply never wired those commands into the UI.
-Two commands the Tauri UI uses are **not** in the dispatcher yet and would need a
-backend line: `read_cover_image` and `builtin_action_groups`.
+**Update (2026-09-19): the parity push landed every P1 gap and most of the P2s.**
+The stand is now a real second interface, not a demonstration subset. The whole
+`crates/ffi` command surface is wired (`read_cover_image` and
+`builtin_action_groups`, flagged below as "missing", were in fact already in the
+dispatcher). Each mode's ✅ rows below say what shipped.
+
+**Remaining:** G-4 (transform over a staged plan / ticked groups), F1 (from-name
+through a transform chain), cell autocomplete (needs an editable table),
+configurable columns (§8 T2), and assorted P3 polish.
+
+The original verdict, for history: the stand was built free-hand, a happy-path
+subset of the Tauri modules; almost every gap was UI-side, since the dispatcher
+already exposed the commands.
 
 Severity: **P1** = core behaviour of the mode is missing/wrong; **P2** =
 significant feature absent; **P3** = polish/consistency.
@@ -70,7 +73,7 @@ The stand is **one rule**. The Tauri generator is a rule-chain engine.
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
 | R1 | ✅ **Done** — a Move-into-folders sub-mode: folder pattern, destination picker, Move/Copy, prune-empty toggle, and a preview of each file's new folder path (`Renamer.swift`) | **Move / reorganise into folders** — move modes + destination picker (`previewMove`, `setMoveMode`, `pickDestination`, renamer.js:62/96/127) | P1 | `preview_move` ready |
-| R2 | Mask not remembered | Mask + destination **persisted** (`writeStored`/`readStored`, renamer.js:108) | P3 | n/a |
+| R2 | ✅ **Done** — the rename and move masks persist across sessions via `@AppStorage` (`Renamer.swift`) | Mask + destination **persisted** (`writeStored`/`readStored`, renamer.js:108) | P3 | n/a |
 
 ## 5. From name — `fromname.js` (168) vs `FromName.swift` (143)
 
@@ -79,7 +82,7 @@ Closest to parity, but:
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
 | F1 | Captured fields staged as-is | Captured fields run **through a transform chain** before staging (`throughChain`, fromname.js:86) | P2 | ready |
-| F2 | Mask not remembered | Mask **persisted** (`loadFromNamePrefs`/`saveFromNamePrefs`, fromname.js:29/38) | P3 | n/a |
+| F2 | ✅ **Done** — the from-name mask persists across sessions via `@AppStorage` (`FromName.swift`) | Mask **persisted** (`loadFromNamePrefs`/`saveFromNamePrefs`, fromname.js:29/38) | P3 | n/a |
 | F3 | Stage enabled on no-match | guard staging when the probe does not match | P3 | n/a |
 
 ## 6. Deduplicator — `dedup.js` (88) vs `Duplicates.swift` (124)
@@ -99,7 +102,7 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
 | X1 | ✅ **Done** — a Split control on the playlist format (One / By folder / By album) with a name mask; splitting writes one playlist per group via `export_playlists` (`Export.swift`) | **Split** playlists per folder/album (`setExportSplit`, `export_playlists`, exporters.js:82/100) | P2 | `export_playlists` ready |
-| X2 | — | Per-kind hint copy (`exportHint`, exporters.js:25) | P3 | n/a |
+| X2 | ✅ **Done** — a one-line hint per export format (`Export.swift` `formatHint`) | Per-kind hint copy (`exportHint`, exporters.js:25) | P3 | n/a |
 
 ## 8. File table — `columns.js` (779) + `grouping.js` (88) + `tablegestures.js` + `reorder.js` vs inline table in `App.swift`
 
