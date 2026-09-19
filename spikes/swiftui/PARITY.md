@@ -15,7 +15,8 @@ dispatcher). Each mode's ✅ rows below say what shipped.
 
 **Remaining:** cell autocomplete (needs an editable table), column order/width/
 custom columns (T2 shipped visibility), G-4 ticked multi-group runs (over-plan
-shipped), and assorted P3 polish.
+shipped). Two P3s are deferred as SwiftUI `Table` limitations (T3 empty-area
+striping, T4 row reorder); every other P3 has shipped.
 
 The original verdict, for history: the stand was built free-hand, a happy-path
 subset of the Tauri modules; almost every gap was UI-side, since the dispatcher
@@ -32,13 +33,13 @@ The mode the user flagged. The stand was built free-hand.
 
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
-| O1 | Default source **MusicBrainz** (`source = .musicbrainz`, Online.swift:13) | Default **Discogs** (`releaseSource = "discogs"`, online.js:40) | P1 | n/a |
-| O2 | Source is a **segmented** control (Online.swift:54) | Source is a **dropdown** `online-source` | P2 | n/a |
-| O3 | **Three** fields Artist/Album/Catalogue (Online.swift:60–62) | **One** query field `discogs-query` (online.js:114) | P1 | ready |
-| O4 | Fields never prefilled | **Query presets from the selection** (#97): `presetSourceTrack()` = first selected row, `queryFromPreset()` builds text from tags; each preset row shows the **actual text** it will search (online.js:336–383) | P1 | ready |
-| O5 | Release card has **no cover** (Online.swift:140) | Card shows `.release-cover` + `.media-badge`, lazy-loaded | P1 | `provider_fetch_image` ready; embed path uses `read_cover_image` — **missing in dispatcher** |
-| O6 | Header text = artist · year · country only | Tauri release formatting (label, catalogue, format, track count `.tk-count`) | P2 | ready |
-| O7 | No format filter | `search-format` filter passed into query (online.js:149) | P3 | ready |
+| O1 | ✅ **Done** — defaults to Discogs (`source = .discogs`) | Default **Discogs** | P1 | n/a |
+| O2 | ✅ **Done** — source is a `.menu` dropdown | Source is a **dropdown** `online-source` | P2 | n/a |
+| O3 | ✅ **Done** — one free-text query field | **One** query field `discogs-query` | P1 | ready |
+| O4 | ✅ **Done** — query presets from the selection (folder/file name, album, artist+title) | **Query presets from the selection** (#97) | P1 | ready |
+| O5 | ✅ **Done** — covers on candidate cards and the open release (lazy, cached) | Card shows `.release-cover` + `.media-badge`, lazy-loaded | P1 | ready |
+| O6 | ✅ **Done** — catalogue pill, track/disc counts, country·year·format meta | Tauri release formatting | P2 | ready |
+| O7 | ✅ **Done** — a media filter (All/CD/Vinyl/LP/Cassette/File) passed as `query.format` | `search-format` filter passed into query | P3 | ready |
 
 ## 2. Tagger / Editor — `editor.js` (756) vs inspector in `App.swift`
 
@@ -52,8 +53,8 @@ Year, Genre, Track) + read-only File block. The Tauri editor is dynamic.
 | E3 | ✅ **Done** — a Convert picker (kind + ID3v2 revision) over the read block, gated to a single read kind, with a per-file loss confirmation (`TagBlocks.swift`) | **Convert a block** between kinds / ID3 revisions (`tag_block_targets`, `preview_convert_tag_block`, editor.js:192/218/292) — the #47/#205 feature | P1 | both ready |
 | E4 | ✅ **Done** — an Add-field row that stages an arbitrary custom frame across the selection (`App.swift`) | **Add an arbitrary field** (`openAddField`, `addCustomField`, `populateKnownFields`, editor.js:353/373/693) | P2 | ready (`preview_tag_edits`) |
 | E5 | ✅ **Done** — the dynamic editor edits the whole selection, shows `<multiple values>` where it disagrees and stages across all | **Multi-file editing** with a per-field count "— N files" and mixed-value handling (`refreshFieldEditor`, editor.js:40) | P2 | ready |
-| E6 | No paired rows | **Duo rows** — track/total etc. on one line (`fieldDuoRow`, editor.js:602) | P3 | ready |
-| E7 | No validation feedback | **Per-field validation** (`validateFieldValue`, editor.js:417) | P3 | ready |
+| E6 | ✅ **Done** — Track n/total and Disc n/total render as duo rows (part of E1) | **Duo rows** — track/total etc. on one line | P3 | ready |
+| E7 | ✅ **Done** — inline numeric validation hints, and a bad value is not staged (part of E1) | **Per-field validation** | P3 | ready |
 | E8 | No cover well | see §9 (cover editing entirely absent) | P1 | mostly ready |
 
 ## 3. Generator — `generator.js` (464) + `chain.js` (696) + `chains.js` vs `Generator.swift` (211)
@@ -93,7 +94,7 @@ formatting). Gap: acting on a group.
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
 | D1 | ✅ **Done** — the first file in each group is badged "keep"; a per-file trash button and a group "Trash extras" move the rest to the Trash (`trash_files`), behind a confirmation, then re-scan (`Duplicates.swift`) | **Trash** the redundant files in a group (`trash_files`) | P2 | `trash_files` ready |
-| D2 | Two "no duplicates" messages | one empty state | P3 | n/a |
+| D2 | ✅ **Done** — the count line states scope only; the single empty-state view carries the verdict (`Duplicates.swift`) | one empty state | P3 | n/a |
 
 ## 7. Exporter — `exporters.js` (139) vs `Export.swift` (119)
 
@@ -110,8 +111,8 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 |---|-----------|-----------------|-----|---------|
 | T1 | ✅ **Done** — rows grouped by folder into `Table` sections, header = the root-relative folder path (`gui-test/CD1`); a toolbar toggle flattens it. On by default like the web UI. | Rows **grouped by folder** with section headers (`groupKeyOf`, `folderGroupLabel`, grouping.js); the v0.15 accent band | P1 | ready (paths are in `list_tracks`) |
 | T2 | ✅ **Done (visibility)** — a Columns picker toggles which modeled columns show (Artist/Title/Album/Album Artist/Track/Year/Genre), sortable and persisted via `@AppStorage` (`App.swift`). Order/width/custom columns still to come. | **Configurable columns** — which, order, width, custom (`columns.js`, `render_column`) | P2 | `render_column` ready |
-| T3 | Empty-area zebra bands (dark) read as unloaded rows | — | P3 | n/a |
-| T4 | — | Table gestures / row reorder (`tablegestures.js`, `reorder.js`) | P3 | — |
+| T3 | ⏸ **Deferred** — SwiftUI's inset `Table` paints its alternating rows into empty space; grouping (default on) hides most of it. No clean API to stop it. | — | P3 | n/a |
+| T4 | ⏸ **Deferred** — SwiftUI `Table` has no row-reorder with sections | Table gestures / row reorder | P3 | — |
 
 ## 9. Absent surfaces (whole features with no stand UI)
 

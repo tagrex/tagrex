@@ -70,11 +70,13 @@ struct DuplicatesPanel: View {
     }
 
     private var summary: String {
-        if !scanned { return "Scanning the whole library, not just the selection." }
+        // When there are no groups the empty-state view below says so — here the
+        // line just states the scope, so the verdict isn't printed twice (D2).
+        if !scanned || groups.isEmpty {
+            return "Scanned the whole library, not just the selection."
+        }
         let files = groups.reduce(0) { $0 + $1.files.count }
-        return groups.isEmpty
-            ? "No duplicates under this rule."
-            : "\(groups.count) group(s), \(files) files."
+        return "\(groups.count) group(s), \(files) files."
     }
 
     @ViewBuilder
