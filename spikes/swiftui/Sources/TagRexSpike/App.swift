@@ -473,6 +473,10 @@ struct ModePanel: View {
     /// Which collapsible editor groups are folded. Advanced starts folded, the
     /// way the web editor opens it (#136); Standard opens.
     @State private var collapsedGroups: Set<String> = ["advanced"]
+    /// The inline add-field row (#114): idle until opened, then a name/value pair.
+    @State private var addingField = false
+    @State private var newFieldName = ""
+    @State private var newFieldValue = ""
 
     private var tracks: [Track] {
         library.tracks.filter { selection.contains($0.id) }
@@ -535,6 +539,8 @@ struct ModePanel: View {
             VStack(alignment: .leading, spacing: 18) {
                 ForEach(EditorFields.groups(presentKeys: presentKeys)) { fieldGroup($0) }
 
+                addFieldRow
+
                 group("File", collapsible: false) {
                     fact("Format", shared { $0.format })
                     fact("Length", shared { $0.duration })
@@ -558,6 +564,95 @@ struct ModePanel: View {
             keys.formUnion((library.staged[track.id] ?? [:]).keys)
         }
         return keys
+    }
+
+    /// The add-field affordance (#114): idle shows just "Add field"; opening it
+    /// reveals an inline name/value row that stages a custom frame across the
+    /// selection. Any name without a `custom:` prefix becomes one, so this adds
+    /// arbitrary frames — the known fields already have their own rows.
+    @ViewBuilder
+    private var addFieldRow: some View {
+        if addingField {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    TextField("Field name", text: $newFieldName)
+                        .textFieldStyle(.roundedBorder)
+                        .font(AppFonts.body)
+                        .onSubmit { addField() }
+                    if !presentCustomNames.isEmpty {
+                        Menu {
+                            ForEach(presentCustomNames, id: \.self) { name in
+                                Button(name) { newFieldName = name }
+                            }
+                        } label: {
+                            Image(systemName: "list.bullet")
+                        }
+                        .menuStyle(.borderlessButton)
+                        .fixedSize()
+                        .help("Custom fields already on the selection")
+                    }
+                }
+                HStack(spacing: 6) {
+                    TextField("Value", text: $newFieldValue)
+                        .textFieldStyle(.roundedBorder)
+                        .font(AppFonts.body)
+                        .onSubmit { addField() }
+                    Button("Add") { addField() }
+                        .disabled(newFieldName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button {
+                        addingField = false
+                        newFieldName = ""
+                        newFieldValue = ""
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Close")
+                }
+            }
+        } else {
+            Button {
+                addingField = true
+            } label: {
+                Label("Add field", systemImage: "plus")
+                    .font(AppFonts.body)
+            }
+            .buttonStyle(.borderless)
+        }
+    }
+
+    /// The custom frame names already present across the selection, offered as
+    /// suggestions when adding a field (`populateKnownFields`).
+    private var presentCustomNames: [String] {
+        var names = Set<String>()
+        for key in presentKeys where key.hasPrefix("custom:") {
+            names.insert(String(key.dropFirst("custom:".count)))
+        }
+        return names.sorted()
+    }
+
+    /// Stage the typed field across the selection, then keep the row open and
+    /// refocus so several fields add in a row (#114).
+    private func addField() {
+        let name = newFieldName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        // A bare known field keeps its own key; anything else becomes a custom
+        // frame — the known fields already have rows, so this row adds customs.
+        let key: String
+        if name.hasPrefix("custom:") || EditorFields.extended.contains(where: { $0.key == name }) {
+            key = name
+        } else {
+            key = "custom:\(name)"
+        }
+        library.stage(key, to: newFieldValue, for: tracks.map(\.id))
+        // Reveal the group the new row lands in so the add is visible: a named
+        // frame is promoted to Standard, an unnamed one drops into Advanced.
+        let raw = key.hasPrefix("custom:") ? String(key.dropFirst("custom:".count)) : key
+        let landsInAdvanced = key.hasPrefix("custom:")
+            && EditorFields.knownCustomLabels[raw.uppercased()] == nil
+        collapsedGroups.remove(landsInAdvanced ? "advanced" : "standard")
+        newFieldName = ""
+        newFieldValue = ""
     }
 
     @ViewBuilder
