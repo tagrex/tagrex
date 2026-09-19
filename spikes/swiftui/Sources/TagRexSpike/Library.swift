@@ -1319,6 +1319,53 @@ final class Library {
         }
     }
 
+    /// Stage a distinct set of edits per file — the mechanism behind numbering
+    /// and the vinyl split, where each file gets its own value. The table diff
+    /// and Apply both read `staged`, so writing it directly is a hand edit by
+    /// another name; no-ops (a value already on disk) are dropped.
+    private func stagePerFileEdits(_ edits: [String: [String: String]], message: String) {
+        stagedPlan = nil
+        stagedPlanCount = 0
+        stagedRenames.removeAll()
+        var next: [String: [String: String]] = [:]
+        for (path, fields) in edits {
+            guard let track = tracks.first(where: { $0.id == path }) else { continue }
+            for (key, value) in fields where track.value(forKey: key) != value {
+                next[path, default: [:]][key] = value
+            }
+        }
+        staged = next
+        lastMessage = message
+    }
+
+    /// Number the selected files in order from `start` (#G-2): each gets a track
+    /// number, optionally the shared total, optionally a disc number.
+    func numberTracks(paths: [String], start: Int, writeTotal: Bool, disc: String?) {
+        guard !paths.isEmpty else { return }
+        var edits: [String: [String: String]] = [:]
+        for (offset, path) in paths.enumerated() {
+            edits[path, default: [:]]["track"] = String(start + offset)
+            if let disc, !disc.isEmpty { edits[path]?["disc"] = disc }
+            if writeTotal { edits[path]?["tracktotal"] = String(paths.count) }
+        }
+        stagePerFileEdits(edits, message: "Numbered \(paths.count) track(s)")
+    }
+
+    /// Split a vinyl-side position (A1, B2) in each file's track tag into a disc
+    /// and a track number (#G-3). Returns how many files carried one.
+    func splitVinylSides(paths: [String]) -> Int {
+        var edits: [String: [String: String]] = [:]
+        for path in paths {
+            guard let track = tracks.first(where: { $0.id == path }),
+                  let parsed = parseVinylPosition(track.value(forKey: "track")) else { continue }
+            edits[path] = ["track": parsed.track ?? "1", "disc": parsed.disc]
+        }
+        let count = edits.count
+        if count > 0 { stagePerFileEdits(edits, message: "Split \(count) vinyl position(s)") }
+        else { lastMessage = "No vinyl-side values (A1, B2) in the selection" }
+        return count
+    }
+
     /// The shipped rule chains (`builtin_action_groups`), to load into the editor.
     func builtinActionGroups() async -> [ActionGroup] {
         guard let session else { return [] }
@@ -2210,6 +2257,28 @@ private func decodePlan(_ plan: JSONValue) -> StagedPlanShape? {
 
 private func baseName(_ path: String) -> String {
     (path as NSString).lastPathComponent
+}
+
+/// Parse a vinyl-side position ("A1", "B", reverse "1A") into a disc (the side
+/// letter, A→1) and a track number, mirroring the Tauri `parseVinylPosition`.
+private func parseVinylPosition(_ value: String) -> (disc: String, track: String?)? {
+    let v = value.trimmingCharacters(in: .whitespaces)
+    guard let first = v.first else { return nil }
+    let side: Character
+    let num: Substring
+    if first.isLetter, v.dropFirst().allSatisfy(\.isNumber) {
+        side = first
+        num = v.dropFirst()
+    } else if v.count >= 2, let last = v.last, last.isLetter, v.dropLast().allSatisfy(\.isNumber) {
+        side = last
+        num = v.dropLast()
+    } else {
+        return nil
+    }
+    guard let scalar = String(side).uppercased().unicodeScalars.first else { return nil }
+    let disc = Int(scalar.value) - 64
+    guard disc >= 1, disc <= 26 else { return nil }
+    return (String(disc), num.isEmpty ? nil : String(Int(num) ?? 1))
 }
 
 /// A path shown relative to `base` (the move destination or library root), so a

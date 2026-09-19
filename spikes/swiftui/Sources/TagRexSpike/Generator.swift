@@ -36,9 +36,28 @@ struct GeneratorPanel: View {
         ("key", "Musical key"),
     ]
 
+    private enum GenMode: String, CaseIterable, Identifiable {
+        case rules, number, vinyl
+        var id: Self { self }
+        var title: String {
+            switch self {
+            case .rules: "Rules"
+            case .number: "Number"
+            case .vinyl: "Vinyl"
+            }
+        }
+    }
+
+    @State private var genMode: GenMode = .rules
+
     @State private var groupScope = "title"
     @State private var rules: [ChainRule] = [ChainRule()]
     @State private var builtins: [ActionGroup] = []
+
+    // Number-tracks form.
+    @State private var numberStart = "1"
+    @State private var numberTotal = true
+    @State private var numberDisc = ""
 
     @State private var pairs: [TransformPair] = []
     @State private var error: String?
@@ -63,13 +82,100 @@ struct GeneratorPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            form
+            Picker("", selection: $genMode) {
+                ForEach(GenMode.allCases) { Text($0.title.uppercased()).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .padding(12)
             Divider()
-            preview
+
+            switch genMode {
+            case .rules:
+                form
+                Divider()
+                preview
+            case .number:
+                numberForm
+            case .vinyl:
+                vinylForm
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: refreshKey) { await refresh() }
         .task { builtins = await library.builtinActionGroups() }
+    }
+
+    // MARK: - Number tracks (#G-2)
+
+    private var numberForm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Text("Start at").foregroundStyle(.secondary)
+                TextField("1", text: $numberStart)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                    .multilineTextAlignment(.trailing)
+            }
+            Toggle("Write track total", isOn: $numberTotal)
+                .toggleStyle(.checkbox)
+            HStack(spacing: 8) {
+                Text("Disc #").foregroundStyle(.secondary)
+                TextField("(leave empty)", text: $numberDisc)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                    .multilineTextAlignment(.trailing)
+            }
+            Text("Numbers the \(scopeCount) in table order, from the start value.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Stage numbering") {
+                    let start = max(0, Int(numberStart.trimmingCharacters(in: .whitespaces)) ?? 1)
+                    let disc = numberDisc.trimmingCharacters(in: .whitespaces)
+                    library.numberTracks(paths: paths, start: start, writeTotal: numberTotal,
+                                         disc: disc.isEmpty ? nil : disc)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(paths.isEmpty)
+            }
+            Spacer()
+        }
+        .font(AppFonts.body)
+        .padding(14)
+    }
+
+    // MARK: - Split vinyl sides (#G-3)
+
+    private var vinylForm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Split vinyl-side positions")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+            Text("Turns a side position in the track tag (A1, B2) into a disc and a track number — side A → disc 1, B → disc 2.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Split vinyl sides") {
+                    _ = library.splitVinylSides(paths: paths)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(paths.isEmpty)
+            }
+            Spacer()
+        }
+        .font(AppFonts.body)
+        .padding(14)
+    }
+
+    private var scopeCount: String {
+        let selected = library.tracks.map(\.id).filter(selection.contains)
+        return selected.isEmpty ? "\(paths.count) visible file(s)" : "\(paths.count) selected file(s)"
     }
 
     private var form: some View {

@@ -60,8 +60,8 @@ The stand is **one rule**. The Tauri generator is a rule-chain engine.
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
 | G-1 | ✅ **Done** — a chain editor: add/remove/reorder/enable steps, each with a per-rule scope override, run as one action group through `preview_transform_groups`; a Presets menu loads the shipped builtin chains (`Generator.swift`). (User-saved/persisted groups still to come.) | **Chains of rules** — saved & builtin action groups, group menus, a chain editor (`createRuleChain`, `initActionGroups`, `initBuiltinGroups`, chain.js) | P1 | `preview_transform_groups`/`_over_plan` + `builtin_action_groups` ready |
-| G-2 | — | **Number tracks** (`numberTracks`, generator.js:125) | P2 | ready (builds a `preview_transform_groups` payload) |
-| G-3 | — | **Split vinyl sides** A/B (`splitVinylSides`, generator.js:197; vinyl.js) | P2 | ready |
+| G-2 | ✅ **Done** — a Number sub-tab: start value, write-total, optional disc, numbers the selection in table order (`Generator.swift`, `Library.numberTracks`) | **Number tracks** (`numberTracks`, generator.js:125) | P2 | ready (builds a `preview_transform_groups` payload) |
+| G-3 | ✅ **Done** — a Vinyl sub-tab that splits an A1/B2 track tag into a disc + track number (`Generator.swift`, `Library.splitVinylSides` + `parseVinylPosition`) | **Split vinyl sides** A/B (`splitVinylSides`, generator.js:197; vinyl.js) | P2 | ready |
 | G-4 | Preview only over files | Transform **over a staged plan** and over **ticked groups** (`preview_transform_over_plan`, `runTickedGroups`, generator.js:233/259) | P2 | ready |
 | G-5 | Stage enabled on no-op | `nothingChanged()` guards the run (generator.js:106) | P3 | n/a |
 
