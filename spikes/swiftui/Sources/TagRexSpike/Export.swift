@@ -72,17 +72,23 @@ struct ExportPanel: View {
                 labeled("Mask") {
                     // UI font, not monospace (#351) — a pattern/name field, not
                     // a path.
-                    TextField("%artist% - %title%", text: $mask)
-                        .textFieldStyle(.roundedBorder)
-                        .font(AppFonts.body)
+                    HStack(spacing: 6) {
+                        TextField("%artist% - %title%", text: $mask)
+                            .textFieldStyle(.roundedBorder)
+                            .font(AppFonts.body)
+                        MaskPresetButton(mask: $mask)
+                    }
                 }
             }
 
             if splitting {
                 labeled("Name mask") {
-                    TextField("%albumartist% - %album%", text: $splitMask)
-                        .textFieldStyle(.roundedBorder)
-                        .font(AppFonts.body)
+                    HStack(spacing: 6) {
+                        TextField("%albumartist% - %album%", text: $splitMask)
+                            .textFieldStyle(.roundedBorder)
+                            .font(AppFonts.body)
+                        MaskPresetButton(mask: $splitMask)
+                    }
                 }
             } else {
                 labeled("File name") {

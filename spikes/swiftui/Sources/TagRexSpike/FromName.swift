@@ -52,9 +52,12 @@ struct FromNamePanel: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(.secondary)
             // UI font, not monospace (#351) — a pattern field, not a path.
-            TextField("%artist% - %title%", text: $mask)
-                .textFieldStyle(.roundedBorder)
-                .font(AppFonts.body)
+            HStack(spacing: 6) {
+                TextField("%artist% - %title%", text: $mask)
+                    .textFieldStyle(.roundedBorder)
+                    .font(AppFonts.body)
+                MaskPresetButton(mask: $mask)
+            }
             Text("The mask reads values out of the file's name into its tags.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)

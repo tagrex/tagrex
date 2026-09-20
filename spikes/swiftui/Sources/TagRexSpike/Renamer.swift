@@ -80,9 +80,12 @@ struct RenamerPanel: View {
             // The UI font, not monospace (#351) — it read as out of place
             // against the rest of the interface, and the placeholder reference
             // makes tokens discoverable without needing column alignment.
-            TextField("%artist% - %title%", text: $mask)
-                .textFieldStyle(.roundedBorder)
-                .font(AppFonts.body)
+            HStack(spacing: 6) {
+                TextField("%artist% - %title%", text: $mask)
+                    .textFieldStyle(.roundedBorder)
+                    .font(AppFonts.body)
+                MaskPresetButton(mask: $mask)
+            }
             Text("Placeholders like %artist%, %title%, %track% — plus $upper(), $pad().")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -96,9 +99,12 @@ struct RenamerPanel: View {
     private var moveForm: some View {
         VStack(alignment: .leading, spacing: 8) {
             fieldLabel("Folder pattern")
-            TextField("%albumartist%/%album%/%track% - %title%", text: $moveMask)
-                .textFieldStyle(.roundedBorder)
-                .font(AppFonts.body)
+            HStack(spacing: 6) {
+                TextField("%albumartist%/%album%/%track% - %title%", text: $moveMask)
+                    .textFieldStyle(.roundedBorder)
+                    .font(AppFonts.body)
+                MaskPresetButton(mask: $moveMask)
+            }
             Text("Slashes become folders under the destination.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
