@@ -632,8 +632,24 @@ struct TrackTable: View {
         } rows: {
             if grouped {
                 ForEach(folderGroups, id: \.key) { group in
-                    Section(group.label) {
+                    Section {
                         ForEach(group.tracks) { TableRow($0) }
+                    } header: {
+                        // The folder-group header as an accent band (#281): the
+                        // name in the accent colour, on a faint accent wash with a
+                        // leading accent bar, so it reads as a section boundary.
+                        HStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(.tint)
+                                .frame(width: 3, height: 12)
+                            Text(group.label)
+                                .font(AppFonts.sans(11, .semibold))
+                                .foregroundStyle(.tint)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.vertical, 3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.appAccent.opacity(0.12))
                     }
                 }
             } else {
