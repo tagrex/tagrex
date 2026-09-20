@@ -37,6 +37,8 @@ struct GeneratorPanel: View {
     // Save-chain-as-group prompt.
     @State private var savingGroup = false
     @State private var newGroupName = ""
+    // Saved groups ticked to run together (#G-4 ticked groups).
+    @State private var ticked: Set<String> = []
 
     @State private var pairs: [TransformPair] = []
     @State private var error: String?
@@ -216,9 +218,49 @@ struct GeneratorPanel: View {
                 .disabled(isStaging || enabledCount == 0)
                 .help("Run this chain over the changes already staged, before Apply")
             }
+
+            tickedGroups
         }
         .font(AppFonts.body)
         .padding(12)
+    }
+
+    /// Run several saved groups in one batch (#G-4 ticked groups): tick the ones
+    /// to apply and run them all in order — the backend takes a list of groups.
+    @ViewBuilder
+    private var tickedGroups: some View {
+        if !library.savedActionGroups.isEmpty {
+            Divider()
+            Text("Run saved groups")
+                .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
+            ForEach(library.savedActionGroups) { saved in
+                Toggle(saved.name, isOn: Binding(
+                    get: { ticked.contains(saved.name) },
+                    set: { on in if on { ticked.insert(saved.name) } else { ticked.remove(saved.name) } }
+                ))
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+            }
+            HStack {
+                Spacer()
+                Button("Run \(ticked.count) ticked") { runTicked() }
+                    .controlSize(.small)
+                    .disabled(isStaging || ticked.isEmpty)
+                    .help("Stage all ticked groups in order over the selection")
+            }
+        }
+    }
+
+    private func runTicked() {
+        let groups = library.savedActionGroups.filter { ticked.contains($0.name) }
+        guard !groups.isEmpty else { return }
+        isStaging = true
+        Task {
+            if case .failure(let failure) = await library.stageTransformGroups(groups: groups, paths: paths) {
+                error = failure.message
+            }
+            isStaging = false
+        }
     }
 
     @ViewBuilder
