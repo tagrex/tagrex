@@ -236,6 +236,19 @@ struct WorkspaceView: View {
                 .fixedSize()
                 .help("Choose which columns to show")
 
+                // Clear text tags on the selection (#toolbar), surfaced here so it
+                // doesn't need a trip into the editor. Cover art and cue points are
+                // kept; it's previewed in the change bar before anything is written.
+                Button {
+                    let paths = rows.filter { visibleSelection.contains($0.id) }.map(\.id)
+                    Task { _ = await library.stageClearTags(paths: paths) }
+                } label: {
+                    Image(systemName: "eraser")
+                }
+                .buttonStyle(.borderless)
+                .disabled(visibleSelection.isEmpty)
+                .help("Clear text tags on the selected files (cover and cue points are kept)")
+
                 Spacer(minLength: 12)
 
                 FilterField(text: Bindable(library).filter, focusRequest: focusFilter,

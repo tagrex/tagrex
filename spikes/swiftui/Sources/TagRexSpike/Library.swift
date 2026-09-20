@@ -1806,6 +1806,46 @@ final class Library {
         }
     }
 
+    /// Stage clearing the text tags on the selection (`preview_clear_tags`): cover
+    /// art and DJ cue points are kept. The cleared values fill the table diff, and
+    /// the change bar's Apply writes it — one journaled, undoable batch.
+    func stageClearTags(paths: [String]) async -> Result<Int, SearchFailure> {
+        guard let session, !paths.isEmpty else { return .success(0) }
+        let box = SessionHandle(raw: session)
+        let result: Result<(JSONValue, [String: [String: String]], Int), SearchFailure> =
+            await Task.detached(priority: .userInitiated) {
+                let reply: Reply<JSONValue>? =
+                    invoke(box, "preview_clear_tags", encodeArgs(PathsArg(paths: paths)))
+                guard let plan = reply?.ok else {
+                    return .failure(SearchFailure(message: reply?.error?.text ?? "clearing could not be prepared"))
+                }
+                guard let parsed = decodePlan(plan) else {
+                    return .failure(SearchFailure(message: "could not read the plan"))
+                }
+                var diffs: [String: [String: String]] = [:]
+                for change in parsed.changes {
+                    for tag in change.tag_changes {
+                        diffs[change.path, default: [:]][tag.field] = tag.new ?? ""
+                    }
+                }
+                return .success((plan, diffs, parsed.changes.count))
+            }.value
+
+        switch result {
+        case .success(let (plan, diffs, count)):
+            guard count > 0 else { lastMessage = "Nothing to clear"; return .success(0) }
+            staged = diffs
+            stagedRenames.removeAll()
+            stagedPlan = plan
+            stagedPlanCount = count
+            lastMessage = "Staged clearing tags on \(count) file(s)"
+            return .success(count)
+        case .failure(let failure):
+            lastMessage = failure.message
+            return .failure(failure)
+        }
+    }
+
     // MARK: - Export
 
     /// Write an export of `paths` into the library folder and return the path
