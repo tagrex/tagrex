@@ -215,6 +215,7 @@ struct WorkspaceView: View {
     @AppStorage("filterPresets") private var presetsRaw = "[]"
     @State private var presetNameDraft = ""
     @State private var showPresetsPopover = false
+    @State private var showColumnsPopover = false
     /// The "Rules to run on what this panel produces" shortcut (`transform-btn`):
     /// a chain, set for the session (not persisted, matching Tauri), that's
     /// auto-applied to every plan any mode stages — see the `onChange` below.
@@ -514,27 +515,7 @@ struct WorkspaceView: View {
 
                 presetsMenu
 
-                Menu {
-                    ForEach(TrackTable.optionalColumns, id: \.key) { column in
-                        Toggle(column.label, isOn: Binding(
-                            get: { visibleColumns.contains(column.key) },
-                            set: { _ in toggleColumn(column.key) }
-                        ))
-                    }
-                    Divider()
-                    Button(customMask.isEmpty ? "Custom column…" : "Edit custom column…") {
-                        customDraft = customMask
-                        showCustomPrompt = true
-                    }
-                    if !customMask.isEmpty {
-                        Button("Remove custom column", role: .destructive) { customMask = "" }
-                    }
-                } label: {
-                    Image(systemName: "tablecells")
-                }
-                .menuStyle(.borderlessButton)
-                .fixedSize()
-                .help("Choose which columns to show")
+                columnsMenu
 
                 // `tb-div`: everything to the left configures the view; the
                 // transform chain and eraser to the right act on the selection.
@@ -706,6 +687,74 @@ struct WorkspaceView: View {
         guard !presetNameDraft.trimmingCharacters(in: .whitespaces).isEmpty else { return }
         saveCurrentPreset(presetNameDraft)
         presetNameDraft = ""
+    }
+
+    // MARK: - Columns (#43)
+
+    /// Columns menu: a popover split into a Visible list and, below a "Hidden"
+    /// label, everything not currently shown — mirrors Tauri's
+    /// `renderColumnsMenu`. Two pieces of that popover are NOT reproduced here,
+    /// both for the same reason: SwiftUI's `Table` declares its columns in a
+    /// fixed source order (conditionally shown or hidden, never reordered at
+    /// runtime) and has no per-column width state to act on, so there is
+    /// nothing for a drag handle or a "Fit to content"/"Autofit" control to
+    /// drive without rebuilding the table on a custom grid.
+    private var columnsMenu: some View {
+        Button {
+            showColumnsPopover.toggle()
+        } label: {
+            Image(systemName: "tablecells")
+        }
+        .buttonStyle(.borderless)
+        .focusEffectDisabled()
+        .help("Choose which columns to show")
+        .popover(isPresented: $showColumnsPopover, arrowEdge: .bottom) {
+            let visible = TrackTable.optionalColumns.filter { visibleColumns.contains($0.key) }
+            let hidden = TrackTable.optionalColumns.filter { !visibleColumns.contains($0.key) }
+            VStack(alignment: .leading, spacing: 2) {
+                ForEach(visible, id: \.key) { column in
+                    Toggle(column.label, isOn: Binding(
+                        get: { true }, set: { _ in toggleColumn(column.key) }
+                    ))
+                    .toggleStyle(.checkbox)
+                }
+                if !hidden.isEmpty {
+                    Text("Hidden")
+                        .font(AppFonts.sans(10, .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 6)
+                    ForEach(hidden, id: \.key) { column in
+                        Toggle(column.label, isOn: Binding(
+                            get: { false }, set: { _ in toggleColumn(column.key) }
+                        ))
+                        .toggleStyle(.checkbox)
+                    }
+                }
+                Divider().padding(.vertical, 4)
+                Button(customMask.isEmpty ? "Add column…" : "Edit column…") {
+                    customDraft = customMask
+                    showCustomPrompt = true
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+                if !customMask.isEmpty {
+                    Button("Remove column", role: .destructive) { customMask = "" }
+                        .buttonStyle(.plain)
+                }
+                Button("Reset", action: resetColumns)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                    .padding(.top, 4)
+            }
+            .padding(10)
+            .frame(minWidth: 200)
+        }
+    }
+
+    /// Back to the default set, order and (nothing else — this stand has no
+    /// per-column widths yet) — mirrors Tauri's `resetColumns`.
+    private func resetColumns() {
+        columnsCSV = "artist,title,album,year,length"
     }
 
     /// "Rules to run on what this panel produces" (`transform-btn`): opens the
@@ -971,13 +1020,19 @@ struct TrackTable: View {
     /// header's "Collapse all groups" button (`toggle-groups`) can drive it too.
     @Binding var collapsedGroups: Set<String>
 
-    /// The optional columns the picker offers, in display order — each a modeled
-    /// field with its own keypath so the column stays sortable.
+    /// The optional columns the picker offers, in display order — mirrors
+    /// Tauri's full pool (`allColumnKeys`: EXTENDED_FIELDS + the virtual
+    /// columns), not just the handful shown by default. Each backs a real
+    /// KeyPath so the column stays sortable ("position" is left out — it
+    /// reconstructs the vinyl side notation from media+disc+track, a piece of
+    /// logic this stand doesn't have yet).
     static let optionalColumns: [(key: String, label: String)] = [
         ("artist", "Artist"), ("title", "Title"), ("album", "Album"),
-        ("albumartist", "Album Artist"), ("track", "Track"),
-        ("year", "Year"), ("genre", "Genre"),
-        ("catalognumber", "Catalogue #"), ("length", "Length"),
+        ("albumartist", "Album Artist"), ("track", "Track"), ("tracktotal", "Track Total"),
+        ("disc", "Disc"), ("year", "Year"), ("genre", "Genre"), ("comment", "Comment"),
+        ("composer", "Composer"), ("publisher", "Publisher"), ("catalognumber", "Catalogue #"),
+        ("bpm", "BPM"), ("isrc", "ISRC"), ("key", "Key"), ("url", "URL"), ("media", "Media"),
+        ("length", "Length"), ("tagtypes", "Tag types"),
     ]
 
     var body: some View {
@@ -1021,19 +1076,12 @@ struct TrackTable: View {
                 TableColumn("Genre", value: \.genre) { cell($0, .genre) }
                     .width(min: 80, ideal: 130)
             }
-            // Catalogue # and Length, nested in one builder expression to stay
-            // under SwiftUI's 10-column-per-block limit.
-            catalogueAndLengthColumns
-            // The custom mask column (T2) — computed, so not sortable.
-            if !customMask.isEmpty {
-                TableColumn(customMask) { track in
-                    Text(customValues[track.id] ?? "")
-                        .font(AppFonts.sans(11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .width(min: 90, ideal: 160)
-            }
+            // The rest of EXTENDED_FIELDS, nested in builder sub-expressions to
+            // stay under SwiftUI's 10-column-per-block limit (each nested
+            // property only costs one slot in this block, however many columns
+            // it holds internally, up to its own 10-column cap).
+            extendedColumnsA
+            extendedColumnsB
         } rows: {
             if !groupBy.isEmpty {
                 ForEach(groupedRows, id: \.key) { group in
@@ -1141,16 +1189,47 @@ struct TrackTable: View {
         return (key as NSString).lastPathComponent
     }
 
-    /// Catalogue # (an extended tag) and Length (derived playing time), grouped
-    /// into one `@TableColumnBuilder` expression so the table stays within the
-    /// 10-column-per-block limit. Both sortable — Length by whole seconds.
+    /// The rest of EXTENDED_FIELDS plus Length, split into two builder
+    /// properties (10 columns is SwiftUI's cap per `@TableColumnBuilder`
+    /// block, and this alone would be 11). Each column is a plain tag lookup
+    /// through the diff-aware `cell(_:key:current:)`, same as Catalogue #.
     @TableColumnBuilder<Track, KeyPathComparator<Track>>
-    private var catalogueAndLengthColumns: some TableColumnContent<Track, KeyPathComparator<Track>> {
+    private var extendedColumnsA: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        if visibleColumns.contains("tracktotal") {
+            TableColumn("Track Total", value: \.tracktotal) { cell($0, key: "tracktotal", current: $0.tracktotal) }
+                .width(64)
+        }
+        if visibleColumns.contains("disc") {
+            TableColumn("Disc", value: \.disc) { cell($0, key: "disc", current: $0.disc) }
+                .width(56)
+        }
+        if visibleColumns.contains("comment") {
+            TableColumn("Comment", value: \.comment) { cell($0, key: "comment", current: $0.comment) }
+                .width(min: 90, ideal: 160)
+        }
+        if visibleColumns.contains("composer") {
+            TableColumn("Composer", value: \.composer) { cell($0, key: "composer", current: $0.composer) }
+                .width(min: 90, ideal: 150)
+        }
+        if visibleColumns.contains("publisher") {
+            TableColumn("Publisher", value: \.publisher) { cell($0, key: "publisher", current: $0.publisher) }
+                .width(min: 90, ideal: 150)
+        }
         if visibleColumns.contains("catalognumber") {
-            TableColumn("Catalogue #", value: \.catalognumber) { track in
-                cell(track, key: "catalognumber", current: track.catalognumber)
-            }
-            .width(min: 80, ideal: 120)
+            TableColumn("Catalogue #", value: \.catalognumber) { cell($0, key: "catalognumber", current: $0.catalognumber) }
+                .width(min: 80, ideal: 120)
+        }
+        if visibleColumns.contains("bpm") {
+            TableColumn("BPM", value: \.bpm) { cell($0, key: "bpm", current: $0.bpm) }
+                .width(56)
+        }
+        if visibleColumns.contains("isrc") {
+            TableColumn("ISRC", value: \.isrc) { cell($0, key: "isrc", current: $0.isrc) }
+                .width(min: 80, ideal: 120)
+        }
+        if visibleColumns.contains("key") {
+            TableColumn("Key", value: \.key) { cell($0, key: "key", current: $0.key) }
+                .width(56)
         }
         if visibleColumns.contains("length") {
             TableColumn("Length", value: \.durationSort) { track in
@@ -1160,6 +1239,41 @@ struct TrackTable: View {
                     .monospacedDigit()
             }
             .width(64)
+        }
+    }
+
+    /// The remaining fields, plus the read-only "Tag types" virtual column and
+    /// the custom mask column — kept apart from `extendedColumnsA` only to stay
+    /// under the per-block cap.
+    @TableColumnBuilder<Track, KeyPathComparator<Track>>
+    private var extendedColumnsB: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        if visibleColumns.contains("url") {
+            TableColumn("URL", value: \.url) { cell($0, key: "url", current: $0.url) }
+                .width(min: 90, ideal: 160)
+        }
+        if visibleColumns.contains("media") {
+            TableColumn("Media", value: \.media) { cell($0, key: "media", current: $0.media) }
+                .width(min: 70, ideal: 90)
+        }
+        if visibleColumns.contains("tagtypes") {
+            // Derived, read-only (#47) — no staged/old diff, same as Length.
+            TableColumn("Tag types", value: \.tagtypes) { track in
+                Text(track.tagtypes.isEmpty ? "—" : track.tagtypes)
+                    .font(AppFonts.sans(11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .width(min: 90, ideal: 140)
+        }
+        // The custom mask column (T2) — computed, so not sortable.
+        if !customMask.isEmpty {
+            TableColumn(customMask) { track in
+                Text(customValues[track.id] ?? "")
+                    .font(AppFonts.sans(11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .width(min: 90, ideal: 160)
         }
     }
 

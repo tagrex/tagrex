@@ -32,8 +32,29 @@ struct Track: Identifiable, Decodable, Hashable {
     var track: String { value(for: .track) }
     /// The catalogue number tag — an extended field, so read by raw key.
     var catalognumber: String { value(forKey: "catalognumber") }
+    // The rest of EXTENDED_FIELDS (`app/ui/js/fields.js`) not already modeled
+    // above — plain tag lookups, same as catalognumber, so each can back a
+    // sortable table column.
+    var tracktotal: String { value(forKey: "tracktotal") }
+    var disc: String { value(forKey: "disc") }
+    var comment: String { value(forKey: "comment") }
+    var composer: String { value(forKey: "composer") }
+    var publisher: String { value(forKey: "publisher") }
+    var bpm: String { value(forKey: "bpm") }
+    var isrc: String { value(forKey: "isrc") }
+    var key: String { value(forKey: "key") }
+    var url: String { value(forKey: "url") }
+    var media: String { value(forKey: "media") }
     /// A sort key for the Length column: playing time in whole seconds.
     var durationSort: Int { Int(durationSecs ?? 0) }
+
+    /// The "ID3v2.4 + ID3v1" summary of which tag blocks a file carries — mirrors
+    /// Tauri's `tagBlockSummary`: the block being read from listed first.
+    var tagtypes: String {
+        let read = tagBlocks.filter(\.readFrom).map(\.label)
+        let rest = tagBlocks.filter { !$0.readFrom }.map(\.label)
+        return (read + rest).joined(separator: " + ")
+    }
 
     var duration: String {
         guard let secs = durationSecs else { return "" }
