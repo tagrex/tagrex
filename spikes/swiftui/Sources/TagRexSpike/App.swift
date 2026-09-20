@@ -623,7 +623,7 @@ struct TrackTable: View {
             if !customMask.isEmpty {
                 TableColumn(customMask) { track in
                     Text(customValues[track.id] ?? "")
-                        .font(AppFonts.body)
+                        .font(AppFonts.sans(11))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -706,7 +706,7 @@ struct TrackTable: View {
         if visibleColumns.contains("length") {
             TableColumn("Length", value: \.durationSort) { track in
                 Text(track.duration.isEmpty ? "—" : track.duration)
-                    .font(AppFonts.body)
+                    .font(AppFonts.sans(11))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
@@ -743,7 +743,7 @@ struct DiffCell: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(displayed(value))
-                .font(AppFonts.body)
+                .font(AppFonts.sans(11))
                 .foregroundStyle(colour)
                 .fontWeight(old == nil ? .regular : .semibold)
 
