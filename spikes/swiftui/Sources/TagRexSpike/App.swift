@@ -7,6 +7,37 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// A saved filter + sort + group view (#44) — the Tauri "filter/sort preset":
+/// name, filter text and flags, the primary sort column/direction, and whether
+/// folder grouping was on.
+struct FilterPreset: Codable, Identifiable, Equatable {
+    var name: String
+    var filter: String
+    var regex: Bool
+    var caseSensitive: Bool
+    var sortKey: String?
+    var sortAscending: Bool
+    var groupByFolder: Bool
+
+    var id: String { name }
+
+    /// A one-line summary for the menu row's tooltip.
+    var summary: String {
+        var bits: [String] = []
+        if !filter.isEmpty {
+            var f = "filter \u{201C}\(filter)\u{201D}"
+            if regex { f += " (regex)" }
+            if caseSensitive { f += " (Aa)" }
+            bits.append(f)
+        }
+        if let sortKey {
+            bits.append("sort \(sortKey) \(sortAscending ? "\u{2191}" : "\u{2193}")")
+        }
+        if groupByFolder { bits.append("grouped by folder") }
+        return bits.isEmpty ? "empty view" : bits.joined(separator: " · ")
+    }
+}
+
 enum Mode: String, CaseIterable, Identifiable {
     case tagger, renamer, generator, deduplicator, exporter
 
@@ -151,6 +182,19 @@ struct WorkspaceView: View {
     @State private var showingSettings = false
     /// Group the table by folder (#129, T1). On by default, like the web UI.
     @State private var groupByFolder = true
+    /// Which folder groups are collapsed — lives here (not inside TrackTable)
+    /// so the header's "Collapse all groups" button can drive it too.
+    @State private var collapsedGroups: Set<String> = []
+    /// Saved filter + sort + group presets (#44), persisted as JSON.
+    @AppStorage("filterPresets") private var presetsRaw = "[]"
+    @State private var newPresetName = ""
+    @State private var showPresetSavePrompt = false
+    /// The "Rules to run on what this panel produces" shortcut (`transform-btn`):
+    /// a chain, set for the session (not persisted, matching Tauri), that's
+    /// auto-applied to every plan any mode stages — see the `onChange` below.
+    @State private var transformShortcutRules: [ChainRule] = [ChainRule()]
+    @State private var transformShortcutActive = false
+    @State private var showTransformShortcut = false
     /// Which optional columns show (#43, T2), persisted in display order as CSV.
     @AppStorage("table.columns") private var columnsCSV = "artist,title,album,year"
     /// A user-defined mask column (T2 custom column), persisted; empty = none.
@@ -216,6 +260,85 @@ struct WorkspaceView: View {
 
     private var recents: [String] {
         recentsRaw.split(separator: "\n").map(String.init)
+    }
+
+    /// The folder-group keys the table currently has (same bucketing
+    /// `TrackTable.folderGroups` does), needed here so the header's "collapse
+    /// all" button can act on all of them without reaching into TrackTable.
+    private var folderGroupKeys: [String] {
+        var seen = Set<String>()
+        var order: [String] = []
+        for track in rows {
+            let folder = (track.id as NSString).deletingLastPathComponent
+            if seen.insert(folder).inserted { order.append(folder) }
+        }
+        return order
+    }
+
+    // MARK: - Filter/sort presets (#44)
+
+    private var presets: [FilterPreset] {
+        (try? JSONDecoder().decode([FilterPreset].self, from: Data(presetsRaw.utf8))) ?? []
+    }
+
+    private func writePresets(_ list: [FilterPreset]) {
+        guard let data = try? JSONEncoder().encode(list.sorted { $0.name < $1.name }) else { return }
+        presetsRaw = String(data: data, encoding: .utf8) ?? "[]"
+    }
+
+    /// Store the current view under `name`, replacing a same-named one —
+    /// mirrors the Tauri `saveCurrentPreset`.
+    private func saveCurrentPreset(_ name: String) {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        let sort = sortOrder.first
+        let preset = FilterPreset(
+            name: trimmed,
+            filter: library.filter,
+            regex: library.filterRegex,
+            caseSensitive: library.filterCaseSensitive,
+            sortKey: sort.flatMap(sortKeyName),
+            sortAscending: sort?.order == .forward,
+            groupByFolder: groupByFolder
+        )
+        writePresets(presets.filter { $0.name != trimmed } + [preset])
+    }
+
+    /// Re-apply a saved preset: filter text/flags, sort and grouping.
+    private func applyPreset(_ preset: FilterPreset) {
+        library.filter = preset.filter
+        library.filterRegex = preset.regex
+        library.filterCaseSensitive = preset.caseSensitive
+        groupByFolder = preset.groupByFolder
+        if let key = preset.sortKey, let comparator = sortComparator(for: key, ascending: preset.sortAscending) {
+            sortOrder = [comparator]
+        }
+    }
+
+    /// The storage key a sort comparator's keypath corresponds to, for saving.
+    private func sortKeyName(_ comparator: KeyPathComparator<Track>) -> String? {
+        TrackTable.optionalColumns.map(\.key).first { key in
+            sortComparator(for: key, ascending: true)?.keyPath == comparator.keyPath
+        } ?? (comparator.keyPath == \Track.file ? "file" : nil)
+    }
+
+    /// A comparator for a storage key, the reverse of `sortKeyName` — every
+    /// column the table can sort by.
+    private func sortComparator(for key: String, ascending: Bool) -> KeyPathComparator<Track>? {
+        let order: SortOrder = ascending ? .forward : .reverse
+        switch key {
+        case "file": return KeyPathComparator(\Track.file, order: order)
+        case "artist": return KeyPathComparator(\Track.artist, order: order)
+        case "title": return KeyPathComparator(\Track.title, order: order)
+        case "album": return KeyPathComparator(\Track.album, order: order)
+        case "albumartist": return KeyPathComparator(\Track.albumartist, order: order)
+        case "track": return KeyPathComparator(\Track.track, order: order)
+        case "year": return KeyPathComparator(\Track.year, order: order)
+        case "genre": return KeyPathComparator(\Track.genre, order: order)
+        case "catalognumber": return KeyPathComparator(\Track.catalognumber, order: order)
+        case "length": return KeyPathComparator(\Track.durationSort, order: order)
+        default: return nil
+        }
     }
 
     /// Open a folder and remember it at the top of the recents (deduped, capped).
@@ -297,6 +420,39 @@ struct WorkspaceView: View {
                 .focusEffectDisabled()
                 .help(groupByFolder ? "Grouping by folder — click to flatten" : "Group the table by folder")
 
+                // Collapse/expand every group at once (`toggle-groups`): while
+                // any group is still open it offers "collapse", once everything
+                // is shut it flips to "expand" — one control, not two buttons.
+                if groupByFolder, !folderGroupKeys.isEmpty {
+                    Button {
+                        if collapsedGroups.count < folderGroupKeys.count {
+                            collapsedGroups = Set(folderGroupKeys)
+                        } else {
+                            collapsedGroups.removeAll()
+                        }
+                    } label: {
+                        Image(systemName: collapsedGroups.count < folderGroupKeys.count
+                              ? "arrow.down.right.and.arrow.up.left"
+                              : "arrow.up.left.and.arrow.down.right")
+                    }
+                    .buttonStyle(.borderless)
+                    .focusEffectDisabled()
+                    .help(collapsedGroups.count < folderGroupKeys.count
+                          ? "Collapse every group" : "Expand every group")
+                }
+
+                FilterField(text: Bindable(library).filter, focusRequest: focusFilter,
+                            invalid: library.filterInvalid)
+                    .frame(maxWidth: 220)
+
+                // Filter flags (#44): match as a regex, and/or case-sensitively.
+                filterFlag(".*", on: Bindable(library).filterRegex,
+                           help: "Match the filter as a regular expression")
+                filterFlag("Aa", on: Bindable(library).filterCaseSensitive,
+                           help: "Match case-sensitively")
+
+                presetsMenu
+
                 Menu {
                     ForEach(TrackTable.optionalColumns, id: \.key) { column in
                         Toggle(column.label, isOn: Binding(
@@ -319,6 +475,8 @@ struct WorkspaceView: View {
                 .fixedSize()
                 .help("Choose which columns to show")
 
+                transformShortcutButton
+
                 // Clear text tags on the selection (#toolbar), surfaced here so it
                 // doesn't need a trip into the editor. Cover art and cue points are
                 // kept; it's previewed in the change bar before anything is written.
@@ -332,18 +490,6 @@ struct WorkspaceView: View {
                 .focusEffectDisabled()
                 .disabled(visibleSelection.isEmpty)
                 .help("Clear text tags on the selected files (cover and cue points are kept)")
-
-                Spacer(minLength: 12)
-
-                FilterField(text: Bindable(library).filter, focusRequest: focusFilter,
-                            invalid: library.filterInvalid)
-                    .frame(maxWidth: 220)
-
-                // Filter flags (#44): match as a regex, and/or case-sensitively.
-                filterFlag(".*", on: Bindable(library).filterRegex,
-                           help: "Match the filter as a regular expression")
-                filterFlag("Aa", on: Bindable(library).filterCaseSensitive,
-                           help: "Match case-sensitively")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -353,19 +499,19 @@ struct WorkspaceView: View {
     }
 
     /// The library path group (open folder / recents / re-read) — Tauri's `.lib`
-    /// div, now a content row instead of a native toolbar item.
+    /// div, now a content row instead of a native toolbar item. Tauri splits
+    /// this into a path-text button (#root-display, no icon) and a SEPARATE
+    /// folder-icon button (#lib-action) right after the recents chevron — two
+    /// affordances that both open the chooser, not one combined button.
     @ViewBuilder
     private var libraryPathControls: some View {
         Button {
             choosingFolder = true
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "folder")
-                Text(pathLabelText)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .frame(maxWidth: 220)
-            }
+            Text(pathLabelText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 220)
         }
         .buttonStyle(.bordered)
         .focusEffectDisabled()
@@ -397,6 +543,15 @@ struct WorkspaceView: View {
         .help("Recent folders, or open by path")
 
         Button {
+            choosingFolder = true
+        } label: {
+            Image(systemName: "folder")
+        }
+        .buttonStyle(.borderless)
+        .focusEffectDisabled()
+        .help("Choose a folder to open")
+
+        Button {
             Task { await library.rescan() }
         } label: {
             Image(systemName: "arrow.clockwise")
@@ -423,6 +578,68 @@ struct WorkspaceView: View {
         .help(help)
     }
 
+    /// Bookmark menu: saved filter+sort+group presets — apply or delete an
+    /// existing one, or save the current view under a new name.
+    private var presetsMenu: some View {
+        Menu {
+            if presets.isEmpty {
+                Text("No saved presets").disabled(true)
+            } else {
+                ForEach(presets) { preset in
+                    Menu(preset.name) {
+                        Button("Apply") { applyPreset(preset) }
+                        Text(preset.summary).disabled(true)
+                        Button("Delete", role: .destructive) {
+                            writePresets(presets.filter { $0.name != preset.name })
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button("Save current as…") {
+                newPresetName = ""
+                showPresetSavePrompt = true
+            }
+        } label: {
+            Image(systemName: "bookmark")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Save and re-apply filter + sort presets")
+    }
+
+    /// "Rules to run on what this panel produces" (`transform-btn`): opens the
+    /// shared chain editor; a non-empty, enabled chain runs automatically over
+    /// whatever any mode stages next (see the `onChange(of:)` on the table).
+    private var transformShortcutButton: some View {
+        Button {
+            showTransformShortcut = true
+        } label: {
+            Image(systemName: "wand.and.stars")
+                .foregroundStyle(transformShortcutActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+        }
+        .buttonStyle(.borderless)
+        .focusEffectDisabled()
+        .help(transformShortcutActive
+              ? "Rules to run on what this panel produces — \(transformShortcutRules.filter(\.enabled).count) step(s) set"
+              : "Rules to run on what this panel produces — not set")
+        .popover(isPresented: $showTransformShortcut) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Auto-run on every staged plan")
+                    .font(.caption).fontWeight(.semibold).foregroundStyle(.secondary)
+                ChainEditor(rules: $transformShortcutRules)
+                    .frame(width: 320)
+                HStack {
+                    Toggle("Active", isOn: $transformShortcutActive)
+                        .toggleStyle(.checkbox)
+                    Spacer()
+                    Button("Close") { showTransformShortcut = false }
+                }
+            }
+            .padding(12)
+        }
+    }
+
     var body: some View {
         @Bindable var library = library
 
@@ -444,7 +661,8 @@ struct WorkspaceView: View {
                 } else {
                     library.play(track.id, queue: rows.map(\.id))
                 }
-            }
+            },
+            collapsedGroups: $collapsedGroups
         )
             .task(id: "\(customMask)|\(rows.count)|\(rows.first?.id ?? "")|\(rows.last?.id ?? "")") {
                 customValues = customMask.isEmpty
@@ -528,6 +746,24 @@ struct WorkspaceView: View {
             } message: {
                 Text("Type or paste a folder path to open.")
             }
+            .alert("Save preset", isPresented: $showPresetSavePrompt) {
+                TextField("Name", text: $newPresetName)
+                Button("Save") { saveCurrentPreset(newPresetName) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Saves the current filter, sort and grouping under this name.")
+            }
+            // The transform shortcut (#toolbar.transformTitle) auto-runs its
+            // chain over whatever any mode just staged. hasStagedPlan flips
+            // false→true exactly once per stage (an already-true→true update,
+            // which is what applying the chain itself produces, is not a
+            // change, so this can't re-trigger itself).
+            .onChange(of: library.hasStagedPlan) { wasStaged, isStaged in
+                guard isStaged, !wasStaged, transformShortcutActive else { return }
+                let groups = [ActionGroup(name: "shortcut", scope: "tags",
+                                          rules: transformShortcutRules.map(\.transformRule))]
+                Task { _ = await library.transformOverStagedPlan(groups: groups) }
+            }
             .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
                 guard case .success(let folder) = result else { return }
                 Task { await openFolder(folder) }
@@ -563,7 +799,7 @@ struct FilterField: NSViewRepresentable {
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
-        field.placeholderString = "Filter — try artist:aphex"
+        field.placeholderString = "Filter… (try artist:aphex)"
         field.delegate = context.coordinator
         // Filter as it is typed; the table is in memory and the plan is staged,
         // so there is nothing to defer until Return.
@@ -637,8 +873,9 @@ struct TrackTable: View {
 
     /// Which folder groups are collapsed (view-only; never reorders `rows`) —
     /// toggled by clicking a group header's caret, mirroring Tauri's
-    /// `collapsedGroups`/`toggleGroup`.
-    @State private var collapsedGroups: Set<String> = []
+    /// `collapsedGroups`/`toggleGroup`. A binding (not local @State) so the
+    /// header's "Collapse all groups" button (`toggle-groups`) can drive it too.
+    @Binding var collapsedGroups: Set<String>
 
     /// The optional columns the picker offers, in display order — each a modeled
     /// field with its own keypath so the column stays sortable.
@@ -724,10 +961,17 @@ struct TrackTable: View {
                                 if isCollapsed { collapsedGroups.remove(group.key) }
                                 else { collapsedGroups.insert(group.key) }
                             } label: {
+                                // A 12pt glyph in a 12pt frame was the actual
+                                // clickable area — easy to miss by a couple of
+                                // points. The frame is now real click-target size
+                                // (22×22, full header height) with the glyph
+                                // centred in it and the whole frame tappable, not
+                                // just the drawn pixels.
                                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                                     .font(.system(size: 9, weight: .semibold))
                                     .foregroundStyle(.tint)
-                                    .frame(width: 12)
+                                    .frame(width: 22, height: 22)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .focusEffectDisabled()
