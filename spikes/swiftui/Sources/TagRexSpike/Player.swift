@@ -33,6 +33,10 @@ struct PlayerBar: View {
     let selectedFirst: String?
 
     @State private var volume = 1.0
+    /// What the volume was before a mute, so un-muting restores it rather than
+    /// jumping to full.
+    @State private var preMuteVolume = 1.0
+    @State private var showVolumePopover = false
     /// The now-playing track's waveform (1000 buckets) and cover, refreshed when
     /// the loaded path changes.
     @State private var buckets: [UInt8] = []
@@ -61,38 +65,41 @@ struct PlayerBar: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Button { if let p = prevPath { library.play(p, queue: queue) } } label: {
-                Image(systemName: "backward.fill")
+            // The five transport glyphs grouped tight, as one cluster (`pl-transport`).
+            HStack(spacing: 6) {
+                Button { if let p = prevPath { library.play(p, queue: queue) } } label: {
+                    Image(systemName: "backward.fill")
+                }
+                .disabled(prevPath == nil)
+                .help("Previous track")
+
+                Button(action: playOrPause) {
+                    Image(systemName: library.isPlaying ? "pause.fill" : "play.fill")
+                }
+                .disabled(startPath == nil && !loaded)
+                .help(library.isPlaying ? "Pause" : "Play")
+
+                Button { library.stopPlayback() } label: {
+                    Image(systemName: "stop.fill")
+                }
+                .disabled(!loaded)
+                .help("Stop")
+
+                Button { if let p = nextPath { library.play(p, queue: queue) } } label: {
+                    Image(systemName: "forward.fill")
+                }
+                .disabled(nextPath == nil)
+                .help("Next track")
+
+                repeatButton
             }
             .buttonStyle(.borderless)
-            .disabled(prevPath == nil)
-            .help("Previous track")
 
-            Button(action: playOrPause) {
-                Image(systemName: library.isPlaying ? "pause.fill" : "play.fill")
-            }
-            .buttonStyle(.borderless)
-            .disabled(startPath == nil && !loaded)
-            .help(library.isPlaying ? "Pause" : "Play")
-
-            Button { library.stopPlayback() } label: {
-                Image(systemName: "stop.fill")
-            }
-            .buttonStyle(.borderless)
-            .disabled(!loaded)
-            .help("Stop")
-
-            Button { if let p = nextPath { library.play(p, queue: queue) } } label: {
-                Image(systemName: "forward.fill")
-            }
-            .buttonStyle(.borderless)
-            .disabled(nextPath == nil)
-            .help("Next track")
-
-            repeatButton
+            volumeControl
 
             if loaded {
-                transport
+                cover
+                mainColumn
             } else {
                 Text("Playback: pick a row and press play")
             }
@@ -107,7 +114,6 @@ struct PlayerBar: View {
                 .foregroundStyle(library.repeatMode == .off
                                  ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.tint))
         }
-        .buttonStyle(.borderless)
         .help(repeatHelp)
     }
 
@@ -119,34 +125,88 @@ struct PlayerBar: View {
         }
     }
 
-    @ViewBuilder
-    private var transport: some View {
-        // Order mirrors the Tauri player bar: volume, cover, title, then the
-        // waveform filling the rest of the panel, then the time.
-        Image(systemName: "speaker.fill")
-        Slider(value: Binding(get: { volume }, set: { volume = $0; library.setVolume($0) }), in: 0...1)
-            .controlSize(.mini)
-            .frame(width: 70)
-
-        cover
-        Text(library.nowPlaying?.title.isEmpty == false
-             ? library.nowPlaying!.title
-             : (library.nowPlaying?.file ?? "—"))
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .frame(maxWidth: 180, alignment: .leading)
-
-        let duration = max(status?.durationSecs ?? 0, 0.1)
-        let progress = min(max((status?.positionSecs ?? 0) / duration, 0), 1)
-        WaveformSeekBar(buckets: buckets, progress: progress) { fraction in
-            library.seek(to: fraction * duration)
+    /// A speaker icon that opens the volume slider in a popover (`pl-vol` /
+    /// `pl-volume-pop`) — the slider doesn't sit permanently in the bar.
+    private var volumeControl: some View {
+        Button {
+            showVolumePopover.toggle()
+        } label: {
+            Image(systemName: volumeIcon)
         }
-        .frame(minWidth: 140, maxWidth: .infinity)
-        .frame(height: 24)
+        .buttonStyle(.borderless)
+        .focusEffectDisabled()
+        .help("Volume")
+        .popover(isPresented: $showVolumePopover, arrowEdge: .bottom) {
+            HStack(spacing: 8) {
+                Button(action: toggleMute) {
+                    Image(systemName: volumeIcon)
+                }
+                .buttonStyle(.borderless)
+                .help(volume > 0 ? "Mute" : "Unmute")
 
-        Text("\(clock(status?.positionSecs ?? 0)) / \(clock(status?.durationSecs ?? 0))")
-            .monospacedDigit()
-            .fixedSize()
+                Slider(value: Binding(
+                    get: { volume },
+                    set: { volume = $0; library.setVolume($0) }
+                ), in: 0...1)
+                    .frame(width: 120)
+            }
+            .padding(10)
+        }
+    }
+
+    private var volumeIcon: String {
+        if volume <= 0 { return "speaker.slash.fill" }
+        if volume < 0.5 { return "speaker.wave.1.fill" }
+        return "speaker.wave.2.fill"
+    }
+
+    private func toggleMute() {
+        if volume > 0 {
+            preMuteVolume = volume
+            volume = 0
+        } else {
+            volume = preMuteVolume > 0 ? preMuteVolume : 1
+        }
+        library.setVolume(volume)
+    }
+
+    /// The title/time line above the waveform, and the waveform itself below it
+    /// spanning the full width (`pl-main`: `pl-line` + `pl-wave-wrap`) — stacked,
+    /// not squeezed into a column beside the bar, so the title has the whole
+    /// width and never ellipsises after a few words.
+    private var mainColumn: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(nowPlayingLabel)
+                    .font(AppFonts.mono)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Text("\(clock(status?.positionSecs ?? 0)) / \(clock(status?.durationSecs ?? 0))")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .fixedSize()
+            }
+
+            let duration = max(status?.durationSecs ?? 0, 0.1)
+            let progress = min(max((status?.positionSecs ?? 0) / duration, 0), 1)
+            WaveformSeekBar(buckets: buckets, progress: progress) { fraction in
+                library.seek(to: fraction * duration)
+            }
+            .frame(height: 20)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// "Artist — Title", falling back to just the title or the file name —
+    /// mirrors the Tauri `playerLabel`.
+    private var nowPlayingLabel: String {
+        guard let track = library.nowPlaying else {
+            return status?.path.map { ($0 as NSString).lastPathComponent } ?? ""
+        }
+        let artist = track.artist.trimmingCharacters(in: .whitespaces)
+        let title = track.title.trimmingCharacters(in: .whitespaces)
+        if !artist.isEmpty, !title.isEmpty { return "\(artist) — \(title)" }
+        return title.isEmpty ? track.file : title
     }
 
     /// The now-playing cover, a small square before the title.

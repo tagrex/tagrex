@@ -64,6 +64,12 @@ struct ModeTabBar: View {
                     }
                 }
                 .buttonStyle(.plain)
+                // Without this, the system paints a persistent accent focus
+                // ring around whichever tab last held keyboard focus (usually
+                // the first one, TAGGER, since it's first in view order) —
+                // showing an outline that has nothing to do with which tab is
+                // actually selected (that's the underline above).
+                .focusEffectDisabled()
                 .padding(.horizontal, 8)
             }
         }
@@ -221,11 +227,18 @@ struct WorkspaceView: View {
         recentsRaw = list.prefix(8).joined(separator: "\n")
     }
 
-    /// The controls strip above the table. It carries the mode tabs (drawn as
-    /// content, so a narrow window never collapses them into a native ">>"
-    /// overflow the way the window toolbar did) plus grouping, columns and the
-    /// filter — the stand's take on the Tauri top strip + `.view-tabs` bar.
-    private var tableControls: some View {
+    /// The full header, replacing the native window toolbar entirely: everything
+    /// lives in content now, in the same two rows Tauri's own header uses.
+    ///
+    /// Row 1 mirrors `<header class="topbar">` exactly — brand, mode tabs, a
+    /// spacer, then the library path group, panel toggle, and undo/settings —
+    /// all ONE row. Earlier this was split across a native toolbar (path/undo/
+    /// settings) and a content row (brand/tabs/view-tools), which put path and
+    /// tabs in different strips than Tauri does and left a stray native toolbar
+    /// row above everything. Row 2 is Tauri's separate `.view-tabs` bar:
+    /// grouping, columns, the eraser, and the filter — nothing from row 1
+    /// belongs here.
+    private var header: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Text("/tagrex/")
@@ -234,14 +247,54 @@ struct WorkspaceView: View {
 
                 ModeTabBar(mode: $mode)
 
+                Spacer(minLength: 12)
+
+                libraryPathControls
+
                 Divider().frame(height: 16)
 
+                Button {
+                    showsInspector.toggle()
+                } label: {
+                    Image(systemName: "sidebar.trailing")
+                }
+                .buttonStyle(.borderless)
+                .focusEffectDisabled()
+                .help("Show or hide the panel")
+
+                Divider().frame(height: 16)
+
+                Button {
+                    Task { await library.undo() }
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .focusEffectDisabled()
+                .disabled(library.root == nil || library.isBusy)
+                .help("Undo the last applied batch")
+
+                Button {
+                    showingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .buttonStyle(.borderless)
+                .focusEffectDisabled()
+                .help("Settings")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            Divider()
+
+            HStack(spacing: 10) {
                 Button {
                     groupByFolder.toggle()
                 } label: {
                     Image(systemName: groupByFolder ? "rectangle.grid.1x2.fill" : "rectangle.grid.1x2")
                 }
                 .buttonStyle(.borderless)
+                .focusEffectDisabled()
                 .help(groupByFolder ? "Grouping by folder — click to flatten" : "Group the table by folder")
 
                 Menu {
@@ -276,6 +329,7 @@ struct WorkspaceView: View {
                     Image(systemName: "eraser")
                 }
                 .buttonStyle(.borderless)
+                .focusEffectDisabled()
                 .disabled(visibleSelection.isEmpty)
                 .help("Clear text tags on the selected files (cover and cue points are kept)")
 
@@ -296,6 +350,61 @@ struct WorkspaceView: View {
             Divider()
         }
         .background(.bar)
+    }
+
+    /// The library path group (open folder / recents / re-read) — Tauri's `.lib`
+    /// div, now a content row instead of a native toolbar item.
+    @ViewBuilder
+    private var libraryPathControls: some View {
+        Button {
+            choosingFolder = true
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "folder")
+                Text(pathLabelText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 220)
+            }
+        }
+        .buttonStyle(.bordered)
+        .focusEffectDisabled()
+        .help(library.root?.path ?? "Choose a folder to open")
+
+        Menu {
+            Button("Browse…") { choosingFolder = true }
+            Button("Open path…") {
+                pathDraft = library.root?.path ?? ""
+                showPathPrompt = true
+            }
+            if !recents.isEmpty {
+                Divider()
+                Section("Recent") {
+                    ForEach(recents, id: \.self) { path in
+                        Button {
+                            Task { await openFolder(URL(fileURLWithPath: path)) }
+                        } label: {
+                            Text((path as NSString).lastPathComponent)
+                        }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Recent folders, or open by path")
+
+        Button {
+            Task { await library.rescan() }
+        } label: {
+            Image(systemName: "arrow.clockwise")
+        }
+        .buttonStyle(.borderless)
+        .focusEffectDisabled()
+        .disabled(library.root == nil)
+        .help("Re-read the open folder")
     }
 
     /// One monospaced filter-flag toggle (`.*`, `Aa`) — tinted when on.
@@ -328,7 +437,14 @@ struct WorkspaceView: View {
             rootPath: library.root?.path,
             visibleColumns: visibleColumns,
             customMask: customMask,
-            customValues: customValues
+            customValues: customValues,
+            onPlayToggle: { track in
+                if library.playerStatus?.path == track.id {
+                    library.togglePause()
+                } else {
+                    library.play(track.id, queue: rows.map(\.id))
+                }
+            }
         )
             .task(id: "\(customMask)|\(rows.count)|\(rows.first?.id ?? "")|\(rows.last?.id ?? "")") {
                 customValues = customMask.isEmpty
@@ -345,7 +461,7 @@ struct WorkspaceView: View {
             // ">>" overflow, and the filter field works in the normal hierarchy
             // (no toolbar-over-inspector focus trap).
             .safeAreaInset(edge: .top, spacing: 0) {
-                tableControls
+                header
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 StatusBar(
@@ -372,22 +488,6 @@ struct WorkspaceView: View {
                     // panel is 432 = 25%, and that is also its minimum so it never
                     // gets narrow enough to cramp the release cards.
                     .inspectorColumnWidth(min: 432, ideal: 432, max: 720)
-                    // Declared on the inspector, not beside the other items: an
-                    // inspector's own toolbar content is what claims the
-                    // titlebar strip above its column, and with nothing claiming
-                    // it every trailing item packs to the far edge of the window
-                    // — which is how the filter ended up over the panel. It is
-                    // also where the toggle belongs, above the thing it hides.
-                    .toolbar {
-                        ToolbarItem {
-                            Button {
-                                showsInspector.toggle()
-                            } label: {
-                                Label("Panel", systemImage: "sidebar.trailing")
-                            }
-                            .help("Show or hide the panel")
-                        }
-                    }
             }
             // The window title is dropped from the toolbar rather than shown:
             // it landed between the folder group and the centred picker, in the
@@ -401,87 +501,13 @@ struct WorkspaceView: View {
                     .opacity(0)
                     .frame(width: 0, height: 0)
             }
+            // The native window toolbar carries nothing now — every control that
+            // used to live there (path, undo, settings, the panel toggle) moved
+            // into `header`, the content row that also holds the brand and mode
+            // tabs, matching Tauri's single `<header class="topbar">` strip.
+            // Splitting those controls across a native toolbar row AND a content
+            // row (the previous layout) put them somewhere Tauri never puts them.
             .toolbar(removing: .title)
-            // Tahoe welds adjacent toolbar items into one glass capsule and
-            // breaks it wherever a ToolbarSpacer sits, so the spacers are the
-            // grouping. Choosing a folder and re-reading it are one subject and
-            // share a capsule; undo and the panel toggle have nothing to do with
-            // each other and get one each. A spacer inside .navigation does not
-            // split — that placement is a single titlebar accessory — which is
-            // why the leading pair is still written as a group.
-            .toolbar {
-                ToolbarItemGroup(placement: .navigation) {
-                    Button {
-                        choosingFolder = true
-                    } label: {
-                        // Shows the folder with its parent for context, capped and
-                        // middle-truncated so a long album-folder name stays put.
-                        Label {
-                            Text(pathLabelText)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                                .frame(maxWidth: 260)
-                        } icon: {
-                            Image(systemName: "folder")
-                        }
-                        .labelStyle(.titleAndIcon)
-                    }
-                    .help(library.root?.path ?? "Choose a folder to open")
-
-                    // Recent folders and open-by-path — the path bar's ⌄ menu.
-                    Menu {
-                        Button("Browse…") { choosingFolder = true }
-                        Button("Open path…") {
-                            pathDraft = library.root?.path ?? ""
-                            showPathPrompt = true
-                        }
-                        if !recents.isEmpty {
-                            Divider()
-                            Section("Recent") {
-                                ForEach(recents, id: \.self) { path in
-                                    Button {
-                                        Task { await openFolder(URL(fileURLWithPath: path)) }
-                                    } label: {
-                                        Text((path as NSString).lastPathComponent)
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "chevron.down")
-                    }
-                    .help("Recent folders, or open by path")
-
-                    Button {
-                        Task { await library.rescan() }
-                    } label: {
-                        Label("Re-read", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(library.root == nil)
-                    .help("Re-read the open folder")
-                }
-
-                ToolbarItem {
-                    Button {
-                        Task { await library.undo() }
-                    } label: {
-                        Label("Undo the last applied batch", systemImage: "arrow.uturn.backward")
-                    }
-                    .disabled(library.root == nil || library.isBusy)
-                    .help("Undo the last applied batch")
-                }
-
-                ToolbarSpacer(.fixed)
-
-                ToolbarItem {
-                    Button {
-                        showingSettings = true
-                    } label: {
-                        Label("Settings", systemImage: "gearshape")
-                    }
-                    .help("Settings")
-                }
-            }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(library: library)
             }
@@ -515,7 +541,6 @@ struct WorkspaceView: View {
                 else { return }
                 await openFolder(URL(fileURLWithPath: path))
                 if let first = rows.first { selection = [first.id] }
-                if rows.count > 5 { library.play(rows[5].id, queue: rows.map(\.id)) } // TEMP
             }
     }
 }
@@ -606,6 +631,14 @@ struct TrackTable: View {
     /// rendered value per path.
     let customMask: String
     let customValues: [String: String]
+    /// Double-clicking the File cell of a row plays it (or toggles pause if it's
+    /// already the loaded track) — mirrors the Tauri `td.file` dblclick.
+    let onPlayToggle: (Track) -> Void
+
+    /// Which folder groups are collapsed (view-only; never reorders `rows`) —
+    /// toggled by clicking a group header's caret, mirroring Tauri's
+    /// `collapsedGroups`/`toggleGroup`.
+    @State private var collapsedGroups: Set<String> = []
 
     /// The optional columns the picker offers, in display order — each a modeled
     /// field with its own keypath so the column stays sortable.
@@ -624,6 +657,8 @@ struct TrackTable: View {
                     old: renames[track.id] == nil ? nil : track.file,
                     showsOld: showsOldValues
                 )
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { onPlayToggle(track) }
             }
             .width(min: 180, ideal: 300)
 
@@ -671,19 +706,42 @@ struct TrackTable: View {
         } rows: {
             if grouped {
                 ForEach(folderGroups, id: \.key) { group in
+                    let isCollapsed = collapsedGroups.contains(group.key)
                     Section {
-                        ForEach(group.tracks) { TableRow($0) }
+                        // Collapsed = no rows, not a hidden row, mirroring Tauri
+                        // (collapsed groups are removed from the model entirely).
+                        ForEach(isCollapsed ? [] : group.tracks) { TableRow($0) }
                     } header: {
                         // The folder-group header as an accent band (#281): the
                         // name in the accent colour, on a faint accent wash with a
                         // leading accent bar, so it reads as a section boundary.
+                        // The caret collapses/expands (click); the name selects
+                        // the whole folder (double-click) — mirrors Tauri, where
+                        // those two gestures are deliberately kept apart so a
+                        // plain click on the name never wipes the selection.
                         HStack(spacing: 6) {
+                            Button {
+                                if isCollapsed { collapsedGroups.remove(group.key) }
+                                else { collapsedGroups.insert(group.key) }
+                            } label: {
+                                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(.tint)
+                                    .frame(width: 12)
+                            }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+
                             RoundedRectangle(cornerRadius: 1)
                                 .fill(.tint)
                                 .frame(width: 3, height: 12)
                             Text(group.label)
                                 .font(AppFonts.sans(11, .semibold))
                                 .foregroundStyle(.tint)
+                                .contentShape(Rectangle())
+                                .onTapGesture(count: 2) {
+                                    selection = Set(group.tracks.map(\.id))
+                                }
                             Spacer(minLength: 0)
                         }
                         .padding(.vertical, 3)
