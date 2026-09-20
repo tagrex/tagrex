@@ -574,6 +574,7 @@ struct TrackTable: View {
         ("artist", "Artist"), ("title", "Title"), ("album", "Album"),
         ("albumartist", "Album Artist"), ("track", "Track"),
         ("year", "Year"), ("genre", "Genre"),
+        ("catalognumber", "Catalogue #"), ("length", "Length"),
     ]
 
     var body: some View {
@@ -615,6 +616,9 @@ struct TrackTable: View {
                 TableColumn("Genre", value: \.genre) { cell($0, .genre) }
                     .width(min: 80, ideal: 130)
             }
+            // Catalogue # and Length, nested in one builder expression to stay
+            // under SwiftUI's 10-column-per-block limit.
+            catalogueAndLengthColumns
             // The custom mask column (T2) — computed, so not sortable.
             if !customMask.isEmpty {
                 TableColumn(customMask) { track in
@@ -672,11 +676,39 @@ struct TrackTable: View {
         return (key as NSString).lastPathComponent
     }
 
+    /// Catalogue # (an extended tag) and Length (derived playing time), grouped
+    /// into one `@TableColumnBuilder` expression so the table stays within the
+    /// 10-column-per-block limit. Both sortable — Length by whole seconds.
+    @TableColumnBuilder<Track, KeyPathComparator<Track>>
+    private var catalogueAndLengthColumns: some TableColumnContent<Track, KeyPathComparator<Track>> {
+        if visibleColumns.contains("catalognumber") {
+            TableColumn("Catalogue #", value: \.catalognumber) { track in
+                cell(track, key: "catalognumber", current: track.catalognumber)
+            }
+            .width(min: 80, ideal: 120)
+        }
+        if visibleColumns.contains("length") {
+            TableColumn("Length", value: \.durationSort) { track in
+                Text(track.duration.isEmpty ? "—" : track.duration)
+                    .font(AppFonts.body)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+            }
+            .width(64)
+        }
+    }
+
     private func cell(_ track: Track, _ field: Field) -> DiffCell {
-        let stagedValue = staged[track.id]?[field.rawValue]
+        cell(track, key: field.rawValue, current: track.value(for: field))
+    }
+
+    /// A diff cell for any storage key (used by the Catalogue # column, which is
+    /// an extended field outside the modeled `Field` enum).
+    private func cell(_ track: Track, key: String, current: String) -> DiffCell {
+        let stagedValue = staged[track.id]?[key]
         return DiffCell(
-            value: stagedValue ?? track.value(for: field),
-            old: stagedValue == nil ? nil : track.value(for: field),
+            value: stagedValue ?? current,
+            old: stagedValue == nil ? nil : current,
             showsOld: showsOldValues
         )
     }

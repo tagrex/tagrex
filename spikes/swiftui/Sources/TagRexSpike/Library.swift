@@ -30,6 +30,10 @@ struct Track: Identifiable, Decodable, Hashable {
     var year: String { value(for: .year) }
     var genre: String { value(for: .genre) }
     var track: String { value(for: .track) }
+    /// The catalogue number tag — an extended field, so read by raw key.
+    var catalognumber: String { value(forKey: "catalognumber") }
+    /// A sort key for the Length column: playing time in whole seconds.
+    var durationSort: Int { Int(durationSecs ?? 0) }
 
     var duration: String {
         guard let secs = durationSecs else { return "" }
