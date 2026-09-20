@@ -503,15 +503,22 @@ struct WorkspaceView: View {
                           ? "Collapse every group" : "Expand every group")
                 }
 
+                // Filter flags (#44) sit inside the field's own box in Tauri
+                // (`.filter-ctl` is `position: relative`, the flags `absolute`
+                // over a `padding-right` reserved for them) rather than beside
+                // it as separate controls.
                 FilterField(text: Bindable(library).filter, focusRequest: focusFilter,
                             invalid: library.filterInvalid)
                     .frame(maxWidth: 220)
-
-                // Filter flags (#44): match as a regex, and/or case-sensitively.
-                filterFlag(".*", on: Bindable(library).filterRegex,
-                           help: "Match the filter as a regular expression")
-                filterFlag("Aa", on: Bindable(library).filterCaseSensitive,
-                           help: "Match case-sensitively")
+                    .overlay(alignment: .trailing) {
+                        HStack(spacing: 2) {
+                            filterFlag(".*", on: Bindable(library).filterRegex,
+                                       help: "Match the filter as a regular expression")
+                            filterFlag("Aa", on: Bindable(library).filterCaseSensitive,
+                                       help: "Match case-sensitively")
+                        }
+                        .padding(.trailing, 4)
+                    }
 
                 presetsMenu
 
