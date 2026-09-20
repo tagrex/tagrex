@@ -14,6 +14,12 @@ struct OnlinePanel: View {
     /// One free-text query, the way the Tauri panel searches (#97): a preset
     /// fills it from the selection, or it is typed by hand.
     @State private var query = ""
+    /// Map a vinyl-side position (A1/B2) to a disc number on import (#106), the
+    /// Tauri "Vinyl side → disc" checkbox.
+    @State private var vinylSidesToDisc = false
+    /// Recent search queries, persisted newline-joined — the query field's ⌄ menu.
+    @AppStorage("onlineRecentQueries") private var recentQueriesRaw = ""
+    private var recentQueries: [String] { recentQueriesRaw.split(separator: "\n").map(String.init) }
     /// Media filter (empty = all), and how many results a page fetches.
     @State private var mediaFilter = ""
     @State private var perPage = 5
@@ -115,6 +121,18 @@ struct OnlinePanel: View {
 
             HStack(spacing: 6) {
                 TextField("Search a release…", text: $query).onSubmit { run() }
+                if !recentQueries.isEmpty {
+                    Menu {
+                        ForEach(recentQueries, id: \.self) { q in
+                            Button(q) { query = q; run() }
+                        }
+                    } label: {
+                        Image(systemName: "clock.arrow.circlepath")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Recent searches")
+                }
                 Menu {
                     presetItems
                 } label: {
@@ -126,6 +144,10 @@ struct OnlinePanel: View {
             }
 
             HStack {
+                Toggle("Vinyl side → disc", isOn: $vinylSidesToDisc)
+                    .toggleStyle(.checkbox)
+                    .controlSize(.small)
+                    .help("On import, turn an A1/B2 side position into a disc number")
                 Spacer()
                 Button {
                     run()
@@ -844,8 +866,18 @@ struct OnlinePanel: View {
 
     // MARK: - Actions
 
+    /// Remember a search at the top of the recents (deduped, capped).
+    private func recordRecentQuery(_ text: String) {
+        let q = text.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return }
+        var list = recentQueries.filter { $0 != q }
+        list.insert(q, at: 0)
+        recentQueriesRaw = list.prefix(8).joined(separator: "\n")
+    }
+
     private func run(reset: Bool = true) {
         guard hasQuery, !isSearching else { return }
+        if reset { recordRecentQuery(query) }
         isSearching = true
         error = nil
         if reset {
@@ -943,7 +975,8 @@ struct OnlinePanel: View {
                 release: release,
                 source: source,
                 alignment: alignment,
-                labelIndex: labelIndex
+                labelIndex: labelIndex,
+                vinylSidesToDisc: vinylSidesToDisc
             )
             if case .failure(let failure) = result {
                 error = failure.message

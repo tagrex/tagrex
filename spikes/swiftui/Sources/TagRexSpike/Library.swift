@@ -979,7 +979,8 @@ final class Library {
         release: Release,
         source: Source,
         alignment: [Int?],
-        labelIndex: Int = 0
+        labelIndex: Int = 0,
+        vinylSidesToDisc: Bool = false
     ) async -> Result<Int, SearchFailure> {
         guard let session else { return .failure(SearchFailure(message: "No library open")) }
 
@@ -1014,7 +1015,8 @@ final class Library {
         let box = SessionHandle(raw: session)
         let result: Result<(JSONValue, [String: [String: String]], Int), SearchFailure> =
             await Task.detached(priority: .userInitiated) {
-                let args = ImportArgs(paths: paths, selection: selection, vinyl_sides_to_disc: false)
+                let args = ImportArgs(
+                    paths: paths, selection: selection, vinyl_sides_to_disc: vinylSidesToDisc)
                 let reply: Reply<JSONValue>? = invoke(box, "preview_import", encodeArgs(args))
                 guard let plan = reply?.ok else {
                     return .failure(SearchFailure(
