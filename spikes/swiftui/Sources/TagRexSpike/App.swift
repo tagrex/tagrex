@@ -158,6 +158,53 @@ struct WorkspaceView: View {
         columnsCSV = TrackTable.optionalColumns.map(\.key).filter(set.contains).joined(separator: ",")
     }
 
+    /// The slim controls strip above the table (grouping, columns, filter) —
+    /// the stand's take on the Tauri `.view-tabs` bar.
+    private var tableControls: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Button {
+                    groupByFolder.toggle()
+                } label: {
+                    Image(systemName: groupByFolder ? "rectangle.grid.1x2.fill" : "rectangle.grid.1x2")
+                }
+                .buttonStyle(.borderless)
+                .help(groupByFolder ? "Grouping by folder — click to flatten" : "Group the table by folder")
+
+                Menu {
+                    ForEach(TrackTable.optionalColumns, id: \.key) { column in
+                        Toggle(column.label, isOn: Binding(
+                            get: { visibleColumns.contains(column.key) },
+                            set: { _ in toggleColumn(column.key) }
+                        ))
+                    }
+                    Divider()
+                    Button(customMask.isEmpty ? "Custom column…" : "Edit custom column…") {
+                        customDraft = customMask
+                        showCustomPrompt = true
+                    }
+                    if !customMask.isEmpty {
+                        Button("Remove custom column", role: .destructive) { customMask = "" }
+                    }
+                } label: {
+                    Image(systemName: "tablecells")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Choose which columns to show")
+
+                Spacer()
+
+                FilterField(text: Bindable(library).filter, focusRequest: focusFilter)
+                    .frame(width: 230)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            Divider()
+        }
+        .background(.bar)
+    }
+
     var body: some View {
         @Bindable var library = library
 
@@ -181,6 +228,15 @@ struct WorkspaceView: View {
             }
             .overlay(alignment: .bottom) {
                 if library.hasStagedPlan { ChangePlanBar(library: library) }
+            }
+            // Table controls above the grid, not in the top strip — the way the
+            // Tauri `.view-tabs` bar carries grouping, columns and the filter.
+            // Keeping them out of the toolbar leaves the modes and folder path
+            // room, so a long album-folder name can't push anything into the
+            // ">>" overflow, and the filter field works in the normal hierarchy
+            // (no toolbar-over-inspector focus trap).
+            .safeAreaInset(edge: .top, spacing: 0) {
+                tableControls
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 StatusBar(
@@ -241,10 +297,21 @@ struct WorkspaceView: View {
                     Button {
                         choosingFolder = true
                     } label: {
-                        Label(library.rootName, systemImage: "folder")
-                            .labelStyle(.titleAndIcon)
+                        // Cap the width and middle-truncate: a long album-folder
+                        // name (…temple_of_house_(as_5606)…) otherwise eats the
+                        // toolbar and pushes the centred mode picker into the ">>"
+                        // overflow (the modes-vanish bug).
+                        Label {
+                            Text(library.rootName)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(maxWidth: 150)
+                        } icon: {
+                            Image(systemName: "folder")
+                        }
+                        .labelStyle(.titleAndIcon)
                     }
-                    .help("Choose a folder to open")
+                    .help(library.rootName)
 
                     Button {
                         Task { await library.rescan() }
@@ -253,34 +320,6 @@ struct WorkspaceView: View {
                     }
                     .disabled(library.root == nil)
                     .help("Re-read the open folder")
-
-                    Button {
-                        groupByFolder.toggle()
-                    } label: {
-                        Label("Group by folder", systemImage: groupByFolder
-                              ? "rectangle.grid.1x2.fill" : "rectangle.grid.1x2")
-                    }
-                    .help(groupByFolder ? "Grouping by folder — click to flatten" : "Group the table by folder")
-
-                    Menu {
-                        ForEach(TrackTable.optionalColumns, id: \.key) { column in
-                            Toggle(column.label, isOn: Binding(
-                                get: { visibleColumns.contains(column.key) },
-                                set: { _ in toggleColumn(column.key) }
-                            ))
-                        }
-                        Divider()
-                        Button(customMask.isEmpty ? "Custom column…" : "Edit custom column…") {
-                            customDraft = customMask
-                            showCustomPrompt = true
-                        }
-                        if !customMask.isEmpty {
-                            Button("Remove custom column", role: .destructive) { customMask = "" }
-                        }
-                    } label: {
-                        Label("Columns", systemImage: "tablecells")
-                    }
-                    .help("Choose which columns to show")
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -292,18 +331,6 @@ struct WorkspaceView: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                 }
-
-                // The filter is a toolbar item of its own rather than
-                // .searchable: that modifier is wired to the far trailing corner
-                // of the window, which is above the inspector column, so the
-                // control that filters the table sat over the panel — and no
-                // arrangement of the other items moves it, which is why this one
-                // is built by hand.
-                ToolbarItem {
-                    FilterField(text: $library.filter, focusRequest: focusFilter)
-                        .frame(width: 230)
-                }
-                .sharedBackgroundVisibility(.hidden)
 
                 ToolbarSpacer(.fixed)
 

@@ -163,21 +163,26 @@ struct WaveformSeekBar: View {
         GeometryReader { geo in
             Canvas { ctx, size in
                 guard !buckets.isEmpty else { return }
+                // Fixed-width rounded bars with an even gap, so the envelope reads
+                // as a proper waveform instead of a sparse comb — each bar is the
+                // peak of the bucket group it covers, mirrored about the centre.
+                let span: CGFloat = 3
+                let barWidth: CGFloat = 2
+                let count = max(8, Int(size.width / span))
                 let mid = size.height / 2
-                let bars = min(Int(size.width), buckets.count)
-                guard bars > 0 else { return }
-                for i in 0..<bars {
-                    let amp = CGFloat(buckets[i * buckets.count / bars]) / 255
-                    let x = CGFloat(i) / CGFloat(bars) * size.width
-                    let barHeight = max(1, amp * (size.height - 2))
-                    let played = Double(i) / Double(bars) <= progress
-                    var bar = Path()
-                    bar.move(to: CGPoint(x: x, y: mid - barHeight / 2))
-                    bar.addLine(to: CGPoint(x: x, y: mid + barHeight / 2))
-                    ctx.stroke(
-                        bar,
-                        with: .color(played ? Color.appAccent : Color.secondary.opacity(0.35)),
-                        lineWidth: 1)
+                for i in 0..<count {
+                    let lo = i * buckets.count / count
+                    let hi = max(lo + 1, (i + 1) * buckets.count / count)
+                    var peak: CGFloat = 0
+                    for b in lo..<min(hi, buckets.count) { peak = max(peak, CGFloat(buckets[b])) }
+                    let amp = peak / 255
+                    let barHeight = max(2, amp * (size.height - 2))
+                    let x = CGFloat(i) * span
+                    let rect = CGRect(x: x, y: mid - barHeight / 2, width: barWidth, height: barHeight)
+                    let played = (Double(i) + 0.5) / Double(count) <= progress
+                    ctx.fill(
+                        Path(roundedRect: rect, cornerRadius: barWidth / 2),
+                        with: .color(played ? Color.appAccent : .secondary.opacity(0.55)))
                 }
             }
             .contentShape(Rectangle())
