@@ -351,15 +351,23 @@ struct WorkspaceView: View {
                 StatusBar(
                     library: library,
                     queue: rows.map(\.id),
-                    selectedFirst: rows.first { visibleSelection.contains($0.id) }?.id,
-                    shown: rows.count,
-                    total: library.tracks.count,
-                    selected: visibleSelection.count,
-                    hidden: hiddenSelectionCount
+                    selectedFirst: rows.first { visibleSelection.contains($0.id) }?.id
                 )
             }
             .inspector(isPresented: $showsInspector) {
                 ModePanel(library: library, mode: mode, selection: visibleSelection)
+                    // The selection counter lives under the PANEL (Tauri's
+                    // sb-right, #289), a separate zone from the player's — that
+                    // split is what lets the waveform run the table's full width
+                    // instead of stopping short to leave room for this text.
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        SelectionSummary(
+                            shown: rows.count,
+                            total: library.tracks.count,
+                            selected: visibleSelection.count,
+                            hidden: hiddenSelectionCount
+                        )
+                    }
                     // A 75/25 split (table/panel): on the ~1728-wide window the
                     // panel is 432 = 25%, and that is also its minimum so it never
                     // gets narrow enough to cramp the release cards.
@@ -507,6 +515,7 @@ struct WorkspaceView: View {
                 else { return }
                 await openFolder(URL(fileURLWithPath: path))
                 if let first = rows.first { selection = [first.id] }
+                if rows.count > 5 { library.play(rows[5].id, queue: rows.map(\.id)) } // TEMP
             }
     }
 }
@@ -1213,21 +1222,11 @@ struct ModePanel: View {
 struct StatusBar: View {
     let library: Library
     /// The visible rows in order, and the first selected one — what the player
-    /// bar walks and where Play starts.
+    /// bar walks and where Play starts. The selection counter itself lives under
+    /// the panel now (`SelectionSummary`), not here — see the comment where it's
+    /// attached.
     let queue: [String]
     let selectedFirst: String?
-    /// Rows the filter leaves in the table — the denominator, since that is what
-    /// a count in the table is counted out of.
-    let shown: Int
-    /// The whole open folder. Named only when the filter is holding some of it
-    /// back, so the number the denominator dropped from is still readable.
-    let total: Int
-    let selected: Int
-    /// Selected but filtered off screen. Named in the count so an empty panel
-    /// with a selection behind it is not a mystery.
-    let hidden: Int
-
-    private var isFiltered: Bool { shown != total }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1243,7 +1242,34 @@ struct StatusBar: View {
                 if !library.lastMessage.isEmpty {
                     Text(library.lastMessage).lineLimit(1)
                 }
-                Text(summary).fixedSize()
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+        }
+        .background(.bar)
+    }
+}
+
+/// The counter (`sb-status`, Tauri #289): named the same way Tauri names it, but
+/// positioned in its OWN zone under the side panel, not appended to the player
+/// row. The two-zone split matters — it's what lets the player's waveform run
+/// the full width of the table instead of stopping early to make room for text.
+struct SelectionSummary: View {
+    let shown: Int
+    let total: Int
+    let selected: Int
+    let hidden: Int
+
+    private var isFiltered: Bool { shown != total }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack {
+                Spacer()
+                Text(text)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -1253,9 +1279,9 @@ struct StatusBar: View {
         .background(.bar)
     }
 
-    /// The right-hand count. It names the hidden part of the selection rather
-    /// than leaving the panel to go quiet for no visible reason.
-    private var summary: String {
+    /// Names the hidden part of the selection rather than leaving the panel to
+    /// go quiet for no visible reason.
+    private var text: String {
         switch (selected, hidden) {
         case (0, 0):
             isFiltered ? "\(shown) of \(total) tracks" : "\(total) tracks"
