@@ -120,6 +120,11 @@ struct WorkspaceView: View {
     @State private var customValues: [String: String] = [:]
     @State private var showCustomPrompt = false
     @State private var customDraft = ""
+    /// Recently opened folders (most recent first), persisted as newline-joined
+    /// paths, capped — the path bar's recent-folders menu (#177 parity).
+    @AppStorage("recentFolders") private var recentsRaw = ""
+    @State private var showPathPrompt = false
+    @State private var pathDraft = ""
     /// Bumped to ask the filter field for the keyboard. A counter rather
     /// than a Bool: focus is an event, and a Bool that is already true
     /// cannot fire a second time.
@@ -156,6 +161,31 @@ struct WorkspaceView: View {
         var set = visibleColumns
         if set.contains(key) { set.remove(key) } else { set.insert(key) }
         columnsCSV = TrackTable.optionalColumns.map(\.key).filter(set.contains).joined(separator: ",")
+    }
+
+    // MARK: - Library path
+
+    /// The open folder shown with its immediate parent for context, the way the
+    /// Tauri path indicator reads (".../Temp music/various_…"). Middle-truncated
+    /// by the label's frame.
+    private var pathLabelText: String {
+        guard let root = library.root else { return library.rootName }
+        let name = root.lastPathComponent
+        let parent = root.deletingLastPathComponent().lastPathComponent
+        return parent.isEmpty ? name : ".../\(parent)/\(name)"
+    }
+
+    private var recents: [String] {
+        recentsRaw.split(separator: "\n").map(String.init)
+    }
+
+    /// Open a folder and remember it at the top of the recents (deduped, capped).
+    private func openFolder(_ url: URL) async {
+        await library.open(url)
+        guard library.root != nil else { return }
+        var list = recents.filter { $0 != url.path }
+        list.insert(url.path, at: 0)
+        recentsRaw = list.prefix(8).joined(separator: "\n")
     }
 
     /// The controls strip above the table. It carries the mode tabs (drawn as
@@ -310,21 +340,43 @@ struct WorkspaceView: View {
                     Button {
                         choosingFolder = true
                     } label: {
-                        // Cap the width and middle-truncate: a long album-folder
-                        // name (…temple_of_house_(as_5606)…) otherwise eats the
-                        // toolbar and pushes the centred mode picker into the ">>"
-                        // overflow (the modes-vanish bug).
+                        // Shows the folder with its parent for context, capped and
+                        // middle-truncated so a long album-folder name stays put.
                         Label {
-                            Text(library.rootName)
+                            Text(pathLabelText)
                                 .lineLimit(1)
                                 .truncationMode(.middle)
-                                .frame(maxWidth: 150)
+                                .frame(maxWidth: 260)
                         } icon: {
                             Image(systemName: "folder")
                         }
                         .labelStyle(.titleAndIcon)
                     }
-                    .help(library.rootName)
+                    .help(library.root?.path ?? "Choose a folder to open")
+
+                    // Recent folders and open-by-path — the path bar's ⌄ menu.
+                    Menu {
+                        Button("Browse…") { choosingFolder = true }
+                        Button("Open path…") {
+                            pathDraft = library.root?.path ?? ""
+                            showPathPrompt = true
+                        }
+                        if !recents.isEmpty {
+                            Divider()
+                            Section("Recent") {
+                                ForEach(recents, id: \.self) { path in
+                                    Button {
+                                        Task { await openFolder(URL(fileURLWithPath: path)) }
+                                    } label: {
+                                        Text((path as NSString).lastPathComponent)
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                    }
+                    .help("Recent folders, or open by path")
 
                     Button {
                         Task { await library.rescan() }
@@ -366,9 +418,19 @@ struct WorkspaceView: View {
             } message: {
                 Text("A mask rendered per row as an extra column — e.g. %catalognumber% or $upper(%genre%).")
             }
+            .alert("Open path", isPresented: $showPathPrompt) {
+                TextField("/path/to/music/library", text: $pathDraft)
+                Button("Open") {
+                    let path = pathDraft.trimmingCharacters(in: .whitespaces)
+                    if !path.isEmpty { Task { await openFolder(URL(fileURLWithPath: path)) } }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Type or paste a folder path to open.")
+            }
             .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
                 guard case .success(let folder) = result else { return }
-                Task { await library.open(folder) }
+                Task { await openFolder(folder) }
             }
             .navigationTitle("TagRex")
             .task {
@@ -377,7 +439,7 @@ struct WorkspaceView: View {
                 guard let path = ProcessInfo.processInfo.environment["TAGREX_SPIKE_ROOT"],
                       !path.isEmpty
                 else { return }
-                await library.open(URL(fileURLWithPath: path))
+                await openFolder(URL(fileURLWithPath: path))
                 if let first = rows.first { selection = [first.id] }
             }
     }
