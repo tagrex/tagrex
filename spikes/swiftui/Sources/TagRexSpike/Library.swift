@@ -52,6 +52,21 @@ struct Track: Identifiable, Decodable, Hashable {
         tags[key] ?? ""
     }
 
+    /// The grouping-bucket value under `groupBy` — mirrors Tauri's `groupKeyOf`
+    /// (`app/ui/js/grouping.js`): the two fixed groupings read off the path or a
+    /// provider id, everything else is a plain tag lookup, so any modeled field
+    /// groups the table the same way the built-in ones do.
+    func groupKey(by groupBy: String) -> String {
+        switch groupBy {
+        case "folder":
+            return (path as NSString).deletingLastPathComponent
+        case "release":
+            return tags["custom:MUSICBRAINZ_ALBUMID"] ?? tags["custom:DISCOGS_RELEASE_ID"] ?? ""
+        default:
+            return tags[groupBy] ?? ""
+        }
+    }
+
     // Mapped by hand rather than through a snake-case decoding strategy: that
     // strategy also rewrites dictionary keys, which would mangle the `tags` map
     // and any plan the bridge round-trips back into a later call.

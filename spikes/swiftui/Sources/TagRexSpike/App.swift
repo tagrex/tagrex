@@ -8,8 +8,8 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// A saved filter + sort + group view (#44) — the Tauri "filter/sort preset":
-/// name, filter text and flags, the primary sort column/direction, and whether
-/// folder grouping was on.
+/// name, filter text and flags, the primary sort column/direction, and the
+/// grouping key (empty when ungrouped).
 struct FilterPreset: Codable, Identifiable, Equatable {
     var name: String
     var filter: String
@@ -17,11 +17,13 @@ struct FilterPreset: Codable, Identifiable, Equatable {
     var caseSensitive: Bool
     var sortKey: String?
     var sortAscending: Bool
-    var groupByFolder: Bool
+    var group: String
 
     var id: String { name }
 
-    /// A one-line summary for the menu row's tooltip.
+    /// A one-line summary for the menu row's tooltip — mirrors Tauri's
+    /// `presetSummary` (`app/ui/app.js`): filter, then sort (by column label),
+    /// then "group by <key>" (the raw key, same as the JS).
     var summary: String {
         var bits: [String] = []
         if !filter.isEmpty {
@@ -31,10 +33,33 @@ struct FilterPreset: Codable, Identifiable, Equatable {
             bits.append(f)
         }
         if let sortKey {
-            bits.append("sort \(sortKey) \(sortAscending ? "\u{2191}" : "\u{2193}")")
+            bits.append("sort \(GroupField.label(for: sortKey)) \(sortAscending ? "\u{2191}" : "\u{2193}")")
         }
-        if groupByFolder { bits.append("grouped by folder") }
+        if !group.isEmpty { bits.append("group by \(group)") }
         return bits.isEmpty ? "empty view" : bits.joined(separator: " · ")
+    }
+}
+
+/// The grouping keys the group menu offers, and the labels used for the "(no
+/// X)" group-header fallback and the preset-summary sort label — mirrors
+/// Tauri's `GROUP_COMMON` + `EXTENDED_FIELDS` (`app/ui/js/columns.js`,
+/// `app/ui/js/fields.js`).
+enum GroupField {
+    static let common: [(key: String, label: String)] = [
+        ("", "None"), ("folder", "Folder"), ("release", "Release id"),
+        ("artist", "Artist"), ("album", "Album"), ("albumartist", "Album Artist"),
+    ]
+    static let extra: [(key: String, label: String)] = [
+        ("title", "Title"), ("track", "Track"), ("tracktotal", "Track Total"),
+        ("disc", "Disc"), ("year", "Year"), ("genre", "Genre"),
+        ("comment", "Comment"), ("composer", "Composer"), ("publisher", "Publisher"),
+        ("catalognumber", "Catalogue #"), ("bpm", "BPM"), ("isrc", "ISRC"),
+        ("key", "Key"), ("url", "URL"), ("media", "Media"),
+    ]
+    static func label(for key: String) -> String {
+        if key == "file" { return "File" }
+        if key == "length" { return "Length" }
+        return (common + extra).first { $0.key == key }?.label ?? key.capitalized
     }
 }
 
@@ -180,15 +205,16 @@ struct WorkspaceView: View {
     @State private var showsInspector = true
     @State private var choosingFolder = false
     @State private var showingSettings = false
-    /// Group the table by folder (#129, T1). On by default, like the web UI.
-    @State private var groupByFolder = true
+    /// Which field the table is grouped by, empty for ungrouped — mirrors
+    /// Tauri's `groupBy` (`app/ui/js/state.js`), whose default is "folder".
+    @State private var groupBy = "folder"
     /// Which folder groups are collapsed — lives here (not inside TrackTable)
     /// so the header's "Collapse all groups" button can drive it too.
     @State private var collapsedGroups: Set<String> = []
     /// Saved filter + sort + group presets (#44), persisted as JSON.
     @AppStorage("filterPresets") private var presetsRaw = "[]"
-    @State private var newPresetName = ""
-    @State private var showPresetSavePrompt = false
+    @State private var presetNameDraft = ""
+    @State private var showPresetsPopover = false
     /// The "Rules to run on what this panel produces" shortcut (`transform-btn`):
     /// a chain, set for the session (not persisted, matching Tauri), that's
     /// auto-applied to every plan any mode stages — see the `onChange` below.
@@ -262,15 +288,16 @@ struct WorkspaceView: View {
         recentsRaw.split(separator: "\n").map(String.init)
     }
 
-    /// The folder-group keys the table currently has (same bucketing
-    /// `TrackTable.folderGroups` does), needed here so the header's "collapse
+    /// The group keys the table currently has under `groupBy` (same bucketing
+    /// `TrackTable.groupedRows` does), needed here so the header's "collapse
     /// all" button can act on all of them without reaching into TrackTable.
-    private var folderGroupKeys: [String] {
+    private var currentGroupKeys: [String] {
+        guard !groupBy.isEmpty else { return [] }
         var seen = Set<String>()
         var order: [String] = []
         for track in rows {
-            let folder = (track.id as NSString).deletingLastPathComponent
-            if seen.insert(folder).inserted { order.append(folder) }
+            let key = track.groupKey(by: groupBy)
+            if seen.insert(key).inserted { order.append(key) }
         }
         return order
     }
@@ -299,7 +326,7 @@ struct WorkspaceView: View {
             caseSensitive: library.filterCaseSensitive,
             sortKey: sort.flatMap(sortKeyName),
             sortAscending: sort?.order == .forward,
-            groupByFolder: groupByFolder
+            group: groupBy
         )
         writePresets(presets.filter { $0.name != trimmed } + [preset])
     }
@@ -309,7 +336,7 @@ struct WorkspaceView: View {
         library.filter = preset.filter
         library.filterRegex = preset.regex
         library.filterCaseSensitive = preset.caseSensitive
-        groupByFolder = preset.groupByFolder
+        groupBy = preset.group
         if let key = preset.sortKey, let comparator = sortComparator(for: key, ascending: preset.sortAscending) {
             sortOrder = [comparator]
         }
@@ -419,33 +446,59 @@ struct WorkspaceView: View {
             Divider()
 
             HStack(spacing: 10) {
-                Button {
-                    groupByFolder.toggle()
+                // Group by any modeled field (`group-btn`/`populateGroupMenu`),
+                // not just an on/off folder toggle — the common groupings first,
+                // then every other field below a separator. Tints while grouping
+                // is on, same as the Tauri button.
+                Menu {
+                    ForEach(GroupField.common, id: \.key) { field in
+                        Button {
+                            groupBy = field.key
+                        } label: {
+                            if groupBy == field.key {
+                                Label(field.label, systemImage: "checkmark")
+                            } else {
+                                Text(field.label)
+                            }
+                        }
+                    }
+                    Divider()
+                    ForEach(GroupField.extra, id: \.key) { field in
+                        Button {
+                            groupBy = field.key
+                        } label: {
+                            if groupBy == field.key {
+                                Label(field.label, systemImage: "checkmark")
+                            } else {
+                                Text(field.label)
+                            }
+                        }
+                    }
                 } label: {
-                    Image(systemName: groupByFolder ? "rectangle.grid.1x2.fill" : "rectangle.grid.1x2")
+                    Image(systemName: groupBy.isEmpty ? "rectangle.grid.1x2" : "rectangle.grid.1x2.fill")
                 }
-                .buttonStyle(.borderless)
-                .focusEffectDisabled()
-                .help(groupByFolder ? "Grouping by folder — click to flatten" : "Group the table by folder")
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Group by: \(GroupField.label(for: groupBy))")
 
                 // Collapse/expand every group at once (`toggle-groups`): while
                 // any group is still open it offers "collapse", once everything
                 // is shut it flips to "expand" — one control, not two buttons.
-                if groupByFolder, !folderGroupKeys.isEmpty {
+                if !groupBy.isEmpty, !currentGroupKeys.isEmpty {
                     Button {
-                        if collapsedGroups.count < folderGroupKeys.count {
-                            collapsedGroups = Set(folderGroupKeys)
+                        if collapsedGroups.count < currentGroupKeys.count {
+                            collapsedGroups = Set(currentGroupKeys)
                         } else {
                             collapsedGroups.removeAll()
                         }
                     } label: {
-                        Image(systemName: collapsedGroups.count < folderGroupKeys.count
+                        Image(systemName: collapsedGroups.count < currentGroupKeys.count
                               ? "arrow.down.right.and.arrow.up.left"
                               : "arrow.up.left.and.arrow.down.right")
                     }
                     .buttonStyle(.borderless)
                     .focusEffectDisabled()
-                    .help(collapsedGroups.count < folderGroupKeys.count
+                    .help(collapsedGroups.count < currentGroupKeys.count
                           ? "Collapse every group" : "Expand every group")
                 }
 
@@ -482,6 +535,10 @@ struct WorkspaceView: View {
                 .menuStyle(.borderlessButton)
                 .fixedSize()
                 .help("Choose which columns to show")
+
+                // `tb-div`: everything to the left configures the view; the
+                // transform chain and eraser to the right act on the selection.
+                Divider().frame(height: 16)
 
                 transformShortcutButton
 
@@ -588,34 +645,67 @@ struct WorkspaceView: View {
         .help(help)
     }
 
-    /// Bookmark menu: saved filter+sort+group presets — apply or delete an
-    /// existing one, or save the current view under a new name.
+    /// Bookmark popover: saved filter+sort+group presets — mirrors Tauri's
+    /// `renderPresetsMenu` (`app/ui/app.js`), a popover rather than a native
+    /// submenu: each row is a click-to-apply name plus an inline delete ×, and
+    /// the save affordance is a name field + Save button right in the popover,
+    /// not a separate dialog.
     private var presetsMenu: some View {
-        Menu {
-            if presets.isEmpty {
-                Text("No saved presets").disabled(true)
-            } else {
-                ForEach(presets) { preset in
-                    Menu(preset.name) {
-                        Button("Apply") { applyPreset(preset) }
-                        Text(preset.summary).disabled(true)
-                        Button("Delete", role: .destructive) {
-                            writePresets(presets.filter { $0.name != preset.name })
-                        }
-                    }
-                }
-            }
-            Divider()
-            Button("Save current as…") {
-                newPresetName = ""
-                showPresetSavePrompt = true
-            }
+        Button {
+            presetNameDraft = ""
+            showPresetsPopover.toggle()
         } label: {
             Image(systemName: "bookmark")
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .buttonStyle(.borderless)
+        .focusEffectDisabled()
         .help("Save and re-apply filter + sort presets")
+        .popover(isPresented: $showPresetsPopover, arrowEdge: .bottom) {
+            VStack(alignment: .leading, spacing: 6) {
+                if presets.isEmpty {
+                    Text("No saved presets")
+                        .font(AppFonts.sans(11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(presets) { preset in
+                        HStack(spacing: 6) {
+                            Button(preset.name) {
+                                applyPreset(preset)
+                                showPresetsPopover = false
+                            }
+                            .buttonStyle(.plain)
+                            .help(preset.summary)
+                            Spacer(minLength: 8)
+                            Button {
+                                writePresets(presets.filter { $0.name != preset.name })
+                            } label: {
+                                Image(systemName: "xmark")
+                            }
+                            .buttonStyle(.plain)
+                            .focusEffectDisabled()
+                            .help("Delete \u{201C}\(preset.name)\u{201D}")
+                        }
+                    }
+                    Divider()
+                }
+                HStack(spacing: 6) {
+                    TextField("Save current as…", text: $presetNameDraft)
+                        .textFieldStyle(.plain)
+                        .onSubmit(commitPresetSave)
+                    Button("Save", action: commitPresetSave)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.tint)
+                }
+            }
+            .padding(10)
+            .frame(minWidth: 220)
+        }
+    }
+
+    private func commitPresetSave() {
+        guard !presetNameDraft.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        saveCurrentPreset(presetNameDraft)
+        presetNameDraft = ""
     }
 
     /// "Rules to run on what this panel produces" (`transform-btn`): opens the
@@ -660,7 +750,7 @@ struct WorkspaceView: View {
             staged: library.staged,
             renames: library.stagedRenames,
             showsOldValues: library.showsOldValues,
-            grouped: groupByFolder,
+            groupBy: groupBy,
             rootPath: library.root?.path,
             visibleColumns: visibleColumns,
             customMask: customMask,
@@ -755,13 +845,6 @@ struct WorkspaceView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Type or paste a folder path to open.")
-            }
-            .alert("Save preset", isPresented: $showPresetSavePrompt) {
-                TextField("Name", text: $newPresetName)
-                Button("Save") { saveCurrentPreset(newPresetName) }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Saves the current filter, sort and grouping under this name.")
             }
             // The transform shortcut (#toolbar.transformTitle) auto-runs its
             // chain over whatever any mode just staged. hasStagedPlan flips
@@ -865,9 +948,10 @@ struct TrackTable: View {
     /// a diff the way a tag change shows in its column.
     let renames: [String: String]
     let showsOldValues: Bool
-    /// Group rows by their containing folder under a section header (#129, T1).
-    /// On by default, matching the web UI's `groupBy = "folder"`.
-    let grouped: Bool
+    /// Which field rows are grouped by under a section header, empty for
+    /// ungrouped (#129, #43) — matches the web UI's `groupBy`, whose default is
+    /// "folder".
+    let groupBy: String
     /// The open library root, so a folder header reads relative to it
     /// ("gui-test/CD1") rather than as an absolute path.
     let rootPath: String?
@@ -951,19 +1035,19 @@ struct TrackTable: View {
                 .width(min: 90, ideal: 160)
             }
         } rows: {
-            if grouped {
-                ForEach(folderGroups, id: \.key) { group in
+            if !groupBy.isEmpty {
+                ForEach(groupedRows, id: \.key) { group in
                     let isCollapsed = collapsedGroups.contains(group.key)
                     Section {
                         // Collapsed = no rows, not a hidden row, mirroring Tauri
                         // (collapsed groups are removed from the model entirely).
                         ForEach(isCollapsed ? [] : group.tracks) { TableRow($0) }
                     } header: {
-                        // The folder-group header as an accent band (#281): the
-                        // name in the accent colour, on a faint accent wash with a
+                        // The group header as an accent band (#281): the name in
+                        // the accent colour, on a faint accent wash with a
                         // leading accent bar, so it reads as a section boundary.
                         // The caret collapses/expands (click); the name selects
-                        // the whole folder (double-click) — mirrors Tauri, where
+                        // the whole group (double-click) — mirrors Tauri, where
                         // those two gestures are deliberately kept apart so a
                         // plain click on the name never wipes the selection.
                         HStack(spacing: 6) {
@@ -1010,18 +1094,32 @@ struct TrackTable: View {
         .tableStyle(.inset(alternatesRowBackgrounds: true))
     }
 
-    /// Rows bucketed by their parent folder, folders in path order and each
-    /// folder's rows kept in the incoming sort order. A view overlay — it never
-    /// reorders `rows` itself, the way the web grouping is "a view overlay".
-    private var folderGroups: [(key: String, label: String, tracks: [Track])] {
-        var byFolder: [String: [Track]] = [:]
+    /// Rows bucketed by `groupBy`, in first-appearance order over `rows` (which
+    /// already reflects the table's own sort) — mirrors Tauri's `buildViewModel`
+    /// grouping pass: groups never reorder the underlying files, they're a view
+    /// overlay over whatever order the rows already have.
+    private var groupedRows: [(key: String, label: String, tracks: [Track])] {
+        var buckets: [String: [Track]] = [:]
         var order: [String] = []
         for track in rows {
-            let folder = (track.path as NSString).deletingLastPathComponent
-            if byFolder[folder] == nil { order.append(folder) }
-            byFolder[folder, default: []].append(track)
+            let key = track.groupKey(by: groupBy)
+            if buckets[key] == nil { order.append(key) }
+            buckets[key, default: []].append(track)
         }
-        return order.sorted().map { (key: $0, label: folderLabel($0), tracks: byFolder[$0]!) }
+        return order.map { (key: $0, label: groupHeaderLabel($0), tracks: buckets[$0]!) }
+    }
+
+    /// The header text for a group bucket — mirrors Tauri's `groupLabel`: the
+    /// folder grouping reads relative to the session root, "no release id" is
+    /// its own wording, and everything else falls back to "(no <Field>)".
+    private func groupHeaderLabel(_ key: String) -> String {
+        if key.isEmpty {
+            if groupBy == "folder" { return "(no folder)" }
+            if groupBy == "release" { return "(no release id)" }
+            return "(no \(GroupField.label(for: groupBy).lowercased()))"
+        }
+        if groupBy == "folder" { return folderLabel(key) }
+        return key
     }
 
     /// A folder header relative to the session root, starting with the root's own
