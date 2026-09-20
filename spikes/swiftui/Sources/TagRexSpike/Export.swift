@@ -70,9 +70,11 @@ struct ExportPanel: View {
 
             if format == "report" {
                 labeled("Mask") {
+                    // UI font, not monospace (#351) — a pattern/name field, not
+                    // a path.
                     TextField("%artist% - %title%", text: $mask)
                         .textFieldStyle(.roundedBorder)
-                        .font(AppFonts.mono)
+                        .font(AppFonts.body)
                 }
             }
 
@@ -80,7 +82,7 @@ struct ExportPanel: View {
                 labeled("Name mask") {
                     TextField("%albumartist% - %album%", text: $splitMask)
                         .textFieldStyle(.roundedBorder)
-                        .font(AppFonts.mono)
+                        .font(AppFonts.body)
                 }
             } else {
                 labeled("File name") {

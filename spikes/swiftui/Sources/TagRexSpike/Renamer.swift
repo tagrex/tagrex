@@ -77,9 +77,12 @@ struct RenamerPanel: View {
     private var renameForm: some View {
         VStack(alignment: .leading, spacing: 8) {
             fieldLabel("Rename mask")
+            // The UI font, not monospace (#351) — it read as out of place
+            // against the rest of the interface, and the placeholder reference
+            // makes tokens discoverable without needing column alignment.
             TextField("%artist% - %title%", text: $mask)
                 .textFieldStyle(.roundedBorder)
-                .font(AppFonts.mono)
+                .font(AppFonts.body)
             Text("Placeholders like %artist%, %title%, %track% — plus $upper(), $pad().")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -95,7 +98,7 @@ struct RenamerPanel: View {
             fieldLabel("Folder pattern")
             TextField("%albumartist%/%album%/%track% - %title%", text: $moveMask)
                 .textFieldStyle(.roundedBorder)
-                .font(AppFonts.mono)
+                .font(AppFonts.body)
             Text("Slashes become folders under the destination.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
