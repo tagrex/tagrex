@@ -158,11 +158,24 @@ struct WorkspaceView: View {
         columnsCSV = TrackTable.optionalColumns.map(\.key).filter(set.contains).joined(separator: ",")
     }
 
-    /// The slim controls strip above the table (grouping, columns, filter) —
-    /// the stand's take on the Tauri `.view-tabs` bar.
+    /// The controls strip above the table. It carries the mode tabs (drawn as
+    /// content, so a narrow window never collapses them into a native ">>"
+    /// overflow the way the window toolbar did) plus grouping, columns and the
+    /// filter — the stand's take on the Tauri top strip + `.view-tabs` bar.
     private var tableControls: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Picker("Tool", selection: $mode) {
+                    ForEach(Mode.allCases) { mode in
+                        Text(mode.title.uppercased()).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
+
+                Divider().frame(height: 16)
+
                 Button {
                     groupByFolder.toggle()
                 } label: {
@@ -193,10 +206,10 @@ struct WorkspaceView: View {
                 .fixedSize()
                 .help("Choose which columns to show")
 
-                Spacer()
+                Spacer(minLength: 12)
 
                 FilterField(text: Bindable(library).filter, focusRequest: focusFilter)
-                    .frame(width: 230)
+                    .frame(maxWidth: 240)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -321,18 +334,6 @@ struct WorkspaceView: View {
                     .disabled(library.root == nil)
                     .help("Re-read the open folder")
                 }
-
-                ToolbarItem(placement: .principal) {
-                    Picker("Tool", selection: $mode) {
-                        ForEach(Mode.allCases) { mode in
-                            Text(mode.title.uppercased()).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-
-                ToolbarSpacer(.fixed)
 
                 ToolbarItem {
                     Button {
