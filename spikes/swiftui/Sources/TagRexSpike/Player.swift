@@ -44,8 +44,30 @@ struct PlayerBar: View {
     /// What Play starts: the selected row, else the first visible one.
     private var startPath: String? { selectedFirst ?? queue.first }
 
+    /// The playing track's index in the queue, and the tracks either side of it,
+    /// for the prev/next transport.
+    private var currentIndex: Int? {
+        guard let path = status?.path else { return nil }
+        return queue.firstIndex(of: path)
+    }
+    private var prevPath: String? {
+        guard let i = currentIndex, i > 0 else { return nil }
+        return queue[i - 1]
+    }
+    private var nextPath: String? {
+        guard let i = currentIndex, i + 1 < queue.count else { return nil }
+        return queue[i + 1]
+    }
+
     var body: some View {
         HStack(spacing: 10) {
+            Button { if let p = prevPath { library.play(p, queue: queue) } } label: {
+                Image(systemName: "backward.fill")
+            }
+            .buttonStyle(.borderless)
+            .disabled(prevPath == nil)
+            .help("Previous track")
+
             Button(action: playOrPause) {
                 Image(systemName: library.isPlaying ? "pause.fill" : "play.fill")
             }
@@ -59,6 +81,13 @@ struct PlayerBar: View {
             .buttonStyle(.borderless)
             .disabled(!loaded)
             .help("Stop")
+
+            Button { if let p = nextPath { library.play(p, queue: queue) } } label: {
+                Image(systemName: "forward.fill")
+            }
+            .buttonStyle(.borderless)
+            .disabled(nextPath == nil)
+            .help("Next track")
 
             repeatButton
 
