@@ -238,14 +238,37 @@ struct WorkspaceView: View {
 
                 Spacer(minLength: 12)
 
-                FilterField(text: Bindable(library).filter, focusRequest: focusFilter)
-                    .frame(maxWidth: 240)
+                FilterField(text: Bindable(library).filter, focusRequest: focusFilter,
+                            invalid: library.filterInvalid)
+                    .frame(maxWidth: 220)
+
+                // Filter flags (#44): match as a regex, and/or case-sensitively.
+                filterFlag(".*", on: Bindable(library).filterRegex,
+                           help: "Match the filter as a regular expression")
+                filterFlag("Aa", on: Bindable(library).filterCaseSensitive,
+                           help: "Match case-sensitively")
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             Divider()
         }
         .background(.bar)
+    }
+
+    /// One monospaced filter-flag toggle (`.*`, `Aa`) — tinted when on.
+    private func filterFlag(_ label: String, on: Binding<Bool>, help: String) -> some View {
+        Button {
+            on.wrappedValue.toggle()
+        } label: {
+            Text(label)
+                .font(AppFonts.monoSized(11, .semibold))
+                .foregroundStyle(on.wrappedValue ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .frame(width: 24, height: 20)
+                .background(on.wrappedValue ? AnyShapeStyle(.tint.opacity(0.15)) : AnyShapeStyle(.clear),
+                           in: RoundedRectangle(cornerRadius: 4))
+        }
+        .buttonStyle(.plain)
+        .help(help)
     }
 
     var body: some View {
@@ -458,6 +481,8 @@ struct FilterField: NSViewRepresentable {
     @Binding var text: String
     /// Every increment is one request for the keyboard.
     let focusRequest: Int
+    /// The regex doesn't compile — colour the text red (the filter is inert).
+    var invalid = false
 
     func makeNSView(context: Context) -> NSSearchField {
         let field = NSSearchField()
@@ -472,6 +497,7 @@ struct FilterField: NSViewRepresentable {
 
     func updateNSView(_ field: NSSearchField, context: Context) {
         context.coordinator.text = $text
+        field.textColor = invalid ? .systemRed : nil
         // Only when they differ: assigning while the user types moves the caret
         // to the end of the line.
         if field.stringValue != text { field.stringValue = text }

@@ -505,7 +505,21 @@ final class Library {
     private(set) var lockedFields: Set<String> = []
 
     var filter = ""
+    /// Filter flags (#44): match the query as a regular expression, and/or match
+    /// case-sensitively. Off = a case-insensitive substring, as before.
+    var filterRegex = false
+    var filterCaseSensitive = false
     var showsOldValues = false
+
+    /// Whether the current regex filter fails to compile — the field reddens and
+    /// the filter is not applied (the table shows everything), so a half-typed
+    /// pattern like `(` isn't destructive.
+    var filterInvalid: Bool {
+        guard filterRegex else { return false }
+        let query = filterParts().query
+        guard !query.isEmpty else { return false }
+        return regex(for: query) == nil
+    }
 
     var rootName: String { root?.lastPathComponent ?? "No folder open" }
     var stagedFileCount: Int { stagedPlan != nil ? stagedPlanCount : staged.count }
@@ -520,21 +534,55 @@ final class Library {
     // MARK: - Reading
 
     var visibleTracks: [Track] {
-        let query = filter.trimmingCharacters(in: .whitespaces).lowercased()
-        guard !query.isEmpty else { return tracks }
-
-        if let colon = query.firstIndex(of: ":") {
-            let name = String(query[query.startIndex..<colon])
-            let value = String(query[query.index(after: colon)...])
-            if !value.isEmpty, let field = Field(rawValue: name) {
-                return tracks.filter { $0.value(for: field).lowercased().contains(value) }
-            }
-        }
+        let parts = filterParts()
+        guard !parts.query.isEmpty else { return tracks }
+        // A bad regex isn't applied — show everything and let the field redden,
+        // so typing a partial pattern doesn't wipe the table.
+        guard let matches = matcher(for: parts.query) else { return tracks }
 
         return tracks.filter { track in
-            [track.file, track.artist, track.title, track.album]
-                .contains { $0.lowercased().contains(query) }
+            if let field = parts.field {
+                return matches(track.value(for: field))
+            }
+            return [track.file, track.artist, track.title, track.album].contains(where: matches)
         }
+    }
+
+    /// Split the filter into an optional `field:` scope and the query text — from
+    /// the raw filter (not lower-cased), so a case-sensitive match sees it whole.
+    private func filterParts() -> (field: Field?, query: String) {
+        let raw = filter.trimmingCharacters(in: .whitespaces)
+        if let colon = raw.firstIndex(of: ":") {
+            let name = String(raw[raw.startIndex..<colon]).lowercased()
+            let value = String(raw[raw.index(after: colon)...])
+            if !value.isEmpty, let field = Field(rawValue: name) {
+                return (field, value)
+            }
+        }
+        return (nil, raw)
+    }
+
+    /// A compiled regex for `query` under the current case flag, or nil if it
+    /// doesn't compile.
+    private func regex(for query: String) -> NSRegularExpression? {
+        try? NSRegularExpression(
+            pattern: query, options: filterCaseSensitive ? [] : [.caseInsensitive])
+    }
+
+    /// The match predicate for the current flags: a regex search, or a substring
+    /// (case-sensitive or not). Nil only when a regex query fails to compile.
+    private func matcher(for query: String) -> ((String) -> Bool)? {
+        if filterRegex {
+            guard let re = regex(for: query) else { return nil }
+            return { text in
+                re.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+            }
+        }
+        if filterCaseSensitive {
+            return { $0.contains(query) }
+        }
+        let lowered = query.lowercased()
+        return { $0.lowercased().contains(lowered) }
     }
 
     func open(_ folder: URL) async {
