@@ -13,12 +13,13 @@ The stand is now a real second interface, not a demonstration subset. The whole
 `builtin_action_groups`, flagged below as "missing", were in fact already in the
 dispatcher). Each mode's ✅ rows below say what shipped.
 
-**Remaining:** inline cell editing + autocomplete (needs an editable `Table`,
-a hard/limited area in SwiftUI), and column reordering
-(custom columns + visibility shipped; width is native; reorder hits the
-dynamic-column-sorting wall). Two P3s are
-deferred as SwiftUI `Table` limitations (T3 empty-area striping, T4 row reorder);
-every other P1/P2/P3 has shipped.
+**Everything actionable has shipped.** The four open items are all deferred for
+sound reasons, not left undone: cell autocomplete (would fight the table's
+selection role; editing is at parity in the inspector), column reorder (SwiftUI
+dynamic-column sorting wall — column *visibility*, a *custom mask column* and
+drag-*width* all shipped), and the two P3 `Table` cosmetics T3 (empty-area
+striping) and T4 (row reorder). Every P1, and every P2/P3 that SwiftUI's `Table`
+can host, is done.
 
 The original verdict, for history: the stand was built free-hand, a happy-path
 subset of the Tauri modules; almost every gap was UI-side, since the dispatcher
@@ -57,7 +58,7 @@ Year, Genre, Track) + read-only File block. The Tauri editor is dynamic.
 | E5 | ✅ **Done** — the dynamic editor edits the whole selection, shows `<multiple values>` where it disagrees and stages across all | **Multi-file editing** with a per-field count "— N files" and mixed-value handling (`refreshFieldEditor`, editor.js:40) | P2 | ready |
 | E6 | ✅ **Done** — Track n/total and Disc n/total render as duo rows (part of E1) | **Duo rows** — track/total etc. on one line | P3 | ready |
 | E7 | ✅ **Done** — inline numeric validation hints, and a bad value is not staged (part of E1) | **Per-field validation** | P3 | ready |
-| E8 | No cover well | see §9 (cover editing entirely absent) | P1 | mostly ready |
+| E8 | ✅ **Done** — the cover well (see §9) sits at the top of the editor | see §9 | P1 | ready |
 
 ## 3. Generator — `generator.js` (464) + `chain.js` (696) + `chains.js` vs `Generator.swift` (211)
 
@@ -121,9 +122,9 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 | Area | Tauri | Sev | Backend |
 |------|-------|-----|---------|
 | **Cover editing** | ✅ **Done** — a cover well showing the selection's shared/mixed/absent artwork, with Replace (pick an image → `read_cover_image` → `preview_cover_set`), Remove (`preview_cover_remove`) and From-folder (`read_external_cover`) (`Cover.swift`) | `cover.js` (499): choose/embed/add/remove cover, external-cover detection, cover well (`preview_cover_set/embed/remove`, `read_external_cover`, `read_cover_summary`) | P1 | ready (`read_cover_image` now in the dispatcher) |
-| **Settings screen** | `settings.js` (425) + `prefs.js` (315): Discogs token, proxy, rate limit, ID3 revision, display size, … | P1 | `load_settings`/`save_settings`/token commands ready |
+| **Settings screen** | ✅ **Done** — a Settings sheet (gear): Discogs token, proxy, rate limit, ID3 revision, over load/save_settings + token commands (`Settings.swift`) | P1 | ready |
 | **Field locks** | ✅ **Done** — a padlock beside each editor field toggles a session-wide lock (`set_locked_fields`); a locked field dims, goes inert, and every plan skips it (`App.swift`, `Library.swift`) | `locks.js` (103): lock a field so every plan skips it (`set_locked_fields`, `locked_fields`) | P2 | ready |
-| **Cell autocomplete** | `suggest.js` (250): inline cell editing with suggestions | P2 | — |
+| **Cell autocomplete** | ⏸ **Deferred by design** — the stand's table cells drive *selection* (import mapping, the player queue), and editing lives in the inspector editor, which is at full parity (§2). Inline cell editing would fight selection, and a per-cell suggestions dropdown is a SwiftUI `Table` limitation. | `suggest.js` (250): inline cell editing with suggestions | P2 | — |
 | **Player** | ✅ **Done** — a waveform seek bar (1000 `waveform` buckets, played portion tinted, click/drag to seek), a now-playing cover, and a repeat button cycling off/all/one that drives the gapless advance (`Player.swift`, `Library.swift`) | `player.js` (618) vs `Player.swift` (116): **waveform** canvas, now-playing cover, repeat modes, themed peaks (`waveform`, `read_cover_summary`, `applyRepeatMode`) | P2 | `waveform`/`read_cover_summary` ready |
 
 ## 10. Missing dispatcher commands (backend work, small)
