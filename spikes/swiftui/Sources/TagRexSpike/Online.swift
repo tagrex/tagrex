@@ -120,7 +120,7 @@ struct OnlinePanel: View {
             }
 
             HStack(spacing: 6) {
-                TextField("Search a release…", text: $query).onSubmit { run() }
+                TextField("artist / album / catalog no.", text: $query).onSubmit { run() }
                 if !recentQueries.isEmpty {
                     Menu {
                         ForEach(recentQueries, id: \.self) { q in
@@ -144,10 +144,6 @@ struct OnlinePanel: View {
             }
 
             HStack {
-                Toggle("Vinyl side → disc", isOn: $vinylSidesToDisc)
-                    .toggleStyle(.checkbox)
-                    .controlSize(.small)
-                    .help("On import, turn an A1/B2 side position into a disc number")
                 Spacer()
                 Button {
                     run()
@@ -248,7 +244,7 @@ struct OnlinePanel: View {
             ContentUnavailableView(
                 "Nothing found yet",
                 systemImage: "magnifyingglass",
-                description: Text("Search a source to see its releases.")
+                description: Text("Search the selected source to see releases.")
             )
         } else {
             VStack(spacing: 0) {
@@ -306,12 +302,20 @@ struct OnlinePanel: View {
         )
     }
 
+    /// Matches the Tauri `.release-toolbar` row, which only exists once there are
+    /// results: Found N entries · Vinyl side → disc · Show N.
     private var resultsHeader: some View {
         HStack {
-            Text("Found \(candidates.count) \(candidates.count == 1 ? "entry" : "entries")")
+            Text(candidates.isEmpty
+                 ? "Found 0 entries"
+                 : "Found \(candidates.count) \(candidates.count == 1 ? "entry" : "entries")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
+            Toggle("Vinyl side → disc", isOn: $vinylSidesToDisc)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+                .help("On import, turn an A1/B2 side position into a disc number")
             Text("Show")
                 .font(.caption)
                 .foregroundStyle(.secondary)

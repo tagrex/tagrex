@@ -37,6 +37,39 @@ enum Mode: String, CaseIterable, Identifiable {
     }
 }
 
+/// The mode tabs (icon + label, active one underlined) — the Tauri top-bar look
+/// (`.mode-tab`), not a segmented control. Icons were dropped from an earlier,
+/// differently-styled tab bar; this one restores them alongside the underline.
+@MainActor
+struct ModeTabBar: View {
+    @Binding var mode: Mode
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(Mode.allCases) { item in
+                let isActive = item == mode
+                Button {
+                    mode = item
+                } label: {
+                    VStack(spacing: 4) {
+                        HStack(spacing: 5) {
+                            Image(systemName: item.symbol)
+                            Text(item.title.uppercased())
+                        }
+                        .font(AppFonts.sans(12, isActive ? .semibold : .regular))
+                        .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                        Rectangle()
+                            .fill(isActive ? Color.appAccent : .clear)
+                            .frame(height: 2)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 8)
+            }
+        }
+    }
+}
+
 /// The brand green the Tauri UI uses as its accent (`--accent`), lighter on a
 /// dark appearance the way the web theme brightens it.
 private func brandAccent() -> NSColor {
@@ -195,14 +228,11 @@ struct WorkspaceView: View {
     private var tableControls: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Picker("Tool", selection: $mode) {
-                    ForEach(Mode.allCases) { mode in
-                        Text(mode.title.uppercased()).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
+                Text("/tagrex/")
+                    .font(AppFonts.monoSized(12, .semibold))
+                    .foregroundStyle(.tint)
+
+                ModeTabBar(mode: $mode)
 
                 Divider().frame(height: 16)
 
