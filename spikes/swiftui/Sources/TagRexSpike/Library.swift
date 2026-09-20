@@ -1825,6 +1825,19 @@ final class Library {
         }.value
     }
 
+    /// Render a mask as a computed column (`render_column`, T2 custom column):
+    /// path → the mask rendered against that file's tags. Read-only.
+    func renderColumn(pattern: String, paths: [String]) async -> [String: String] {
+        guard let session, !pattern.isEmpty, !paths.isEmpty else { return [:] }
+        let box = SessionHandle(raw: session)
+        return await Task.detached(priority: .userInitiated) { () -> [String: String] in
+            let reply: Reply<[String]>? = invoke(
+                box, "render_column", encodeArgs(RenderColumnArg(pattern: pattern, paths: paths)))
+            guard let values = reply?.ok, values.count == paths.count else { return [:] }
+            return Dictionary(uniqueKeysWithValues: zip(paths, values))
+        }.value
+    }
+
     /// Move `paths` to the Trash (`trash_files`) — recoverable, not a delete.
     /// Returns the paths actually trashed; the library is re-read after so the
     /// table drops them.
@@ -2106,6 +2119,11 @@ private struct ReadCoverImageArg: Encodable {
 
 private struct LockedFieldsArg: Encodable {
     let fields: [String]
+}
+
+private struct RenderColumnArg: Encodable {
+    let pattern: String
+    let paths: [String]
 }
 
 private struct MoveArg: Encodable {

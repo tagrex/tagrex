@@ -14,8 +14,9 @@ The stand is now a real second interface, not a demonstration subset. The whole
 dispatcher). Each mode's ✅ rows below say what shipped.
 
 **Remaining:** inline cell editing + autocomplete (needs an editable `Table`,
-a hard/limited area in SwiftUI), and column order/width/custom columns (visibility
-shipped; order/width hit the same dynamic-column-sorting wall). Two P3s are
+a hard/limited area in SwiftUI), and column reordering
+(custom columns + visibility shipped; width is native; reorder hits the
+dynamic-column-sorting wall). Two P3s are
 deferred as SwiftUI `Table` limitations (T3 empty-area striping, T4 row reorder);
 every other P1/P2/P3 has shipped.
 
@@ -111,7 +112,7 @@ Formats match (playlist/cue/csv/html/xml/report). Gap:
 | # | Stand now | Tauri reference | Sev | Backend |
 |---|-----------|-----------------|-----|---------|
 | T1 | ✅ **Done** — rows grouped by folder into `Table` sections, header = the root-relative folder path (`gui-test/CD1`); a toolbar toggle flattens it. On by default like the web UI. | Rows **grouped by folder** with section headers (`groupKeyOf`, `folderGroupLabel`, grouping.js); the v0.15 accent band | P1 | ready (paths are in `list_tracks`) |
-| T2 | ✅ **Done (visibility)** — a Columns picker toggles which modeled columns show (Artist/Title/Album/Album Artist/Track/Year/Genre), sortable and persisted via `@AppStorage` (`App.swift`). Order/width/custom columns still to come. | **Configurable columns** — which, order, width, custom (`columns.js`, `render_column`) | P2 | `render_column` ready |
+| T2 | ✅ **Done** — a Columns picker toggles the modeled columns (sortable, persisted) and defines a **custom mask column** rendered per row via `render_column` (`App.swift`, `Library.renderColumn`). Column width is user-drag-resizable natively; column reorder is deferred (SwiftUI dynamic-column sorting wall). | **Configurable columns** — which, order, width, custom (`columns.js`, `render_column`) | P2 | `render_column` ready |
 | T3 | ⏸ **Deferred** — SwiftUI's inset `Table` paints its alternating rows into empty space; grouping (default on) hides most of it. No clean API to stop it. | — | P3 | n/a |
 | T4 | ⏸ **Deferred** — SwiftUI `Table` has no row-reorder with sections | Table gestures / row reorder | P3 | — |
 

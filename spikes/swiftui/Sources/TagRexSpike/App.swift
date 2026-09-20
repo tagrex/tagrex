@@ -114,6 +114,12 @@ struct WorkspaceView: View {
     @State private var groupByFolder = true
     /// Which optional columns show (#43, T2), persisted in display order as CSV.
     @AppStorage("table.columns") private var columnsCSV = "artist,title,album,year"
+    /// A user-defined mask column (T2 custom column), persisted; empty = none.
+    @AppStorage("table.customColumn") private var customMask = ""
+    /// The custom column rendered per path, refreshed when the mask or rows change.
+    @State private var customValues: [String: String] = [:]
+    @State private var showCustomPrompt = false
+    @State private var customDraft = ""
     /// Bumped to ask the filter field for the keyboard. A counter rather
     /// than a Bool: focus is an event, and a Bool that is already true
     /// cannot fire a second time.
@@ -164,8 +170,15 @@ struct WorkspaceView: View {
             showsOldValues: library.showsOldValues,
             grouped: groupByFolder,
             rootPath: library.root?.path,
-            visibleColumns: visibleColumns
+            visibleColumns: visibleColumns,
+            customMask: customMask,
+            customValues: customValues
         )
+            .task(id: "\(customMask)|\(rows.count)|\(rows.first?.id ?? "")|\(rows.last?.id ?? "")") {
+                customValues = customMask.isEmpty
+                    ? [:]
+                    : await library.renderColumn(pattern: customMask, paths: rows.map(\.id))
+            }
             .overlay(alignment: .bottom) {
                 if library.hasStagedPlan { ChangePlanBar(library: library) }
             }
@@ -256,6 +269,14 @@ struct WorkspaceView: View {
                                 set: { _ in toggleColumn(column.key) }
                             ))
                         }
+                        Divider()
+                        Button(customMask.isEmpty ? "Custom column…" : "Edit custom column…") {
+                            customDraft = customMask
+                            showCustomPrompt = true
+                        }
+                        if !customMask.isEmpty {
+                            Button("Remove custom column", role: .destructive) { customMask = "" }
+                        }
                     } label: {
                         Label("Columns", systemImage: "tablecells")
                     }
@@ -309,6 +330,13 @@ struct WorkspaceView: View {
             }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(library: library)
+            }
+            .alert("Custom column", isPresented: $showCustomPrompt) {
+                TextField("%artist% - %album%", text: $customDraft)
+                Button("Set") { customMask = customDraft.trimmingCharacters(in: .whitespaces) }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("A mask rendered per row as an extra column — e.g. %catalognumber% or $upper(%genre%).")
             }
             .fileImporter(isPresented: $choosingFolder, allowedContentTypes: [.folder]) { result in
                 guard case .success(let folder) = result else { return }
@@ -406,6 +434,10 @@ struct TrackTable: View {
     let rootPath: String?
     /// Which optional columns are shown (#43, T2). File is always present.
     let visibleColumns: Set<String>
+    /// A user-defined mask column (T2 custom column), empty when unset, plus the
+    /// rendered value per path.
+    let customMask: String
+    let customValues: [String: String]
 
     /// The optional columns the picker offers, in display order — each a modeled
     /// field with its own keypath so the column stays sortable.
@@ -453,6 +485,16 @@ struct TrackTable: View {
             if visibleColumns.contains("genre") {
                 TableColumn("Genre", value: \.genre) { cell($0, .genre) }
                     .width(min: 80, ideal: 130)
+            }
+            // The custom mask column (T2) — computed, so not sortable.
+            if !customMask.isEmpty {
+                TableColumn(customMask) { track in
+                    Text(customValues[track.id] ?? "")
+                        .font(AppFonts.body)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .width(min: 90, ideal: 160)
             }
         } rows: {
             if grouped {
