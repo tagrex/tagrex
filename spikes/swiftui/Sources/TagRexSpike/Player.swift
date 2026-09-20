@@ -121,27 +121,32 @@ struct PlayerBar: View {
 
     @ViewBuilder
     private var transport: some View {
+        // Order mirrors the Tauri player bar: volume, cover, title, then the
+        // waveform filling the rest of the panel, then the time.
+        Image(systemName: "speaker.fill")
+        Slider(value: Binding(get: { volume }, set: { volume = $0; library.setVolume($0) }), in: 0...1)
+            .controlSize(.mini)
+            .frame(width: 70)
+
         cover
         Text(library.nowPlaying?.title.isEmpty == false
              ? library.nowPlaying!.title
              : (library.nowPlaying?.file ?? "—"))
             .lineLimit(1)
-            .frame(maxWidth: 160, alignment: .leading)
+            .truncationMode(.tail)
+            .frame(maxWidth: 180, alignment: .leading)
 
         let duration = max(status?.durationSecs ?? 0, 0.1)
         let progress = min(max((status?.positionSecs ?? 0) / duration, 0), 1)
         WaveformSeekBar(buckets: buckets, progress: progress) { fraction in
             library.seek(to: fraction * duration)
         }
-        .frame(width: 200, height: 22)
+        .frame(minWidth: 140, maxWidth: .infinity)
+        .frame(height: 24)
 
         Text("\(clock(status?.positionSecs ?? 0)) / \(clock(status?.durationSecs ?? 0))")
             .monospacedDigit()
-
-        Image(systemName: "speaker.fill")
-        Slider(value: Binding(get: { volume }, set: { volume = $0; library.setVolume($0) }), in: 0...1)
-            .controlSize(.mini)
-            .frame(width: 70)
+            .fixedSize()
     }
 
     /// The now-playing cover, a small square before the title.

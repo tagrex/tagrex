@@ -1202,17 +1202,18 @@ struct StatusBar: View {
     var body: some View {
         VStack(spacing: 0) {
             Divider()
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
+                // The player fills the bar so its waveform spans the whole panel
+                // (the Tauri player bar), instead of a fixed stub with dead space.
                 PlayerBar(library: library, queue: queue, selectedFirst: selectedFirst)
-                Divider().frame(height: 14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if library.isBusy {
                     ProgressView().controlSize(.small)
                 }
                 if !library.lastMessage.isEmpty {
                     Text(library.lastMessage).lineLimit(1)
                 }
-                Spacer()
-                Text(summary)
+                Text(summary).fixedSize()
             }
             .font(.caption)
             .foregroundStyle(.secondary)
