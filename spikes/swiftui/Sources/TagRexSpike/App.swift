@@ -358,9 +358,13 @@ struct WorkspaceView: View {
     /// all ONE row. Earlier this was split across a native toolbar (path/undo/
     /// settings) and a content row (brand/tabs/view-tools), which put path and
     /// tabs in different strips than Tauri does and left a stray native toolbar
-    /// row above everything. Row 2 is Tauri's separate `.view-tabs` bar:
-    /// grouping, columns, the eraser, and the filter — nothing from row 1
+    /// row above everything. Row 3 is Tauri's separate `.view-tabs` bar:
+    /// grouping, columns, the eraser, and the filter — nothing from row 1 or 2
     /// belongs here.
+    ///
+    /// Row 1 (`topbar-main`) is brand + tabs + app actions; row 2 is the
+    /// library path on its own full-width line (Tauri #343 — a long folder
+    /// name used to crowd the tabs when it shared their row).
     private var header: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -371,10 +375,6 @@ struct WorkspaceView: View {
                 ModeTabBar(mode: $mode)
 
                 Spacer(minLength: 12)
-
-                libraryPathControls
-
-                Divider().frame(height: 16)
 
                 Button {
                     showsInspector.toggle()
@@ -407,7 +407,15 @@ struct WorkspaceView: View {
                 .help("Settings")
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.top, 8)
+
+            HStack(spacing: 10) {
+                libraryPathControls
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
             Divider()
 
             HStack(spacing: 10) {
@@ -502,7 +510,9 @@ struct WorkspaceView: View {
     /// div, now a content row instead of a native toolbar item. Tauri splits
     /// this into a path-text button (#root-display, no icon) and a SEPARATE
     /// folder-icon button (#lib-action) right after the recents chevron — two
-    /// affordances that both open the chooser, not one combined button.
+    /// affordances that both open the chooser, not one combined button. Since
+    /// #343 the path box has its own full-width row and fills it (`flex: 1`),
+    /// rather than the 220pt cap it needed sharing the row with the tabs.
     @ViewBuilder
     private var libraryPathControls: some View {
         Button {
@@ -511,7 +521,7 @@ struct WorkspaceView: View {
             Text(pathLabelText)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .frame(maxWidth: 220)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.bordered)
         .focusEffectDisabled()
