@@ -131,7 +131,14 @@ struct PlayerBar: View {
         Button {
             showVolumePopover.toggle()
         } label: {
+            // A fixed width AND height: speaker.slash/.wave.1/.wave.2 are
+            // each a different glyph size, so without both axes fixed the
+            // button's own frame changed size every time the volume level
+            // crossed into a new icon — shifting whatever sits after it in
+            // the transport row sideways, and (since this button anchors the
+            // popover below) shifting the popover itself up and down too.
             Image(systemName: volumeIcon)
+                .frame(width: 16, height: 16)
         }
         .buttonStyle(.borderless)
         .focusEffectDisabled()
@@ -140,12 +147,16 @@ struct PlayerBar: View {
             HStack(spacing: 8) {
                 Button(action: toggleMute) {
                     Image(systemName: volumeIcon)
+                        .frame(width: 16, height: 16)
                 }
-                .buttonStyle(.borderless)
-                // Same persistent-focus-ring fix as the mode tabs: a popover
-                // auto-focuses its first control, which otherwise keeps a
-                // permanent accent outline around this button.
-                .focusEffectDisabled()
+                // `.borderless` still picked up a bezel/outline as the
+                // popover's default-focused control even with
+                // focusEffectDisabled — `.plain` doesn't carry that bezel
+                // treatment at all, and `.focusable(false)` keeps this button
+                // out of the key-view loop so nothing can land "focused" on
+                // it in the first place.
+                .buttonStyle(.plain)
+                .focusable(false)
                 .help(volume > 0 ? "Mute" : "Unmute")
 
                 Slider(value: Binding(
@@ -153,6 +164,11 @@ struct PlayerBar: View {
                     set: { volume = $0; library.setVolume($0) }
                 ), in: 0...1)
                     .frame(width: 120)
+                    // Making the mute button unfocusable let the popover's
+                    // initial focus fall through to this slider instead —
+                    // its thumb then drew a circular focus ring, looking
+                    // like a second, misplaced handle on the track.
+                    .focusEffectDisabled()
             }
             .padding(10)
         }
