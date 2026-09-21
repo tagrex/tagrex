@@ -107,13 +107,23 @@ struct ModeTabBar: View {
                 Button {
                     mode = item
                 } label: {
-                    VStack(spacing: 4) {
-                        HStack(spacing: 5) {
-                            Image(systemName: item.symbol)
-                            Text(item.title.uppercased())
-                        }
-                        .font(AppFonts.sans(12, isActive ? .semibold : .regular))
-                        .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    // One row — icon inline with the label, the underline a
+                    // 2px border directly on the tab itself (Tauri's
+                    // `.mode-tab { border-bottom: 2px solid transparent }`),
+                    // not a separate row below a VStack. Every tab is
+                    // semibold (`font-weight: var(--fw-medium)` is on the
+                    // base rule, not just `.active`); only the icon dims
+                    // until active/hovered (`.mode-tab > .ico { opacity: .8 }`).
+                    HStack(spacing: 6) {
+                        Image(systemName: item.symbol)
+                            .opacity(isActive ? 1 : 0.8)
+                        Text(item.title.uppercased())
+                    }
+                    .font(AppFonts.sans(12, .semibold))
+                    .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 14)
+                    .overlay(alignment: .bottom) {
                         Rectangle()
                             .fill(isActive ? Color.appAccent : .clear)
                             .frame(height: 2)
@@ -126,7 +136,6 @@ struct ModeTabBar: View {
                 // showing an outline that has nothing to do with which tab is
                 // actually selected (that's the underline above).
                 .focusEffectDisabled()
-                .padding(.horizontal, 8)
             }
         }
     }
