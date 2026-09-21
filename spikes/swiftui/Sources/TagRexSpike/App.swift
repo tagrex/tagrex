@@ -488,6 +488,9 @@ struct WorkspaceView: View {
                     Image(systemName: groupBy.isEmpty ? "rectangle.grid.1x2" : "rectangle.grid.1x2.fill")
                 }
                 .menuStyle(.borderlessButton)
+                // Tauri's group-btn is a plain icon button, no caret — suppress
+                // SwiftUI's automatic disclosure indicator.
+                .menuIndicator(.hidden)
                 .fixedSize()
                 .help("Group by: \(GroupField.label(for: groupBy))")
 
@@ -603,6 +606,9 @@ struct WorkspaceView: View {
             Image(systemName: "chevron.down")
         }
         .menuStyle(.borderlessButton)
+        // Without this, SwiftUI appends its own disclosure caret next to the
+        // explicit chevron.down label above — two carets side by side.
+        .menuIndicator(.hidden)
         .fixedSize()
         .help("Recent folders, or open by path")
 
@@ -1507,6 +1513,7 @@ struct ModePanel: View {
                             Image(systemName: "list.bullet")
                         }
                         .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
                         .fixedSize()
                         .help("Custom fields already on the selection")
                     }
