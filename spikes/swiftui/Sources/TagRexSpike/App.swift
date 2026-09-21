@@ -677,6 +677,7 @@ struct WorkspaceView: View {
                                 showPresetsPopover = false
                             }
                             .buttonStyle(.plain)
+                            .focusEffectDisabled()
                             .help(preset.summary)
                             Spacer(minLength: 8)
                             Button {
@@ -697,6 +698,7 @@ struct WorkspaceView: View {
                         .onSubmit(commitPresetSave)
                     Button("Save", action: commitPresetSave)
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .foregroundStyle(.tint)
                 }
             }
@@ -758,13 +760,16 @@ struct WorkspaceView: View {
                     showCustomPrompt = true
                 }
                 .buttonStyle(.plain)
+                .focusEffectDisabled()
                 .foregroundStyle(.tint)
                 if !customMask.isEmpty {
                     Button("Remove column", role: .destructive) { customMask = "" }
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                 }
                 Button("Reset", action: resetColumns)
                     .buttonStyle(.plain)
+                    .focusEffectDisabled()
                     .foregroundStyle(.tint)
                     .padding(.top, 4)
             }
@@ -805,6 +810,7 @@ struct WorkspaceView: View {
                         .toggleStyle(.checkbox)
                     Spacer()
                     Button("Close") { showTransformShortcut = false }
+                        .focusEffectDisabled()
                 }
             }
             .padding(12)

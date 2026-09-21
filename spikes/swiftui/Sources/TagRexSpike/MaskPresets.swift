@@ -72,6 +72,7 @@ struct MaskPresetButton: View {
                                 }
                             }
                             .buttonStyle(.plain)
+                            .focusEffectDisabled()
                             .help(preset.mask)
                             Spacer(minLength: 8)
                             Button {
@@ -92,6 +93,7 @@ struct MaskPresetButton: View {
                         .onSubmit(commitSave)
                     Button("Save", action: commitSave)
                         .buttonStyle(.plain)
+                        .focusEffectDisabled()
                         .foregroundStyle(.tint)
                 }
             }

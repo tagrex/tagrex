@@ -142,6 +142,10 @@ struct PlayerBar: View {
                     Image(systemName: volumeIcon)
                 }
                 .buttonStyle(.borderless)
+                // Same persistent-focus-ring fix as the mode tabs: a popover
+                // auto-focuses its first control, which otherwise keeps a
+                // permanent accent outline around this button.
+                .focusEffectDisabled()
                 .help(volume > 0 ? "Mute" : "Unmute")
 
                 Slider(value: Binding(
