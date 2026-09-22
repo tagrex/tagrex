@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **RENAMER is one operation instead of two disconnected halves, with a live
+  example as you type.** It used to split "rename" and "reorganize into
+  folders" into separate patterns, each with its own Preview button that
+  only showed a full diff, never a quick glance — so nothing on screen said
+  what a pattern would actually produce before clicking through. In one
+  real case, a 15-track selection with a reorganize pattern that was
+  missing its filename half (only the folder part of what was meant as one
+  full pattern) previewed as "3 of 15" with no visible reason why: every
+  track shared one album's tags, so all 15 rendered to the *same* target
+  and silently collapsed together or matched their current location
+  exactly. One mask field now covers both — `/` or `\` in it sorts into
+  subfolders wherever the file already is, the same way a plain rename
+  always has, backed by `preview_rename` itself now supporting folder
+  separators (anchored at each file's own current folder, not a shared
+  root) — and a live single-track example renders under the field as it's
+  typed, the same idea FROM NAME's own probe already used. "Also move or
+  copy into a different folder" is a checkbox on top, revealing the
+  destination/Move-Copy/tidy-up-empty-folders controls only when it's
+  checked, instead of a permanently-visible second pattern to keep in sync
+  by hand. (#382)
 - **The mode tabs (TAGGER/RENAMER/GENERATOR/DEDUPLICATOR/EXPORTER) read a
   step bigger and as one connected group instead of each floating on its
   own.** Labels are a step bigger (12px to 13px). An earlier pass in this

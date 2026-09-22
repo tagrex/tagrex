@@ -389,18 +389,26 @@ function mockInvoke(cmd, args) {
     case "list_tracks":
       return Promise.resolve(s.tracks);
     case "preview_rename": {
+      // #382: a separator in the mask restructures folders too, same as
+      // preview_move below — anchored at the file's own current folder
+      // (`dir`) rather than a shared destination, so renaming in place still
+      // renames in place when the mask has none.
       const changes = args.paths
         .map((p) => {
           const t = findTrack(p);
           if (!t) return null;
-          const dir = p.slice(0, p.lastIndexOf("/") + 1);
+          const dir = p.slice(0, p.lastIndexOf("/")).replace(/\/$/, "");
           const ext = p.slice(p.lastIndexOf("."));
-          const name = args.mask
+          const rendered = args.mask
+            .replace("%albumartist%", t.tags.albumartist || t.tags.artist || "")
             .replace("%artist%", t.tags.artist || "")
             .replace("%title%", t.tags.title || "")
             .replace("%album%", t.tags.album || "")
-            .replace("%year%", t.tags.year || "");
-          const rename_to = dir + name + ext;
+            .replace("%year%", t.tags.year || "")
+            .replace("%track%", t.tags.track || "")
+            .replace("%genre%", t.tags.genre || "");
+          if (rendered.split(/[/\\]/).some((part) => !part.trim() || part === "..")) return null;
+          const rename_to = `${dir}/${rendered}${ext}`;
           return rename_to === p ? null : { path: p, rename_to, tag_changes: [] };
         })
         .filter(Boolean);

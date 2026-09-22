@@ -18,7 +18,7 @@ import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
 import "./js/tablegestures.js";
-import "./js/renamer.js";
+import { scheduleMaskExample } from "./js/renamer.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
 import { refreshDeduplicator, runDuplicateScan } from "./js/dedup.js";
 import {
@@ -1700,7 +1700,9 @@ async function undo() {
 // panel against the current selection. The table (subject) never changes — only
 // the right-hand panel (verb) swaps.
 const MODE_REFRESH = {
-  renamer: () => {},
+  // The mask example reads the selection, so it goes stale like TAGGER's own
+  // field grid does while a different mode was open (#382).
+  renamer: scheduleMaskExample,
   tagger: refreshTagger,
   generator: refreshGenerator,
   exporter: refreshExporter,
@@ -2297,6 +2299,8 @@ function syncSelectionUI() {
     // files (#188), so the deltas go stale the moment the selection moves.
     refreshReleaseMatches();
   }
+  // RENAMER's mask example reads the first selected track (#382).
+  if (currentMode === "renamer") scheduleMaskExample();
 }
 
 // Selection-dependent counts in the GENERATOR/EXPORTER panel headings. Cheap

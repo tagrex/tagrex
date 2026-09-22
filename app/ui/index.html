@@ -215,7 +215,8 @@
 
       <!-- Mode panels: exactly one is shown, matching the active tab. -->
       <aside class="mode-col">
-        <!-- RENAMER: rename by mask + reorganize into folders. -->
+        <!-- RENAMER: one mask (a separator restructures folders wherever it
+             lands), an optional move/copy elsewhere on top (#382). -->
         <section id="panel-renamer" class="mode-panel" hidden>
           <div class="panel-block">
             <h2 data-i18n="renamer.heading">Rename by mask</h2>
@@ -224,56 +225,53 @@
               <button class="icon ph-btn" type="button" data-ph-target="mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
               <button class="icon preset-btn" type="button" data-preset-target="mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
             </div>
+            <!-- Live, single-file example (#382): rendered from the current
+                 selection's first track as the mask is typed, the same way
+                 typing a value shows its own result immediately elsewhere in
+                 the app, rather than only after Preview. Empty until there's
+                 a selection to render against. -->
+            <p id="mask-example" class="hint mono mask-example" aria-live="polite"></p>
             <p class="hint muted" data-i18n="renamer.maskHint" data-i18n-html>
               The <b>?</b> button lists every placeholder — tags, the file itself
               (%filename%, %foldername%) and its technical properties (%_bitrate%, %_length%) —
               and inserts one at the caret. Wrap optional parts in [brackets]: dropped whole when
               empty, e.g. %album%[ (%year%)]. Track numbers pad to two digits; set another width
               with %disc:2%. On vinyl/cassette %side% is the side letter (A/B…), so %side%%track:1%
-              gives A1; it's blank on other media.
+              gives A1; it's blank on other media. Add <code>/</code> (or <code>\</code>) to also
+              sort into folders — wherever the file already is, unless reorganizing below sends it
+              somewhere else.
             </p>
+
+            <label class="rule-flag" data-i18n-title="renamer.reorganizeToggleTitle" title="Move or copy the results to a different folder instead of renaming them where they already are">
+              <input id="reorganize-toggle" type="checkbox" /><span data-i18n="renamer.reorganizeToggle">Also move or copy into a different folder</span>
+            </label>
+
+            <div id="reorganize-options" hidden>
+              <!-- Destination (#153): the folder the mask is built under. Empty
+                   means the opened library, which is what this always did. A folder
+                   outside it is what makes the tag-then-file workflow possible, and
+                   picking it here is what authorizes writing there. -->
+              <label class="export-row"
+                ><span data-i18n="renamer.into">Into</span>
+                <input id="move-dest" type="text" spellcheck="false" data-i18n-placeholder="renamer.intoPlaceholder" placeholder="the opened library" readonly />
+                <button id="move-dest-pick" class="btn" type="button" data-i18n-title="renamer.chooseTitle" title="Choose a destination folder" data-i18n="renamer.choose">Choose…</button>
+                <button id="move-dest-clear" class="icon" type="button" data-i18n-title="renamer.backToLibrary" title="Back to the opened library" data-i18n-aria-label="renamer.backToLibrary" aria-label="Back to the opened library"><svg class="ico"><use href="#i-close"/></svg></button>
+              </label>
+              <div class="export-row move-mode-row">
+                <span data-i18n="renamer.files">Files</span>
+                <div class="seg" id="move-mode" role="tablist" data-i18n-aria-label="renamer.moveOrCopy" aria-label="Move or copy">
+                  <button class="seg-btn active" type="button" data-move-mode="move" data-i18n="renamer.move">Move</button>
+                  <button class="seg-btn" type="button" data-move-mode="copy" data-i18n="renamer.copy">Copy</button>
+                </div>
+                <label class="rule-flag" data-i18n-title="renamer.pruneTitle" title="Remove folders this move leaves empty. Undo puts them back.">
+                  <input id="move-prune" type="checkbox" /><span data-i18n="renamer.prune">tidy up empty folders</span>
+                </label>
+              </div>
+            </div>
+
             <div class="panel-actions">
               <div class="spacer"></div>
               <button id="preview" class="primary" disabled data-i18n="renamer.previewRename">Preview rename</button>
-            </div>
-          </div>
-
-          <div class="panel-block">
-            <h2 data-i18n="renamer.reorganize">Reorganize into folders</h2>
-            <p class="hint muted" data-i18n="renamer.moveHint" data-i18n-html>
-              Use <code>/</code> (or <code>\</code>) to separate folders. Optional parts go in
-              [brackets] and vanish when empty. Tag values can't introduce a folder, only separators
-              in the pattern do.
-            </p>
-            <label class="export-row"
-              ><span data-i18n="renamer.pattern">Pattern</span>
-              <input id="move-mask" type="text" spellcheck="false" value="%albumartist%/%year% - %album%/%track% - %title%" />
-              <button class="icon ph-btn" type="button" data-ph-target="move-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
-              <button class="icon preset-btn" type="button" data-preset-target="move-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
-            </label>
-            <!-- Destination (#153): the folder the pattern is built under. Empty
-                 means the opened library, which is what this always did. A folder
-                 outside it is what makes the tag-then-file workflow possible, and
-                 picking it here is what authorizes writing there. -->
-            <label class="export-row"
-              ><span data-i18n="renamer.into">Into</span>
-              <input id="move-dest" type="text" spellcheck="false" data-i18n-placeholder="renamer.intoPlaceholder" placeholder="the opened library" readonly />
-              <button id="move-dest-pick" class="btn" type="button" data-i18n-title="renamer.chooseTitle" title="Choose a destination folder" data-i18n="renamer.choose">Choose…</button>
-              <button id="move-dest-clear" class="icon" type="button" data-i18n-title="renamer.backToLibrary" title="Back to the opened library" data-i18n-aria-label="renamer.backToLibrary" aria-label="Back to the opened library"><svg class="ico"><use href="#i-close"/></svg></button>
-            </label>
-            <div class="export-row move-mode-row">
-              <span data-i18n="renamer.files">Files</span>
-              <div class="seg" id="move-mode" role="tablist" data-i18n-aria-label="renamer.moveOrCopy" aria-label="Move or copy">
-                <button class="seg-btn active" type="button" data-move-mode="move" data-i18n="renamer.move">Move</button>
-                <button class="seg-btn" type="button" data-move-mode="copy" data-i18n="renamer.copy">Copy</button>
-              </div>
-              <label class="rule-flag" data-i18n-title="renamer.pruneTitle" title="Remove folders this move leaves empty. Undo puts them back.">
-                <input id="move-prune" type="checkbox" /><span data-i18n="renamer.prune">tidy up empty folders</span>
-              </label>
-            </div>
-            <div class="panel-actions">
-              <div class="spacer"></div>
-              <button id="move-preview" class="primary" data-i18n="renamer.previewMove">Preview move</button>
             </div>
           </div>
         </section>

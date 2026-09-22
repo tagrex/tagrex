@@ -2244,6 +2244,50 @@ impl App {
         change.sidecar_renames = pairs;
     }
 
+    /// Render `mask` against `path`'s own tags and turn the result into a
+    /// target path under `root`, splitting the rendered text on either folder
+    /// separator (#71: a pattern stays portable either way) and rejecting an
+    /// empty or escaping component. Shared by [`preview_rename`] (root: the
+    /// file's own parent, so a pattern with separators restructures folders
+    /// in place) and [`preview_move`] (root: the chosen destination, or the
+    /// library). `None` when the file can't be read, the mask doesn't render
+    /// (typically a missing tag), or a component is refused.
+    ///
+    /// [`preview_rename`]: Self::preview_rename
+    /// [`preview_move`]: Self::preview_move
+    fn render_target_under(&self, mask: &Mask, path: &Path, root: &Path) -> Option<PathBuf> {
+        let track = TagEngine::read(path).ok()?;
+        let rendered = mask
+            .render_with(&track.tags, &FileContext::read(mask, &track))
+            .ok()?;
+        let mut components: Vec<&str> = rendered.split(['/', '\\']).collect();
+        if components
+            .iter()
+            .any(|part| part.trim().is_empty() || *part == "..")
+        {
+            return None;
+        }
+        // Extension goes on the last component, which is the file name.
+        let last = match path.extension().and_then(|ext| ext.to_str()) {
+            Some(ext) => format!("{}.{ext}", components.pop().unwrap_or_default()),
+            None => components.pop().unwrap_or_default().to_string(),
+        };
+        // Pushed one at a time so the platform supplies its own separator
+        // instead of us embedding one in the string.
+        let mut target = root.to_path_buf();
+        for component in components {
+            target.push(component);
+        }
+        target.push(last);
+        Some(target)
+    }
+
+    /// Rename in place (#37), and — a pattern carrying `/` or `\` (#382) —
+    /// restructure into subfolders under each file's own current folder
+    /// rather than its exact current name. Everything RENAMER's mask field
+    /// does without also relocating the files elsewhere; ticking "reorganize"
+    /// and picking a destination is what calls [`preview_move`](Self::preview_move)
+    /// instead.
     pub fn preview_rename(
         &self,
         mask_pattern: &str,
@@ -2252,17 +2296,10 @@ impl App {
         let mask = Mask::parse(mask_pattern)?;
         let mut changes = Vec::new();
         for path in paths {
-            let Ok(track) = TagEngine::read(path) else {
+            let root = path.parent().unwrap_or(path);
+            let Some(target) = self.render_target_under(&mask, path, root) else {
                 continue;
             };
-            let Ok(stem) = mask.render_with(&track.tags, &FileContext::read(&mask, &track)) else {
-                continue;
-            };
-            let new_name = match path.extension().and_then(|ext| ext.to_str()) {
-                Some(ext) => format!("{stem}.{ext}"),
-                None => stem,
-            };
-            let target = path.with_file_name(new_name);
             if target == *path {
                 continue;
             }
@@ -2839,39 +2876,9 @@ impl App {
         };
         let mut changes = Vec::new();
         for path in paths {
-            let Ok(track) = TagEngine::read(path) else {
+            let Some(target) = self.render_target_under(&mask, path, &root) else {
                 continue;
             };
-            let Ok(rendered) = mask.render_with(&track.tags, &FileContext::read(&mask, &track))
-            else {
-                continue;
-            };
-            // Both separators are accepted so a pattern stays portable and one
-            // written on another platform still describes folders rather than
-            // becoming a literal character in a file name (#71).
-            let mut components: Vec<&str> = rendered.split(['/', '\\']).collect();
-            // An empty component (from an empty tag) or a `..` would produce a
-            // nonsense or escaping path. The executor would refuse the latter
-            // anyway; rejecting here keeps the preview honest about what will
-            // actually happen.
-            if components
-                .iter()
-                .any(|part| part.trim().is_empty() || *part == "..")
-            {
-                continue;
-            }
-            // Extension goes on the last component, which is the file name.
-            let last = match path.extension().and_then(|ext| ext.to_str()) {
-                Some(ext) => format!("{}.{ext}", components.pop().unwrap_or_default()),
-                None => components.pop().unwrap_or_default().to_string(),
-            };
-            // Pushed one at a time so the platform supplies its own separator
-            // instead of us embedding one in the string.
-            let mut target = root.clone();
-            for component in components {
-                target.push(component);
-            }
-            target.push(last);
             if target == *path {
                 continue;
             }
@@ -6154,6 +6161,42 @@ mod tests {
             .unwrap();
         let renamed = probed.changes[0].rename_to.as_deref().unwrap();
         assert!(renamed.ends_with("Safe 44100.flac"), "got {renamed}");
+    }
+
+    // #382: a mask carrying a folder separator restructures in place, under
+    // the track's own current folder — not the library root preview_move
+    // anchors an explicit reorganize to. A track two levels deep proves the
+    // root really is each file's own parent, not a shared one.
+    #[test]
+    fn preview_rename_with_a_separator_restructures_under_the_files_own_folder() {
+        let dir = TempDir::new("rename-subfolder");
+        let track = dir.tagged_flac_at(
+            "Incoming/Various - La Bush (1996)/x.flac",
+            "Plastic",
+            "Sexy Groove",
+        );
+        let mut file = TagEngine::read(&track).unwrap();
+        file.tags.insert(TagField::Album, "La Bush".into());
+        TagEngine::write(&file).unwrap();
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_rename("%album%/%artist% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        let expected = track
+            .parent()
+            .unwrap()
+            .join("La Bush")
+            .join("Plastic - Sexy Groove.flac");
+        assert_eq!(
+            plan.changes[0].rename_to.as_deref(),
+            Some(expected.to_string_lossy().as_ref()),
+        );
+        assert!(
+            !expected.starts_with(dir.0.join("La Bush")),
+            "must not anchor at the library root like preview_move does"
+        );
     }
 
     #[test]
