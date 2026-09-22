@@ -30,9 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `tauri.conf.json` places them precisely — calibrated against the row's
   real height (driven by the tab buttons' own padding, not a guessed CSS
   band) and the buttons' own measured width, rather than guessed values.
-  The brand text went from 12px to 15px (a first pass at 13px was too
-  timid a nudge to actually register next to the tab labels' uppercase,
-  letter-spaced weight). (#364, #365, #366)
+  The brand text went from 12px to 20px in stages (13px, then 15px, were
+  both still too timid a nudge to actually register next to the tab
+  labels' uppercase, letter-spaced weight). (#364, #365, #366, #367,
+  #368)
 - **The Discogs API attribution notice.** Discogs' API Terms of Use require the
   application to state that it uses Discogs' API and is not affiliated with them;
   it now appears in the README and the TAGGER guide (the terms allow it to live in

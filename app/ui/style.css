@@ -362,7 +362,9 @@ select,
 }
 
 .brand {
-  font-size: var(--text-lg);
+  /* --text-lg (15px) plus 5px — a shared token would nudge every other use
+     of --text-lg too, so this is its own explicit size. */
+  font-size: 20px;
   font-weight: var(--fw-bold);
   letter-spacing: var(--ls-brand);
   color: var(--accent-ink);
@@ -381,11 +383,14 @@ body.mac-overlay-titlebar .topbar {
   padding-top: 6px;
 }
 body.mac-overlay-titlebar .brand {
-  /* Cluster right edge (measured via accessibility: 16px inset + 62px wide)
-     plus the same 12px gap .topbar-main already uses between its other
-     children, so the lights-to-brand gap reads the same as the
-     brand-to-tabs one instead of an arbitrary wider gap. */
-  margin-left: 90px;
+  /* Cluster right edge (measured via accessibility: 16px inset + 62px wide,
+     both window-relative) plus the same 12px gap .topbar-main already uses
+     between its other children = 90px from the window's left edge. margin-
+     left is relative to .topbar's own 14px left padding, not the window
+     edge, so it needs that subtracted back out (90 - 14 = 76) — missing
+     this the first time left a visibly wider gap here than the
+     brand-to-tabs one. */
+  margin-left: 76px;
 }
 
 .lib {
