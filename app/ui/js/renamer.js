@@ -10,7 +10,7 @@
 import { el, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
-import { onChainChanged, runChainOverPlan } from "./chains.js";
+import { chainFor, onChainChanged, runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
 import {
   previewPlan,
@@ -166,14 +166,22 @@ async function refreshMaskExample() {
     return;
   }
   try {
+    // Through the same chain Preview runs (#383), or the example and the plan
+    // disagree — the example said "The X Factor - Desert Rain" while the plan,
+    // lower-cased and underscored by the wand's rules, said something else.
     const plan = await (reorganize ? movePlan([path]) : renamePlan([path]));
-    const to = plan.changes[0]?.rename_to;
-    if (to) {
-      box.textContent = shortenExample(to);
-      box.classList.remove("muted");
-    } else {
-      box.textContent = t("renamer.exampleUnchanged");
-      box.classList.add("muted");
+    const out = await runChainOverPlan(plan, "renamer");
+    const to = out.changes[0]?.rename_to;
+    box.textContent = to ? shortenExample(to) : t("renamer.exampleUnchanged");
+    box.classList.toggle("muted", !to);
+    // The wand's rules run on every rename without being on this panel, so the
+    // example says so — otherwise its result reads as the mask's alone.
+    const rules = chainFor("renamer").rules.length;
+    if (rules) {
+      const note = document.createElement("span");
+      note.className = "mask-example-chain";
+      note.textContent = ` · ${t("renamer.exampleChain", { rules: tn("unit.rule", rules) })}`;
+      box.append(note);
     }
   } catch (e) {
     box.textContent = String(e);

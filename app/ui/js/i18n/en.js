@@ -42,6 +42,7 @@ export const en = {
   "renamer.reorganizeToggle": "Also move or copy into a different folder",
   "renamer.reorganizeToggleTitle": "Move or copy the results to a different folder instead of renaming them where they already are",
   "renamer.exampleUnchanged": "No change",
+  "renamer.exampleChain": "incl. {rules} from the wand",
   "renamer.into": "Into",
   "renamer.intoPlaceholder": "the opened library",
   "renamer.choose": "Choose…",

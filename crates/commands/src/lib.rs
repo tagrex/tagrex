@@ -1888,7 +1888,14 @@ impl App {
     /// from a build before this has no message at all; its English description
     /// is all there is, and the note is appended to that.
     fn cleaned_up_plan(&self, previous: &PlanDto, changes: Vec<FileChangeDto>) -> PlanDto {
-        let mut plan = self.plan(PlanMessage::CleanedUp, Vec::new(), changes, false);
+        // A move asked to tidy up the folders it empties still does after a
+        // cleanup (#383).
+        let mut plan = self.plan(
+            PlanMessage::CleanedUp,
+            Vec::new(),
+            changes,
+            previous.prune_empty_dirs,
+        );
         let already_cleaned = previous
             .notes
             .iter()
@@ -2752,6 +2759,18 @@ impl App {
                 .clone()
                 .unwrap_or_else(|| change.path.clone());
             let proposed = Path::new(&proposed);
+            // The folder the plan proposes is kept as it is (#383): a chain
+            // cleans the NAME, and a rename into a subfolder or a move to
+            // another destination is still that rename or move afterwards.
+            // Rebuilding the target beside the source instead dropped the
+            // folder, and a cleaned name that matched the file's current one
+            // then read as a no-op — which is how a 15-track reorganize came
+            // back as "3 to apply".
+            let proposed_dir = proposed
+                .parent()
+                .or_else(|| path.parent())
+                .map(Path::to_path_buf)
+                .unwrap_or_default();
             let mut name = proposed
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
@@ -2804,29 +2823,41 @@ impl App {
                 Some(ext) => format!("{name}.{ext}"),
                 None => name.clone(),
             };
-            let renamed = path.file_name().map(|n| n.to_string_lossy().into_owned())
-                != Some(file_name.clone());
+            let target = proposed_dir.join(&file_name);
+            let renamed = target != path;
 
             if tag_changes.is_empty() && !renamed && change.cover_change.is_none() {
                 continue;
             }
+            // Folder extras (#161) ride on a change as sidecar pairs that do not
+            // follow the stem. The destination folder is unchanged, so they are
+            // kept verbatim; only the stem sidecars are recomputed below. Which
+            // pairs are stem sidecars is asked of the same code that attached
+            // them, against the change as it arrived.
+            let mut as_staged = change.clone();
+            self.attach_sidecars(&mut as_staged);
+            let extras: Vec<(String, String)> = change
+                .sidecar_renames
+                .iter()
+                .filter(|(from, _)| !as_staged.sidecar_renames.iter().any(|(own, _)| own == from))
+                .cloned()
+                .collect();
             let mut revised = FileChangeDto {
                 path: change.path.clone(),
-                rename_to: renamed.then(|| {
-                    path.with_file_name(&file_name)
-                        .to_string_lossy()
-                        .into_owned()
-                }),
+                rename_to: renamed.then(|| target.to_string_lossy().into_owned()),
                 tag_changes,
                 cover_change: change.cover_change.clone(),
                 // Recomputed below rather than carried over: the sidecars follow
                 // the destination name, which a file-scoped chain just changed.
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
-                copy: false,
+                // A copy stays a copy (#383) — a chain run must never turn it
+                // into a move of the originals.
+                copy: change.copy,
             };
             if renamed {
                 self.attach_sidecars(&mut revised);
+                revised.sidecar_renames.extend(extras);
             }
             changes.push(revised);
         }
@@ -5614,6 +5645,99 @@ mod tests {
             vec!["autechre - gantz graf.lrc"],
             "the sidecar must follow the revised name, not the staged one"
         );
+    }
+
+    // #383: a chain cleans the proposed NAME and keeps the proposed FOLDER. The
+    // case that surfaced it: a file already named the way the chain writes
+    // names (lower case, underscores). Restructuring it into a subfolder and
+    // running that chain lands on its current name — which, with the folder
+    // dropped, read as a no-op and silently left the plan.
+    #[test]
+    fn a_chain_keeps_the_folder_a_rename_proposes() {
+        let dir = TempDir::new("plan-cleanup-folder");
+        let track = dir.tagged_flac(
+            "the_x_factor_-_desert_rain.flac",
+            "The X Factor",
+            "Desert Rain",
+        );
+        let mut file = TagEngine::read(&track).unwrap();
+        file.tags.insert(TagField::Album, "La Bush".into());
+        TagEngine::write(&file).unwrap();
+        let app = open_app(&dir);
+
+        let staged = app
+            .preview_rename("%album%/%artist% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        let cleaned = app
+            .preview_transform_over_plan(
+                &staged,
+                &[ActionGroupDto {
+                    name: "underscores".into(),
+                    scope: "filename".into(),
+                    rules: vec![case_rule("lower"), replace_rule(" ", "_")],
+                    note: String::new(),
+                }],
+            )
+            .unwrap();
+        assert_eq!(
+            cleaned.changes.len(),
+            1,
+            "the move into La Bush/ must survive"
+        );
+        let expected = dir
+            .0
+            .join("La Bush")
+            .join("the_x_factor_-_desert_rain.flac");
+        assert_eq!(
+            cleaned.changes[0].rename_to.as_deref(),
+            Some(expected.to_string_lossy().as_ref())
+        );
+    }
+
+    // #383: a reorganize keeps what it was asked to be through a cleanup — a
+    // copy stays a copy (never a move of the originals), a move still prunes,
+    // and the destination is the one picked, not the file's own folder.
+    #[test]
+    fn a_chain_keeps_a_reorganize_a_copy_and_its_destination() {
+        let dir = TempDir::new("plan-cleanup-copy");
+        let library = dir.0.join("incoming");
+        let destination = dir.0.join("library");
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::create_dir_all(&destination).unwrap();
+        let track = dir.tagged_flac_at("incoming/x.flac", "Autechre", "Gantz Graf");
+        let app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+        let chain = [ActionGroupDto {
+            name: "lower".into(),
+            scope: "filename".into(),
+            rules: vec![case_rule("lower")],
+            note: String::new(),
+        }];
+
+        for (copy, prune) in [(true, false), (false, true)] {
+            let staged = app
+                .preview_move(
+                    "%artist%/%title%",
+                    std::slice::from_ref(&track),
+                    Some(&destination),
+                    copy,
+                    prune,
+                )
+                .unwrap();
+            let cleaned = app.preview_transform_over_plan(&staged, &chain).unwrap();
+            assert_eq!(cleaned.changes.len(), 1);
+            assert_eq!(cleaned.changes[0].copy, copy, "copy={copy}");
+            assert_eq!(cleaned.prune_empty_dirs, prune, "prune={prune}");
+            assert_eq!(
+                cleaned.changes[0].rename_to.as_deref(),
+                Some(
+                    destination
+                        .join("Autechre")
+                        .join("gantz graf.flac")
+                        .to_string_lossy()
+                        .as_ref()
+                )
+            );
+        }
     }
 
     // #153: the destination can be a folder outside the open library, which the

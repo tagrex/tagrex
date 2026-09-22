@@ -42,6 +42,7 @@ export const ru = {
   "renamer.reorganizeToggle": "Также переместить или скопировать в другую папку",
   "renamer.reorganizeToggleTitle": "Переместить или скопировать результат в другую папку вместо переименования на месте",
   "renamer.exampleUnchanged": "Без изменений",
+  "renamer.exampleChain": "с учётом правил палочки: {rules}",
   "renamer.into": "Куда",
   "renamer.intoPlaceholder": "открытая библиотека",
   "renamer.choose": "Выбрать…",

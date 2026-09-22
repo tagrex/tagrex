@@ -520,7 +520,9 @@ function mockInvoke(cmd, args) {
       const changes = args.plan.changes
         .map((c) => {
           const proposed = c.rename_to || c.path;
-          const dir = c.path.slice(0, c.path.lastIndexOf("/") + 1);
+          // The folder the plan proposes, not the source's (#383) — as the
+          // backend does, so a browser check can't pass on the old bug.
+          const dir = proposed.slice(0, proposed.lastIndexOf("/") + 1);
           let name = proposed.slice(proposed.lastIndexOf("/") + 1, proposed.lastIndexOf("."));
           let ext = proposed.slice(proposed.lastIndexOf(".") + 1);
           let tag_changes = (c.tag_changes || []).map((t) => ({ ...t }));
@@ -543,15 +545,25 @@ function mockInvoke(cmd, args) {
           // A cleanup that lands back on the old value is not a change.
           tag_changes = tag_changes.filter((t) => (t.old ?? null) !== (t.new ?? null));
           const file_name = `${name}.${ext}`;
-          const renamed = file_name !== c.path.slice(c.path.lastIndexOf("/") + 1);
+          const target = `${dir}${file_name}`;
+          const renamed = target !== c.path;
           if (!tag_changes.length && !renamed) return null;
-          return { path: c.path, rename_to: renamed ? `${dir}${file_name}` : null, tag_changes };
+          return {
+            path: c.path,
+            rename_to: renamed ? target : null,
+            tag_changes,
+            copy: !!c.copy,
+          };
         })
         .filter(Boolean);
       const description = (args.plan.description || "").endsWith(" · cleaned up")
         ? args.plan.description
         : `${args.plan.description || ""} · cleaned up`;
-      return Promise.resolve({ description, changes });
+      return Promise.resolve({
+        description,
+        changes,
+        prune_empty_dirs: !!args.plan.prune_empty_dirs,
+      });
     }
     case "preview_move": {
       const changes = args.paths

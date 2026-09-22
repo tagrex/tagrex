@@ -13,13 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   example as you type.** It used to split "rename" and "reorganize into
   folders" into separate patterns, each with its own Preview button that
   only showed a full diff, never a quick glance — so nothing on screen said
-  what a pattern would actually produce before clicking through. In one
-  real case, a 15-track selection with a reorganize pattern that was
-  missing its filename half (only the folder part of what was meant as one
-  full pattern) previewed as "3 of 15" with no visible reason why: every
-  track shared one album's tags, so all 15 rendered to the *same* target
-  and silently collapsed together or matched their current location
-  exactly. One mask field now covers both — `/` or `\` in it sorts into
+  what a pattern would actually produce before clicking through. One mask
+  field now covers both — `/` or `\` in it sorts into
   subfolders wherever the file already is, the same way a plain rename
   always has, backed by `preview_rename` itself now supporting folder
   separators (anchored at each file's own current folder, not a shared
@@ -74,6 +69,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A job's wand rules no longer drop the folder a rename or reorganize
+  proposes — or turn a copy into a move.** Running a rule chain over a
+  staged rename/move plan kept only the proposed file *name* and rebuilt the
+  target beside the source, so a rename into a subfolder or a move to
+  another destination lost its folder. With a chain that writes names the
+  way the files were already named (lower case, underscores), most cleaned
+  names then matched the current ones and silently left the plan: a
+  15-track RENAMER preview came back as "3 to apply". The same step
+  hard-coded `copy` to false, so a copy became a move of the originals once
+  a chain ran, and it dropped "tidy up empty folders" and the folder extras
+  a move carries. The folder, copy/move, pruning and extras now survive the
+  chain, which only cleans the name; RENAMER's live example runs through
+  the same chain as Preview and says so ("incl. N rules from the wand"), so
+  the two can no longer disagree. (#383)
 - **The "Preview edits" button's label wasn't vertically centered.** It sets
   a fixed height and zero vertical padding but, unlike every other
   fixed-height control in the app (the icon buttons, the diff action bar's

@@ -1848,6 +1848,12 @@ body:not(.show-checkbox) #tracks td.sel {
   color: var(--muted);
   font-style: italic;
 }
+/* Said beside the example, not as part of it: the rules came from the wand,
+   not from the mask (#383). */
+.mask-example-chain {
+  color: var(--muted);
+  font-family: var(--font-ui);
+}
 
 /* Query field + the queries the selection can build, as ONE control (#193) —
    the same shape as the library indicator and its recent-folders caret (#180).
