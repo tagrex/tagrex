@@ -96,6 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A code comment no longer names another tagging application.** (#393)
 - **The built-in FTP format preset keeps parentheses.** It replaced every
   character outside letters, digits, `.`, `_` and `-`, so `(as 5606) (1996)`
   lost its brackets; parentheses are safe everywhere and carry catalogue

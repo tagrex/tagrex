@@ -197,8 +197,8 @@ async function refreshMaskExample() {
 }
 
 // Exactly what the mask produced (#384): the target below the folder it was
-// rendered under — the file's own folder, or the destination — the way
-// TagScanner's own inline example reads. No root to split at (an older plan)
+// rendered under — the file's own folder, or the destination — the way an
+// inline example in a tagger usually reads. No root to split at (an older plan)
 // falls back to the last few segments.
 function maskPart(fullPath, root) {
   if (root) {
