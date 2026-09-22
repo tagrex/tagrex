@@ -67,6 +67,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   ONLINE's header matches its results list the same way instead of a
   JS-measured width kept in sync by hand — which the JS side no longer
   computes at all. (#371)
+- **ONLINE's "Load more results" button no longer sits half-clipped against
+  the panel edge at the app's default window size.** It lived as the last
+  item inside the scrolling results list, so whenever a search's results
+  overflowed by less than the button's own height — the common case at
+  1280×800 — the unscrolled view sliced it roughly in half instead of
+  showing a normal list simply continuing off-screen. It's now pinned as
+  its own footer below the results, the same way `.online-head` is pinned
+  above them, so it's always fully visible; only the cards scroll. (#372)
 
 ## [0.18.0] - 2026-09-14
 

@@ -3512,13 +3512,18 @@ td.unreadable-note {
   background-position: right 4px center;
 }
 
-/* "Load more" / Stop footer under the results list (#95/#96). */
+/* "Load more" / Stop footer under the results list (#95/#96). Pinned below
+   .online-scroll rather than scrolled with the cards (#372) — a flex:0 0 auto
+   sibling, the same way .online-head is pinned above it. */
 .release-more {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 0 4px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
 }
 /* The explicit `display` above overrides the `hidden` attribute's UA
    `display: none`, so honour `hidden` explicitly (else the footer shows before

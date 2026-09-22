@@ -351,10 +351,14 @@
               <!-- Release cards. Each expands to its tracklist, fetched lazily;
                    import is per-card. -->
               <div id="release-list" class="release-list"></div>
-              <div id="release-more" class="release-more" hidden>
-                <button id="load-more" type="button" data-i18n="online.loadMore">Load more results</button>
-              </div>
               <p id="discogs-empty" class="empty inert-panel" data-i18n="online.empty">Search the selected source to see releases.</p>
+            </div>
+            <!-- Pinned like .online-head above, not scrolled with the cards: a
+                 "Load more" sitting inside the scrolling list only ever fully
+                 showed once you'd scrolled exactly to the end, so it usually sat
+                 half-clipped against the panel edge (#372). -->
+            <div id="release-more" class="release-more" hidden>
+              <button id="load-more" type="button" data-i18n="online.loadMore">Load more results</button>
             </div>
           </div>
 
