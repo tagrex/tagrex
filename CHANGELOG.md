@@ -105,8 +105,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **…and round label art is cut to its own circle, in both themes.** The
   first version blended the white corners into the card, which the app's web
   view ignored inside the card, so the white square stayed. The cover is now
-  clipped to the circle it measures, and the media badge moves in to sit on
-  the label instead of hanging off its edge. (#398)
+  clipped to the circle it measures. (#398)
+- **The media badge on round label art is back in its usual corner.** #398
+  had moved it in onto the label; it stays where it is on every cover. (#399)
 - **Soundeo search results show their cover, label and year straight away.**
   They used to stay blank until a card was expanded and its release page
   fetched, although the search page already names all three for every

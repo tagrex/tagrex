@@ -3787,17 +3787,13 @@ button.release-import {
    (--art-inset is where the circle starts, measured on load; the extra half
    pixel keeps the white antialiasing out). Clipped rather than blended into
    the card: WKWebView isolates the card's button, so a multiply blend left the
-   white square in place. The media badge moves in to sit on the label. */
+   white square in place. The media badge stays in its usual corner. */
 .release-cover.round-art {
   border-color: transparent;
   background: none;
 }
 .release-cover.round-art img {
   clip-path: circle(calc(50% - var(--art-inset, 0%) - 0.5px));
-}
-.release-cover.round-art .media-badge {
-  left: 12px;
-  bottom: 12px;
 }
 
 /* Media-type + disc-count badge (List only), pinned bottom-left so it never
