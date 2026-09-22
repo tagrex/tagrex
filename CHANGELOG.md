@@ -9,13 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **The mode tabs (TAGGER/RENAMER/GENERATOR/DEDUPLICATOR/EXPORTER) are now
-  uniform width instead of each sized to its own label.** DEDUPLICATOR was
-  the widest, so the row read jagged; every tab is now that width, with
-  the icon and label centered in the box rather than hugging its left
-  edge. Labels also read a step bigger (12px to 13px). All platforms —
-  this is the tabs' own layout, not part of the macOS-only overlay title
-  bar below. (#369)
+- **The mode tabs (TAGGER/RENAMER/GENERATOR/DEDUPLICATOR/EXPORTER) read a
+  step bigger and as one connected group instead of each floating on its
+  own.** Labels are a step bigger (12px to 13px). An earlier pass in this
+  same cycle also gave every tab the width of the longest label
+  (DEDUPLICATOR) with centered content, so the row would read as a uniform
+  set of slots — in practice a short label sat in the middle of a lot of
+  empty padding, and the tabs looked separate rather than grouped even at a
+  tight gap. Reverted to each tab's own content width, with the gap between
+  them closed to 0 and the horizontal padding tightened, so the row reads
+  as one connected strip instead. All platforms — this is the tabs' own
+  layout, not part of the macOS-only overlay title bar below. (#369, #377)
 - **On macOS, the brand sits beside the traffic lights instead of below
   them.** The window's title bar is now transparent and overlaid on the
   app's own top bar (`titleBarStyle: "Overlay"`), so there's no separate
@@ -102,6 +106,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   time. Verified by pixel-scanning real screenshots: the topbar's controls
   and every mode's own content land on the identical coordinate. (#374,
   #375)
+- **The recent-folders dropdown now stretches to the path box's own width**
+  instead of shrink-to-fitting its own rows (min 260px, capped at 520px) —
+  the box it hangs off is most of the top row's width, so the menu read
+  narrow and off-center under it, eliding folder names it didn't need to.
+  (#376)
+- **The overlay-titlebar brand mark's vertical center now actually lines up
+  with the traffic lights' center**, instead of reading slightly low next
+  to them — `align-items: center` centers the wordmark's full line box,
+  descender included, but "tagrex" has only one (the g), so most of the
+  glyphs sit above the baseline and the box read lower than the mark's own
+  optical center. Nudged up, measured directly against the lights rather
+  than guessed. macOS only. (#378, #379)
+- **The status bar no longer shrinks by ~19px when no track is loaded.** It
+  sized to its content, and the icon-only "stand-in" play button shown with
+  nothing loaded is a good deal shorter than the full title/waveform row
+  shown once something is — the whole footer visibly shrank the moment a
+  track's row disappeared, reading as the window itself flexing rather than
+  content coming and going. The bar now reserves the full row's height
+  unconditionally. (#380)
 
 ## [0.18.0] - 2026-09-14
 
