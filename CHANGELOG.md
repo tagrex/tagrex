@@ -116,8 +116,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   to them — `align-items: center` centers the wordmark's full line box,
   descender included, but "tagrex" has only one (the g), so most of the
   glyphs sit above the baseline and the box read lower than the mark's own
-  optical center. Nudged up, measured directly against the lights rather
-  than guessed. macOS only. (#378, #379)
+  optical center. Nudged up in stages (an initial full correction read as
+  overcorrected; splitting the difference then undershot), verified the
+  last time by reading the lights' true center from the Accessibility API
+  and overlaying it on a real screenshot rather than guessing at either
+  end. macOS only. (#378, #379, #381)
 - **The status bar no longer shrinks by ~19px when no track is loaded.** It
   sized to its content, and the icon-only "stand-in" play button shown with
   nothing loaded is a good deal shorter than the full title/waveform row

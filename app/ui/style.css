@@ -408,14 +408,14 @@ body.mac-overlay-titlebar .brand {
   /* align-items: center on .topbar-main centers the wordmark's full line
      box, descender included, but "tagrex" has only one (the g) — most of
      the glyphs sit above the baseline, so the bounding box reads visibly
-     lower than the lights' own center. A full correction to the measured
-     glyph-bounding-box center (-4px) read as overcorrected in practice —
-     the box's geometric center isn't the same as the wordmark's optical
-     center, which the eye weights toward the denser x-height band rather
-     than the full ascender-to-descender span. Split the difference between
-     that and no adjustment at all instead of chasing the box further (#379). */
+     lower than the lights' own center. -2px (#379, splitting the
+     difference against an initial -4px) undershot: overlaying a line at
+     the lights' own true center (read from the Accessibility API, not
+     eyeballed — 24pt from the window's top edge) on a screenshot at -2px
+     still crossed through the thin top of the letters rather than their
+     x-height mass. -3px reads centered against that same reference (#381). */
   position: relative;
-  top: -2px;
+  top: -3px;
 }
 
 .lib {
