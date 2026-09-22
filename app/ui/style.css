@@ -3524,6 +3524,11 @@ td.unreadable-note {
   padding: 8px 0;
   border-top: 1px solid var(--border);
   background: var(--panel);
+  /* Reserve the same scrollbar gutter .online-scroll and .online-head do
+     (not scrollable itself, but the reservation keeps its border/content
+     lined up with theirs on the right, same trick as .online-head). */
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
 }
 /* The explicit `display` above overrides the `hidden` attribute's UA
    `display: none`, so honour `hidden` explicitly (else the footer shows before

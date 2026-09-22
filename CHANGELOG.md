@@ -75,6 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   showing a normal list simply continuing off-screen. It's now pinned as
   its own footer below the results, the same way `.online-head` is pinned
   above them, so it's always fully visible; only the cards scroll. (#372)
+- **That pinned footer's right edge now lines up with the search toolbar
+  and the cards above it.** Pinning it outside `.online-scroll` (#372) left
+  it without the scrollbar gutter `.online-head` and `.online-scroll` both
+  reserve, so its border and centered button sat wider than everything
+  above. It now reserves the same gutter they do. (#373)
 
 ## [0.18.0] - 2026-09-14
 
