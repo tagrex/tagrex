@@ -2831,6 +2831,34 @@ loadColumnWidths();
 renderTableHead();
 applyValueFont(valueFont());
 applyCheckboxCol(checkboxColEnabled());
+// --panel-inset (#374) is the right padding every mode-panel and TAGGER/
+// ONLINE's own head/scroll use — 14px, matching the topbar's own right
+// inset above them, with none of these elements reserving a
+// scrollbar-gutter of their own any more (an earlier version of this fix
+// tried scrollbar-gutter: stable, but WKWebView reserves the *platform's*
+// default scrollbar metrics there rather than respecting our own
+// ::-webkit-scrollbar styling — wider than the 14px budget, with no way for
+// CSS to ask it what that width actually is and compensate). This is a
+// defensive safety net, not the fix itself: after the first layout pass,
+// nudge --panel-inset by however far TAGGER/ONLINE's own search-format
+// select (default-visible at startup, no mode switch needed) still sits
+// from the topbar's settings icon, in case some other engine has its own
+// equivalent quirk (a <select> chrome inset, for instance) that plain 14px
+// doesn't already account for.
+(function calibratePanelInset() {
+  requestAnimationFrame(() => {
+    const ref = el("settings-open");
+    const target = el("search-format");
+    if (!ref || !target) return;
+    const delta = ref.getBoundingClientRect().right - target.getBoundingClientRect().right;
+    if (Math.abs(delta) < 0.5) return;
+    const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--panel-inset")) || 14;
+    // target sitting delta px left of ref means too much padding — less
+    // padding pushes its content right to close the gap, hence current -
+    // delta (padding and the gap move in the same direction, not opposite).
+    document.documentElement.style.setProperty("--panel-inset", `${Math.max(0, current - delta)}px`);
+  });
+})();
 applyTableFont(tableFontPx());
 applyTracklistFont(tracklistFontPx());
 applyBadgeFont(badgeFont());

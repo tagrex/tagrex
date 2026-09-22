@@ -146,11 +146,19 @@
   --ctl-h: 28px;
   --ctl-h-sm: 24px;
 
-  /* The custom-styled scrollbar's own width (set below on ::-webkit-scrollbar),
-     as a token so anywhere that reserves a scrollbar-gutter can compensate its
-     own padding by the same fixed amount rather than by a guessed pixel value
-     (#374). */
+  /* The custom-styled scrollbar's own width, set below on ::-webkit-scrollbar. */
   --sb-w: 11px;
+  /* Right padding for every panel whose scrolling ancestor reserves a
+     scrollbar-gutter (#374): .mode-panel, .online-head, .online-scroll. This
+     is a plain pixel value, not var(--sb-w) or a calc() against it — the
+     *gutter* those elements reserve is scrollbar-gutter: stable's own
+     platform-default width, which on WKWebView is wider than our 11px
+     ::-webkit-scrollbar and isn't something CSS can query to compensate for.
+     14px here is only the fallback for before app.js's startup calibration
+     (calibratePanelInset) corrects it against the one thing that must
+     actually line up: the topbar's own controls, which never reserve a
+     gutter at all. */
+  --panel-inset: 14px;
 
   /* focus ring — keyboard-visible: a single accent ring that hugs the element's
      border box with no gap, so it follows the control's exact rounded contour
@@ -914,24 +922,17 @@ body.resizing .col-splitter {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /* Not scrollbar-gutter: stable (tried in #370/#371, reverted by #374):
+     on WKWebView it reserves the *platform's* default scrollbar metrics —
+     measurably wider than the 14px right inset every mode's content is
+     supposed to have, not just wider than our own 11px ::-webkit-scrollbar —
+     so it left every mode sitting further from the window edge than the
+     topbar's own controls above it, all the time, even with nothing to
+     scroll. A real scrollbar showing still shifts content by its own
+     (11px, our custom style) width, same as any plain overflow-y: auto —
+     smaller and rarer than that permanent misalignment was. */
   overflow-y: auto;
-  /* Always reserve the scrollbar gutter (#370), the same way .online-scroll
-     already did — every mode's panel scrolls through this same element, so
-     without this its content shifts right by the scrollbar's width the
-     moment it grows enough to need one, instead of staying put like ONLINE's
-     results always have. */
-  scrollbar-gutter: stable;
   background: var(--panel);
-}
-
-/* TAGGER (#panel-tagger) manages its own scroll and gutter entirely — each
-   subtab pins a head/footer around its own overflow-y:auto element, and
-   #panel-tagger itself is overflow:hidden. .mode-col's own reservation above
-   is dead weight there: nothing ever scrolls it, so it just adds a second,
-   redundant gutter on top of the subtab's own, pushing TAGGER's content
-   further from the window edge than every other mode's (#374). */
-body.mode-tagger .mode-col {
-  scrollbar-gutter: auto;
 }
 
 /* Collapsed state: the panel and its splitter fold away, table takes it all. */
@@ -944,12 +945,13 @@ body.panel-collapsed .col-splitter {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  /* .mode-col (the scrolling ancestor for every mode but TAGGER, which manages
-     its own scroll — see #panel-tagger) reserves a scrollbar-gutter on top of
-     this padding; without subtracting it back out here, a mode's content sat
-     14px + --sb-w from the window edge while the topbar's own controls above
-     it, which never reserve a gutter, sat just 14px in (#374). */
-  padding: 12px calc(14px - var(--sb-w)) 12px 14px;
+  /* --panel-inset (#374) is 14px, matching the topbar's own right inset — a
+     plain pixel value app.js's startup calibration (calibratePanelInset)
+     can nudge if this mode's actual content still doesn't line up with the
+     topbar's controls for some other reason (a <select> chrome quirk, and
+     so on), without guessing at any scrollbar reservation width to
+     subtract it from. */
+  padding: 12px var(--panel-inset, 14px) 12px 14px;
 }
 
 .mode-panel[hidden] {
@@ -3545,11 +3547,11 @@ td.unreadable-note {
   padding: 8px 0;
   border-top: 1px solid var(--border);
   background: var(--panel);
-  /* Reserve the same scrollbar gutter .online-scroll and .online-head do
-     (not scrollable itself, but the reservation keeps its border/content
-     lined up with theirs on the right, same trick as .online-head). */
-  overflow-y: hidden;
-  scrollbar-gutter: stable;
+  /* No horizontal padding or scrollbar compensation of its own to worry
+     about (#374): its border/content line up with .online-head and
+     .online-scroll above simply by being an equal-width flex sibling under
+     the same #panel-tagger, untouched by either of their own right-padding
+     compensation. */
 }
 /* The explicit `display` above overrides the `hidden` attribute's UA
    `display: none`, so honour `hidden` explicitly (else the footer shows before
@@ -4607,23 +4609,14 @@ td[data-field="year"],
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* Right padding subtracts back out the scrollbar-gutter reserved below, the
-     same compensation .mode-panel uses (#374) — otherwise this row's own
-     14px + --sb-w sits further in than the topbar controls above it, which
-     never reserve a gutter. */
-  padding: 10px calc(14px - var(--sb-w)) 8px 14px;
+  /* Same --panel-inset .mode-panel uses (#374). Not scrollbar-gutter: stable
+     (tried in #370, reverted by #374 — see .mode-col) — .online-scroll below
+     no longer reserves one either, so there's nothing to stay in step with
+     by default; only while it's actually showing a real scrollbar do the two
+     briefly disagree, same as any plain overflow-y: auto list. */
+  padding: 10px var(--panel-inset, 14px) 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
-  /* .online-scroll below reserves a scrollbar gutter (scrollbar-gutter:
-     stable), which eats into its right inset; without matching it here the
-     search row's controls ended 11px further right than the release cards
-     (14 vs 25 from the panel edge, #370). This isn't itself scrollable —
-     overflow-y: hidden still triggers the same native gutter reservation as
-     an actually-scrolling element, so the two stay in step through the
-     browser's own accounting instead of a JS-measured width that has to be
-     kept in sync by hand. */
-  overflow-y: hidden;
-  scrollbar-gutter: stable;
 }
 
 .online-head-row {
@@ -4636,11 +4629,12 @@ td[data-field="year"],
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* Always reserve the gutter so the right inset doesn't jump by a scrollbar
-     width as results come and go — and so it stays in step with .online-head. */
-  scrollbar-gutter: stable;
-  /* Compensated the same way .online-head is (#374). */
-  padding: 10px calc(14px - var(--sb-w)) 10px 14px;
+  /* Not scrollbar-gutter: stable — see .mode-col (#374). A real scrollbar
+     showing still shifts this list's content left by its own width briefly,
+     same as .online-head then no longer matching it for that moment; that's
+     smaller and rarer than the permanent, always-on misalignment stable
+     caused here. */
+  padding: 10px var(--panel-inset, 14px) 10px 14px;
 }
 
 #discogs-token-row input {

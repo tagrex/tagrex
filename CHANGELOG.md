@@ -84,16 +84,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   own controls above it (the settings gear, the re-read icon), not just
   with each other.** #370–#373 each kept the side panel internally
   consistent, but every `scrollbar-gutter: stable` they added reserved real
-  space that was never subtracted back out of the padding sitting inside
-  it — by the time all four had landed, ONLINE sat 36px in from the window
-  edge and every other mode sat 25px in, against the topbar's plain 14px.
-  `--sb-w` is now a token matching `::-webkit-scrollbar`'s own width, so
-  `.mode-panel`, `.online-head` and `.online-scroll` can each subtract it
-  back out of their padding; `.mode-col`'s own gutter — redundant dead
-  weight for TAGGER, which manages its own scroll per subtab and never
-  actually scrolls `.mode-col` — is disabled while TAGGER is showing.
-  Verified by direct measurement: the topbar's controls and every mode's
-  own content now report the same `getBoundingClientRect().right`. (#374)
+  space that was never accounted for against the topbar — by the time all
+  four had landed, ONLINE sat 36px in from the window edge and every other
+  mode sat 25px in, against the topbar's plain 14px. A first attempt tried
+  subtracting the reservation's assumed width back out of the padding, but
+  that assumption (11px, matching our own custom-styled scrollbar) was
+  wrong: measured directly in the real app rather than the Chromium mock
+  that happened to hide this, WKWebView's `scrollbar-gutter: stable`
+  reserves its own, wider platform-default metrics regardless of our
+  `::-webkit-scrollbar` styling — wider than the 14px budget it was being
+  subtracted from, which floors at 0 and leaves a permanent residual gap no
+  retuning could close. `.mode-panel`, `.online-head` and `.online-scroll`
+  drop `scrollbar-gutter: stable` entirely and use a plain, constant 14px
+  inset instead; a real scrollbar showing still shifts content by its own
+  width, same as before #370, but only while it's actually showing, far
+  rarer than the permanent misalignment `stable` caused everywhere, all the
+  time. Verified by pixel-scanning real screenshots: the topbar's controls
+  and every mode's own content land on the identical coordinate. (#374,
+  #375)
 
 ## [0.18.0] - 2026-09-14
 
