@@ -3781,6 +3781,20 @@ button.release-import {
   display: block;
 }
 
+/* Round label art (#397, detected in online.js): a circle printed on a white
+   square. The frame and the white corners made it look forced into a box, so
+   the well drops its frame and multiplies the image onto the card — white
+   takes the card's colour and the circle sits straight on it. Light theme
+   only: multiplied onto a dark card the whole cover would go dark, so there the
+   well stays framed as before. */
+:root[data-theme="light"] .release-cover.round-art {
+  border-color: transparent;
+  background: none;
+}
+:root[data-theme="light"] .release-cover.round-art img {
+  mix-blend-mode: multiply;
+}
+
 /* Media-type + disc-count badge (List only), pinned bottom-left so it never
    rides sleeve logos or the catalogue chip. The glyph shows immediately from
    `format`; the ×N disc count fills in once the release is fetched (#98). */

@@ -96,6 +96,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Round label art sits straight on the card instead of boxed in a square.**
+  A cover printed as a round record label on white (a whole label's
+  catalogue is often sleeved that way) looked forced into the framed square.
+  The app now recognises it when the cover loads — white corners, a circle
+  reaching the edges — and in the light theme drops the frame and blends the
+  white into the card. Ordinary covers, and the dark theme, keep the
+  frame. (#397)
 - **Soundeo search results show their cover, label and year straight away.**
   They used to stay blank until a card was expanded and its release page
   fetched, although the search page already names all three for every

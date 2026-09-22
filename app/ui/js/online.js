@@ -517,6 +517,68 @@ function cardMarkup(c) {
     </article>`;
 }
 
+// Put an image into a card's cover well without wiping the media badge (#98)
+// that shares it, and say whether it is round label art (#397).
+function setCoverImage(cover, src) {
+  cover.querySelector("img")?.remove();
+  cover.insertAdjacentHTML("afterbegin", `<img alt="" src="${src}" />`);
+  markRoundArt(cover, src);
+}
+
+// Round label art (#397): a record label drawn as a circle on a white square —
+// a whole label's catalogue is often sleeved that way. In the framed square
+// well the white corners read as a box the circle was forced into, so the well
+// drops its frame and blends the white into the card (style.css). Told apart
+// from an ordinary cover by sampling a small copy of the image: all four
+// corners near-white, and the middle of all four edges NOT — the circle reaches
+// the edges, a square cover on a white background doesn't. The image is a data
+// URI fetched by the backend, so reading its pixels is never cross-origin.
+const roundArtCache = new Map(); // src -> boolean
+
+function markRoundArt(cover, src) {
+  const apply = (round) => cover.classList.toggle("round-art", round);
+  if (roundArtCache.has(src)) {
+    apply(roundArtCache.get(src));
+    return;
+  }
+  apply(false);
+  const img = new Image();
+  img.onload = () => {
+    const round = isRoundArt(img);
+    roundArtCache.set(src, round);
+    // The well may hold a newer image by now (the full cover replacing the
+    // thumbnail); only the one that was measured gets the verdict.
+    if (cover.querySelector("img")?.getAttribute("src") === src) apply(round);
+  };
+  img.src = src;
+}
+
+function isRoundArt(img) {
+  const n = 40;
+  const canvas = document.createElement("canvas");
+  canvas.width = n;
+  canvas.height = n;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx || !img.naturalWidth || Math.abs(img.naturalWidth - img.naturalHeight) > 2) return false;
+  ctx.drawImage(img, 0, 0, n, n);
+  const { data } = ctx.getImageData(0, 0, n, n);
+  const white = (x, y) => {
+    const i = (y * n + x) * 4;
+    const [r, g, b] = [data[i], data[i + 1], data[i + 2]];
+    return Math.min(r, g, b) >= 232 && Math.max(r, g, b) - Math.min(r, g, b) <= 12;
+  };
+  const last = n - 1;
+  const mid = n >> 1;
+  const corners = [
+    [0, 0], [1, 1], [last, 0], [last - 1, 1],
+    [0, last], [1, last - 1], [last, last], [last - 1, last - 1],
+  ];
+  const edges = [
+    [mid, 2], [mid, last - 2], [2, mid], [last - 2, mid],
+  ];
+  return corners.every(([x, y]) => white(x, y)) && edges.every(([x, y]) => !white(x, y));
+}
+
 // Show the release's cover thumbnail, fetching + caching it once. Cached data
 // URIs are reused, so a re-render never re-hits Discogs.
 async function applyImage(c) {
@@ -537,11 +599,7 @@ async function applyImage(c) {
     }
   }
   const cover = coverElOf(c.id);
-  if (cover) {
-    // Drop in the art without wiping the media badge (#98) that shares the well.
-    cover.querySelector("img")?.remove();
-    cover.insertAdjacentHTML("afterbegin", `<img alt="" src="${dataUri}" />`);
-  }
+  if (cover) setCoverImage(cover, dataUri);
 }
 
 // Fetch each release once, in the background, to fill the track/disc count on
@@ -881,11 +939,8 @@ async function loadFullCover(id, url, card) {
     const cover = await invoke("provider_fetch_image", { source: releaseSource, token, url });
     coverCache.set(id, cover);
     const coverEl = card.querySelector(".release-cover");
-    if (coverEl) {
-      // Swap in the full-res cover without wiping the media badge (#98).
-      coverEl.querySelector("img")?.remove();
-      coverEl.insertAdjacentHTML("afterbegin", `<img alt="" src="data:${cover.mime};base64,${cover.data_base64}" />`);
-    }
+    // Swap in the full-res cover without wiping the media badge (#98).
+    if (coverEl) setCoverImage(coverEl, `data:${cover.mime};base64,${cover.data_base64}`);
   } catch (e) {
     /* embedding just won't be available for this card */
   }
