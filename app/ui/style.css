@@ -362,27 +362,23 @@ select,
 }
 
 .brand {
+  font-size: var(--text-md);
   font-weight: var(--fw-bold);
   letter-spacing: var(--ls-brand);
   color: var(--accent-ink);
 }
 
 /* Overlay title bar (#362): the traffic lights float over the page instead
-   of sitting in their own strip, so row 1 needs to occupy the same band they
-   do (a blank top gap would push the row below the lights instead of
-   centering alongside them, same problem restated) — a min-height matching
-   where the buttons actually sit (measured via accessibility: centered 16px
-   below the window's top edge, i.e. a 32px band), with the row's own
-   align-items: center doing the vertical centering. .topbar's own 8px top
-   padding was still adding to that band from above it, so the band starts
-   8px too low — drop it here rather than adding a compensating negative
-   margin. The brand still needs a left margin clear of the buttons
-   themselves. macOS only (see the body-class gate in app.js). */
+   of sitting in their own strip. Rather than stretch row 1 to chase
+   wherever the buttons default to, tauri.conf.json's trafficLightPosition
+   places them to match row 1's own natural vertical center instead — real
+   native control instead of a CSS height guess. .topbar's own 8px top
+   padding would still offset that from above it, so it's dropped here. The
+   brand needs a left margin clear of the buttons themselves, matching
+   trafficLightPosition's x. macOS only (see the body-class gate in
+   app.js). */
 body.mac-overlay-titlebar .topbar {
   padding-top: 0;
-}
-body.mac-overlay-titlebar .topbar-main {
-  min-height: 32px;
 }
 body.mac-overlay-titlebar .brand {
   margin-left: 68px;
