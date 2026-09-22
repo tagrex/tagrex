@@ -909,6 +909,12 @@ body.resizing .col-splitter {
   flex-direction: column;
   min-height: 0;
   overflow-y: auto;
+  /* Always reserve the scrollbar gutter (#370), the same way .online-scroll
+     already did — every mode's panel scrolls through this same element, so
+     without this its content shifts right by the scrollbar's width the
+     moment it grows enough to need one, instead of staying put like ONLINE's
+     results always have. */
+  scrollbar-gutter: stable;
   background: var(--panel);
 }
 
@@ -4573,11 +4579,16 @@ td[data-field="year"],
   padding: 10px 14px 8px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
-  /* The results area below reserves a scrollbar gutter, which eats into its
-     right inset; without matching it here the search row's controls ended 11px
-     further right than the release cards (14 vs 25 from the panel edge). --sb-w
-     is measured once at startup, so this is 0 on overlay-scrollbar platforms. */
-  padding-right: calc(14px + var(--sb-w, 0px));
+  /* .online-scroll below reserves a scrollbar gutter (scrollbar-gutter:
+     stable), which eats into its right inset; without matching it here the
+     search row's controls ended 11px further right than the release cards
+     (14 vs 25 from the panel edge, #370). This isn't itself scrollable —
+     overflow-y: hidden still triggers the same native gutter reservation as
+     an actually-scrolling element, so the two stay in step through the
+     browser's own accounting instead of a JS-measured width that has to be
+     kept in sync by hand. */
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
 }
 
 .online-head-row {

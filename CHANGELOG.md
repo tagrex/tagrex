@@ -56,6 +56,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   buttons), never paired that with flex centering — so the label followed
   normal text flow instead of centering in the box, sitting closer to the
   top with more space below than above. (#370)
+- **Every mode panel now reserves the same scrollbar gutter ONLINE's did,
+  so its right-edge inset stops drifting with content length.** #370 only
+  matched ONLINE's own search-header to its own results list, via a
+  scrollbar width measured once in JS. The other modes' panels share a
+  different element (`.mode-col`) that never reserved a gutter at all —
+  flush with the settings icon while short, pulled back once a mode's
+  content grew enough to actually show a scrollbar. `.mode-col` now
+  reserves it unconditionally with plain `scrollbar-gutter: stable`, and
+  ONLINE's header matches its results list the same way instead of a
+  JS-measured width kept in sync by hand — which the JS side no longer
+  computes at all. (#371)
 
 ## [0.18.0] - 2026-09-14
 
