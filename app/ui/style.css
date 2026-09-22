@@ -308,6 +308,18 @@ select,
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
+/* Belt-and-suspenders for [data-tauri-drag-region] (#362): the legacy
+   Electron-style CSS property some WKWebView/wry versions also honor,
+   alongside the HTML attribute Tauri documents. Every clickable control
+   gets the explicit no-drag opt-out so a stray drag never eats a click. */
+[data-tauri-drag-region] {
+  -webkit-app-region: drag;
+}
+.topbar button,
+.topbar input,
+.topbar [role="button"] {
+  -webkit-app-region: no-drag;
+}
 /* Row 1: brand, mode tabs, and the app-level actions (#343). */
 .topbar-main {
   display: flex;
@@ -361,9 +373,14 @@ select,
    centering alongside them, same problem restated) — a min-height matching
    where the buttons actually sit (measured via accessibility: centered 16px
    below the window's top edge, i.e. a 32px band), with the row's own
-   align-items: center doing the vertical centering. The brand still needs a
-   left margin clear of the buttons themselves. macOS only (see the
-   body-class gate in app.js). */
+   align-items: center doing the vertical centering. .topbar's own 8px top
+   padding was still adding to that band from above it, so the band starts
+   8px too low — drop it here rather than adding a compensating negative
+   margin. The brand still needs a left margin clear of the buttons
+   themselves. macOS only (see the body-class gate in app.js). */
+body.mac-overlay-titlebar .topbar {
+  padding-top: 0;
+}
 body.mac-overlay-titlebar .topbar-main {
   min-height: 32px;
 }

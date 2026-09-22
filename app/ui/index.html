@@ -65,7 +65,7 @@
     <header class="topbar" data-tauri-drag-region>
       <!-- Row 1 (#343): the mode tabs and the app-level actions. The library path
            gets its own row below, so a long folder name never crowds the tabs. -->
-      <div class="topbar-main">
+      <div class="topbar-main" data-tauri-drag-region>
         <div class="brand">/tagrex/</div>
         <!-- Mode tabs — the file table stays put; only the right-hand panel swaps.
              Table is the subject (noun), each tab is a verb applied to it. They
@@ -78,7 +78,7 @@
           <button class="mode-tab" data-mode="deduplicator" data-i18n-title="mode.deduplicator.title" title="Find likely duplicate files in the library" data-i18n-aria-label="mode.deduplicator" aria-label="DEDUPLICATOR"><svg class="ico"><use href="#i-dedup"/></svg><span class="lbl" data-i18n="mode.deduplicator">DEDUPLICATOR</span></button>
           <button class="mode-tab" data-mode="exporter" data-i18n-title="mode.exporter.title" title="Export playlists, CSV, and reports" data-i18n-aria-label="mode.exporter" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl" data-i18n="mode.exporter">EXPORTER</span></button>
         </nav>
-        <div class="spacer"></div>
+        <div class="spacer" data-tauri-drag-region></div>
         <!-- App-level actions (#343): the layout toggle, and — past a hairline —
              undo and settings. They act on the app, not the library. -->
         <button id="panel-toggle" class="icon" data-i18n-title="topbar.collapsePanelTitle" title="Collapse the mode panel (more room for the table)" data-i18n-aria-label="topbar.collapsePanel" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>

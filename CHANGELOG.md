@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   native title strip taking up vertical space above the mode tabs — just
   the traffic-light buttons floating over the same row the brand and tabs
   already live in. macOS only; other platforms are unaffected. (#362)
+- **Fixed: the overlay title bar's row was misaligned with the traffic
+  lights, and the window couldn't be dragged.** The row's own min-height
+  wasn't enough on its own — `.topbar`'s existing top padding was still
+  stacking on top of it. And `data-tauri-drag-region` silently did nothing
+  because `core:window:allow-start-dragging` isn't part of Tauri's
+  `core:default` permission set; it needs requesting explicitly. (#363)
 - **The Discogs API attribution notice.** Discogs' API Terms of Use require the
   application to state that it uses Discogs' API and is not affiliated with them;
   it now appears in the README and the TAGGER guide (the terms allow it to live in
