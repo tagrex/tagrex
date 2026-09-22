@@ -362,7 +362,7 @@ select,
 }
 
 .brand {
-  font-size: var(--text-md);
+  font-size: var(--text-lg);
   font-weight: var(--fw-bold);
   letter-spacing: var(--ls-brand);
   color: var(--accent-ink);
