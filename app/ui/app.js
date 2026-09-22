@@ -2829,9 +2829,11 @@ renderTableHead();
 applyValueFont(valueFont());
 applyCheckboxCol(checkboxColEnabled());
 // Publish the platform's scrollbar width so non-scrolling headers can reserve
-// the same gutter their scrolling sibling does and the two stay flush. Overlay
-// scrollbars (macOS default) measure 0, which is exactly right — nothing to
-// reserve there.
+// the same gutter their scrolling sibling does and the two stay flush. NOT 0
+// on macOS here, despite the platform's native scrollbars being overlay —
+// this app styles its own via ::-webkit-scrollbar (see the rules near the
+// bottom of style.css), and a custom-styled scrollbar in WebKit switches to
+// classic, space-reserving rendering. Measured live: 11px.
 (function measureScrollbarWidth() {
   const probe = document.createElement("div");
   probe.style.cssText = "position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;";

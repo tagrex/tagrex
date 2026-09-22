@@ -48,6 +48,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   way — the user's own token, a descriptive User-Agent, rate limiting — this is
   just the missing notice. (#361)
 
+### Fixed
+
+- **The "Preview edits" button's label wasn't vertically centered.** It sets
+  a fixed height and zero vertical padding but, unlike every other
+  fixed-height control in the app (the icon buttons, the diff action bar's
+  buttons), never paired that with flex centering — so the label followed
+  normal text flow instead of centering in the box, sitting closer to the
+  top with more space below than above. (#370)
+
 ## [0.18.0] - 2026-09-14
 
 This release adds two more Online metadata sources — Bandcamp and Soundeo — for
