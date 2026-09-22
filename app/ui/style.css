@@ -845,7 +845,10 @@ input[type="search"]::-webkit-search-cancel-button {
 /* ---- mode tabs ---- */
 .mode-tabs {
   display: flex;
-  gap: 2px;
+  /* Tight enough that the row reads as one connected group instead of
+     separate floating buttons (#377) — each tab is its own content width
+     now, not a uniform slot, so the gap is what has to carry that. */
+  gap: 0;
   /* Sharing the top bar now (#280): the tabs hold their natural width and never
      shrink, so the labels stay put until the width check swaps them for
      icon-only (body.compact-tabs) — the path box and the spacer give way first. */
@@ -855,12 +858,7 @@ input[type="search"]::-webkit-search-cancel-button {
 .mode-tab {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
   gap: var(--space-2);
-  /* Every tab the width of the longest label (DEDUPLICATOR) instead of its
-     own content, so the row reads as a uniform set of slots rather than
-     jagged widths — content centers within via justify-content above. */
-  min-width: 150px;
   border: none;
   border-radius: 0;
   box-shadow: none;
@@ -869,7 +867,7 @@ input[type="search"]::-webkit-search-cancel-button {
   font-weight: var(--fw-medium);
   letter-spacing: var(--ls-caps);
   font-size: var(--text-md);
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-4) var(--space-4);
   border-bottom: 2px solid transparent;
 }
 
