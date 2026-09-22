@@ -176,12 +176,17 @@ fn is_soundeo_release_url(text: &str) -> bool {
 }
 
 // One `.trackitem` row's fields: the release it belongs to (href + name), the
-// track's own title, and the listed duration.
+// track's own title, and the listed duration — plus what the row says about the
+// release itself (#396): its cover thumbnail, label and date, so a search
+// result can show them without fetching the release page.
 struct TrackItem {
     release_href: String,
     release_name: String,
     track_title: String,
     duration: Option<String>,
+    cover: Option<String>,
+    label: Option<String>,
+    date: Option<String>,
 }
 
 static TRACKITEM_SPLIT: LazyLock<Regex> =
@@ -193,6 +198,13 @@ static TRACK_RELEASE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"<span>\s*<a href="(/release/[^"]+)">([^<]+)</a>"#).unwrap());
 static TABLE_ROW: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?s)<tr>\s*<td>([^<]+)</td>\s*<td>(.*?)</td>\s*</tr>").unwrap());
+static TRACK_COVER: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"<img src="(https://covers\.sndstatic\.com/[^"]+\.jpg)""#).unwrap()
+});
+static TRACK_LABEL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<i>by</i>\s*<a [^>]*>([^<]+)</a>"#).unwrap());
+static TRACK_DATE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<i>at</i>\s*(\d{4}-\d{2}-\d{2})").unwrap());
 static TAG: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<[^>]+>").unwrap());
 static COVER_SIZE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"-\d+\.jpg$").unwrap());
 
@@ -215,6 +227,9 @@ fn parse_trackitems(html: &str) -> Vec<TrackItem> {
             duration: TRACK_TIME
                 .captures(block)
                 .map(|caps| caps[1].trim().to_string()),
+            cover: TRACK_COVER.captures(block).map(|caps| caps[1].to_string()),
+            label: TRACK_LABEL.captures(block).map(|caps| unescape(&caps[1])),
+            date: TRACK_DATE.captures(block).map(|caps| caps[1].to_string()),
         });
     }
     items
@@ -231,16 +246,19 @@ fn parse_search(html: &str) -> Vec<ReleaseCandidate> {
             continue;
         }
         seen.push(item.release_href.clone());
+        // The row's thumbnail is the 50 px size; the card wants something that
+        // stays sharp at its size, and the same URL serves the others (#396).
+        let cover = item.cover.as_deref();
         candidates.push(ReleaseCandidate {
             id: ReleaseId(absolute(&item.release_href)),
             artist: artist_of(&item.track_title),
             title: item.release_name,
-            year: None,
+            year: item.date.as_deref().and_then(year_from_date),
             score: 0.0, // the app re-scores against the query text (#53)
-            thumb_url: None,
-            cover_url: None,
+            thumb_url: cover.map(|url| sized_cover(url, 500)),
+            cover_url: cover.map(upgrade_cover),
             country: None,
-            label: None,
+            label: item.label,
             format: None,
             catalog_number: None,
         });
@@ -447,8 +465,14 @@ fn absolute(path: &str) -> String {
 /// Swap a cover URL's size suffix for the largest Soundeo serves
 /// (`…-500.jpg` → `…-1400.jpg`), for a cover good enough to embed.
 fn upgrade_cover(url: &str) -> String {
+    sized_cover(url, 1400)
+}
+
+/// The same cover at another of Soundeo's sizes (50, 500, 1400); a URL without
+/// a size suffix is returned as it is.
+fn sized_cover(url: &str, size: u32) -> String {
     if COVER_SIZE.is_match(url) {
-        COVER_SIZE.replace(url, "-1400.jpg").into_owned()
+        COVER_SIZE.replace(url, format!("-{size}.jpg")).into_owned()
     } else {
         url.to_string()
     }
@@ -532,9 +556,10 @@ mod tests {
         let html = r#"<h1>Search results</h1>
           <div class="folder">
             <div class="trackitem" data-track-id="1">
+              <a href="/release/gianesini-deep-dive-5740905.html"><img src="https://covers.sndstatic.com/2025/11/03/5740905-gianesini-deep-dive-50.jpg" class="cover cover-30"></a>
               <div class="info"><strong><a href="/track/a-deep-dive-1.html">Gianesini - Deep Dive (Original Mix)</a></strong>
               <time>4:53</time>
-              <span><a href="/release/gianesini-deep-dive-5740905.html">Deep Dive</a> <i>by</i> <a href="/list/x">GIBI</a></span></div>
+              <span><a href="/release/gianesini-deep-dive-5740905.html">Deep Dive</a> <i>by</i> <a href="/list/x">GIBI</a> <i>at</i> 2025-11-03</span></div>
             </div>
             <div class="trackitem" data-track-id="2">
               <div class="info"><strong><a href="/track/a-b-freak-2.html">Gianesini - B-Freak (Original Mix)</a></strong>
@@ -554,6 +579,18 @@ mod tests {
             hits[0].id.0,
             "https://soundeo.com/release/gianesini-deep-dive-5740905.html"
         );
+        // The row's own cover, label and date fill the card before the release
+        // page is ever fetched (#396).
+        assert_eq!(
+            hits[0].thumb_url.as_deref(),
+            Some("https://covers.sndstatic.com/2025/11/03/5740905-gianesini-deep-dive-500.jpg")
+        );
+        assert_eq!(
+            hits[0].cover_url.as_deref(),
+            Some("https://covers.sndstatic.com/2025/11/03/5740905-gianesini-deep-dive-1400.jpg")
+        );
+        assert_eq!(hits[0].label.as_deref(), Some("GIBI"));
+        assert_eq!(hits[0].year, Some(2025));
     }
 
     #[test]

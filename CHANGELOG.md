@@ -96,6 +96,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Soundeo search results show their cover, label and year straight away.**
+  They used to stay blank until a card was expanded and its release page
+  fetched, although the search page already names all three for every
+  result. (#396)
 - **A saved mask preset reads as a name over its mask, not a boxed chip over a
   line that scrolls sideways.** Styles shared with the other preset lists put
   a border around the name and stopped the mask from ending in an ellipsis,
