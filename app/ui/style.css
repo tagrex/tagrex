@@ -5252,14 +5252,18 @@ td[data-field="year"],
 /* Only the chain scrolls; the heading and the close stay put. */
 .transform-modal-body {
   min-height: 0;
-  overflow-y: auto;
-  /* The scroller reaches into the dialog's right padding and keeps its content
-     out of it (#387). macOS draws its scrollbar OVER the content, and hovered
-     it widens to a ~15px track that covered the cards' right border and the
-     end of every row; out here it only ever covers the dialog's own margin,
-     while the content still lines up with the close button above it. */
+  /* Always a scrollbar, never "when needed" (#389). Ours is a real 11px bar
+     that takes layout width, and WKWebView lays this body out without it when
+     the dialog opens, then again with it once the pointer passes over — so
+     every card jumped 11px narrower under the cursor. A bar that is always
+     there is in the first layout too; with nothing to scroll it is an empty
+     transparent track. */
+  overflow-y: scroll;
+  /* The scroller reaches into the dialog's right padding (#387) and the bar
+     sits in that margin: the padding left over after it keeps the content's
+     right edge in line with the close button above. */
   margin-right: calc(-1 * var(--space-6));
-  padding-right: var(--space-6);
+  padding-right: calc(var(--space-6) - var(--sb-w));
 }
 .transform-modal-body > .panel-block {
   margin: 0;

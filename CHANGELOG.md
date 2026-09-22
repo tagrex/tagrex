@@ -82,6 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The transform dialog's rule cards no longer jump narrower under the
+  pointer.** Right after opening, the cards ran up to the close button; the
+  first time the pointer crossed them they shrank by the scrollbar's width,
+  because the dialog was laid out without its scrollbar and then again with
+  it. The scrollbar is now part of the first layout. (#389)
 - **The transform dialog's scrollbar no longer covers the rule cards.** On
   macOS it is drawn over the content, and hovered it widened into a track
   that hid the cards' right border, the end of the replace-with fields and
