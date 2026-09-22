@@ -1729,6 +1729,9 @@ function setMode(name) {
   // restores the normal table view.
   const dedup = name === "deduplicator";
   document.body.classList.toggle("mode-deduplicator", dedup);
+  // TAGGER manages its own scroll/gutter per subtab (#374) — .mode-col's own
+  // gutter reservation is redundant dead weight while it's showing.
+  document.body.classList.toggle("mode-tagger", name === "tagger");
   if (dedup) {
     // The read-only scan owns the main area; a staged plan's diff-state stays
     // intact underneath — its floating bar just hides until a normal mode returns.

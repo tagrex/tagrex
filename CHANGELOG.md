@@ -80,6 +80,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   it without the scrollbar gutter `.online-head` and `.online-scroll` both
   reserve, so its border and centered button sat wider than everything
   above. It now reserves the same gutter they do. (#373)
+- **Every mode panel's right edge now actually lines up with the topbar's
+  own controls above it (the settings gear, the re-read icon), not just
+  with each other.** #370–#373 each kept the side panel internally
+  consistent, but every `scrollbar-gutter: stable` they added reserved real
+  space that was never subtracted back out of the padding sitting inside
+  it — by the time all four had landed, ONLINE sat 36px in from the window
+  edge and every other mode sat 25px in, against the topbar's plain 14px.
+  `--sb-w` is now a token matching `::-webkit-scrollbar`'s own width, so
+  `.mode-panel`, `.online-head` and `.online-scroll` can each subtract it
+  back out of their padding; `.mode-col`'s own gutter — redundant dead
+  weight for TAGGER, which manages its own scroll per subtab and never
+  actually scrolls `.mode-col` — is disabled while TAGGER is showing.
+  Verified by direct measurement: the topbar's controls and every mode's
+  own content now report the same `getBoundingClientRect().right`. (#374)
 
 ## [0.18.0] - 2026-09-14
 

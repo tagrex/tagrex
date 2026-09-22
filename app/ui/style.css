@@ -146,6 +146,12 @@
   --ctl-h: 28px;
   --ctl-h-sm: 24px;
 
+  /* The custom-styled scrollbar's own width (set below on ::-webkit-scrollbar),
+     as a token so anywhere that reserves a scrollbar-gutter can compensate its
+     own padding by the same fixed amount rather than by a guessed pixel value
+     (#374). */
+  --sb-w: 11px;
+
   /* focus ring — keyboard-visible: a single accent ring that hugs the element's
      border box with no gap, so it follows the control's exact rounded contour
      (#135). --ring for free-standing controls, --ring-inset for clipped table
@@ -764,8 +770,8 @@ button.io > .ico,
 /* Consistent thin scrollbars across every engine. All three Tauri webviews are
    WebKit/Chromium, so the ::-webkit-scrollbar pseudo covers them uniformly. */
 ::-webkit-scrollbar {
-  width: 11px;
-  height: 11px;
+  width: var(--sb-w);
+  height: var(--sb-w);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -918,6 +924,16 @@ body.resizing .col-splitter {
   background: var(--panel);
 }
 
+/* TAGGER (#panel-tagger) manages its own scroll and gutter entirely — each
+   subtab pins a head/footer around its own overflow-y:auto element, and
+   #panel-tagger itself is overflow:hidden. .mode-col's own reservation above
+   is dead weight there: nothing ever scrolls it, so it just adds a second,
+   redundant gutter on top of the subtab's own, pushing TAGGER's content
+   further from the window edge than every other mode's (#374). */
+body.mode-tagger .mode-col {
+  scrollbar-gutter: auto;
+}
+
 /* Collapsed state: the panel and its splitter fold away, table takes it all. */
 body.panel-collapsed .mode-col,
 body.panel-collapsed .col-splitter {
@@ -928,7 +944,12 @@ body.panel-collapsed .col-splitter {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 12px 14px;
+  /* .mode-col (the scrolling ancestor for every mode but TAGGER, which manages
+     its own scroll — see #panel-tagger) reserves a scrollbar-gutter on top of
+     this padding; without subtracting it back out here, a mode's content sat
+     14px + --sb-w from the window edge while the topbar's own controls above
+     it, which never reserve a gutter, sat just 14px in (#374). */
+  padding: 12px calc(14px - var(--sb-w)) 12px 14px;
 }
 
 .mode-panel[hidden] {
@@ -4586,7 +4607,11 @@ td[data-field="year"],
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 14px 8px;
+  /* Right padding subtracts back out the scrollbar-gutter reserved below, the
+     same compensation .mode-panel uses (#374) — otherwise this row's own
+     14px + --sb-w sits further in than the topbar controls above it, which
+     never reserve a gutter. */
+  padding: 10px calc(14px - var(--sb-w)) 8px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
   /* .online-scroll below reserves a scrollbar gutter (scrollbar-gutter:
@@ -4614,7 +4639,8 @@ td[data-field="year"],
   /* Always reserve the gutter so the right inset doesn't jump by a scrollbar
      width as results come and go — and so it stays in step with .online-head. */
   scrollbar-gutter: stable;
-  padding: 10px 14px;
+  /* Compensated the same way .online-head is (#374). */
+  padding: 10px calc(14px - var(--sb-w)) 10px 14px;
 }
 
 #discogs-token-row input {
