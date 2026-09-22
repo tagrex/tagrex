@@ -79,11 +79,17 @@ async function preview() {
 // ---- reorganize on/off (#153 destination + copy, unified in #382) ----
 
 function updatePreviewLabel() {
-  el("preview").textContent = !reorganize
-    ? t("renamer.previewRename")
+  const key = !reorganize
+    ? "renamer.previewRename"
     : moveMode === "copy"
-      ? t("renamer.previewCopy")
-      : t("renamer.previewMove");
+      ? "renamer.previewCopy"
+      : "renamer.previewMove";
+  // The button's data-i18n follows the label: the static-text pass at startup
+  // (and on every language change) rewrites it from that key, so a fixed
+  // "previewRename" there overwrote "Preview move" right after it was set.
+  const btn = el("preview");
+  btn.dataset.i18n = key;
+  btn.textContent = t(key);
 }
 
 function setReorganize(on) {

@@ -78,6 +78,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **RENAMER's button names what it previews from the moment the app
+  starts.** With "Also move or copy into a different folder" left on from
+  the last session, it read "Preview rename" after launch while actually
+  previewing a move or copy — the startup translation pass rewrote the
+  label from a fixed key. (#386)
 - **A job's wand rules now clean the folders a mask creates, not just the
   file name.** A RENAMER mask that sorts into a subfolder used to come out
   as `Various - La Bush … (1996)/101_the_x_factor_-_desert_rain.mp3` under a
