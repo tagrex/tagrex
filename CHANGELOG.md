@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **On macOS, the brand sits beside the traffic lights instead of below
+  them.** The window's title bar is now transparent and overlaid on the
+  app's own top bar (`titleBarStyle: "Overlay"`), so there's no separate
+  native title strip taking up vertical space above the mode tabs — just
+  the traffic-light buttons floating over the same row the brand and tabs
+  already live in. macOS only; other platforms are unaffected. (#362)
 - **The Discogs API attribution notice.** Discogs' API Terms of Use require the
   application to state that it uses Discogs' API and is not affiliated with them;
   it now appears in the README and the TAGGER guide (the terms allow it to live in

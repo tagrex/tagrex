@@ -355,6 +355,22 @@ select,
   color: var(--accent-ink);
 }
 
+/* Overlay title bar (#362): the traffic lights float over the page instead
+   of sitting in their own strip, so row 1 needs to occupy the same band they
+   do (a blank top gap would push the row below the lights instead of
+   centering alongside them, same problem restated) — a min-height matching
+   where the buttons actually sit (measured via accessibility: centered 16px
+   below the window's top edge, i.e. a 32px band), with the row's own
+   align-items: center doing the vertical centering. The brand still needs a
+   left margin clear of the buttons themselves. macOS only (see the
+   body-class gate in app.js). */
+body.mac-overlay-titlebar .topbar-main {
+  min-height: 32px;
+}
+body.mac-overlay-titlebar .brand {
+  margin-left: 68px;
+}
+
 .lib {
   display: flex;
   gap: 6px;

@@ -147,6 +147,17 @@ import {
   builtinGroups, setBuiltinGroups,
 } from "./js/state.js";
 
+// Overlay title bar (#362, macOS only): tauri.conf.json's titleBarStyle
+// "Overlay" floats the native traffic lights over the page instead of
+// giving them their own strip, so the top bar needs room reserved for
+// them. Only inside that actual window — the browser-only mock (mock.js)
+// has no traffic lights to clear, and other platforms keep their normal
+// decorated title bar regardless of the config (Tauri ignores this style
+// there), so there is nothing to clear for them either.
+if (TAURI && /Mac/.test(navigator.platform)) {
+  document.body.classList.add("mac-overlay-titlebar");
+}
+
 // ---- elements ----
 const rootInput = el("root");
 const tableWrap = el("files-view");
