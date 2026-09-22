@@ -405,6 +405,15 @@ body.mac-overlay-titlebar .brand {
      this the first time left a visibly wider gap here than the
      brand-to-tabs one. */
   margin-left: 76px;
+  /* align-items: center on .topbar-main centers the wordmark's full line
+     box, descender included, but "tagrex" has only one (the g) — most of
+     the glyphs sit above the baseline, so the bounding box reads visibly
+     lower than the lights' own center. Measured directly (pixel-scanning a
+     screenshot): the lights center 24px from the window's top edge, the
+     wordmark's glyph bounds centered at 27-28px. Nudged up to match rather
+     than guessed. */
+  position: relative;
+  top: -4px;
 }
 
 .lib {
