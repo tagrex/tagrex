@@ -497,6 +497,9 @@
                  by chain.js. -->
             <div id="groups-menu" class="groups-list"></div>
             <div class="panel-actions">
+              <!-- Where presets are made and changed (#391); this block only
+                   uses them. -->
+              <button id="presets-edit" class="btn" type="button" data-i18n="presets.edit">Edit presets…</button>
               <div class="spacer"></div>
               <button id="transform-preview" class="primary" data-i18n="generator.previewChanges">Preview changes</button>
             </div>
@@ -805,6 +808,51 @@
           <button id="transform-modal-close" class="icon" type="button" data-i18n-title="action.done" title="Done" data-i18n-aria-label="action.done" aria-label="Done"><svg class="ico"><use href="#i-close"/></svg></button>
         </div>
         <div id="transform-modal-body" class="transform-modal-body"></div>
+      </div>
+    </div>
+
+    <!-- The preset editor (#391): the one place a preset's rules are edited.
+         Built by presets.js; placed before the confirm dialog so a Delete
+         confirmation stacks above it. -->
+    <div id="pe-editor" class="modal-backdrop" hidden>
+      <div class="modal pe-editor" role="dialog" aria-modal="true" aria-labelledby="pe-editor-title">
+        <div class="modal-head">
+          <h2 id="pe-editor-title" data-i18n="presets.title">Presets</h2>
+          <button id="pe-editor-close" class="icon" type="button" data-i18n-title="action.done" title="Done" data-i18n-aria-label="action.done" aria-label="Done"><svg class="ico"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="pe-editor-body">
+          <div class="pe-list-col">
+            <div id="pe-list" class="pe-list"></div>
+            <div class="pe-list-actions">
+              <button id="pe-new" class="btn" type="button" data-i18n="presets.new">New</button>
+              <button id="pe-duplicate" class="btn" type="button" data-i18n="presets.duplicate">Duplicate</button>
+              <button id="pe-delete" class="btn" type="button" data-i18n="action.delete">Delete</button>
+            </div>
+          </div>
+          <div id="pe-edit-col" class="pe-edit-col">
+            <input id="pe-name" type="text" spellcheck="false" data-i18n-aria-label="presets.name" aria-label="Preset name" />
+            <p id="pe-builtin-note" class="hint muted" hidden data-i18n="presets.builtinNote">Built-in presets stay as shipped — Duplicate one to make a copy you can change.</p>
+            <fieldset id="pe-rules-set" class="pe-rules-set">
+              <div id="pe-rules" class="rule-chain"></div>
+              <p id="pe-empty" class="empty inert-panel rule-chain-empty" hidden data-i18n="generator.noRules" data-i18n-html>
+                No rules yet — pick a kind and <b>Add rule</b> to start a chain.
+              </p>
+              <div class="gen-add">
+                <select id="pe-kind">
+                  <option value="replace" data-i18n="rule.replace">Find and replace</option>
+                  <option value="case" data-i18n="rule.case">Change case</option>
+                  <option value="diacritics" data-i18n="rule.diacritics">Remove diacritics</option>
+                  <option value="transliterate" data-i18n="rule.transliterate">Transliterate to Latin</option>
+                  <option value="untransliterate" data-i18n="rule.untransliterate">Transliterate to Cyrillic</option>
+                  <option value="key" data-i18n="rule.key">Key notation</option>
+                </select>
+                <button id="pe-add" class="btn" type="button" data-i18n="generator.addRule">Add rule</button>
+                <div class="spacer"></div>
+                <button id="pe-clear" class="btn" type="button" hidden data-i18n="generator.clearRules">Clear rules</button>
+              </div>
+            </fieldset>
+          </div>
+        </div>
       </div>
     </div>
 

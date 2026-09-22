@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **A Presets window: the one place presets are made and changed.** Opened
+  with **Edit presets…** from the transform block, it lists your presets and
+  the built-in ones and shows the open preset's rules in the familiar rule
+  cards, with New, Duplicate, Delete and renaming in place. Built-ins open
+  read-only — Duplicate makes a copy you can change — and your presets save
+  as you go. (#391)
 - **Clicking a group in the transform dialog adds its rules to the chain
   instead of replacing it.** Picking a second preset used to throw the first
   one away without a word, so a chain couldn't be built from several presets

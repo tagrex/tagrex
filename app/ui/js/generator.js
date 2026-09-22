@@ -15,6 +15,7 @@ import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { createGroupsMenu, createRuleChain, ruleForGroup } from "./chain.js";
+import { openPresetEditor } from "./presets.js";
 import { currentFieldValue } from "./editor.js";
 import { groupKeyOf } from "./grouping.js";
 import { parseVinylPosition } from "./vinyl.js";
@@ -443,6 +444,7 @@ createGroupsMenu({
   inline: true,
 });
 el("transform-preview").addEventListener("click", previewTransform);
+el("presets-edit").addEventListener("click", () => openPresetEditor());
 el("transform-btn").addEventListener("click", () =>
   transformModalOpen() ? closeTransformModal() : openTransformModal()
 );

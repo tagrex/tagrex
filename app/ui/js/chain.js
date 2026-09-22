@@ -707,6 +707,7 @@ export {
   createRuleChain,
   initActionGroups,
   initBuiltinGroups,
+  persistActionGroups,
   renderAllGroupsMenus,
   ruleForGroup,
 };
