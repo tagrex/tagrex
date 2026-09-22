@@ -100,9 +100,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   A cover printed as a round record label on white (a whole label's
   catalogue is often sleeved that way) looked forced into the framed square.
   The app now recognises it when the cover loads — white corners, a circle
-  reaching the edges — and in the light theme drops the frame and blends the
-  white into the card. Ordinary covers, and the dark theme, keep the
-  frame. (#397)
+  reaching the edges — and drops the frame around it. Ordinary covers keep
+  the frame. (#397)
+- **…and round label art is cut to its own circle, in both themes.** The
+  first version blended the white corners into the card, which the app's web
+  view ignored inside the card, so the white square stayed. The cover is now
+  clipped to the circle it measures, and the media badge moves in to sit on
+  the label instead of hanging off its edge. (#398)
 - **Soundeo search results show their cover, label and year straight away.**
   They used to stay blank until a card was expanded and its release page
   fetched, although the search page already names all three for every

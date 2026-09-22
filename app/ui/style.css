@@ -3783,16 +3783,21 @@ button.release-import {
 
 /* Round label art (#397, detected in online.js): a circle printed on a white
    square. The frame and the white corners made it look forced into a box, so
-   the well drops its frame and multiplies the image onto the card — white
-   takes the card's colour and the circle sits straight on it. Light theme
-   only: multiplied onto a dark card the whole cover would go dark, so there the
-   well stays framed as before. */
-:root[data-theme="light"] .release-cover.round-art {
+   the well drops its frame and the image is clipped to its own circle
+   (--art-inset is where the circle starts, measured on load; the extra half
+   pixel keeps the white antialiasing out). Clipped rather than blended into
+   the card: WKWebView isolates the card's button, so a multiply blend left the
+   white square in place. The media badge moves in to sit on the label. */
+.release-cover.round-art {
   border-color: transparent;
   background: none;
 }
-:root[data-theme="light"] .release-cover.round-art img {
-  mix-blend-mode: multiply;
+.release-cover.round-art img {
+  clip-path: circle(calc(50% - var(--art-inset, 0%) - 0.5px));
+}
+.release-cover.round-art .media-badge {
+  left: 12px;
+  bottom: 12px;
 }
 
 /* Media-type + disc-count badge (List only), pinned bottom-left so it never

@@ -528,38 +528,50 @@ function setCoverImage(cover, src) {
 // Round label art (#397): a record label drawn as a circle on a white square —
 // a whole label's catalogue is often sleeved that way. In the framed square
 // well the white corners read as a box the circle was forced into, so the well
-// drops its frame and blends the white into the card (style.css). Told apart
-// from an ordinary cover by sampling a small copy of the image: all four
-// corners near-white, and the middle of all four edges NOT — the circle reaches
-// the edges, a square cover on a white background doesn't. The image is a data
-// URI fetched by the backend, so reading its pixels is never cross-origin.
-const roundArtCache = new Map(); // src -> boolean
+// drops its frame and clips the image to the circle (style.css): the white is
+// cut away rather than blended, which WKWebView won't do inside the card's
+// button, and a clip works the same in both themes.
+//
+// Told apart from an ordinary cover by sampling a small copy of the image: all
+// four corners near-white, and the middle of all four edges NOT — the circle
+// reaches (almost) to the edges, a square cover on a white background doesn't.
+// How far in it starts is measured too, so the clip lands on the circle's own
+// edge and leaves no white rim. The image is a data URI fetched by the backend,
+// so reading its pixels is never cross-origin.
+const roundArtCache = new Map(); // src -> inset fraction, or null when not round
 
 function markRoundArt(cover, src) {
-  const apply = (round) => cover.classList.toggle("round-art", round);
+  const apply = (inset) => {
+    cover.classList.toggle("round-art", inset != null);
+    if (inset != null) cover.style.setProperty("--art-inset", `${(inset * 100).toFixed(2)}%`);
+    else cover.style.removeProperty("--art-inset");
+  };
   if (roundArtCache.has(src)) {
     apply(roundArtCache.get(src));
     return;
   }
-  apply(false);
+  apply(null);
   const img = new Image();
   img.onload = () => {
-    const round = isRoundArt(img);
-    roundArtCache.set(src, round);
+    const inset = roundArtInset(img);
+    roundArtCache.set(src, inset);
     // The well may hold a newer image by now (the full cover replacing the
     // thumbnail); only the one that was measured gets the verdict.
-    if (cover.querySelector("img")?.getAttribute("src") === src) apply(round);
+    if (cover.querySelector("img")?.getAttribute("src") === src) apply(inset);
   };
   img.src = src;
 }
 
-function isRoundArt(img) {
-  const n = 40;
+// How far in from the image's edge its circle starts, as a fraction of the
+// width — or null when the image is not a circle on white.
+function roundArtInset(img) {
+  const n = 100;
+  if (!img.naturalWidth || Math.abs(img.naturalWidth - img.naturalHeight) > 2) return null;
   const canvas = document.createElement("canvas");
   canvas.width = n;
   canvas.height = n;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx || !img.naturalWidth || Math.abs(img.naturalWidth - img.naturalHeight) > 2) return false;
+  if (!ctx) return null;
   ctx.drawImage(img, 0, 0, n, n);
   const { data } = ctx.getImageData(0, 0, n, n);
   const white = (x, y) => {
@@ -570,13 +582,26 @@ function isRoundArt(img) {
   const last = n - 1;
   const mid = n >> 1;
   const corners = [
-    [0, 0], [1, 1], [last, 0], [last - 1, 1],
-    [0, last], [1, last - 1], [last, last], [last - 1, last - 1],
+    [0, 0], [3, 3], [last, 0], [last - 3, 3],
+    [0, last], [3, last - 3], [last, last], [last - 3, last - 3],
   ];
-  const edges = [
-    [mid, 2], [mid, last - 2], [2, mid], [last - 2, mid],
+  if (!corners.every(([x, y]) => white(x, y))) return null;
+  // Walk in from the middle of each edge to the first non-white pixel. A
+  // circle is there within a few percent on all four sides; anything further
+  // in is a square cover with a white border, not a label.
+  const steps = [
+    (k) => white(k, mid), (k) => white(last - k, mid),
+    (k) => white(mid, k), (k) => white(mid, last - k),
   ];
-  return corners.every(([x, y]) => white(x, y)) && edges.every(([x, y]) => !white(x, y));
+  const maxInset = 8;
+  let inset = maxInset;
+  for (const isWhite of steps) {
+    let k = 0;
+    while (k <= maxInset && isWhite(k)) k += 1;
+    if (k > maxInset) return null;
+    inset = Math.min(inset, k);
+  }
+  return inset / n;
 }
 
 // Show the release's cover thumbnail, fetching + caching it once. Cached data
