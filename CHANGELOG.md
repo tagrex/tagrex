@@ -96,6 +96,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Bandcamp and Soundeo searches load as many results as Show says, not
+  all of them.** Both sources answer with one ranked list — about 50 albums on
+  Bandcamp — and all of it came back at once, with every hit's page fetched
+  in the background to fill its card. They now return the page size asked for,
+  and Load more fetches the next ones. (#400)
 - **Round label art sits straight on the card instead of boxed in a square.**
   A cover printed as a round record label on white (a whole label's
   catalogue is often sleeved that way) looked forced into the framed square.

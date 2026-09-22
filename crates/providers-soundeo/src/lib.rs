@@ -143,14 +143,11 @@ impl MetadataProvider for SoundeoProvider {
                 Err(other) => Err(other),
             };
         }
-        // The results page is one list, not paged here, so a later page adds
-        // nothing.
-        if query.page > 1 {
-            return Ok(Vec::new());
-        }
         let url = format!("{BASE}/search?q={}", urlencode(text));
         let html = self.get(&url)?;
-        Ok(parse_search(&html))
+        // The results page is one list, not paged, so the page asked for is cut
+        // from it here (#400).
+        Ok(query.page_of(parse_search(&html)))
     }
 
     fn fetch_release(&self, id: &ReleaseId) -> Result<Release, ProviderError> {

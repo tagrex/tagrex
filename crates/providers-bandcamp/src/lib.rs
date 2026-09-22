@@ -159,11 +159,6 @@ impl MetadataProvider for BandcampProvider {
                 Err(other) => Err(other),
             };
         }
-        // The autocomplete endpoint returns a single ranked set, not pages, so a
-        // request past the first page has nothing to add.
-        if query.page > 1 {
-            return Ok(Vec::new());
-        }
         let body = self.post_json(
             SEARCH_API,
             &json!({
@@ -173,7 +168,10 @@ impl MetadataProvider for BandcampProvider {
                 "fan_id": Value::Null,
             }),
         )?;
-        parse_search(&body)
+        // The autocomplete endpoint returns a single ranked set (~50 albums), not
+        // pages, so the page asked for is cut from it here (#400) — handing back
+        // all of it made the app fetch every album's page to fill its cards.
+        Ok(query.page_of(parse_search(&body)?))
     }
 
     fn fetch_release(&self, id: &ReleaseId) -> Result<Release, ProviderError> {

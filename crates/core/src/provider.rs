@@ -35,6 +35,22 @@ pub struct SearchQuery {
     pub per_page: u32,
 }
 
+impl SearchQuery {
+    /// The page this query asks for, cut out of a result list the provider got
+    /// all at once (#400). Some sources answer a search with one ranked set and
+    /// no paging of their own; handing all of it back ignored the page size, so
+    /// the app then fetched every hit's release page to fill its card. Page 0
+    /// is page 1; a `per_page` of 0 keeps the whole list.
+    pub fn page_of<T>(&self, items: Vec<T>) -> Vec<T> {
+        if self.per_page == 0 {
+            return items;
+        }
+        let per_page = self.per_page as usize;
+        let skip = (self.page.max(1) as usize - 1) * per_page;
+        items.into_iter().skip(skip).take(per_page).collect()
+    }
+}
+
 /// Provider-scoped release identifier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseId(pub String);
@@ -234,6 +250,21 @@ pub enum ProviderError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn page_of_cuts_the_requested_page_from_a_whole_result_list() {
+        let query = |page, per_page| SearchQuery {
+            page,
+            per_page,
+            ..Default::default()
+        };
+        let items: Vec<u32> = (1..=12).collect();
+        assert_eq!(query(1, 5).page_of(items.clone()), vec![1, 2, 3, 4, 5]);
+        assert_eq!(query(0, 5).page_of(items.clone()), vec![1, 2, 3, 4, 5]);
+        assert_eq!(query(3, 5).page_of(items.clone()), vec![11, 12]);
+        assert!(query(4, 5).page_of(items.clone()).is_empty());
+        assert_eq!(query(2, 0).page_of(items.clone()), items);
+    }
 
     #[test]
     fn reads_the_disc_out_of_a_multi_disc_position() {
