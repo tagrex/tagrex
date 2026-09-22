@@ -203,6 +203,8 @@ export const uk = {
   "toolbar.dragResize": "Потягніть, щоб змінити розмір",
   "table.empty": "Відкрийте бібліотеку, щоб побачити її треки.",
   "diff.toApply": "до застосування",
+  "diff.newFolder": "нова тека",
+  "diff.unchangedGroup": "Залишаються на місці",
   "diff.showOld": "Показувати попередні значення",
   "diff.showOldTitle": "Показати закреслене попереднє значення під кожною зміненою коміркою",
   // ---- status bar, player, drop cue, context menus, dialogs ----

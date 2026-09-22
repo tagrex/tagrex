@@ -202,6 +202,8 @@ export const en = {
   "toolbar.dragResize": "Drag to resize",
   "table.empty": "Open a library to list its tracks.",
   "diff.toApply": "to apply",
+  "diff.newFolder": "new folder",
+  "diff.unchangedGroup": "Staying where they are",
   "diff.showOld": "Show old values",
   "diff.showOldTitle": "Reveal the struck-through old value under each changed cell",
   // ---- status bar, player, drop cue, context menus, dialogs ----

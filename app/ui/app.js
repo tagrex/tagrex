@@ -586,7 +586,8 @@ function diffFileCellHtml(change, track) {
     return `<td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
   }
   const moved = diffDir(change.rename_to) !== diffDir(change.path);
-  const pathLine = moved
+  // Grouped by destination (#385), the header above already names the folder.
+  const pathLine = moved && !destGrouping
     ? `<span class="fpath">${ico("corner")}${escapeHtml(diffDir(change.rename_to))}/</span>`
     : "";
   // Sidecars travelling with this rename/move (#58): a count badge, each pair
@@ -610,6 +611,23 @@ function buildGroupHeader(key, count) {
   const tr = document.createElement("tr");
   tr.className = "group-head" + (collapsed ? " collapsed" : "");
   tr.dataset.group = key;
+  const dest = destGroups.get(key);
+  if (dest || key === UNCHANGED_GROUP_KEY) {
+    // A destination group (#385): where these files land, whether that folder
+    // is new, and how many land there — the question a rename/move preview is
+    // actually asked.
+    tr.classList.add("dest");
+    const label = dest
+      ? `<span class="group-arrow">→</span><span class="group-label" title="${escapeHtml(dest.dir)}">${escapeHtml(dest.label)}</span>` +
+        (dest.createsFolder ? `<span class="group-new">${escapeHtml(msg("diff.newFolder"))}</span>` : "")
+      : `<span class="group-label unchanged">${escapeHtml(msg("diff.unchangedGroup"))}</span>`;
+    tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
+      <span class="group-caret">${collapsed ? ico("chevron-right") : ico("caret-down")}</span>
+      ${label}
+      <span class="group-count muted">· ${escapeHtml(tn("unit.file", count))}</span>
+    </td>`;
+    return tr;
+  }
   tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
       <span class="group-caret">${collapsed ? ico("chevron-right") : ico("caret-down")}</span>
       <span class="group-label">${escapeHtml(groupLabel(key))}</span>
@@ -646,6 +664,13 @@ let navPaths = [];
 let navPathIndex = new Map();
 let groupPaths = new Map(); // group key -> its paths, in order
 let viewGroups = []; // group keys in order
+// A staged rename/move that sends files to another folder is grouped by where
+// they land (#385), not by where they sit: `destGrouping` says the model is in
+// that shape, `destGroups` describes each destination group by its key.
+const DEST_GROUP_PREFIX = "\u0000dest:";
+const UNCHANGED_GROUP_KEY = "\u0000unchanged";
+let destGrouping = false;
+let destGroups = new Map(); // key -> { dir, label, createsFolder }
 let itemIndexByPath = new Map(); // path -> index in viewItems (rendered items only)
 // Per-item height in px once measured; null until then, when the per-kind
 // estimate stands in. Rows are uniform in practice, but a staged rename is two
@@ -699,6 +724,39 @@ function itemIndexAt(offset) {
   return Math.max(0, found);
 }
 
+// The header text for each destination group (#385): the folder below the one
+// the mask was rendered under. Renamed in place, that's just the new subfolder;
+// sent elsewhere, it leads with the destination's own name — "Tagged/ › Album/".
+// Two in-place groups that would read the same (the same subfolder made in two
+// different albums) lead with their album's name too, so none is ambiguous.
+function labelDestGroups() {
+  const sepOf = (p) => (p.includes("\\") && !p.includes("/") ? "\\" : "/");
+  const rel = (info) => {
+    const root = (info.root || "").replace(/[\\/]+$/, "");
+    if (!root || !(info.dir === root || info.dir.startsWith(root + sepOf(info.dir)))) return null;
+    return info.dir.slice(root.length + 1).replace(/\\/g, "/");
+  };
+  const short = new Map();
+  for (const [key, info] of destGroups) {
+    const r = rel(info);
+    if (r === null) short.set(key, `${folderGroupLabel(info.dir)}/`);
+    else if (info.inPlace && r) short.set(key, `${r}/`);
+    else short.set(key, null);
+  }
+  const counts = new Map();
+  for (const label of short.values()) if (label) counts.set(label, (counts.get(label) || 0) + 1);
+  for (const [key, info] of destGroups) {
+    const label = short.get(key);
+    if (label && (counts.get(label) === 1 || rel(info) === null)) {
+      info.label = label;
+    } else {
+      const r = rel(info);
+      const rootLeaf = fileName((info.root || "").replace(/[\\/]+$/, ""));
+      info.label = r ? `${rootLeaf}/ › ${r}/` : `${rootLeaf}/`;
+    }
+  }
+}
+
 // Rebuild the model from the track list, the filter, the grouping and the staged
 // plan. No DOM work at all — the window render is what touches the table.
 function buildViewModel() {
@@ -716,7 +774,52 @@ function buildViewModel() {
     viewPaths.push(track.path);
     if (shown) navPaths.push(track.path);
   };
-  if (groupBy) {
+  destGrouping = Boolean(
+    diffByPath &&
+      [...diffByPath.values()].some((c) => c.rename_to && diffDir(c.rename_to) !== diffDir(c.path)),
+  );
+  destGroups = new Map();
+  if (destGrouping) {
+    // Destinations first, in first-appearance order; whatever the plan leaves
+    // where it is follows in one "staying where they are" group.
+    const destOrder = [];
+    const restOrder = [];
+    const byKey = new Map();
+    for (const track of visible) {
+      const change = diffByPath.get(track.path);
+      let key;
+      if (change && change.rename_to) {
+        const dir = diffDir(change.rename_to);
+        key = DEST_GROUP_PREFIX + dir;
+        if (!destGroups.has(key)) {
+          destGroups.set(key, { dir, root: change.rename_root || null, inPlace: true, createsFolder: false });
+          destOrder.push(key);
+        }
+        const info = destGroups.get(key);
+        if (change.creates_folder) info.createsFolder = true;
+        if (!info.root || diffDir(change.path) !== info.root.replace(/[\\/]+$/, "")) info.inPlace = false;
+      } else {
+        // One group, whatever the grouping: its folder or artist would only
+        // compete with the destinations for the question the preview asks.
+        key = UNCHANGED_GROUP_KEY;
+        if (!byKey.has(key)) restOrder.push(key);
+      }
+      if (!byKey.has(key)) byKey.set(key, []);
+      byKey.get(key).push(track);
+    }
+    labelDestGroups();
+    for (const key of [...destOrder, ...restOrder]) {
+      viewGroups.push(key);
+      viewItems.push({ kind: "group", key, count: byKey.get(key).length });
+      const shown = !collapsedGroups.has(key);
+      const paths = [];
+      for (const track of byKey.get(key)) {
+        pushTrack(track, key, shown);
+        if (!track.unreadable) paths.push(track.path);
+      }
+      groupPaths.set(key, paths);
+    }
+  } else if (groupBy) {
     // Groups in first-appearance order over the (mapping-ordered) track list,
     // so grouping never reorders the underlying files.
     const order = [];

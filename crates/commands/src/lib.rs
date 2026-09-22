@@ -338,6 +338,16 @@ pub struct FileChangeDto {
     /// for a change no mask built.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rename_root: Option<String>,
+    /// Whether `rename_to`'s folder does not exist yet, so applying creates it
+    /// (#385). Only the backend can see the disk, and "is this folder new?" is
+    /// exactly what a preview grouped by destination needs to say.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub creates_folder: bool,
+}
+
+/// Whether the folder `target` would land in is not on disk yet (#385).
+fn creates_folder(target: &Path) -> bool {
+    target.parent().is_some_and(|dir| !dir.is_dir())
 }
 
 /// One field a lock kept out of a plan (#48), and how many files it would have
@@ -2327,6 +2337,7 @@ impl App {
                 block_changes: Vec::new(),
                 copy: false,
                 rename_root: Some(root.to_string_lossy().into_owned()),
+                creates_folder: creates_folder(&target),
             };
             self.attach_sidecars(&mut change);
             changes.push(change);
@@ -2417,6 +2428,7 @@ impl App {
                 block_changes: Vec::new(),
                 copy: false,
                 rename_root: None,
+                creates_folder: false,
             });
         }
         Ok(self.plan(
@@ -2518,6 +2530,7 @@ impl App {
                     block_changes: Vec::new(),
                     copy: false,
                     rename_root: None,
+                    creates_folder: false,
                 };
                 self.attach_sidecars(&mut change);
                 changes.push(change);
@@ -2556,6 +2569,7 @@ impl App {
                     block_changes: Vec::new(),
                     copy: false,
                     rename_root: None,
+                    creates_folder: false,
                 };
                 self.attach_sidecars(&mut change);
                 changes.push(change);
@@ -2587,6 +2601,7 @@ impl App {
                     block_changes: Vec::new(),
                     copy: false,
                     rename_root: None,
+                    creates_folder: false,
                 });
             }
         }
@@ -2708,6 +2723,7 @@ impl App {
                 block_changes: Vec::new(),
                 copy: false,
                 rename_root: None,
+                creates_folder: false,
             };
             if renamed {
                 self.attach_sidecars(&mut change);
@@ -2915,6 +2931,7 @@ impl App {
                 // The anchor didn't move: a second cleanup, and the diff's
                 // "where does it go" line, still split the path at it.
                 rename_root: change.rename_root.clone(),
+                creates_folder: renamed && creates_folder(&target),
             };
             if renamed {
                 self.attach_sidecars(&mut revised);
@@ -2983,6 +3000,7 @@ impl App {
                 block_changes: Vec::new(),
                 copy,
                 rename_root: Some(root.to_string_lossy().into_owned()),
+                creates_folder: creates_folder(&target),
             };
             self.attach_sidecars(&mut change);
             changes.push(change);
@@ -3082,6 +3100,7 @@ impl App {
                     block_changes: Vec::new(),
                     copy: false,
                     rename_root: None,
+                    creates_folder: false,
                 });
             }
         }
@@ -3163,6 +3182,7 @@ impl App {
                     block_changes: Vec::new(),
                     copy: false,
                     rename_root: None,
+                    creates_folder: false,
                 });
             }
         }
@@ -3219,6 +3239,7 @@ impl App {
                 block_changes: Vec::new(),
                 copy: false,
                 rename_root: None,
+                creates_folder: false,
             });
         }
         Ok(self.plan(PlanMessage::EmbedCover, Vec::new(), changes, false))
@@ -3267,6 +3288,7 @@ impl App {
                 block_changes: Vec::new(),
                 copy: false,
                 rename_root: None,
+                creates_folder: false,
             });
         }
         Ok(self.plan(
@@ -3391,6 +3413,7 @@ impl App {
                 block_changes: Vec::new(),
                 copy: false,
                 rename_root: None,
+                creates_folder: false,
             });
         }
         Ok(self.plan(PlanMessage::RemoveCover, Vec::new(), changes, false))
@@ -3436,6 +3459,7 @@ impl App {
                 }],
                 copy: false,
                 rename_root: None,
+                creates_folder: false,
             });
         }
         Ok(self.plan(
@@ -3590,6 +3614,7 @@ impl App {
                 block_changes,
                 copy: false,
                 rename_root: None,
+                creates_folder: false,
             });
         }
 
@@ -4421,6 +4446,7 @@ impl App {
                     block_changes: Vec::new(),
                     copy: false,
                     rename_root: None,
+                    creates_folder: false,
                 });
             }
         }
@@ -5877,6 +5903,7 @@ mod tests {
                 block_changes: Vec::new(),
                 copy: false,
                 rename_root: None,
+                creates_folder: false,
             }],
         };
         assert!(app.apply(&plan).is_err());
@@ -6395,6 +6422,8 @@ mod tests {
             !expected.starts_with(dir.0.join("La Bush")),
             "must not anchor at the library root like preview_move does"
         );
+        // #385: the subfolder isn't on disk yet, and the plan says so.
+        assert!(plan.changes[0].creates_folder);
     }
 
     #[test]
@@ -6407,6 +6436,8 @@ mod tests {
             .preview_rename("%artist% - %title%", std::slice::from_ref(&track))
             .unwrap();
         assert_eq!(plan.changes.len(), 1);
+        // #385: renamed where it already is — no folder to create.
+        assert!(!plan.changes[0].creates_folder);
         let expected = dir.0.join("Boards of Canada - Roygbiv.flac");
         assert_eq!(
             plan.changes[0].rename_to.as_deref(),

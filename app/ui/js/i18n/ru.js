@@ -202,6 +202,8 @@ export const ru = {
   "toolbar.dragResize": "Потяните, чтобы изменить размер",
   "table.empty": "Откройте библиотеку, чтобы увидеть её треки.",
   "diff.toApply": "к применению",
+  "diff.newFolder": "новая папка",
+  "diff.unchangedGroup": "Остаются на месте",
   "diff.showOld": "Показывать прежние значения",
   "diff.showOldTitle": "Показать зачёркнутое прежнее значение под каждой изменённой ячейкой",
   // ---- status bar, player, drop cue, context menus, dialogs ----

@@ -2610,6 +2610,29 @@ td.group-cell {
   font-weight: 400;
 }
 
+/* A destination group in a rename/move preview (#385): where the files land,
+   led by an arrow, with a small tag when that folder doesn't exist yet. */
+.group-arrow {
+  color: var(--accent-ink);
+  margin-right: 6px;
+}
+
+.group-label.unchanged {
+  color: var(--muted);
+}
+
+.group-new {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.85em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent-ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
 /* Unreadable file (#83): on disk but its tags couldn't be parsed. Listed so it
    never looks lost, but inert — muted, striped, non-interactive. */
 #tracks tbody tr.unreadable {

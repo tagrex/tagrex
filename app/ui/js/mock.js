@@ -276,6 +276,12 @@ function mockInvoke(cmd, args) {
   };
   const s = mockInvoke.state;
   const findTrack = (p) => s.tracks.find((x) => x.path === p);
+  // Whether a target's folder is new (#385): the mock's "disk" is its track
+  // list, so a folder exists when some track already lives in it.
+  const createsFolder = (target) => {
+    const dir = target.slice(0, target.lastIndexOf("/"));
+    return !s.tracks.some((x) => x.path.startsWith(dir + "/"));
+  };
   switch (cmd) {
     // Field locks (#48). The enforcement lives in the backend's plan gate and
     // has no browser stand-in, so locking here drives the UI — padlocks, inert
@@ -409,7 +415,9 @@ function mockInvoke(cmd, args) {
             .replace("%genre%", t.tags.genre || "");
           if (rendered.split(/[/\\]/).some((part) => !part.trim() || part === "..")) return null;
           const rename_to = `${dir}/${rendered}${ext}`;
-          return rename_to === p ? null : { path: p, rename_to, rename_root: dir, tag_changes: [] };
+          return rename_to === p
+            ? null
+            : { path: p, rename_to, rename_root: dir, creates_folder: createsFolder(rename_to), tag_changes: [] };
         })
         .filter(Boolean);
       return Promise.resolve(
@@ -562,6 +570,7 @@ function mockInvoke(cmd, args) {
             path: c.path,
             rename_to: renamed ? target : null,
             rename_root: c.rename_root || null,
+            creates_folder: renamed && createsFolder(target),
             tag_changes,
             copy: !!c.copy,
           };
@@ -597,6 +606,7 @@ function mockInvoke(cmd, args) {
             path: p,
             rename_to: `${root}/${rendered}${ext}`,
             rename_root: root,
+            creates_folder: createsFolder(`${root}/${rendered}${ext}`),
             tag_changes: [],
             copy: !!args.copy,
           };

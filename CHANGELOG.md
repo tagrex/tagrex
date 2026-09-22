@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   destination/Move-Copy/tidy-up-empty-folders controls only when it's
   checked, instead of a permanently-visible second pattern to keep in sync
   by hand. (#382)
+- **A rename or move preview that sends files into another folder is grouped
+  by where they land.** Each staged row used to carry its own `↳ folder/`
+  line, so fifteen tracks going into one new folder showed the same path
+  fifteen times, at double row height, without saying whether the folder
+  already existed. The table now groups the preview under one header per
+  destination — `→ subfolder/` for an in-place rename, `→ Destination/ ›
+  subfolder/` when reorganizing elsewhere — tagged **new folder** when it
+  doesn't exist yet, with single-line rows showing just the new names. Files
+  the plan leaves alone follow in one "Staying where they are" group. (#385)
 - **The mode tabs (TAGGER/RENAMER/GENERATOR/DEDUPLICATOR/EXPORTER) read a
   step bigger and as one connected group instead of each floating on its
   own.** Labels are a step bigger (12px to 13px). An earlier pass in this
