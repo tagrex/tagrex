@@ -378,10 +378,14 @@ select,
    trafficLightPosition's x. macOS only (see the body-class gate in
    app.js). */
 body.mac-overlay-titlebar .topbar {
-  padding-top: 0;
+  padding-top: 6px;
 }
 body.mac-overlay-titlebar .brand {
-  margin-left: 68px;
+  /* Cluster right edge (measured via accessibility: 16px inset + 62px wide)
+     plus the same 12px gap .topbar-main already uses between its other
+     children, so the lights-to-brand gap reads the same as the
+     brand-to-tabs one instead of an arbitrary wider gap. */
+  margin-left: 90px;
 }
 
 .lib {

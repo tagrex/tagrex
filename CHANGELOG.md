@@ -21,15 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   stacking on top of it. And `data-tauri-drag-region` silently did nothing
   because `core:window:allow-start-dragging` isn't part of Tauri's
   `core:default` permission set; it needs requesting explicitly. (#363)
-- **The traffic lights now sit at row 1's exact vertical center, and the
-  brand mark reads as an actual brand mark next to the mode tabs, not
-  smaller text beside them.** Rather than fight CSS to match wherever
-  macOS puts the buttons by default, `trafficLightPosition` in
-  `tauri.conf.json` places them precisely —
-  calibrated against the row's real height (driven by the tab buttons'
-  own padding, not a guessed CSS band). The brand text went from 12px to
-  15px (a first pass at 13px was too timid a nudge to actually register
-  next to the tab labels' uppercase, letter-spaced weight). (#364, #365)
+- **The traffic lights sit at row 1's exact vertical center with a
+  symmetric top/left inset and a little breathing room from the window's
+  top edge, the brand mark reads as an actual brand mark next to the
+  mode tabs instead of smaller text beside them, and the lights-to-brand
+  gap now matches the brand-to-tabs gap.** Rather than fight CSS to match
+  wherever macOS puts the buttons by default, `trafficLightPosition` in
+  `tauri.conf.json` places them precisely — calibrated against the row's
+  real height (driven by the tab buttons' own padding, not a guessed CSS
+  band) and the buttons' own measured width, rather than guessed values.
+  The brand text went from 12px to 15px (a first pass at 13px was too
+  timid a nudge to actually register next to the tab labels' uppercase,
+  letter-spaced weight). (#364, #365, #366)
 - **The Discogs API attribution notice.** Discogs' API Terms of Use require the
   application to state that it uses Discogs' API and is not affiliated with them;
   it now appears in the README and the TAGGER guide (the terms allow it to live in
