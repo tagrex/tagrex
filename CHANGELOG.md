@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Clicking a group in the transform dialog adds its rules to the chain
+  instead of replacing it.** Picking a second preset used to throw the first
+  one away without a word, so a chain couldn't be built from several presets
+  by clicking them; **Clear rules** remains the way to start over. (#388)
 - **RENAMER is one operation instead of two disconnected halves, with a live
   example as you type.** It used to split "rename" and "reorganize into
   folders" into separate patterns, each with its own Preview button that

@@ -67,17 +67,18 @@ is how you test what one rule is responsible for without deleting it.
 
 A saved chain, with its scope, under a name. **Groups** opens the checklist.
 
-Each row is a tick, the group's name over **the scope it acts on**, and **Load**.
-The footer runs everything ticked.
+Each row is a tick and the group's name over **the scope it acts on**. The
+footer runs everything ticked.
 
 - **Ticking, then running.** A cleanup is usually two or three groups in a row.
   They run in list order as a single plan, with each group seeing what the
   previous one did — so a group that lower-cases the file name followed by one
   that rewrites the extension compose into one rename, instead of the second
   discarding the first.
-- **Load** copies a group's steps into the live chain so you can edit them. For a
-  built-in preset, the preset itself stays as shipped; save the edited version
-  under your own name.
+- **Clicking a group's name** adds its steps to the end of the live chain so you
+  can edit them — after whatever is already there, so several groups build one
+  chain; **Clear rules** empties it to start over. For a built-in preset, the
+  preset itself stays as shipped; save the edited version under your own name.
 - **Save current chain as…** in the footer saves what is in the chain now.
 - Your own groups are listed first, the shipped library below a **Built-in**
   separator. Built-ins have no delete button — they are not yours to remove.

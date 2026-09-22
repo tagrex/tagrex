@@ -437,6 +437,20 @@ function createRuleChain({ ids }) {
       }));
       render();
     },
+    // Add a group's steps after the ones already in the chain (#388) — what a
+    // click on a group in the list does, so a saved or shipped cleanup builds on
+    // the chain instead of throwing it away. Targets are materialized the same
+    // way load() does.
+    append(group) {
+      rules = rules.concat(
+        (group.rules || []).map((r) => ({
+          id: ++ruleIdCounter,
+          ...ruleForGroup(r),
+          scope: r.scope || group.scope || "tags",
+        })),
+      );
+      render();
+    },
   };
 
   el(ids.add).addEventListener("click", addRule);
@@ -504,11 +518,13 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
   }
 
   // One checklist row (#137): a tick and the name with the scope it acts on.
-  // Clicking the name LOADS the group into the chain (#234) — that used to be a
+  // Clicking the name puts the group into the chain (#234) — that used to be a
   // separate `Load` link beside a name that toggled the tick, which is three
-  // controls for two acts. The tick is still its own control, because ticking
-  // several and running them as one plan is a different act from loading one to
-  // look at it. Built-ins get no Delete — they aren't the user's to remove — and
+  // controls for two acts. It ADDS the group's rules after the ones already
+  // there (#388): replacing the chain meant a second preset silently threw the
+  // first one away, and Clear rules is already the way to start over. The tick
+  // is still its own control, because ticking several and running them as one
+  // plan is a different act from putting one in the chain to look at. Built-ins get no Delete — they aren't the user's to remove — and
   // carry their note in the tooltip instead of the bare summary.
   function groupMenuRow(group) {
     const row = document.createElement("div");
@@ -533,11 +549,11 @@ function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
     name.append(document.createTextNode(group.name), scope);
     const summary = group.note ? `${group.note}\n${groupSummary(group)}` : groupSummary(group);
     name.title = group.builtin
-      ? `${summary}\nClick to load into the chain — the built-in stays as shipped`
-      : `${summary}\nClick to load into the chain`;
+      ? `${summary}\nClick to add to the end of the chain — the built-in stays as shipped`
+      : `${summary}\nClick to add to the end of the chain`;
     name.addEventListener("click", (e) => {
       e.stopPropagation();
-      chain.load(group);
+      chain.append(group);
       if (!inline) el(menu).hidden = true;
     });
 
