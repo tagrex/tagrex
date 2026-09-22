@@ -5,15 +5,29 @@ Bulk cleanup. Three blocks that share the panel: a chain of text **transforms**,
 
 ## Transform
 
-A transform is an ordered chain of rules. They run top to bottom over whatever
-the scope says, and the result is staged like any other change.
+Transforms come as **presets**: named, ordered chains of rules. You make and
+change them in the preset editor; everywhere else you only tick them.
 
-**The chain is also reachable from the toolbar**, behind the wand button, in
-every mode except this one — the cleanup a chain does is usually cleanup after
-something done elsewhere, and fixing the case of tags just read out of file names
-should not mean leaving TAGGER. It is the same chain, not a copy: the block is
-moved into the popover and back, so rules composed in one place are there in the
-other. The button is hidden in GENERATOR, where the chain is already on screen.
+**The ticked presets run as part of each job.** Behind the wand button in the
+toolbar is a checklist of every preset. What is ticked runs by itself when you
+import a release, read tags out of file names, or preview a rename — cleanup as
+part of the job, not a second step. The set is shared by every job, and each job
+takes only the rules aimed at what it produces:
+
+| Job | Takes the rules on |
+| --- | --- |
+| Importing a release, FROM NAME | tags |
+| RENAMER | the file name and extension |
+| GENERATOR | everything |
+
+So a file-name preset ticked for renaming never touches the tags FROM NAME
+reads, and a tag preset ticked for imports never renames a file. A row whose
+preset has nothing for the job in front of you reads dimmed. The wand button
+carries a dot while any ticked rule applies to the current job.
+
+In GENERATOR the checklist sits in the panel, and **Preview changes** runs every
+ticked preset over the selection — or over a staged plan, revising it rather
+than adding a second one.
 
 ### Scope — what the rules act on
 
@@ -55,33 +69,23 @@ no extension rather than giving it one.
 - **Key notation** — converts a musical key between musical, Camelot and Open Key
   notation. Best pointed at the Key field; unrecognized values are left alone.
 
-### Working with the chain
+### The preset editor
 
-Rules can be dragged into a different order by their grip, and each has an
-on/off tick: a disabled step stays in the chain and contributes nothing, which
-is how you test what one rule is responsible for without deleting it.
+**Edit presets…** opens it. Your presets are listed first, the shipped ones
+below them.
 
-**Preview changes** stages the result.
+- **New** starts an empty preset, **Duplicate** copies the open one, **Delete**
+  removes one of yours (after asking). Rename a preset in its name field.
+- Rules can be dragged into a different order by their grip, and each has an
+  on/off tick: a disabled step stays in the preset and contributes nothing, which
+  is how you test what one rule is responsible for without deleting it.
+- Built-in presets open read-only and stay as shipped. **Duplicate** one to get
+  a copy you can change.
+- Changes save as you go — when you switch presets, close the editor or quit.
 
-## Action groups
-
-A saved chain, with its scope, under a name. **Groups** opens the checklist.
-
-Each row is a tick and the group's name over **the scope it acts on**. The
-footer runs everything ticked.
-
-- **Ticking, then running.** A cleanup is usually two or three groups in a row.
-  They run in list order as a single plan, with each group seeing what the
-  previous one did — so a group that lower-cases the file name followed by one
-  that rewrites the extension compose into one rename, instead of the second
-  discarding the first.
-- **Clicking a group's name** adds its steps to the end of the live chain so you
-  can edit them — after whatever is already there, so several groups build one
-  chain; **Clear rules** empties it to start over. For a built-in preset, the
-  preset itself stays as shipped; save the edited version under your own name.
-- **Save current chain as…** in the footer saves what is in the chain now.
-- Your own groups are listed first, the shipped library below a **Built-in**
-  separator. Built-ins have no delete button — they are not yours to remove.
+Presets run in list order as a single plan, each seeing what the previous one
+did — so one that lower-cases the file name and one that rewrites the extension
+compose into one rename instead of the second discarding the first.
 
 ### The shipped presets
 

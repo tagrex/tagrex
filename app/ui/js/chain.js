@@ -10,7 +10,7 @@
 // What a panel supplies is its element ids and how the chain is run; what it
 // gets back is an object it renders and reads. Nothing here knows about a
 // preview, a plan or a panel.
-import { el, ico, placeFloating, toast } from "./dom.js";
+import { el, ico, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
@@ -28,9 +28,8 @@ import {
 // Saved groups live in settings.json and the shipped presets come from the
 // backend; both are global, so every chain instance offers the same shelf.
 
-// Every Groups popover built by createGroupsMenu, so a save or a delete
-// refreshes all of them rather than only the one that was open, and a delete
-// clears that group's tick wherever it is ticked.
+// Every preset checklist built by createPresetChecklist, so a change to the
+// library — a preset saved, renamed or deleted in the editor — redraws them all.
 const groupMenus = [];
 
 function renderAllGroupsMenus() {
@@ -437,20 +436,6 @@ function createRuleChain({ ids }) {
       }));
       render();
     },
-    // Add a group's steps after the ones already in the chain (#388) — what a
-    // click on a group in the list does, so a saved or shipped cleanup builds on
-    // the chain instead of throwing it away. Targets are materialized the same
-    // way load() does.
-    append(group) {
-      rules = rules.concat(
-        (group.rules || []).map((r) => ({
-          id: ++ruleIdCounter,
-          ...ruleForGroup(r),
-          scope: r.scope || group.scope || "tags",
-        })),
-      );
-      render();
-    },
   };
 
   el(ids.add).addEventListener("click", addRule);
@@ -458,256 +443,97 @@ function createRuleChain({ ids }) {
   return chain;
 }
 
-// ---- the Groups popover (#57/#137) ----
+// ---- the preset checklist (#392) ----
 //
-// A checklist of saved and shipped groups over one chain. Ticking rather than
-// running on click is what lets several groups take part at once: per-field
-// cleanup is two or three of these together, and one at a time means previewing
-// and applying each in turn.
+// Every preset, yours first and then the built-ins, each with a tick. A tick
+// means "run this as part of the job", everywhere at once: the set is shared,
+// and each job takes only the rules aimed at what it produces (chains.js). So
+// the list also says, per row, whether the preset has anything for the job it
+// is shown in — one that only acts on file names reads dimmed under an import.
 //
-// `onRun` is what the ticked groups are run through. Ticks are session-only and
-// private to this popover: a tick says "these, now", not a preference.
-// `inline` renders the list into the block itself rather than into a popover a
-// button opens (#234): the chain is pinned in the side panel now, so a floating
-// box over it — reached from a button inside another floating box, as it was —
-// buys nothing and costs two clicks.
-function createGroupsMenu({ btn, menu, chain, onRun, inline = false }) {
-  const tickedGroups = new Set();
-
-  // Every group the checklist can offer, saved ones first — the order they run in.
-  const allGroups = () => [...actionGroups, ...builtinGroups];
-  const tickedInOrder = () => allGroups().filter((g) => tickedGroups.has(g.name));
-
-  function updateRunTicked() {
-    const run = el(menu).querySelector(".preset-run > button");
-    if (!run) return;
-    const n = tickedInOrder().length;
-    run.disabled = n === 0;
-    run.textContent = n ? `Run ${n} ticked` : "Run ticked";
+// Presets are not edited here; Edit presets… opens the window where they are
+// (#391). The callbacks keep this component free of the set's storage.
+function createPresetChecklist({ menu, context, isActive, setActive, appliesTo }) {
+  // What a preset acts on, from its rules: tags, the file name, or both.
+  function targetLabel(group) {
+    const scopes = (group.rules || []).map((r) => r.scope || group.scope || "tags");
+    const file = scopes.some((s) => s === "filename" || s === "fileext");
+    const tags = scopes.some((s) => s !== "filename" && s !== "fileext");
+    if (file && tags) return t("presets.target.both");
+    return file ? t("presets.target.file") : t("presets.target.tags");
   }
 
-  function toggleTicked(name, on) {
-    if (on) tickedGroups.add(name);
-    else tickedGroups.delete(name);
-    updateRunTicked();
-  }
-
-  // Save the current chain (+ scope) under `name`, replacing a same-named group.
-  function saveCurrentGroup(name) {
-    name = name.trim();
-    if (!name) return;
-    if (chain.length === 0) {
-      toast(t("toast.chain.needRule"), true);
-      return;
-    }
-    setActionGroups(actionGroups.filter((g) => g.name !== name));
-    actionGroups.push(chain.asGroup(name));
-    actionGroups.sort((a, b) => a.name.localeCompare(b.name));
-    persistActionGroups();
-    renderAllGroupsMenus();
-    toast(`Saved action group “${name}”`);
-  }
-
-  function deleteGroup(name) {
-    setActionGroups(actionGroups.filter((g) => g.name !== name));
-    // A tick on a group that no longer exists would contribute nothing, in this
-    // popover or any other.
-    for (const other of groupMenus) other.dropTick(name);
-    persistActionGroups();
-    renderAllGroupsMenus();
-  }
-
-  // One checklist row (#137): a tick and the name with the scope it acts on.
-  // Clicking the name puts the group into the chain (#234) — that used to be a
-  // separate `Load` link beside a name that toggled the tick, which is three
-  // controls for two acts. It ADDS the group's rules after the ones already
-  // there (#388): replacing the chain meant a second preset silently threw the
-  // first one away, and Clear rules is already the way to start over. The tick
-  // is still its own control, because ticking several and running them as one
-  // plan is a different act from putting one in the chain to look at. Built-ins get no Delete — they aren't the user's to remove — and
-  // carry their note in the tooltip instead of the bare summary.
-  function groupMenuRow(group) {
-    const row = document.createElement("div");
-    row.className = "col-menu-row preset-row";
+  function row(group) {
+    const label = document.createElement("label");
+    label.className = "col-menu-row preset-row preset-check";
+    const applies = appliesTo(group, context());
+    label.classList.toggle("off", !applies);
 
     const tick = document.createElement("input");
     tick.type = "checkbox";
     tick.className = "group-tick";
-    tick.checked = tickedGroups.has(group.name);
-    tick.title = t("chain.includeNext");
-    tick.addEventListener("change", (e) => {
-      e.stopPropagation();
-      toggleTicked(group.name, tick.checked);
-    });
+    tick.checked = isActive(group);
+    tick.addEventListener("change", () => setActive(group, tick.checked));
 
-    const name = document.createElement("button");
-    name.type = "button";
-    name.className = "text-btn preset-apply";
+    const name = document.createElement("span");
+    name.className = "preset-apply";
     const scope = document.createElement("span");
     scope.className = "group-scope";
-    scope.textContent = SCOPE_LABELS[group.scope] || group.scope || "all tags";
+    scope.textContent = targetLabel(group);
     name.append(document.createTextNode(group.name), scope);
+
     const summary = group.note ? `${group.note}\n${groupSummary(group)}` : groupSummary(group);
-    name.title = group.builtin
-      ? `${summary}\nClick to add to the end of the chain — the built-in stays as shipped`
-      : `${summary}\nClick to add to the end of the chain`;
-    name.addEventListener("click", (e) => {
-      e.stopPropagation();
-      chain.append(group);
-      if (!inline) el(menu).hidden = true;
-    });
-
-    row.append(tick, name);
-
-    if (!group.builtin) {
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "preset-del";
-      del.innerHTML = ico("close");
-      del.title = `Delete “${group.name}”`;
-      del.addEventListener("click", (e) => {
-        e.stopPropagation();
-        deleteGroup(group.name);
-      });
-      row.append(del);
-    }
-
-    return row;
+    label.title = applies ? summary : `${summary}\n${t("presets.notHere")}`;
+    label.append(tick, name);
+    return label;
   }
 
-  // Build the popover — mirrors the presets menu (#44): a row per group, plus a
-  // footer to name and save the current chain. The user's own groups come
-  // first: they're the ones being iterated on, and the shipped library below
-  // them (#137) is a stable shelf to reach for.
   function render() {
     const box = el(menu);
     box.innerHTML = "";
-    const saved = actionGroups;
-    const shipped = builtinGroups;
-    if (!saved.length) {
+    const head = (key) => {
+      const h = document.createElement("div");
+      h.className = "col-menu-sep";
+      h.textContent = t(key);
+      box.appendChild(h);
+    };
+    head("presets.yours");
+    if (!actionGroups.length) {
       const empty = document.createElement("div");
-      empty.className = "col-menu-sep";
-      empty.textContent = t("chain.noGroups");
+      empty.className = "col-menu-sep preset-none";
+      empty.textContent = t("presets.noneHere");
       box.appendChild(empty);
     }
-    for (const group of saved) box.appendChild(groupMenuRow(group));
-
-    if (shipped.length) {
-      const head = document.createElement("div");
-      head.className = "col-menu-sep";
-      head.textContent = t("chain.builtIn");
-      box.appendChild(head);
-      for (const group of shipped) box.appendChild(groupMenuRow(group));
+    for (const group of actionGroups) box.appendChild(row(group));
+    if (builtinGroups.length) {
+      head("chain.builtIn");
+      for (const group of builtinGroups) box.appendChild(row(group));
     }
-
-    // Both footer rows live in one sticky box (#242): sticking each of them to
-    // the bottom of the list put them in the same place, one over the other.
-    const foot = document.createElement("div");
-    foot.className = "groups-foot";
-    // The checklist's one action, above the save row: what the ticks are for.
-    if (onRun) {
-      const runFoot = document.createElement("div");
-      runFoot.className = "col-menu-foot preset-run";
-      const runBtn = document.createElement("button");
-      runBtn.type = "button";
-      runBtn.className = "text-btn";
-      runBtn.title = t("chain.runTitle");
-      runBtn.addEventListener("click", () => {
-        if (!inline) box.hidden = true;
-        onRun(tickedInOrder());
-      });
-      runFoot.appendChild(runBtn);
-      foot.appendChild(runFoot);
-    }
-
-    const saveRow = document.createElement("div");
-    saveRow.className = "col-menu-foot preset-save";
-    const input = document.createElement("input");
-    input.type = "text";
-    input.placeholder = t("chain.saveAs");
-    input.spellcheck = false;
-    input.className = "preset-name";
-    const save = document.createElement("button");
-    save.type = "button";
-    save.className = "text-btn";
-    save.textContent = t("action.save");
-    const commit = () => {
-      if (input.value.trim()) {
-        saveCurrentGroup(input.value);
-        input.value = "";
-      }
-    };
-    save.addEventListener("click", commit);
-    input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        commit();
-      }
-    });
-    saveRow.append(input, save);
-    foot.appendChild(saveRow);
-    box.appendChild(foot);
-    updateRunTicked();
   }
 
-  if (inline) {
-    // Always on screen, so it is drawn once here and redrawn by
-    // renderAllGroupsMenus whenever the set of groups changes.
-    render();
-  } else {
-    // Placed from JS rather than by CSS (#160): a button near the bottom of the
-    // window opens a menu that would otherwise run off the edge downward.
-    const place = () => {
-      const box = el(menu);
-      box.classList.add("floating");
-      placeFloating(box, el(btn), { align: "right" });
-    };
-    // Toggle + outside-click close, the same as the presets menu.
-    el(btn).addEventListener("click", (e) => {
-      e.stopPropagation();
-      const box = el(menu);
-      if (box.hidden) render();
-      box.hidden = !box.hidden;
-      // After unhiding, so the box has a width to place by.
-      if (!box.hidden) place();
-    });
-    document.addEventListener("click", (e) => {
-      const box = el(menu);
-      if (!box.hidden && !box.contains(e.target) && !el(btn).contains(e.target)) {
-        box.hidden = true;
-      }
-    });
-    // Fixed positioning does not follow its button, and the panel behind it
-    // scrolls — so follow it by hand while the menu is open.
-    window.addEventListener("resize", () => {
-      if (!el(menu).hidden) place();
-    });
-    document.addEventListener(
-      "scroll",
-      () => {
-        if (!el(menu).hidden) place();
-      },
-      true
-    );
-  }
-
-  const api = {
-    render,
-    tickedInOrder,
-    dropTick(name) {
-      if (tickedGroups.delete(name)) updateRunTicked();
-    },
-  };
+  render();
+  const api = { render };
   groupMenus.push(api);
   return api;
 }
 
+// A preset name nobody has taken: `base`, then `base 2`, `base 3`… `extra` is
+// presets about to be added that the library doesn't hold yet.
+function uniquePresetName(base, extra = []) {
+  const taken = new Set([...actionGroups, ...builtinGroups, ...extra].map((g) => g.name));
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base} ${n}`)) n += 1;
+  return `${base} ${n}`;
+}
+
 export {
-  createGroupsMenu,
+  createPresetChecklist,
   createRuleChain,
   initActionGroups,
   initBuiltinGroups,
   persistActionGroups,
   renderAllGroupsMenus,
   ruleForGroup,
+  uniquePresetName,
 };

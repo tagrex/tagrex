@@ -53,6 +53,7 @@ import { dropGroupKey, folderGroupLabel, groupKeyOf, groupLabel } from "./js/gro
 import { loadSavedToken, refreshReleaseMatches, searchBusy, searchPerPage, stopLoading } from "./js/online.js";
 import { refreshGenerator, syncTransformPlacement } from "./js/generator.js";
 import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
+import { migrateChains } from "./js/chains.js";
 import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
 import { initPlaceholderReference } from "./js/placeholders.js";
 import { initMaskPresets } from "./js/maskpresets.js";
@@ -2975,7 +2976,8 @@ applyBadgeFont(badgeFont());
 populateGroupMenu();
 el("search-per-page").value = String(searchPerPage);
 // Load saved action groups (#57) from settings.json into the Groups popover.
-initActionGroups();
+// The per-job chains become presets once the saved ones are in (#392).
+initActionGroups().then(migrateChains);
 initBuiltinGroups();
 // Reflect saved filter-mode flags (#44) onto the toggles.
 syncFilterControls();

@@ -82,17 +82,18 @@ ago and forgot would be worse than none.
   covers…) travel with the track.
 - **GENERATOR** — text transforms: case conversion, find/replace, remove
   diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key
-  notation. Every rule names the field it acts on, so one chain can upper-case a
-  catalogue number while title-casing the titles, and chains can be saved as
-  named action groups and re-run as one plan.
+  notation. Rules are grouped into named presets, made in their own editor;
+  every rule names the field it acts on, so one preset can upper-case a
+  catalogue number while title-casing the titles.
 
-**Cleanup is part of the job, not a second step.** Importing a release, reading
-tags out of a file name and renaming each carry a rule chain of their own —
-set up in a dialog behind the wand, remembered between runs — and it runs as
-part of that panel's own button: one press, one plan, one undo entry. The
-targets differ enough that sharing one chain was the bug: RENAMER usually wants
-a space turned into an underscore and FROM NAME wants exactly the opposite. The
-tag editor has none on purpose — a value typed by hand comes out as typed.
+**Cleanup is part of the job, not a second step.** Tick presets in the dialog
+behind the wand and they run as part of importing a release, reading tags out
+of a file name and renaming — inside that panel's own button: one press, one
+plan, one undo entry. The ticked set is shared, and each job takes only the
+rules aimed at what it produces: tag rules for imports and FROM NAME, file-name
+rules for RENAMER. So the underscore RENAMER wants never reaches the tags
+FROM NAME reads. The tag editor has none on purpose — a value typed by hand
+comes out as typed.
 - **DEDUPLICATOR** — read-only scan for likely duplicates by a chosen criterion.
 - **EXPORTER** — M3U playlists, CUE sheets, CSV, HTML, XML, and mask-based
   reports. A playlist can come out as one list, or one per folder or album with

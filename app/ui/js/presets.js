@@ -12,7 +12,13 @@
 // quit — so there is no Save button to forget.
 import { confirmDialog, el, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
-import { createRuleChain, persistActionGroups, renderAllGroupsMenus, ruleForGroup } from "./chain.js";
+import {
+  createRuleChain,
+  persistActionGroups,
+  renderAllGroupsMenus,
+  ruleForGroup,
+  uniquePresetName,
+} from "./chain.js";
 import { actionGroups, builtinGroups, setActionGroups } from "./state.js";
 
 const chain = createRuleChain({
@@ -42,15 +48,6 @@ function notifyPresetsChanged(renamed) {
 
 function findPreset(name, builtin) {
   return (builtin ? builtinGroups : actionGroups).find((g) => g.name === name) || null;
-}
-
-// A name no saved preset has yet: `base`, then `base 2`, `base 3`…
-function uniqueName(base) {
-  const taken = new Set([...actionGroups, ...builtinGroups].map((g) => g.name));
-  if (!taken.has(base)) return base;
-  let n = 2;
-  while (taken.has(`${base} ${n}`)) n += 1;
-  return `${base} ${n}`;
 }
 
 // Write what the chain holds back into the open preset, if it is yours and
@@ -165,7 +162,7 @@ function addPreset(group) {
 
 function newPreset() {
   commit();
-  const name = uniqueName(t("presets.newName"));
+  const name = uniquePresetName(t("presets.newName"));
   addPreset({ name, scope: "tags", rules: [] });
   select(name, false);
   el("pe-name").focus();
@@ -179,7 +176,7 @@ function duplicatePreset() {
   commit();
   const source = findPreset(current.name, current.builtin);
   if (!source) return;
-  const name = uniqueName(t("presets.copyName", { name: source.name }));
+  const name = uniquePresetName(t("presets.copyName", { name: source.name }));
   addPreset({
     name,
     scope: source.scope || "tags",

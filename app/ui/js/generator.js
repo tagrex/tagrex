@@ -14,8 +14,8 @@ import { el, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
-import { createGroupsMenu, createRuleChain, ruleForGroup } from "./chain.js";
-import { openPresetEditor } from "./presets.js";
+import { createPresetChecklist, renderAllGroupsMenus } from "./chain.js";
+import { onPresetsChanged, openPresetEditor } from "./presets.js";
 import { currentFieldValue } from "./editor.js";
 import { groupKeyOf } from "./grouping.js";
 import { parseVinylPosition } from "./vinyl.js";
@@ -30,26 +30,19 @@ import {
   tracks,
 } from "./state.js";
 import {
-  chainFor,
+  activeRuleCount,
+  isPresetActive,
   notifyChainChanged,
-  setChainFor,
-  setLiveChainSource,
-  storedChainFor,
+  presetAppliesTo,
+  presetsFor,
+  renameActivePreset,
+  setPresetActive,
 } from "./chains.js";
 
 // ---- transformations (#34) ----
-// This panel's chain, over the tags and names already on disk. It lives for the
-// session and is not persisted; naming and saving chains is what the groups are
-// for (#57).
-const transformChain = createRuleChain({
-  ids: {
-    rules: "transform-rules",
-    empty: "transform-empty",
-    kind: "transform-kind",
-    add: "transform-add",
-    clear: "transform-clear",
-  },
-});
+// This panel runs the ticked presets (#392) over the selection — all of their
+// rules, tags and file names alike, since its own button is the whole point.
+// The presets themselves are made in the preset editor (#391).
 
 // Whether the chain is about to act on a staged plan rather than on the files
 // (#142). One question, asked everywhere, so the block's wording and what the
@@ -77,7 +70,7 @@ function refreshGenerator() {
   );
   el("autonum-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
   el("vinyl-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
-  transformChain.render();
+  presetChecklist.render();
 }
 
 // Stage the plan a run produced and report it. Shared by the single-chain and
@@ -225,63 +218,34 @@ async function splitVinylSides() {
   toast(t("toast.splitSides", { positions: tn("unit.vinylPosition", changed) }));
 }
 
+// Run the ticked presets over the selection, or over the staged plan when there
+// is one (#142). Order is the preset list's, so a preset that rewrites the file
+// name and one that rewrites its extension compose into a single rename instead
+// of the second undoing the first.
 async function previewTransform() {
-  if (transformChain.length === 0) {
-    toast("Add at least one rule", true);
+  const groups = presetsFor("generator");
+  if (!groups.length) {
+    toast(t("presets.noneTicked"), true);
     return;
   }
-  const wasStaged = overStagedPlan();
-  try {
-    // Reported from the plan just built, not from the staged one (#145): an
-    // empty plan makes renderPreview leave the diff state, which clears the
-    // staged plan out from under the message below.
-    const plan = wasStaged
-      ? await invoke("preview_transform_over_plan", {
-          plan: previewPlan,
-          groups: [transformChain.asGroup()],
-        })
-      : // Groups rather than the single-scope command (#250): a rule may name
-        // its own target, and `preview_transform` takes one scope for the whole
-        // chain — it would quietly apply rule 2's scope to rule 1.
-        await invoke("preview_transform_groups", {
-          paths: selectedPaths(),
-          groups: [transformChain.asGroup()],
-        });
-    stageRun(plan, transformChain.getScopes(), wasStaged);
-    toast(
-      plan.changes.length
-        ? t("toast.previewing", { files: tn("unit.file", plan.changes.length) })
-        : nothingChanged(wasStaged, "subject.theseRules"),
-      plan.changes.length === 0
-    );
-  } catch (e) {
-    toast(String(e), true);
-  }
-}
-
-// Run the ticked groups as one plan. Order matters and is the list's order, so
-// a group that rewrites the file name and one that rewrites its extension
-// compose into a single rename instead of the second undoing the first.
-async function runTickedGroups(groups) {
-  if (!groups.length) return;
   const wasStaged = overStagedPlan();
   const paths = selectedPaths();
   if (!wasStaged && !paths.length) {
     toast("Select at least one file", true);
     return;
   }
-  const payload = groups.map((g) => ({
-    name: g.name,
-    scope: g.scope,
-    rules: (g.rules || []).map(ruleForGroup),
-  }));
   try {
-    // Same as the single-chain preview (#145): report from this plan, not the
-    // staged one, which an empty result clears.
+    // Reported from the plan just built, not from the staged one (#145): an
+    // empty plan makes renderPreview leave the diff state, which clears the
+    // staged plan out from under the message below.
     const plan = wasStaged
-      ? await invoke("preview_transform_over_plan", { plan: previewPlan, groups: payload })
-      : await invoke("preview_transform_groups", { paths, groups: payload });
-    stageRun(plan, groups.map((g) => g.scope), wasStaged);
+      ? await invoke("preview_transform_over_plan", { plan: previewPlan, groups })
+      : await invoke("preview_transform_groups", { paths, groups });
+    stageRun(
+      plan,
+      groups.flatMap((g) => g.rules.map((r) => r.scope)),
+      wasStaged,
+    );
     toast(
       plan.changes.length
         ? t("toast.previewing", { files: tn("unit.file", plan.changes.length) })
@@ -326,35 +290,22 @@ function chainContext() {
   return null;
 }
 
-// The context whose chain is in the block right now, so a switch knows what it
-// is putting away.
+// The job the block is showing the checklist for, so each row can say whether
+// its preset has anything for that job.
 let shownContext = null;
 
-// Put the current chain away and take the incoming one out. The block's DOM is
-// the one live chain there is, so this is what makes four chains out of it.
 function swapChainTo(context) {
   if (context === shownContext) return;
-  if (shownContext) setChainFor(shownContext, transformChain.asGroup());
   shownContext = context;
-  if (context) transformChain.load(storedChainFor(context));
+  presetChecklist.render();
 }
-
-// So a plan built anywhere can run the chain of its own context without asking
-// this module whether that context happens to be on screen.
-setLiveChainSource(() =>
-  shownContext ? { context: shownContext, chain: transformChain.asGroup() } : null
-);
-// A chain typed and never switched away from would otherwise be lost on quit.
-window.addEventListener("beforeunload", () => {
-  if (shownContext) setChainFor(shownContext, transformChain.asGroup());
-});
 
 // What each job's chain says about itself in the dialog, since it has no button
 // of its own to say it.
 const CONTEXT_NOTES = {
-  online: "Runs on the imported values when you import a release.",
-  fromname: "Runs on the tags read out of the name when you press Preview tags.",
-  renamer: "Runs on the new names when you preview a rename or a move.",
+  online: "Ticked presets run on the imported values when you import a release — their rules on tags; rules on file names are left for renaming.",
+  fromname: "Ticked presets run on the tags read out of the name when you press Preview tags — their rules on tags; rules on file names are left for renaming.",
+  renamer: "Ticked presets run on the new names when you preview a rename or a move — their rules on file names; rules on tags are left for the tag jobs.",
 };
 const CONTEXT_TITLES = {
   online: "Transform — imported values",
@@ -382,19 +333,12 @@ function openTransformModal() {
 
 function closeTransformModal() {
   if (!transformModalOpen()) return;
-  // Whatever was typed belongs to the job it was typed for, written down before
-  // the block goes back to a panel that may be showing a different one.
-  if (shownContext) setChainFor(shownContext, transformChain.asGroup());
   el("transform-modal").hidden = true;
   el("transform-context-note").hidden = true;
   el("transform-preview").hidden = false;
   el("transform-block").classList.remove("in-dialog");
   el("transform-home").after(el("transform-block"));
   refreshTransformButton();
-  // Whatever this context shows as its example — the read-out under a pattern,
-  // a plan already staged from here — shows the new chain now, without the
-  // button being pressed again (#248).
-  if (shownContext) notifyChainChanged(shownContext);
 }
 
 // Where the block belongs when no dialog holds it, and whether the button that
@@ -423,7 +367,7 @@ function syncTransformPlacement() {
 function refreshTransformButton() {
   const btn = el("transform-btn");
   const context = chainContext();
-  const count = context ? chainFor(context).rules.length : 0;
+  const count = context ? activeRuleCount(context) : 0;
   btn.classList.toggle("has-rules", count > 0);
   btn.title = count
     ? t("generator.chainBtn.some", { rules: tn("unit.rule", count) })
@@ -434,14 +378,26 @@ function refreshTransformButton() {
 }
 
 // ---- wire up ----
-// The group list inside this panel's chain block (#234): ticks and Run ticked,
-// because several groups composing into one plan is what this mode is for
-// (#137), and a click on a name to load one.
-createGroupsMenu({
+// The checklist inside the block (#392): which presets run. A tick takes effect
+// at once — the job's own read-out and any plan staged from it redo themselves
+// (#248), and the wand button's dot follows.
+const presetChecklist = createPresetChecklist({
   menu: "groups-menu",
-  chain: transformChain,
-  onRun: runTickedGroups,
-  inline: true,
+  context: () => shownContext || "generator",
+  isActive: isPresetActive,
+  setActive: (group, on) => {
+    setPresetActive(group, on);
+    refreshTransformButton();
+  },
+  appliesTo: presetAppliesTo,
+});
+// A preset changed in the editor: keep a renamed one ticked, then let every job
+// see the new rules.
+onPresetsChanged((renamed) => {
+  if (renamed) renameActivePreset(renamed.from, renamed.to);
+  renderAllGroupsMenus();
+  refreshTransformButton();
+  notifyChainChanged();
 });
 el("transform-preview").addEventListener("click", previewTransform);
 el("presets-edit").addEventListener("click", () => openPresetEditor());

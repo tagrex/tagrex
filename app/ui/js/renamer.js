@@ -10,7 +10,7 @@
 import { el, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
-import { chainFor, onChainChanged, runChainOverPlan } from "./chains.js";
+import { activeRuleCount, onChainChanged, runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
 import {
   previewPlan,
@@ -181,9 +181,9 @@ async function refreshMaskExample() {
     const to = change?.rename_to;
     box.textContent = to ? maskPart(to, change.rename_root) : t("renamer.exampleUnchanged");
     box.classList.toggle("muted", !to);
-    // The wand's rules run on every rename without being on this panel, so the
-    // example says so — otherwise its result reads as the mask's alone.
-    const rules = chainFor("renamer").rules.length;
+    // The ticked presets' rules run on every rename without being on this panel,
+    // so the example says so — otherwise its result reads as the mask's alone.
+    const rules = activeRuleCount("renamer");
     if (rules) {
       const note = document.createElement("span");
       note.className = "mask-example-chain";

@@ -129,7 +129,7 @@ in one click. Useful for the queries you re-run constantly: everything missing a
 year, everything from one label, everything whose title still has underscores in
 it.
 
-These are view presets. The saved chains of *transform rules* are a different
+These are view presets. *Transform* presets — named chains of cleanup rules — are a different
 thing, and live in [GENERATOR](generator.md).
 
 ## Editing cells in place

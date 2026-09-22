@@ -1717,31 +1717,25 @@ body:not(.show-checkbox) #tracks td.sel {
   flex: 0 0 auto;
   max-height: 150px;
   overflow-y: auto;
-  /* No padding under the sticky save row: rows scrolled through it and showed
-     as a half-cut sliver below the field (#242). */
-  padding: var(--space-1) var(--space-1) 0;
+  padding: var(--space-1);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--panel);
-}
-/* Rows scroll under this, so it has to read as a footer rather than as content
-   overlapping content (#241) — and it is ONE box holding both rows, because
-   sticking each of them to the bottom put them in the same place (#242). */
-.groups-list .groups-foot {
-  position: sticky;
-  bottom: 0;
-  background: var(--panel);
-  border-top: 1px solid var(--border);
-}
-.groups-list .groups-foot .col-menu-foot {
-  margin-top: 0;
-  border-top: 0;
 }
 /* The name is the row's action now, so it takes the width and shows it is one. */
 .groups-list .preset-apply {
   flex: 1;
   min-width: 0;
   text-align: left;
+}
+/* A checklist row (#392) is one label: a click anywhere on it ticks. A preset
+   with nothing for the job the list is shown in reads dimmed — still tickable,
+   since the set is shared and it runs where it does apply. */
+.groups-list .preset-check {
+  cursor: pointer;
+}
+.groups-list .preset-check.off .preset-apply {
+  color: var(--muted);
 }
 .groups-list .col-menu-row:hover {
   background: var(--row-hover);
@@ -1786,14 +1780,6 @@ body:not(.show-checkbox) #tracks td.sel {
   letter-spacing: 0.02em;
 }
 
-.col-menu-foot.preset-run {
-  justify-content: flex-end;
-  padding-bottom: 4px;
-}
-.col-menu-foot.preset-run button[disabled] {
-  color: var(--muted);
-  cursor: default;
-}
 .col-menu-foot.preset-save {
   justify-content: stretch;
   gap: var(--space-2);
@@ -5218,11 +5204,6 @@ td[data-field="year"],
 .transform-modal .groups-list {
   max-height: none;
   overflow: visible;
-}
-/* Which makes its footer the dialog's, sticking to the bottom of the body that
-   scrolls rather than to a list that no longer does. */
-.transform-modal .groups-list .groups-foot {
-  position: static;
 }
 .modal-head {
   display: flex;

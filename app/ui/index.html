@@ -470,31 +470,10 @@
               Acting on the staged changes, not on the files — the result replaces the plan, so it
               stays one Apply and one undo entry.
             </p>
-            <!-- Drag-reorderable rule cards are built by renderTransformRules. -->
-            <div id="transform-rules" class="rule-chain"></div>
-            <p id="transform-empty" class="empty inert-panel rule-chain-empty" hidden data-i18n="generator.noRules" data-i18n-html>
-              No rules yet — pick a kind and <b>Add rule</b> to start a chain.
-            </p>
-            <div class="gen-add">
-              <select id="transform-kind">
-                <option value="replace" data-i18n="rule.replace">Find and replace</option>
-                <option value="case" data-i18n="rule.case">Change case</option>
-                <option value="diacritics" data-i18n="rule.diacritics">Remove diacritics</option>
-                <option value="transliterate" data-i18n="rule.transliterate">Transliterate to Latin</option>
-                <option value="untransliterate" data-i18n="rule.untransliterate">Transliterate to Cyrillic</option>
-                <option value="key" data-i18n="rule.key">Key notation</option>
-              </select>
-              <button id="transform-add" class="btn" data-i18n="generator.addRule">Add rule</button>
-              <div class="spacer"></div>
-              <!-- Emptying a chain by hand is one × per rule (#257); this is the
-                   whole chain at once. Hidden while there is nothing to clear. -->
-              <button id="transform-clear" class="btn" hidden data-i18n-title="generator.clearRulesTitle" title="Remove every rule from this chain" data-i18n="generator.clearRules">Clear rules</button>
-            </div>
-            <!-- Named action groups (#57), a list rather than a popover since
-                 #234: reaching a saved cleanup used to mean opening a second
-                 floating box over the first. Clicking a row adds its rules to the
-                 end of the chain (#388); the ticks are for composing several into one run. Filled
-                 by chain.js. -->
+            <!-- The shared set of ticked presets (#392): a tick runs the preset as
+                 part of every job, each job taking only the rules aimed at what it
+                 produces. Presets are made in the preset editor (#391), not here.
+                 Filled by chain.js. -->
             <div id="groups-menu" class="groups-list"></div>
             <div class="panel-actions">
               <!-- Where presets are made and changed (#391); this block only

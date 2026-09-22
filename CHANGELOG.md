@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Presets are ticked, not copied into a chain.** The dialog behind the wand
+  is now a checklist of every preset: what is ticked runs as part of importing
+  a release, reading tags from file names, renaming and GENERATOR's Preview
+  changes. The set is shared, and each job takes only the rules aimed at what
+  it produces — tag rules for imports and FROM NAME, file-name rules for
+  RENAMER — so a renaming preset never touches the tags FROM NAME reads. Each
+  job's existing chain carries over as one of your presets, ticked where it
+  was doing something. (#392)
 - **A Presets window: the one place presets are made and changed.** Opened
   with **Edit presets…** from the transform block, it lists your presets and
   the built-in ones and shows the open preset's rules in the familiar rule
