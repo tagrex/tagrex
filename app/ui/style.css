@@ -5540,6 +5540,25 @@ td[data-field="year"],
   padding: var(--space-2);
   font-size: var(--text-xs);
 }
+/* The row classes are shared with the view presets and the transform preset
+   checklist (#395), and two of their rules reached in here: `.preset-row
+   .preset-apply` lines its lines up at the START, which sizes the mask line to
+   its whole text so the ellipsis never kicks in and the list scrolls sideways;
+   and `.preset-name`, the view presets' name INPUT, drew a bordered box around
+   the name. In this menu the lines take the row's width and the name is text. */
+.preset-menu .preset-apply {
+  align-items: stretch;
+}
+.preset-menu .preset-name {
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.preset-menu .preset-list {
+  overflow-x: hidden;
+}
 
 /* ---- drag-and-drop-to-open overlay (#127) ---------------------------------
    Hidden until files are dragged over the window; body.drag-active reveals it

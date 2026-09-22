@@ -96,6 +96,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A saved mask preset reads as a name over its mask, not a boxed chip over a
+  line that scrolls sideways.** Styles shared with the other preset lists put
+  a border around the name and stopped the mask from ending in an ellipsis,
+  so the menu scrolled horizontally — most visibly right after saving the
+  first one, before the pointer moved. (#395)
 - **A code comment no longer names another tagging application.** (#393)
 - **The built-in FTP format preset keeps parentheses.** It replaced every
   character outside letters, digits, `.`, `_` and `-`, so `(as 5606) (1996)`
