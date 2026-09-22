@@ -82,6 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The built-in FTP format preset keeps parentheses.** It replaced every
+  character outside letters, digits, `.`, `_` and `-`, so `(as 5606) (1996)`
+  lost its brackets; parentheses are safe everywhere and carry catalogue
+  numbers, years and remix names. A chain that already holds the preset's
+  rules keeps its own copy — add the preset again to pick this up. (#390)
 - **The transform dialog's rule cards no longer jump narrower under the
   pointer.** Right after opening, the cards ran up to the close button; the
   first time the pointer crossed them they shrank by the scrollbar's width,

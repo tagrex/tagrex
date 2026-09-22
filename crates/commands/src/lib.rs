@@ -4978,7 +4978,7 @@ pub fn builtin_action_groups() -> Vec<ActionGroupDto> {
             vec![
                 step("transliterate"),
                 step("diacritics"),
-                re(r"[^A-Za-z0-9._-]+", "_"),
+                re(r"[^A-Za-z0-9._()-]+", "_"),
                 re(r"_{2,}", "_"),
                 re(r"^_+|_+$", ""),
             ],
@@ -8610,7 +8610,7 @@ mod tests {
         assert_eq!(run("General Latin", "Пётр Ильич"), "Pyotr Ilich");
         assert_eq!(
             run("FTP format", "Björk — Jóga (12\" Mix)"),
-            "Bjork_Joga_12_Mix"
+            "Bjork_Joga_(12_Mix)"
         );
         assert_eq!(run("File extension", "FLAC"), "flac");
     }
