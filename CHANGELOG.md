@@ -69,6 +69,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A job's wand rules now clean the folders a mask creates, not just the
+  file name.** A RENAMER mask that sorts into a subfolder used to come out
+  as `Various - La Bush … (1996)/101_the_x_factor_-_desert_rain.mp3` under a
+  lower-case-and-underscores chain — capitals and spaces in the folder,
+  underscores in the name. The folders the mask made are now cleaned by
+  the same rules as the name; the file's own folder and a destination you
+  picked are never touched, since renaming those would file the tracks
+  somewhere nobody chose. Carried folder extras follow the cleaned folder,
+  and RENAMER's live example now shows exactly what the mask produced —
+  the part below the file's folder or the destination — instead of the
+  last few path segments. (#384)
 - **A job's wand rules no longer drop the folder a rename or reorganize
   proposes — or turn a copy into a move.** Running a rule chain over a
   staged rename/move plan kept only the proposed file *name* and rebuilt the

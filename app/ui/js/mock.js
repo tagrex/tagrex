@@ -409,7 +409,7 @@ function mockInvoke(cmd, args) {
             .replace("%genre%", t.tags.genre || "");
           if (rendered.split(/[/\\]/).some((part) => !part.trim() || part === "..")) return null;
           const rename_to = `${dir}/${rendered}${ext}`;
-          return rename_to === p ? null : { path: p, rename_to, tag_changes: [] };
+          return rename_to === p ? null : { path: p, rename_to, rename_root: dir, tag_changes: [] };
         })
         .filter(Boolean);
       return Promise.resolve(
@@ -523,6 +523,11 @@ function mockInvoke(cmd, args) {
           // The folder the plan proposes, not the source's (#383) — as the
           // backend does, so a browser check can't pass on the old bug.
           const dir = proposed.slice(0, proposed.lastIndexOf("/") + 1);
+          // The folders the mask made under its root are cleaned with the name
+          // (#384); the root and everything above it are left alone.
+          const root = c.rename_root ? c.rename_root.replace(/\/$/, "") : null;
+          const below = root && dir.startsWith(root + "/") ? dir.slice(root.length + 1, -1) : "";
+          let folders = below ? below.split("/") : [];
           let name = proposed.slice(proposed.lastIndexOf("/") + 1, proposed.lastIndexOf("."));
           let ext = proposed.slice(proposed.lastIndexOf(".") + 1);
           let tag_changes = (c.tag_changes || []).map((t) => ({ ...t }));
@@ -531,6 +536,10 @@ function mockInvoke(cmd, args) {
               if (seg.scope === "filename") {
                 const next = mockApplyRules(name, seg.rules);
                 if (next.trim()) name = next;
+                folders = folders.map((f) => {
+                  const n = mockApplyRules(f, seg.rules);
+                  return n.trim() && !/[/\\]/.test(n) && n !== "." && n !== ".." ? n : f;
+                });
               } else if (seg.scope === "fileext") {
                 const next = mockApplyRules(ext, seg.rules);
                 if (next.trim() && !/[/\.]/.test(next)) ext = next;
@@ -545,12 +554,14 @@ function mockInvoke(cmd, args) {
           // A cleanup that lands back on the old value is not a change.
           tag_changes = tag_changes.filter((t) => (t.old ?? null) !== (t.new ?? null));
           const file_name = `${name}.${ext}`;
-          const target = `${dir}${file_name}`;
+          const targetDir = root && dir.startsWith(root + "/") ? `${[root, ...folders].join("/")}/` : dir;
+          const target = `${targetDir}${file_name}`;
           const renamed = target !== c.path;
           if (!tag_changes.length && !renamed) return null;
           return {
             path: c.path,
             rename_to: renamed ? target : null,
+            rename_root: c.rename_root || null,
             tag_changes,
             copy: !!c.copy,
           };
@@ -585,6 +596,7 @@ function mockInvoke(cmd, args) {
           return {
             path: p,
             rename_to: `${root}/${rendered}${ext}`,
+            rename_root: root,
             tag_changes: [],
             copy: !!args.copy,
           };

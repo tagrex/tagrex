@@ -171,8 +171,9 @@ async function refreshMaskExample() {
     // lower-cased and underscored by the wand's rules, said something else.
     const plan = await (reorganize ? movePlan([path]) : renamePlan([path]));
     const out = await runChainOverPlan(plan, "renamer");
-    const to = out.changes[0]?.rename_to;
-    box.textContent = to ? shortenExample(to) : t("renamer.exampleUnchanged");
+    const change = out.changes[0];
+    const to = change?.rename_to;
+    box.textContent = to ? maskPart(to, change.rename_root) : t("renamer.exampleUnchanged");
     box.classList.toggle("muted", !to);
     // The wand's rules run on every rename without being on this panel, so the
     // example says so — otherwise its result reads as the mask's alone.
@@ -189,13 +190,19 @@ async function refreshMaskExample() {
   }
 }
 
-// The last couple of path segments read as "what this does" without the
-// noise of a full absolute path — what TagScanner's own inline example goes
-// for too.
-function shortenExample(fullPath) {
+// Exactly what the mask produced (#384): the target below the folder it was
+// rendered under — the file's own folder, or the destination — the way
+// TagScanner's own inline example reads. No root to split at (an older plan)
+// falls back to the last few segments.
+function maskPart(fullPath, root) {
+  if (root) {
+    const base = root.replace(/[\\/]+$/, "");
+    if (fullPath.startsWith(base) && /[\\/]/.test(fullPath[base.length] || "")) {
+      return fullPath.slice(base.length + 1);
+    }
+  }
   const sep = fullPath.includes("\\") && !fullPath.includes("/") ? "\\" : "/";
-  const parts = fullPath.split(/[\\/]/).filter(Boolean);
-  return parts.slice(-3).join(sep);
+  return fullPath.split(/[\\/]/).filter(Boolean).slice(-3).join(sep);
 }
 
 let maskExampleTimer = null;

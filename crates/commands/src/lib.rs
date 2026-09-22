@@ -330,6 +330,14 @@ pub struct FileChangeDto {
     /// Whole-block changes for this file (#47, #205).
     #[serde(default)]
     pub block_changes: Vec<BlockChangeDto>,
+    /// The folder a mask-rendered `rename_to` is built under (#384): the
+    /// file's own folder for a rename, the destination for a reorganize.
+    /// Everything in `rename_to` below it came from the mask — which is what
+    /// a rule chain may clean, and what is worth showing — and everything
+    /// above it is a folder that already exists and is left alone. `None`
+    /// for a change no mask built.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename_root: Option<String>,
 }
 
 /// One field a lock kept out of a plan (#48), and how many files it would have
@@ -2318,6 +2326,7 @@ impl App {
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
                 copy: false,
+                rename_root: Some(root.to_string_lossy().into_owned()),
             };
             self.attach_sidecars(&mut change);
             changes.push(change);
@@ -2407,6 +2416,7 @@ impl App {
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
                 copy: false,
+                rename_root: None,
             });
         }
         Ok(self.plan(
@@ -2507,6 +2517,7 @@ impl App {
                     sidecar_renames: Vec::new(),
                     block_changes: Vec::new(),
                     copy: false,
+                    rename_root: None,
                 };
                 self.attach_sidecars(&mut change);
                 changes.push(change);
@@ -2544,6 +2555,7 @@ impl App {
                     sidecar_renames: Vec::new(),
                     block_changes: Vec::new(),
                     copy: false,
+                    rename_root: None,
                 };
                 self.attach_sidecars(&mut change);
                 changes.push(change);
@@ -2574,6 +2586,7 @@ impl App {
                     sidecar_renames: Vec::new(),
                     block_changes: Vec::new(),
                     copy: false,
+                    rename_root: None,
                 });
             }
         }
@@ -2694,6 +2707,7 @@ impl App {
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
                 copy: false,
+                rename_root: None,
             };
             if renamed {
                 self.attach_sidecars(&mut change);
@@ -2771,6 +2785,23 @@ impl App {
                 .or_else(|| path.parent())
                 .map(Path::to_path_buf)
                 .unwrap_or_default();
+            // The folders the MASK created under its root (#384) are cleaned
+            // with the name, so "Various - La Bush (1996)/101_…" doesn't keep
+            // spaces its file name lost. Everything at or above the root — the
+            // file's own folder, the chosen destination — already exists and is
+            // left exactly as it is: renaming it would file the tracks
+            // somewhere nobody picked. No root, no folder of the mask's own.
+            let root = change.rename_root.as_deref().map(PathBuf::from);
+            let mut folders: Vec<String> = root
+                .as_deref()
+                .and_then(|root| proposed_dir.strip_prefix(root).ok())
+                .map(|below| {
+                    below
+                        .components()
+                        .map(|part| part.as_os_str().to_string_lossy().into_owned())
+                        .collect()
+                })
+                .unwrap_or_default();
             let mut name = proposed
                 .file_stem()
                 .map(|s| s.to_string_lossy().into_owned())
@@ -2787,6 +2818,20 @@ impl App {
                         let next = chain.apply(&name);
                         if !next.trim().is_empty() {
                             name = next;
+                        }
+                        // A cleaned folder that would stop being one folder
+                        // (empty, a separator, `.`/`..`) keeps its rendered
+                        // name instead — the same guard the mask applied.
+                        for folder in folders.iter_mut() {
+                            let next = chain.apply(folder);
+                            let trimmed = next.trim();
+                            if !trimmed.is_empty()
+                                && trimmed != "."
+                                && trimmed != ".."
+                                && !next.contains(['/', '\\'])
+                            {
+                                *folder = next;
+                            }
                         }
                     }
                     "fileext" => {
@@ -2823,24 +2868,37 @@ impl App {
                 Some(ext) => format!("{name}.{ext}"),
                 None => name.clone(),
             };
-            let target = proposed_dir.join(&file_name);
+            let target_dir = match &root {
+                Some(root) if proposed_dir.starts_with(root) => folders
+                    .iter()
+                    .fold(root.clone(), |dir, part| dir.join(part)),
+                _ => proposed_dir.clone(),
+            };
+            let target = target_dir.join(&file_name);
             let renamed = target != path;
 
             if tag_changes.is_empty() && !renamed && change.cover_change.is_none() {
                 continue;
             }
             // Folder extras (#161) ride on a change as sidecar pairs that do not
-            // follow the stem. The destination folder is unchanged, so they are
-            // kept verbatim; only the stem sidecars are recomputed below. Which
-            // pairs are stem sidecars is asked of the same code that attached
-            // them, against the change as it arrived.
+            // follow the stem. They go where the folder goes — re-based from the
+            // folder as staged onto the folder as cleaned (#384) — while only the
+            // stem sidecars are recomputed below. Which pairs are stem sidecars
+            // is asked of the same code that attached them, against the change
+            // as it arrived.
             let mut as_staged = change.clone();
             self.attach_sidecars(&mut as_staged);
             let extras: Vec<(String, String)> = change
                 .sidecar_renames
                 .iter()
                 .filter(|(from, _)| !as_staged.sidecar_renames.iter().any(|(own, _)| own == from))
-                .cloned()
+                .map(|(from, to)| {
+                    let to = match Path::new(to).strip_prefix(&proposed_dir) {
+                        Ok(rest) => target_dir.join(rest).to_string_lossy().into_owned(),
+                        Err(_) => to.clone(),
+                    };
+                    (from.clone(), to)
+                })
                 .collect();
             let mut revised = FileChangeDto {
                 path: change.path.clone(),
@@ -2854,6 +2912,9 @@ impl App {
                 // A copy stays a copy (#383) — a chain run must never turn it
                 // into a move of the originals.
                 copy: change.copy,
+                // The anchor didn't move: a second cleanup, and the diff's
+                // "where does it go" line, still split the path at it.
+                rename_root: change.rename_root.clone(),
             };
             if renamed {
                 self.attach_sidecars(&mut revised);
@@ -2921,6 +2982,7 @@ impl App {
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
                 copy,
+                rename_root: Some(root.to_string_lossy().into_owned()),
             };
             self.attach_sidecars(&mut change);
             changes.push(change);
@@ -3019,6 +3081,7 @@ impl App {
                     sidecar_renames: Vec::new(),
                     block_changes: Vec::new(),
                     copy: false,
+                    rename_root: None,
                 });
             }
         }
@@ -3099,6 +3162,7 @@ impl App {
                     sidecar_renames: Vec::new(),
                     block_changes: Vec::new(),
                     copy: false,
+                    rename_root: None,
                 });
             }
         }
@@ -3154,6 +3218,7 @@ impl App {
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
                 copy: false,
+                rename_root: None,
             });
         }
         Ok(self.plan(PlanMessage::EmbedCover, Vec::new(), changes, false))
@@ -3201,6 +3266,7 @@ impl App {
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
                 copy: false,
+                rename_root: None,
             });
         }
         Ok(self.plan(
@@ -3324,6 +3390,7 @@ impl App {
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
                 copy: false,
+                rename_root: None,
             });
         }
         Ok(self.plan(PlanMessage::RemoveCover, Vec::new(), changes, false))
@@ -3368,6 +3435,7 @@ impl App {
                     new: None,
                 }],
                 copy: false,
+                rename_root: None,
             });
         }
         Ok(self.plan(
@@ -3521,6 +3589,7 @@ impl App {
                 sidecar_renames: Vec::new(),
                 block_changes,
                 copy: false,
+                rename_root: None,
             });
         }
 
@@ -4351,6 +4420,7 @@ impl App {
                     sidecar_renames: Vec::new(),
                     block_changes: Vec::new(),
                     copy: false,
+                    rename_root: None,
                 });
             }
         }
@@ -5651,7 +5721,8 @@ mod tests {
     // case that surfaced it: a file already named the way the chain writes
     // names (lower case, underscores). Restructuring it into a subfolder and
     // running that chain lands on its current name — which, with the folder
-    // dropped, read as a no-op and silently left the plan.
+    // dropped, read as a no-op and silently left the plan. #384: the folder the
+    // mask made is cleaned like the name; the file's own folder is not.
     #[test]
     fn a_chain_keeps_the_folder_a_rename_proposes() {
         let dir = TempDir::new("plan-cleanup-folder");
@@ -5682,11 +5753,11 @@ mod tests {
         assert_eq!(
             cleaned.changes.len(),
             1,
-            "the move into La Bush/ must survive"
+            "the move into la_bush/ must survive"
         );
         let expected = dir
             .0
-            .join("La Bush")
+            .join("la_bush")
             .join("the_x_factor_-_desert_rain.flac");
         assert_eq!(
             cleaned.changes[0].rename_to.as_deref(),
@@ -5696,12 +5767,14 @@ mod tests {
 
     // #383: a reorganize keeps what it was asked to be through a cleanup — a
     // copy stays a copy (never a move of the originals), a move still prunes,
-    // and the destination is the one picked, not the file's own folder.
+    // and the destination is the one picked, not the file's own folder. #384:
+    // the folder the mask made is cleaned; the picked destination — capitalised
+    // here so a lower-casing chain reaching above the mask would show — is not.
     #[test]
     fn a_chain_keeps_a_reorganize_a_copy_and_its_destination() {
         let dir = TempDir::new("plan-cleanup-copy");
         let library = dir.0.join("incoming");
-        let destination = dir.0.join("library");
+        let destination = dir.0.join("My Library");
         std::fs::create_dir_all(&library).unwrap();
         std::fs::create_dir_all(&destination).unwrap();
         let track = dir.tagged_flac_at("incoming/x.flac", "Autechre", "Gantz Graf");
@@ -5731,7 +5804,7 @@ mod tests {
                 cleaned.changes[0].rename_to.as_deref(),
                 Some(
                     destination
-                        .join("Autechre")
+                        .join("autechre")
                         .join("gantz graf.flac")
                         .to_string_lossy()
                         .as_ref()
@@ -5803,6 +5876,7 @@ mod tests {
                 sidecar_renames: Vec::new(),
                 block_changes: Vec::new(),
                 copy: false,
+                rename_root: None,
             }],
         };
         assert!(app.apply(&plan).is_err());
@@ -6592,6 +6666,46 @@ mod tests {
         assert!(dir.0.join("unsorted/cover art.jpg").exists());
         assert!(dir.0.join("unsorted/Scans/back.png").exists());
         assert!(!dir.0.join("Artist/rip.log").exists());
+    }
+
+    // #384: a chain that cleans the folder a reorganize creates takes the
+    // carried extras with it — they land beside the tracks in the cleaned
+    // folder, not in a second folder under the name the mask first rendered.
+    #[test]
+    fn carried_extras_follow_a_folder_the_chain_cleaned() {
+        let dir = TempDir::new("carry-cleaned");
+        let track = dir.tagged_flac_at("unsorted/a.flac", "The Artist", "Title");
+        std::fs::write(dir.0.join("unsorted/rip.log"), b"log").unwrap();
+        let mut app = open_app(&dir);
+
+        let staged = app
+            .preview_move(
+                "%artist%/%title%",
+                std::slice::from_ref(&track),
+                None,
+                false,
+                true,
+            )
+            .unwrap();
+        let cleaned = app
+            .preview_transform_over_plan(
+                &staged,
+                &[ActionGroupDto {
+                    name: "underscores".into(),
+                    scope: "filename".into(),
+                    rules: vec![replace_rule(" ", "_")],
+                    note: String::new(),
+                }],
+            )
+            .unwrap();
+        app.apply(&cleaned).unwrap();
+
+        assert!(dir.0.join("The_Artist/Title.flac").exists());
+        assert!(dir.0.join("The_Artist/rip.log").exists());
+        assert!(
+            !dir.0.join("The Artist").exists(),
+            "no stray folder under the uncleaned name"
+        );
     }
 
     #[test]
