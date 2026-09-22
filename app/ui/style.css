@@ -515,10 +515,14 @@ body.mac-overlay-titlebar .brand {
 .lib .path-recent:hover {
   color: var(--text);
 }
-/* The menu hangs off the whole box, and its rows read like the indicator. */
+/* The menu hangs off the whole box, and its rows read like the indicator.
+   Stretched to the box's own width (left: 0 alongside .col-menu's right: 0)
+   instead of shrink-to-fit — the box is most of the top row's width, so a
+   menu just wide enough for its own rows read narrow and off-center under
+   it, eliding paths a wider menu wouldn't have to. */
 #root-recent-menu {
+  left: 0;
   min-width: 260px;
-  max-width: 520px;
 }
 #root-recent-menu .recent-row {
   display: flex;
