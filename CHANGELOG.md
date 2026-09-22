@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The mode tabs (TAGGER/RENAMER/GENERATOR/DEDUPLICATOR/EXPORTER) are now
+  uniform width instead of each sized to its own label.** DEDUPLICATOR was
+  the widest, so the row read jagged; every tab is now that width, with
+  the icon and label centered in the box rather than hugging its left
+  edge. Labels also read a step bigger (12px to 13px). All platforms —
+  this is the tabs' own layout, not part of the macOS-only overlay title
+  bar below. (#369)
 - **On macOS, the brand sits beside the traffic lights instead of below
   them.** The window's title bar is now transparent and overlaid on the
   app's own top bar (`titleBarStyle: "Overlay"`), so there's no separate
