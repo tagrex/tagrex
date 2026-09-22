@@ -5173,7 +5173,7 @@ td[data-field="year"],
    configure something and closed again, and while it is open it deserves the
    space to show a chain of a dozen rules and the shelf to load them from. */
 .transform-modal {
-  max-width: 620px;
+  max-width: 680px;
   /* A CAP, not a height (#241): as tall as the chain needs, up to what the
      window allows. Setting both made every dialog 92vh, so two rules came with
      half a screen of nothing under them — the same waste the cap was raised to
@@ -5183,6 +5183,10 @@ td[data-field="year"],
      tell apart, and at the shared modal spacing an empty chain came out as more
      air than substance. */
   padding: var(--space-4);
+  /* The sides are wider than the top and bottom (#387): the right one is where
+     the body's scrollbar lives (see .transform-modal-body), and the left one
+     matches it so the chain sits centred. */
+  padding-inline: var(--space-6);
   gap: var(--space-2);
 }
 .panel-block.in-dialog {
@@ -5249,6 +5253,13 @@ td[data-field="year"],
 .transform-modal-body {
   min-height: 0;
   overflow-y: auto;
+  /* The scroller reaches into the dialog's right padding and keeps its content
+     out of it (#387). macOS draws its scrollbar OVER the content, and hovered
+     it widens to a ~15px track that covered the cards' right border and the
+     end of every row; out here it only ever covers the dialog's own margin,
+     while the content still lines up with the close button above it. */
+  margin-right: calc(-1 * var(--space-6));
+  padding-right: var(--space-6);
 }
 .transform-modal-body > .panel-block {
   margin: 0;

@@ -78,6 +78,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The transform dialog's scrollbar no longer covers the rule cards.** On
+  macOS it is drawn over the content, and hovered it widened into a track
+  that hid the cards' right border, the end of the replace-with fields and
+  the Clear rules button. It now sits in the dialog's own margin, with the
+  content still lined up under the close button, and the dialog is a little
+  wider (620px → 680px). (#387)
 - **RENAMER's button names what it previews from the moment the app
   starts.** With "Also move or copy into a different folder" left on from
   the last session, it read "Preview rename" after launch while actually
