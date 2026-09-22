@@ -2078,6 +2078,14 @@ body.show-checkbox tr.playing td.sel {
      inset moved inside each zone instead. */
   gap: 5px;
   padding: 5px 0;
+  /* #sb-play (just an icon button) stands in for #player (title + waveform)
+     while nothing is loaded, and is a good deal shorter — without a floor
+     here the whole bar shrank by ~19px the moment a track's row disappeared,
+     which reads as the window itself flexing rather than as content coming
+     and going. Reserves #player's own measured height so the bar never
+     shrinks: 5px padding + #player's 2px padding + .pl-main's stacked
+     title-line/waveform content (the tallest thing in the row, #380). */
+  min-height: 58px;
   font-size: 11px;
   background: var(--panel);
   border-top: 1px solid var(--border);
