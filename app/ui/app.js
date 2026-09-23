@@ -1449,8 +1449,22 @@ function toggleRecentMenu() {
   // `floating` is what neutralizes .col-menu's own absolute placement so the
   // inline offsets from placeFloating are the ones that count (#160).
   menu.classList.add("floating");
-  placeFloating(menu, el("root-box"), { align: "left" });
+  placeRecentMenu();
 }
+
+// The list is as wide as the path box it drops from (#407), not as wide as its
+// longest row: it belongs to that box, and a narrower one read as a separate
+// popup hanging off its left end.
+function placeRecentMenu() {
+  const box = el("root-box");
+  placeFloating(el("root-recent-menu"), box, {
+    align: "left",
+    width: box.getBoundingClientRect().width,
+  });
+}
+window.addEventListener("resize", () => {
+  if (!el("root-recent-menu").hidden) placeRecentMenu();
+});
 
 // ---- the library indicator and its one button (#177) ----
 //

@@ -102,6 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The recent-folders list is as wide as the path box it drops from**, not
+  as wide as its longest entry. (#407)
 - **RENAMER's reorganize options keep the panel's spacing.** Into, Files and
   the carry toggle under them stacked with no gap, while the toggles above
   sat 8px apart. (#406)
