@@ -247,6 +247,13 @@
               somewhere else.
             </p>
 
+            <!-- What else travels with a renamed track (#405): same-named files,
+                 for any rename. Here rather than in Settings because it changes
+                 the plan you are about to preview; the extensions it matches stay
+                 in Settings, set once. -->
+            <label class="rule-flag" data-i18n-title="settings.sidecarsHint" title="When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.">
+              <input id="carry-sidecars" type="checkbox" checked /><span data-i18n="renamer.carrySidecars">carry same-named files (lyrics, cue sheets…)</span>
+            </label>
             <label class="rule-flag" data-i18n-title="renamer.reorganizeToggleTitle" title="Move or copy the results to a different folder instead of renaming them where they already are">
               <input id="reorganize-toggle" type="checkbox" /><span data-i18n="renamer.reorganizeToggle">Also move or copy into a different folder</span>
             </label>
@@ -272,6 +279,11 @@
                   <input id="move-prune" type="checkbox" /><span data-i18n="renamer.prune">tidy up empty folders</span>
                 </label>
               </div>
+              <!-- Folder leftovers (#161, #405): only a move or copy out of a
+                   folder carries them, so the toggle lives with those options. -->
+              <label class="rule-flag carry-extras-flag" data-i18n-title="settings.extrasHint" title="When a reorganize takes every track out of a folder, whatever is left in it — a rip log, loose artwork, a Scans subfolder — travels to the same destination, so nothing is stranded and the folder can be tidied away. A folder that still holds other music, or tracks that scatter to several destinations, are left alone.">
+                <input id="carry-extras" type="checkbox" checked /><span data-i18n="renamer.carryExtras">carry the rest of the folder (art, rip log, scans)</span>
+              </label>
             </div>
 
             <div class="panel-actions">
@@ -975,16 +987,6 @@
 
           <div class="settings-group">
             <h3 data-i18n="settings.files">Files</h3>
-            <div class="settings-row">
-              <label for="set-carry-sidecars" data-i18n="settings.carrySidecars">Carry sidecar files</label>
-              <input id="set-carry-sidecars" type="checkbox" />
-            </div>
-            <p class="settings-hint" data-i18n="settings.sidecarsHint">When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.</p>
-            <div class="settings-row">
-              <label for="set-carry-extras" data-i18n="settings.carryExtras">Carry folder leftovers</label>
-              <input id="set-carry-extras" type="checkbox" />
-            </div>
-            <p class="settings-hint" data-i18n="settings.extrasHint">When a reorganize takes every track out of a folder, whatever is left in it — a rip log, loose artwork, a Scans subfolder — travels to the same destination, so nothing is stranded and the folder can be tidied away. A folder that still holds other music, or tracks that scatter to several destinations, are left alone.</p>
             <div class="settings-row col">
               <label for="set-sidecar-exts" data-i18n="settings.extensions">Extensions</label>
               <input id="set-sidecar-exts" type="text" class="mono" data-i18n-placeholder="settings.extensionsPlaceholder" placeholder="lrc cue txt jpg jpeg png" spellcheck="false" />

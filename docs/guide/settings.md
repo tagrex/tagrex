@@ -50,13 +50,11 @@ track. `0` disables resizing.
 
 ## Files
 
-**Carry sidecar files** — when a rename or move relocates a track, same-named
-files move with it, and undo restores them together. A file already sitting at
-the destination is never overwritten.
-
-**Extensions** — which sidecars count. Space- or comma-separated, without the
-dot, case-insensitive. The defaults cover lyrics, cue sheets and per-track cover
-images.
+**Same-named file extensions** — which same-named files travel with a renamed
+or moved track. Space- or comma-separated, without the dot, case-insensitive.
+The defaults cover lyrics, cue sheets and per-track cover images. Whether they
+travel at all, and whether the rest of a folder goes with its album, are
+checkboxes on the [RENAMER](renamer.md#sidecar-files) panel.
 
 ## Display
 

@@ -18,7 +18,7 @@ import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
 import "./js/tablegestures.js";
-import { scheduleMaskExample } from "./js/renamer.js";
+import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
 import { refreshDeduplicator, runDuplicateScan } from "./js/dedup.js";
 import {
@@ -2993,7 +2993,11 @@ populateGroupMenu();
 el("search-per-page").value = String(searchPerPage);
 // Load saved action groups (#57) from settings.json into the Groups popover.
 // The per-job chains become presets once the saved ones are in (#392).
-initActionGroups().then(migrateChains);
+initActionGroups().then(() => {
+  migrateChains();
+  // RENAMER's carry toggles show the saved settings (#405).
+  syncCarryToggles();
+});
 initBuiltinGroups();
 // Reflect saved filter-mode flags (#44) onto the toggles.
 syncFilterControls();

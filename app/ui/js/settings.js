@@ -285,8 +285,6 @@ async function openSettings() {
     // The separator is whitespace-significant ("; " is not ";"), so it goes
     // into the box verbatim and comes back verbatim — no trim anywhere (#46).
     el("set-multi-sep").value = s.multi_value_separator || "";
-    el("set-carry-sidecars").checked = s.carry_sidecars !== false;
-    el("set-carry-extras").checked = s.carry_folder_extras !== false;
     el("set-sidecar-exts").value = (s.sidecar_extensions && s.sidecar_extensions.length
       ? s.sidecar_extensions
       : DEFAULT_SIDECAR_EXTS
@@ -296,8 +294,6 @@ async function openSettings() {
     /* defaults already in the DOM */
     readPriority = PRIO_KEYS.slice();
     el("set-multi-sep").value = "";
-    el("set-carry-sidecars").checked = true;
-    el("set-carry-extras").checked = true;
     el("set-sidecar-exts").value = DEFAULT_SIDECAR_EXTS.join(" ");
     await renderImportFields([]);
   }
@@ -354,8 +350,6 @@ async function saveSettings() {
       cover_max_px: Math.max(0, parseInt(el("set-cover-max").value, 10) || 0),
       cover_quality: Math.min(100, Math.max(1, parseInt(el("set-cover-quality").value, 10) || 85)),
       action_groups: actionGroups,
-      carry_sidecars: el("set-carry-sidecars").checked,
-      carry_folder_extras: el("set-carry-extras").checked,
       sidecar_extensions: parseSidecarExts(el("set-sidecar-exts").value),
       import_skip_fields: importSkipFromForm(),
       import_cover: importCoverChoice,

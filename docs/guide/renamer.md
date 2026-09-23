@@ -42,9 +42,24 @@ When a rename or move relocates a track, same-named files travel with it: `.lrc`
 lyrics, `.cue` sheets, per-track cover images. They are part of the same batch,
 so undo restores them together with the track.
 
-This is on by default and configurable — which extensions count is in
+It is on by default and switched with **carry same-named files** on the RENAMER
+panel, right above the reorganize toggle; which extensions count is in
 [Settings › Files](settings.md#files). A file already sitting at the destination
 is never overwritten.
+
+## The rest of the folder
+
+When a move or copy takes **every** track out of a folder, and they all land in
+the same destination, whatever else is in that folder goes with them — loose
+artwork, a rip log, a `Scans` subfolder — so nothing is stranded and **tidy up
+empty folders** can remove the folder. The destination's header in the preview
+says how many files come along and names them. A folder that still holds other
+music, or tracks that scatter to several destinations, is left alone.
+
+This is **carry the rest of the folder**, among the reorganize options. The
+operating system's own bookkeeping files (`.DS_Store`, `._*`, `Thumbs.db`,
+`desktop.ini`) are never carried, and don't keep an emptied folder from being
+tidied away.
 
 ## Order of operations
 

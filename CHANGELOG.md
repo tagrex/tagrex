@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **RENAMER has its own switches for what travels with a track.** "Carry
+  same-named files" (lyrics, cue sheets, per-track covers) sits above the
+  reorganize toggle, and "carry the rest of the folder" among the reorganize
+  options, next to "tidy up empty folders" — they used to be buried in
+  Settings, away from the preview they change. Settings keeps the list of
+  extensions. (#405)
 - **Presets are ticked, not copied into a chain.** The dialog behind the wand
   is now a checklist of every preset: what is ticked runs as part of importing
   a release, reading tags from file names, renaming and GENERATOR's Preview

@@ -15,9 +15,11 @@ import { hooks } from "./hooks.js";
 import {
   previewPlan,
   previewSource,
+  savedSettings,
   selectedPaths,
   setPreviewPlan,
   setPreviewSource,
+  setSavedSettings,
 } from "./state.js";
 
 // The destination, mode, and whether reorganizing is even on are working
@@ -160,6 +162,29 @@ function setDestination(path) {
   scheduleMaskExample();
 }
 
+// ---- what travels with a track (#405) ----
+// Same-named files and a folder's leftovers are backend settings (they change
+// what a plan carries), set here because this is where that plan is made. The
+// panel writes them straight to settings.json, the same file Settings saves.
+async function setCarry(key, on) {
+  setSavedSettings({ ...savedSettings, [key]: on });
+  try {
+    await invoke("save_settings", { settings: savedSettings });
+  } catch (e) {
+    toast(String(e), true);
+    return;
+  }
+  scheduleMaskExample();
+  // A staged rename was built with the old setting; build it again.
+  if (previewSource === "rename" && previewPlan?.changes.length) preview();
+}
+
+// Show the saved values once settings.json is loaded (app.js calls this).
+function syncCarryToggles() {
+  el("carry-sidecars").checked = savedSettings.carry_sidecars !== false;
+  el("carry-extras").checked = savedSettings.carry_folder_extras !== false;
+}
+
 // ---- live single-file example (#382) ----
 // The read-out under the mask: what it renders for the first selected file,
 // the same idea as FROM NAME's own probe (extraction rather than rendering,
@@ -234,6 +259,8 @@ el("move-mode").addEventListener("click", (e) => {
   const btn = e.target.closest(".seg-btn");
   if (btn) setMoveMode(btn.dataset.moveMode);
 });
+el("carry-sidecars").addEventListener("change", (e) => setCarry("carry_sidecars", e.target.checked));
+el("carry-extras").addEventListener("change", (e) => setCarry("carry_folder_extras", e.target.checked));
 el("move-prune").addEventListener("change", () => {
   writeStored(MOVE_PRUNE_STORAGE_KEY, el("move-prune").checked ? "1" : "");
   scheduleMaskExample();
@@ -256,4 +283,4 @@ onChainChanged("renamer", () => {
   if (previewSource === "rename" && previewPlan?.changes.length) preview();
 });
 
-export { scheduleMaskExample };
+export { scheduleMaskExample, syncCarryToggles };
