@@ -923,3 +923,29 @@ fn sidecar_never_overwrites_an_existing_target() {
 
     std::fs::remove_dir_all(dir.path()).ok();
 }
+
+#[test]
+fn os_bookkeeping_files_are_recognised_by_name() {
+    // #404: what a move neither carries nor lets keep an emptied folder alive.
+    use tagrex_core::plan::is_os_junk;
+    for junk in [
+        ".DS_Store",
+        "._01 track.flac",
+        "Thumbs.db",
+        "thumbs.db",
+        "desktop.ini",
+        "Desktop.ini",
+        "ehthumbs.db",
+    ] {
+        assert!(is_os_junk(Path::new(junk)), "{junk}");
+    }
+    for real in [
+        "folder.jpg",
+        ".hidden-notes",
+        "DS_Store",
+        "rip.log",
+        "Scans",
+    ] {
+        assert!(!is_os_junk(Path::new(real)), "{real}");
+    }
+}

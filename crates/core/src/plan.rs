@@ -527,11 +527,65 @@ fn prune_emptied_dirs(plan: &ChangePlan, roots: &[PathBuf], created: &[PathBuf])
         if created.contains(&dir) {
             continue;
         }
-        if std::fs::remove_dir(&dir).is_ok() {
+        // A folder the batch emptied of everything the user keeps may still
+        // hold the OS's own bookkeeping (#404) — a `.DS_Store` Finder wrote
+        // while it was open. That is not content, and it is not carried either,
+        // so it goes with the folder instead of keeping it from being tidied.
+        if clear_os_junk(&dir) && std::fs::remove_dir(&dir).is_ok() {
             removed.push(dir);
         }
     }
     removed
+}
+
+/// Whether `path` is a file the OS writes into folders for its own bookkeeping
+/// (#404): Finder's `.DS_Store` and AppleDouble `._*` companions, Windows'
+/// `Thumbs.db`, `ehthumbs.db` and `desktop.ini`. None of it is the user's —
+/// each is rewritten by the OS on demand — so a move neither carries it nor
+/// lets it keep an emptied folder from being removed.
+pub fn is_os_junk(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    name == ".DS_Store"
+        || name.starts_with("._")
+        || name.eq_ignore_ascii_case("Thumbs.db")
+        || name.eq_ignore_ascii_case("ehthumbs.db")
+        || name.eq_ignore_ascii_case("desktop.ini")
+}
+
+/// Delete `dir`'s OS bookkeeping files if that is all it holds, recursing into
+/// subfolders that hold nothing else either, and report whether `dir` is empty
+/// now. A folder with anything real in it is left exactly as it was.
+fn clear_os_junk(dir: &Path) -> bool {
+    fn only_junk(dir: &Path) -> bool {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return false;
+        };
+        entries.flatten().all(|entry| {
+            let path = entry.path();
+            if path.is_dir() {
+                only_junk(&path)
+            } else {
+                is_os_junk(&path)
+            }
+        })
+    }
+    if !only_junk(dir) {
+        return false;
+    }
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            std::fs::remove_dir_all(&path).ok();
+        } else {
+            std::fs::remove_file(&path).ok();
+        }
+    }
+    true
 }
 
 /// Resolve `path` (following symlinks, collapsing `..`) and require the result

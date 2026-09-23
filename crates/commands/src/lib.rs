@@ -4535,6 +4535,11 @@ fn collect_folder_extras(
         if claimed.contains(&path) || moving.contains(&path) {
             continue;
         }
+        // The OS's own bookkeeping (#404) isn't the user's: it isn't carried,
+        // and pruning clears it with the folder it was left in.
+        if tagrex_core::plan::is_os_junk(&path) {
+            continue;
+        }
         let Ok(relative) = path.strip_prefix(root) else {
             continue;
         };
@@ -6698,6 +6703,10 @@ mod tests {
         std::fs::write(dir.0.join("unsorted/Scans/back.png"), b"scan").unwrap();
         // The track's own sidecar, to tell apart from the folder's leftovers.
         std::fs::write(dir.0.join("unsorted/a.lrc"), b"lyrics").unwrap();
+        // OS bookkeeping (#404): neither carried nor counted, yet it must not
+        // keep the emptied folder — or its Scans subfolder — from being pruned.
+        std::fs::write(dir.0.join("unsorted/.DS_Store"), b"finder").unwrap();
+        std::fs::write(dir.0.join("unsorted/Scans/Thumbs.db"), b"thumbs").unwrap();
         let mut app = open_app(&dir);
 
         let plan = app
@@ -6739,6 +6748,8 @@ mod tests {
         assert!(dir.0.join("Artist/Scans/back.png").exists());
         // And the emptied folder is pruned, which is the point of carrying.
         assert!(!dir.0.join("unsorted").exists());
+        assert!(!dir.0.join("Artist/.DS_Store").exists());
+        assert!(!dir.0.join("Artist/Scans/Thumbs.db").exists());
 
         // Undo puts all of it back — the carried files ride as sidecars, so they
         // are journaled and restored by the machinery that already does that,

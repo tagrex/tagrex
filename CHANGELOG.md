@@ -96,6 +96,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **System files like `.DS_Store` are no longer carried along, and no longer
+  keep an emptied folder from being tidied away.** Finder's hidden bookkeeping
+  file travelled with an album as an extra file nobody could see, and left
+  behind it would have blocked "tidy up empty folders"; it is now skipped
+  and removed with the folder (also `._*`, `Thumbs.db`, `desktop.ini`). (#404)
 - **A folder's leftovers are shown on the folder they go to, not as the first
   track's sidecars.** Loose art, a rip log or a Scans folder carried along
   with an album appeared as "+N sidecars" on whichever track came first. The
