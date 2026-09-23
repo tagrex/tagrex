@@ -123,7 +123,6 @@
   --fw-bold: 700;
   --ls-caps: 0.6px;
   --ls-caps-tight: 0.4px;
-  --ls-brand: 0.5px;
 
   /* spacing scale: core 4 / 6 / 8 / 10 / 14 (+ block & empty-state) */
   --space-1: 4px;
@@ -375,13 +374,20 @@ select,
   background: var(--border);
 }
 
+/* The wordmark (#401) is the repo's own outlines, not text in the UI font: it
+   always inherited whatever the UI sans was, so the app's logo drifted from the
+   one on GitHub. Sized as the 20px text it replaces — the outlines are drawn at
+   100 units per em and cropped to the glyphs, 93.61 units from the top of the
+   slash to the bottom of the g. */
 .brand {
-  /* --text-lg (15px) plus 5px — a shared token would nudge every other use
-     of --text-lg too, so this is its own explicit size. */
-  font-size: 20px;
-  font-weight: var(--fw-bold);
-  letter-spacing: var(--ls-brand);
+  flex: none;
+  display: flex;
   color: var(--accent-ink);
+}
+.brand svg {
+  display: block;
+  height: calc(20px * 0.9361);
+  width: auto;
 }
 
 /* Overlay title bar (#362): the traffic lights float over the page instead
@@ -405,17 +411,18 @@ body.mac-overlay-titlebar .brand {
      this the first time left a visibly wider gap here than the
      brand-to-tabs one. */
   margin-left: 76px;
-  /* align-items: center on .topbar-main centers the wordmark's full line
-     box, descender included, but "tagrex" has only one (the g) — most of
-     the glyphs sit above the baseline, so the bounding box reads visibly
-     lower than the lights' own center. -2px (#379, splitting the
-     difference against an initial -4px) undershot: overlaying a line at
-     the lights' own true center (read from the Accessibility API, not
-     eyeballed — 24pt from the window's top edge) on a screenshot at -2px
-     still crossed through the thin top of the letters rather than their
-     x-height mass. -3px reads centered against that same reference (#381). */
-  position: relative;
-  top: -3px;
+  /* What has to sit on the lights' center is the middle of the slashes'
+     height — the line the eye reads; the g's tail hangs below it (#401).
+     Centered by align-items: center on .topbar-main, that middle lands a
+     quarter point low, and a quarter point is below what `top` can move:
+     WebKit snaps a positioned box to the device pixel (half a point on a 2x
+     screen), so -0.25px rendered exactly like 0 and -0.5px a quarter point
+     high. A transform isn't snapped — the outlines are drawn antialiased at
+     the fractional offset — and measured on a capture of the app's own window
+     it puts the slashes at 15.5–32.5pt, middle 24.0, on the lights' 17–31pt,
+     middle 24.0. The -3px this replaces was tuned for the old text line box
+     (#379, #381) and sat the wordmark ~2px high. */
+  transform: translateY(-0.25px);
 }
 
 .lib {
