@@ -4614,6 +4614,18 @@ td[data-field="year"],
 #move-dest:not(:placeholder-shown) {
   color: var(--text);
 }
+/* The reorganize options (#153, #405) are rows of the panel like the ones
+   around them, so they keep the panel block's own 8px rhythm. As a plain block
+   they stacked flush — Into, Files and the carry toggle touching — while the
+   toggles above them sat 8px apart. */
+#reorganize-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#reorganize-options[hidden] {
+  display: none;
+}
 .move-mode-row {
   flex-wrap: wrap;
 }

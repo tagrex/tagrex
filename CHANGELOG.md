@@ -102,6 +102,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **RENAMER's reorganize options keep the panel's spacing.** Into, Files and
+  the carry toggle under them stacked with no gap, while the toggles above
+  sat 8px apart. (#406)
 - **System files like `.DS_Store` are no longer carried along, and no longer
   keep an emptied folder from being tidied away.** Finder's hidden bookkeeping
   file travelled with an album as an extra file nobody could see, and left
