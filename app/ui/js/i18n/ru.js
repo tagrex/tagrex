@@ -16,6 +16,7 @@ export const ru = {
   // ---- units that appear inside other messages ----
   "unit.track": { one: "{n} трек", few: "{n} трека", many: "{n} треков" },
   "unit.file": { one: "{n} файл", few: "{n} файла", many: "{n} файлов" },
+  "unit.folderFile": { one: "{n} файл из папки", few: "{n} файла из папки", many: "{n} файлов из папки" },
   "unit.playlist": { one: "{n} плейлист", few: "{n} плейлиста", many: "{n} плейлистов" },
 
   // ---- shared, and the panels other than EXPORTER ----

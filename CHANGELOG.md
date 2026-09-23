@@ -96,6 +96,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A folder's leftovers are shown on the folder they go to, not as the first
+  track's sidecars.** Loose art, a rip log or a Scans folder carried along
+  with an album appeared as "+N sidecars" on whichever track came first. The
+  destination header now says "+ N files from the folder" and names them, and
+  a track's badge counts only its own same-named files. (#403)
 - **RENAMER remembers its mask across restarts.** A relaunch put the default
   `%artist% - %title%` back instead of the pattern last used, although FROM
   NAME and RENAMER's own reorganize options were already remembered. (#402)

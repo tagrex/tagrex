@@ -2614,6 +2614,13 @@ td.group-cell {
   color: var(--muted);
 }
 
+/* What else comes from the source folder (#403): named in the tooltip. */
+.group-extras {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+  cursor: help;
+}
+
 .group-new {
   margin-left: 8px;
   padding: 1px 6px;

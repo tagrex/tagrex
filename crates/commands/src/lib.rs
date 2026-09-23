@@ -343,6 +343,13 @@ pub struct FileChangeDto {
     /// exactly what a preview grouped by destination needs to say.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub creates_folder: bool,
+    /// Which of `sidecar_renames` are folder leftovers rather than this
+    /// track's own sidecars (#403), by source path. They travel as sidecar
+    /// pairs — so they are moved, journaled and undone by the same machinery —
+    /// but they belong to the folder, not to the track they happen to ride on,
+    /// and the preview says so on the destination rather than on one row.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub folder_extras: Vec<String>,
 }
 
 /// Whether the folder `target` would land in is not on disk yet (#385).
@@ -2194,6 +2201,9 @@ impl App {
             };
             for (source, relative) in extras {
                 claimed.insert(source.clone());
+                changes[first]
+                    .folder_extras
+                    .push(source.to_string_lossy().into_owned());
                 changes[first].sidecar_renames.push((
                     source.to_string_lossy().into_owned(),
                     destination.join(relative).to_string_lossy().into_owned(),
@@ -2338,6 +2348,7 @@ impl App {
                 copy: false,
                 rename_root: Some(root.to_string_lossy().into_owned()),
                 creates_folder: creates_folder(&target),
+                folder_extras: Vec::new(),
             };
             self.attach_sidecars(&mut change);
             changes.push(change);
@@ -2429,6 +2440,7 @@ impl App {
                 copy: false,
                 rename_root: None,
                 creates_folder: false,
+                folder_extras: Vec::new(),
             });
         }
         Ok(self.plan(
@@ -2531,6 +2543,7 @@ impl App {
                     copy: false,
                     rename_root: None,
                     creates_folder: false,
+                    folder_extras: Vec::new(),
                 };
                 self.attach_sidecars(&mut change);
                 changes.push(change);
@@ -2570,6 +2583,7 @@ impl App {
                     copy: false,
                     rename_root: None,
                     creates_folder: false,
+                    folder_extras: Vec::new(),
                 };
                 self.attach_sidecars(&mut change);
                 changes.push(change);
@@ -2602,6 +2616,7 @@ impl App {
                     copy: false,
                     rename_root: None,
                     creates_folder: false,
+                    folder_extras: Vec::new(),
                 });
             }
         }
@@ -2724,6 +2739,7 @@ impl App {
                 copy: false,
                 rename_root: None,
                 creates_folder: false,
+                folder_extras: Vec::new(),
             };
             if renamed {
                 self.attach_sidecars(&mut change);
@@ -2932,10 +2948,14 @@ impl App {
                 // "where does it go" line, still split the path at it.
                 rename_root: change.rename_root.clone(),
                 creates_folder: renamed && creates_folder(&target),
+                folder_extras: Vec::new(),
             };
             if renamed {
                 self.attach_sidecars(&mut revised);
                 revised.sidecar_renames.extend(extras);
+                // Still the folder's, not the track's (#403): the marker is by
+                // source path, which the re-basing above leaves unchanged.
+                revised.folder_extras = change.folder_extras.clone();
             }
             changes.push(revised);
         }
@@ -3001,6 +3021,7 @@ impl App {
                 copy,
                 rename_root: Some(root.to_string_lossy().into_owned()),
                 creates_folder: creates_folder(&target),
+                folder_extras: Vec::new(),
             };
             self.attach_sidecars(&mut change);
             changes.push(change);
@@ -3101,6 +3122,7 @@ impl App {
                     copy: false,
                     rename_root: None,
                     creates_folder: false,
+                    folder_extras: Vec::new(),
                 });
             }
         }
@@ -3183,6 +3205,7 @@ impl App {
                     copy: false,
                     rename_root: None,
                     creates_folder: false,
+                    folder_extras: Vec::new(),
                 });
             }
         }
@@ -3240,6 +3263,7 @@ impl App {
                 copy: false,
                 rename_root: None,
                 creates_folder: false,
+                folder_extras: Vec::new(),
             });
         }
         Ok(self.plan(PlanMessage::EmbedCover, Vec::new(), changes, false))
@@ -3289,6 +3313,7 @@ impl App {
                 copy: false,
                 rename_root: None,
                 creates_folder: false,
+                folder_extras: Vec::new(),
             });
         }
         Ok(self.plan(
@@ -3414,6 +3439,7 @@ impl App {
                 copy: false,
                 rename_root: None,
                 creates_folder: false,
+                folder_extras: Vec::new(),
             });
         }
         Ok(self.plan(PlanMessage::RemoveCover, Vec::new(), changes, false))
@@ -3460,6 +3486,7 @@ impl App {
                 copy: false,
                 rename_root: None,
                 creates_folder: false,
+                folder_extras: Vec::new(),
             });
         }
         Ok(self.plan(
@@ -3615,6 +3642,7 @@ impl App {
                 copy: false,
                 rename_root: None,
                 creates_folder: false,
+                folder_extras: Vec::new(),
             });
         }
 
@@ -4447,6 +4475,7 @@ impl App {
                     copy: false,
                     rename_root: None,
                     creates_folder: false,
+                    folder_extras: Vec::new(),
                 });
             }
         }
@@ -5904,6 +5933,7 @@ mod tests {
                 copy: false,
                 rename_root: None,
                 creates_folder: false,
+                folder_extras: Vec::new(),
             }],
         };
         assert!(app.apply(&plan).is_err());
@@ -6666,6 +6696,8 @@ mod tests {
         std::fs::write(dir.0.join("unsorted/cover art.jpg"), b"art").unwrap();
         std::fs::create_dir_all(dir.0.join("unsorted/Scans")).unwrap();
         std::fs::write(dir.0.join("unsorted/Scans/back.png"), b"scan").unwrap();
+        // The track's own sidecar, to tell apart from the folder's leftovers.
+        std::fs::write(dir.0.join("unsorted/a.lrc"), b"lyrics").unwrap();
         let mut app = open_app(&dir);
 
         let plan = app
@@ -6677,6 +6709,27 @@ mod tests {
             "the preview must say what it carries: {}",
             plan.description
         );
+        // #403: all four travel as sidecar pairs, but only the three leftovers
+        // are marked as the folder's; the .lrc is the track's own.
+        let change = &plan.changes[0];
+        assert_eq!(change.sidecar_renames.len(), 4);
+        let mut extras: Vec<String> = change
+            .folder_extras
+            .iter()
+            .map(|path| {
+                Path::new(path)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        extras.sort();
+        assert_eq!(extras, vec!["back.png", "cover art.jpg", "rip.log"]);
+        assert!(change
+            .folder_extras
+            .iter()
+            .all(|path| change.sidecar_renames.iter().any(|(from, _)| from == path)));
         app.apply(&plan).unwrap();
 
         assert!(dir.0.join("Artist/Title.flac").exists());
@@ -6729,6 +6782,9 @@ mod tests {
                 }],
             )
             .unwrap();
+        // Still marked as the folder's after the chain re-based it (#403).
+        assert_eq!(cleaned.changes[0].folder_extras.len(), 1);
+        assert!(cleaned.changes[0].folder_extras[0].ends_with("rip.log"));
         app.apply(&cleaned).unwrap();
 
         assert!(dir.0.join("The_Artist/Title.flac").exists());

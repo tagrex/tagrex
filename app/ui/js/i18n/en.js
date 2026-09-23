@@ -16,6 +16,7 @@ export const en = {
   // ---- units that appear inside other messages ----
   "unit.track": { one: "{n} track", other: "{n} tracks" },
   "unit.file": { one: "{n} file", other: "{n} files" },
+  "unit.folderFile": { one: "{n} file from the folder", other: "{n} files from the folder" },
   "unit.playlist": { one: "{n} playlist", other: "{n} playlists" },
 
   // ---- shared, and the panels other than EXPORTER ----

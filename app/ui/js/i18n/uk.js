@@ -17,6 +17,7 @@ export const uk = {
   // ---- units that appear inside other messages ----
   "unit.track": { one: "{n} трек", few: "{n} треки", many: "{n} треків" },
   "unit.file": { one: "{n} файл", few: "{n} файли", many: "{n} файлів" },
+  "unit.folderFile": { one: "{n} файл із теки", few: "{n} файли з теки", many: "{n} файлів із теки" },
   "unit.playlist": { one: "{n} плейлист", few: "{n} плейлисти", many: "{n} плейлистів" },
 
   // ---- shared, and the panels other than EXPORTER ----

@@ -593,7 +593,12 @@ function diffFileCellHtml(change, track) {
     : "";
   // Sidecars travelling with this rename/move (#58): a count badge, each pair
   // named in the tooltip so the plan is honest about what else will move.
-  const sc = change.sidecar_renames && change.sidecar_renames.length ? change.sidecar_renames : null;
+  // Only the track's own: folder leftovers ride on one of a folder's changes
+  // but belong to the folder, and the destination header counts them (#403).
+  const own = (change.sidecar_renames || []).filter(
+    ([from]) => !(change.folder_extras || []).includes(from),
+  );
+  const sc = own.length ? own : null;
   const scBadge = sc
     ? `<span class="fsidecars" title="${escapeHtml(
         sc.map(([from, to]) => `${fileName(from)}  →  ${fileName(to)}`).join("\n")
@@ -622,10 +627,17 @@ function buildGroupHeader(key, count) {
       ? `<span class="group-arrow">→</span><span class="group-label" title="${escapeHtml(dest.dir)}">${escapeHtml(dest.label)}</span>` +
         (dest.createsFolder ? `<span class="group-new">${escapeHtml(msg("diff.newFolder"))}</span>` : "")
       : `<span class="group-label unchanged">${escapeHtml(msg("diff.unchangedGroup"))}</span>`;
+    // What else comes along from the source folder (#403): the rip log, loose
+    // art, a Scans subfolder — named in the tooltip, below the destination.
+    const extras = dest && dest.extras.length
+      ? ` <span class="group-extras muted" title="${escapeHtml(
+          dest.extras.map((to) => (to.startsWith(dest.dir) ? to.slice(dest.dir.length + 1) : to)).join("\n"),
+        )}">+ ${escapeHtml(tn("unit.folderFile", dest.extras.length))}</span>`
+      : "";
     tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
       <span class="group-caret">${collapsed ? ico("chevron-right") : ico("caret-down")}</span>
       ${label}
-      <span class="group-count muted">· ${escapeHtml(tn("unit.file", count))}</span>
+      <span class="group-count muted">· ${escapeHtml(tn("unit.file", count))}${extras}</span>
     </td>`;
     return tr;
   }
@@ -793,11 +805,15 @@ function buildViewModel() {
         const dir = diffDir(change.rename_to);
         key = DEST_GROUP_PREFIX + dir;
         if (!destGroups.has(key)) {
-          destGroups.set(key, { dir, root: change.rename_root || null, inPlace: true, createsFolder: false });
+          destGroups.set(key, { dir, root: change.rename_root || null, inPlace: true, createsFolder: false, extras: [] });
           destOrder.push(key);
         }
         const info = destGroups.get(key);
         if (change.creates_folder) info.createsFolder = true;
+        // The folder's leftovers travelling here (#403), as their target paths.
+        for (const [from, to] of change.sidecar_renames || []) {
+          if ((change.folder_extras || []).includes(from)) info.extras.push(to);
+        }
         if (!info.root || diffDir(change.path) !== info.root.replace(/[\\/]+$/, "")) info.inPlace = false;
       } else {
         // One group, whatever the grouping: its folder or artist would only
