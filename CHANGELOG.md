@@ -108,6 +108,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **ONLINE's query suggestions are as wide as the search box they drop
+  from**, like the recent-folders list. (#408)
 - **The recent-folders list is as wide as the path box it drops from**, not
   as wide as its longest entry. (#407)
 - **RENAMER's reorganize options keep the panel's spacing.** Into, Files and

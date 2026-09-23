@@ -1900,11 +1900,11 @@ body:not(.show-checkbox) #tracks td.sel {
 .query .query-presets:focus-visible {
   box-shadow: none;
 }
-/* The menu hangs off the whole box, and a row leads with the query itself —
-   the source is the hint, not the heading. */
+/* The menu hangs off the whole box — as wide as it, set when it opens (#408);
+   the floor is for a very narrow panel — and a row leads with the query
+   itself: the source is the hint, not the heading. */
 #query-preset-menu {
   min-width: 240px;
-  max-width: 460px;
 }
 .query-row {
   display: flex;

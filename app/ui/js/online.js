@@ -462,8 +462,21 @@ function toggleQueryPresets() {
   // `floating` neutralizes .col-menu's own absolute placement so the inline
   // offsets from placeFloating are the ones that count (#160).
   menu.classList.add("floating");
-  placeFloating(menu, el("query-box"), { align: "left" });
+  placeQueryPresets();
 }
+
+// As wide as the query box it drops from (#408), the way the recent-folders
+// list follows the path box (#407), not as wide as its longest suggestion.
+function placeQueryPresets() {
+  const box = el("query-box");
+  placeFloating(el("query-preset-menu"), box, {
+    align: "left",
+    width: box.getBoundingClientRect().width,
+  });
+}
+window.addEventListener("resize", () => {
+  if (!el("query-preset-menu").hidden) placeQueryPresets();
+});
 
 // The catalogue-number + track-count match key as one segmented badge (#124):
 // a single unified border wraps both, the catalogue segment accent-filled and
