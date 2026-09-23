@@ -847,6 +847,16 @@
                 <button id="pe-clear" class="btn" type="button" hidden data-i18n="generator.clearRules">Clear rules</button>
               </div>
             </fieldset>
+            <!-- What the open preset does (#394): a sample and what the rules make
+                 of it, one line per target the preset has rules for. Outside the
+                 fieldset so a read-only built-in can be tried out too. -->
+            <div class="pe-sample">
+              <label class="pe-sample-row">
+                <span class="pe-sample-label" data-i18n="presets.sample">Try it on</span>
+                <input id="pe-sample-input" type="text" spellcheck="false" autocomplete="off" />
+              </label>
+              <div id="pe-sample-out" class="pe-sample-out" aria-live="polite"></div>
+            </div>
           </div>
         </div>
       </div>

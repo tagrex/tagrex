@@ -5020,6 +5020,34 @@ pub fn builtin_action_groups() -> Vec<ActionGroupDto> {
     ]
 }
 
+/// Run a preset's rules over one sample string, for the preset editor's live
+/// "sample → result" line (#394). `target` is `"filename"` for the rules aimed
+/// at the file name, anything else for the ones aimed at tags; the other
+/// rules, and the extension's, don't touch the sample. Built through the same
+/// [`build_segments`] a real run uses, so the example can never disagree with
+/// what a rename or an import would do — and a rule that fails to build (a bad
+/// regex) is an error here too, not a silently unchanged sample.
+pub fn transform_sample(
+    group: &ActionGroupDto,
+    text: &str,
+    target: &str,
+) -> Result<String, AppError> {
+    let file_target = target == "filename";
+    let mut out = text.to_string();
+    for (scope, chain) in build_segments(group)? {
+        let file_scope = scope == "filename" || scope == "fileext";
+        let applies = if file_target {
+            scope == "filename"
+        } else {
+            !file_scope
+        };
+        if applies {
+            out = chain.apply(&out);
+        }
+    }
+    Ok(out)
+}
+
 /// Turn the UI's rule list into a transform chain, rejecting a malformed rule
 /// rather than silently dropping it — a rule that quietly does nothing is worse
 /// than an error, because the preview would look like a no-op.
@@ -6294,6 +6322,54 @@ mod tests {
     // catalogue number while title-casing everything else. Consecutive rules
     // that agree collapse into one segment, and a group whose rules name nothing
     // is the single segment it always was.
+    #[test]
+    fn transform_sample_runs_only_the_rules_aimed_at_the_target() {
+        // #394: the FTP format preset over a file name, and a mixed preset
+        // whose tag and file-name rules each reach only their own line.
+        let ftp = builtin_action_groups()
+            .into_iter()
+            .find(|group| group.name == "FTP format")
+            .unwrap();
+        assert_eq!(
+            transform_sample(&ftp, "Björk — Jóga (12\" Mix)", "filename").unwrap(),
+            "Bjork_Joga_(12_Mix)"
+        );
+        // Nothing in it is aimed at tags, so a tag sample comes back as is.
+        assert_eq!(
+            transform_sample(&ftp, "Björk — Jóga", "tags").unwrap(),
+            "Björk — Jóga"
+        );
+
+        let mut upper = replace_rule(" ", "_");
+        upper.scope = Some("filename".into());
+        let mut dash = replace_rule(" - ", " ");
+        dash.scope = Some("title".into());
+        let mixed = ActionGroupDto {
+            name: "mixed".into(),
+            scope: "tags".into(),
+            rules: vec![dash, upper],
+            note: String::new(),
+        };
+        assert_eq!(transform_sample(&mixed, "A - B", "tags").unwrap(), "A B");
+        assert_eq!(
+            transform_sample(&mixed, "A - B", "filename").unwrap(),
+            "A_-_B"
+        );
+    }
+
+    #[test]
+    fn transform_sample_reports_a_rule_that_fails_to_build() {
+        let mut bad = replace_rule("([unclosed", "x");
+        bad.regex = true;
+        let group = ActionGroupDto {
+            name: "bad".into(),
+            scope: "tags".into(),
+            rules: vec![bad],
+            note: String::new(),
+        };
+        assert!(transform_sample(&group, "anything", "tags").is_err());
+    }
+
     #[test]
     fn build_segments_splits_a_group_where_its_rules_disagree() {
         let rule = |style: &str, scope: Option<&str>| TransformRuleDto {

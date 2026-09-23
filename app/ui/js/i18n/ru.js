@@ -332,6 +332,8 @@ export const ru = {
   "presets.deleteConfirm": "Удалить пресет «{name}»?",
   "presets.nameTaken": "Пресет «{name}» уже есть",
   "presets.nameEmpty": "У пресета должно быть имя",
+  "presets.sample": "Проверить на",
+  "presets.sampleNoRules": "Добавьте правило, чтобы увидеть, что оно сделает с примером.",
   "presets.target.tags": "теги",
   "presets.target.file": "имя файла",
   "presets.target.both": "теги и имя файла",

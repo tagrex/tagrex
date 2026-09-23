@@ -10,8 +10,9 @@
 // read-only here, and Duplicate is how one becomes yours to change. Your own
 // presets save as you go — on switching to another preset, on closing, and on
 // quit — so there is no Save button to forget.
-import { confirmDialog, el, toast } from "./dom.js";
+import { confirmDialog, el, fileName, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
+import { invoke } from "./invoke.js";
 import {
   createRuleChain,
   persistActionGroups,
@@ -19,7 +20,7 @@ import {
   ruleForGroup,
   uniquePresetName,
 } from "./chain.js";
-import { actionGroups, builtinGroups, setActionGroups } from "./state.js";
+import { actionGroups, builtinGroups, selectedPaths, setActionGroups, tracks } from "./state.js";
 
 const chain = createRuleChain({
   ids: {
@@ -111,6 +112,81 @@ function select(name, builtin) {
   el("pe-edit-col").hidden = !group;
   chain.load(group || { rules: [] });
   renderList();
+  // A sample the user typed stays; the default follows the preset (#394).
+  if (!sampleTyped) el("pe-sample-input").value = defaultSample();
+  scheduleSample();
+}
+
+// ---- the live example (#394) ----
+// Which targets the open preset's rules aim at: the file name, tags, or both.
+// A rule on the extension alone gets no line — there is no stem to show it on.
+function sampleTargets() {
+  const scopes = chain.asGroup().rules.map((r) => r.scope || "tags");
+  const targets = [];
+  if (scopes.some((sc) => sc !== "filename" && sc !== "fileext")) targets.push("tags");
+  if (scopes.includes("filename")) targets.push("filename");
+  return targets;
+}
+
+// Something worth trying the preset on: the first selected file's title for a
+// preset aimed at tags, its name (without the extension) for one aimed at the
+// file name, and a made-up but typical value when nothing is selected.
+function defaultSample() {
+  const path = selectedPaths()[0];
+  const track = path && tracks.find((t) => t.path === path);
+  const fileOnly = sampleTargets().every((target) => target === "filename");
+  if (track) {
+    const stem = fileName(track.path).replace(/\.[^.]+$/, "");
+    return fileOnly ? stem : track.tags.title || stem;
+  }
+  return "Björk — Jóga (12\" Mix)";
+}
+
+let sampleTyped = false;
+let sampleTimer = null;
+let sampleSeq = 0;
+
+function scheduleSample() {
+  clearTimeout(sampleTimer);
+  sampleTimer = setTimeout(renderSample, 150);
+}
+
+async function renderSample() {
+  const out = el("pe-sample-out");
+  const text = el("pe-sample-input").value;
+  const targets = sampleTargets();
+  const seq = ++sampleSeq;
+  if (!targets.length) {
+    out.textContent = t("presets.sampleNoRules");
+    out.classList.add("muted");
+    return;
+  }
+  const group = { ...chain.asGroup(), name: "" };
+  const rows = await Promise.all(
+    targets.map(async (target) => {
+      try {
+        return { target, value: await invoke("transform_sample", { group, text, target }) };
+      } catch (e) {
+        return { target, error: String(e) };
+      }
+    }),
+  );
+  if (seq !== sampleSeq) return; // a newer edit already asked
+  out.classList.remove("muted");
+  out.innerHTML = "";
+  for (const row of rows) {
+    const line = document.createElement("div");
+    line.className = "pe-sample-line";
+    const label = document.createElement("span");
+    label.className = "pe-sample-target";
+    label.textContent = t(row.target === "filename" ? "presets.target.file" : "presets.target.tags");
+    const value = document.createElement("span");
+    value.className = row.error ? "pe-sample-value error" : "pe-sample-value";
+    value.textContent = row.error ? row.error : row.value;
+    if (!row.error && row.value === text) value.classList.add("same");
+    line.append(label, value);
+    out.appendChild(line);
+  }
 }
 
 function presetRow(group) {
@@ -230,6 +306,15 @@ el("pe-duplicate").addEventListener("click", duplicatePreset);
 el("pe-delete").addEventListener("click", deletePreset);
 el("pe-editor-close").addEventListener("click", closePresetEditor);
 el("pe-name").addEventListener("change", commitName);
+el("pe-sample-input").addEventListener("input", () => {
+  sampleTyped = true;
+  scheduleSample();
+});
+// Every edit to the rules — typing a pattern, a flag, a case style, a target,
+// a step switched off — bubbles here after the chain component has applied it.
+for (const type of ["input", "change", "click"]) {
+  el("pe-rules-set").addEventListener(type, scheduleSample);
+}
 el("pe-name").addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     e.preventDefault();
@@ -257,6 +342,8 @@ window.addEventListener("beforeunload", commit);
 new MutationObserver(() => {
   const meta = el("pe-list").querySelector(".pe-list-row.active .pe-list-meta");
   if (meta) meta.textContent = tn("unit.rule", el("pe-rules").querySelectorAll(".rule-card").length);
+  // Cards added, removed or reordered change the result too (#394).
+  scheduleSample();
 }).observe(el("pe-rules"), { childList: true });
 
 export { onPresetsChanged, openPresetEditor };

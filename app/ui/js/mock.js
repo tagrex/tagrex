@@ -1087,6 +1087,18 @@ function mockInvoke(cmd, args) {
     // to be reachable in the browser at all). Two groups, with the shape the
     // real ones have — name, scope, note, rules — which is what the list and the
     // load path read.
+    // The preset editor's live example (#394): the same segments the mock's
+    // transforms run, over one string.
+    case "transform_sample": {
+      let out = args.text;
+      for (const seg of mockSegments(args.group)) {
+        const file = seg.scope === "filename" || seg.scope === "fileext";
+        if (args.target === "filename" ? seg.scope === "filename" : !file) {
+          out = mockApplyRules(out, seg.rules);
+        }
+      }
+      return Promise.resolve(out);
+    }
     case "builtin_action_groups":
       return Promise.resolve([
         {

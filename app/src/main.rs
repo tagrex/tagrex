@@ -1003,6 +1003,17 @@ fn builtin_action_groups() -> Vec<ActionGroupDto> {
     tagrex_commands::builtin_action_groups()
 }
 
+/// Run a preset's rules over one sample string, for the preset editor's live
+/// example (#394). Needs no library: it is the rules and the text alone.
+#[tauri::command]
+fn transform_sample(
+    group: ActionGroupDto,
+    text: String,
+    target: String,
+) -> Result<String, ErrorDto> {
+    tagrex_commands::transform_sample(&group, &text, &target).map_err(ErrorDto::from)
+}
+
 /// Every placeholder a mask accepts (#148), for the in-app reference. Needs no
 /// open library — the grammar is the same whether or not one is.
 #[tauri::command]
@@ -1177,6 +1188,7 @@ fn main() {
             player_set_volume,
             waveform,
             builtin_action_groups,
+            transform_sample,
             mask_placeholders,
             import_fields,
             render_column,

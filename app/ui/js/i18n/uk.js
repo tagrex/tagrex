@@ -333,6 +333,8 @@ export const uk = {
   "presets.deleteConfirm": "Видалити пресет «{name}»?",
   "presets.nameTaken": "Пресет «{name}» вже існує",
   "presets.nameEmpty": "Пресет повинен мати назву",
+  "presets.sample": "Перевірити на",
+  "presets.sampleNoRules": "Додайте правило, щоб побачити, що воно зробить із прикладом.",
   "presets.target.tags": "теги",
   "presets.target.file": "назва файлу",
   "presets.target.both": "теги й назва файлу",

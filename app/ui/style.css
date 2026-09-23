@@ -5405,6 +5405,63 @@ td[data-field="year"],
   flex-direction: column;
   gap: var(--space-2);
 }
+/* The live example (#394): a sample, and what the open preset makes of it —
+   one line per target, the result in the value font since it is a value. */
+.pe-sample {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+.pe-sample-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.pe-sample-label {
+  flex: none;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+#pe-sample-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono-bundled);
+}
+.pe-sample-out {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-xs);
+}
+.pe-sample-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.pe-sample-target {
+  flex: none;
+  min-width: 90px;
+  color: var(--muted);
+}
+.pe-sample-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono-bundled);
+  color: var(--accent-ink);
+}
+.pe-sample-value.same {
+  color: var(--muted);
+}
+.pe-sample-value.error {
+  color: var(--del);
+  font-family: inherit;
+}
+
 /* A built-in's rules are shown, not edited: no grip to drag, no Add row. */
 .pe-rules-set:disabled .rule-grip,
 .pe-rules-set:disabled .gen-add {

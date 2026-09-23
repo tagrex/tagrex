@@ -710,6 +710,13 @@ fn dispatch_app(app: &mut App, cmd: &str, raw: &str) -> Result<Value, ErrorDto> 
 
         // -- static catalogues, independent of the open library
         "builtin_action_groups" => to_value(tagrex_commands::builtin_action_groups()),
+        "transform_sample" => {
+            let a = args!(raw, TransformSample);
+            to_value(
+                tagrex_commands::transform_sample(&a.group, &a.text, &a.target)
+                    .map_err(ErrorDto::from)?,
+            )
+        }
         "mask_placeholders" => to_value(tagrex_commands::mask_placeholders()),
         "import_fields" => to_value(tagrex_commands::import_fields()),
         "read_cover_image" => {
@@ -791,6 +798,13 @@ struct PreviewTransform {
 struct PreviewTransformGroups {
     paths: Vec<PathBuf>,
     groups: Vec<ActionGroupDto>,
+}
+
+#[derive(Deserialize)]
+struct TransformSample {
+    group: ActionGroupDto,
+    text: String,
+    target: String,
 }
 
 #[derive(Deserialize)]

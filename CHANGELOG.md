@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The preset editor shows what a preset does as you build it.** Under the
+  rules, "Try it on" takes a sample — the selected file's title or name, or a
+  made-up one — and shows the result for each target the preset has rules
+  for (tags, file name), updating with every edit. It runs through the same
+  code as a real rename or import, so a rule that can't build (a broken
+  regex) says so there too. (#394)
 - **RENAMER has its own switches for what travels with a track.** "Carry
   same-named files" (lyrics, cue sheets, per-track covers) sits above the
   reorganize toggle, and "carry the rest of the folder" among the reorganize

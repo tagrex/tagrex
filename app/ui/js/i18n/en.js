@@ -332,6 +332,8 @@ export const en = {
   "presets.deleteConfirm": "Delete the preset “{name}”?",
   "presets.nameTaken": "A preset named “{name}” already exists",
   "presets.nameEmpty": "A preset needs a name",
+  "presets.sample": "Try it on",
+  "presets.sampleNoRules": "Add a rule to see what it does to the sample.",
   "presets.target.tags": "tags",
   "presets.target.file": "file name",
   "presets.target.both": "tags and file name",
