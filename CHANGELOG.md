@@ -96,6 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **RENAMER remembers its mask across restarts.** A relaunch put the default
+  `%artist% - %title%` back instead of the pattern last used, although FROM
+  NAME and RENAMER's own reorganize options were already remembered. (#402)
 - **The top bar shows the same /tagrex/ wordmark as the repo page.** It was
   text in the interface font — a proportional sans — while the logo on
   GitHub is set in a bold monospace; the app now draws the wordmark's own

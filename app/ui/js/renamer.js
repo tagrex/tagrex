@@ -28,6 +28,9 @@ const MOVE_DEST_STORAGE_KEY = "tagrex.moveDestination";
 const MOVE_MODE_STORAGE_KEY = "tagrex.moveMode";
 const MOVE_PRUNE_STORAGE_KEY = "tagrex.movePrune";
 const REORGANIZE_STORAGE_KEY = "tagrex.reorganizeEnabled";
+// The mask itself (#402): the pattern last typed or picked, the way FROM NAME
+// keeps its own (#141) — a relaunch used to put the markup's default back.
+const MASK_STORAGE_KEY = "tagrex.renameMask";
 
 let moveMode = "move";
 let reorganize = false;
@@ -220,7 +223,10 @@ function scheduleMaskExample() {
 
 // ---- wire up ----
 el("preview").addEventListener("click", preview);
-el("mask").addEventListener("input", scheduleMaskExample);
+el("mask").addEventListener("input", () => {
+  writeStored(MASK_STORAGE_KEY, el("mask").value);
+  scheduleMaskExample();
+});
 el("reorganize-toggle").addEventListener("change", (e) => setReorganize(e.target.checked));
 el("move-dest-pick").addEventListener("click", pickDestination);
 el("move-dest-clear").addEventListener("click", () => setDestination(""));
@@ -233,7 +239,10 @@ el("move-prune").addEventListener("change", () => {
   scheduleMaskExample();
 });
 
-// Last session's destination, mode and whether reorganizing was on (#153, #382).
+// Last session's mask (#402), destination, mode and whether reorganizing was on
+// (#153, #382). An empty stored mask is not restored: the markup's default is a
+// better start than a blank field.
+el("mask").value = readStored(MASK_STORAGE_KEY) || el("mask").value;
 el("move-dest").value = readStored(MOVE_DEST_STORAGE_KEY) || "";
 el("move-prune").checked = !!readStored(MOVE_PRUNE_STORAGE_KEY);
 setMoveMode(readStored(MOVE_MODE_STORAGE_KEY) === "copy" ? "copy" : "move");
