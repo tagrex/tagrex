@@ -66,24 +66,38 @@ async function preview() {
     setPreviewPlan(staged);
     setPreviewSource("rename");
     hooks.renderPreview(previewPlan);
-    if (reorganize) {
+    // Files the mask couldn't render because a placeholder it requires was
+    // empty (#411) — the reason a rename "did nothing", said instead of left
+    // to guess.
+    const missing = unrenderedParts(staged);
+    if (!staged.changes.length && missing) {
+      toast(t(reorganize ? "renamer.nothingUnrenderedMove" : "renamer.nothingUnrendered", { parts: missing }), true);
+    } else if (reorganize) {
       // Reported from the plan just built, not the staged one (#410): an empty
       // plan makes renderPreview leave the diff state, which clears
       // previewPlan out from under this message — the same trap #145 fixed
       // for GENERATOR.
       const copy = moveMode === "copy";
-      toast(
-        staged.changes.length
-          ? t(copy ? "toast.previewingCopy" : "toast.previewingMove", {
-              files: tn("unit.file", staged.changes.length),
-            })
-          : t("toast.nothingToMove"),
-        staged.changes.length === 0
-      );
+      const done = staged.changes.length
+        ? t(copy ? "toast.previewingCopy" : "toast.previewingMove", {
+            files: tn("unit.file", staged.changes.length),
+          })
+        : t("toast.nothingToMove");
+      toast(missing ? `${done} · ${t("renamer.someUnrendered", { parts: missing })}` : done, staged.changes.length === 0);
+    } else if (missing) {
+      toast(t("renamer.someUnrendered", { parts: missing }));
     }
   } catch (e) {
     toast(String(e), true);
   }
+}
+
+// "%disc% empty on 2 files, %year% empty on 1 file" — or "" when the mask
+// rendered for every file it was given (#411).
+function unrenderedParts(plan) {
+  return (plan?.unrendered || [])
+    .map((u) => t("renamer.unrenderedPart", { field: `%${u.field}%`, files: tn("unit.file", u.files) }))
+    .join(", ");
 }
 
 // ---- reorganize on/off (#153 destination + copy, unified in #382) ----
@@ -212,7 +226,14 @@ async function refreshMaskExample() {
     const out = await runChainOverPlan(plan, "renamer");
     const change = out.changes[0];
     const to = change?.rename_to;
-    box.textContent = to ? maskPart(to, change.rename_root) : t("renamer.exampleUnchanged");
+    // No target because a required placeholder is empty for this file (#411):
+    // name it, and how to make it optional, rather than a bare "No change".
+    const missing = !to && out.unrendered?.[0]?.field;
+    box.textContent = to
+      ? maskPart(to, change.rename_root)
+      : missing
+        ? t("renamer.exampleUnrendered", { field: `%${missing}%` })
+        : t("renamer.exampleUnchanged");
     box.classList.toggle("muted", !to);
     // The ticked presets' rules run on every rename without being on this panel,
     // so the example says so — otherwise its result reads as the mask's alone.

@@ -276,6 +276,27 @@ function mockInvoke(cmd, args) {
   };
   const s = mockInvoke.state;
   const findTrack = (p) => s.tracks.find((x) => x.path === p);
+  // The first required placeholder (outside [...]) a track leaves empty, the
+  // way the backend reports it (#411); null when the mask can render.
+  const missingRequired = (mask, t) => {
+    const outside = mask.replace(/\[[^\]]*\]/g, "");
+    for (const m of outside.matchAll(/%([a-z]+)(?::\d+)?%/g)) {
+      if (!(t.tags[m[1]] || "").trim()) return m[1];
+    }
+    return null;
+  };
+  const tallyMissing = (mask, paths) => {
+    const out = [];
+    for (const p of paths) {
+      const t = findTrack(p);
+      const field = t && missingRequired(mask, t);
+      if (!field) continue;
+      const entry = out.find((u) => u.field === field);
+      if (entry) entry.files += 1;
+      else out.push({ field, files: 1 });
+    }
+    return out;
+  };
   // Whether a target's folder is new (#385): the mock's "disk" is its track
   // list, so a folder exists when some track already lives in it.
   const createsFolder = (target) => {
@@ -402,7 +423,7 @@ function mockInvoke(cmd, args) {
       const changes = args.paths
         .map((p) => {
           const t = findTrack(p);
-          if (!t) return null;
+          if (!t || missingRequired(args.mask, t)) return null;
           const dir = p.slice(0, p.lastIndexOf("/")).replace(/\/$/, "");
           const ext = p.slice(p.lastIndexOf("."));
           const rendered = args.mask
@@ -420,9 +441,10 @@ function mockInvoke(cmd, args) {
             : { path: p, rename_to, rename_root: dir, creates_folder: createsFolder(rename_to), tag_changes: [] };
         })
         .filter(Boolean);
-      return Promise.resolve(
-        plan(`Rename by mask: ${args.mask}`, { code: "plan.renameByMask", args: { mask: args.mask } }, changes)
-      );
+      return Promise.resolve({
+        ...plan(`Rename by mask: ${args.mask}`, { code: "plan.renameByMask", args: { mask: args.mask } }, changes),
+        unrendered: tallyMissing(args.mask, args.paths),
+      });
     }
     case "probe_tags_from_name": {
       const subject = mockNameSubject(args.path, args.mask);
@@ -589,7 +611,7 @@ function mockInvoke(cmd, args) {
       const changes = args.paths
         .map((p) => {
           const t = findTrack(p);
-          if (!t) return null;
+          if (!t || missingRequired(args.mask, t)) return null;
           const ext = p.slice(p.lastIndexOf("."));
           const rendered = args.mask
             .replace("%albumartist%", t.tags.albumartist || t.tags.artist || "")
@@ -616,6 +638,7 @@ function mockInvoke(cmd, args) {
         description: `${args.copy ? "Copy" : "Reorganize"} by mask`,
         changes,
         prune_empty_dirs: !!args.pruneEmptyDirs && !args.copy,
+        unrendered: tallyMissing(args.mask, args.paths),
       });
     }
     case "preview_tag_edits": {

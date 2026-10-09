@@ -819,6 +819,29 @@ pub struct PlanDto {
     /// built while nothing is locked, which is the ordinary case.
     #[serde(default)]
     pub locked_skipped: Vec<LockedSkipDto>,
+    /// Files a mask could not render because a placeholder it requires was
+    /// empty (#411), by field — `%disc%` outside `[...]` on a digital release
+    /// with no disc number. Those files are left out of the plan, and without
+    /// this a rename that changed nothing looked exactly like a mask that
+    /// matched what was already there.
+    #[serde(default)]
+    pub unrendered: Vec<UnrenderedDto>,
+}
+
+/// One required placeholder left empty, and on how many files (#411).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct UnrenderedDto {
+    /// The placeholder's name as written in a mask (`disc`, `albumartist`).
+    pub field: String,
+    pub files: usize,
+}
+
+/// Count one more file whose mask needed `field` and found it empty.
+fn tally_unrendered(list: &mut Vec<UnrenderedDto>, field: String) {
+    match list.iter_mut().find(|entry| entry.field == field) {
+        Some(entry) => entry.files += 1,
+        None => list.push(UnrenderedDto { field, files: 1 }),
+    }
 }
 
 /// One requested tag edit from the table: set `field` on `path` to `value`
@@ -1932,6 +1955,8 @@ impl App {
         plan.description = cleaned_up_description(&previous.description);
         plan.message = previous.message.clone();
         plan.notes = notes;
+        // What the mask couldn't render is still true of the cleaned plan.
+        plan.unrendered = previous.unrendered.clone();
         plan
     }
 
@@ -1989,6 +2014,7 @@ impl App {
             changes: kept,
             prune_empty_dirs,
             locked_skipped: skipped,
+            unrendered: Vec::new(),
         }
     }
 
@@ -2290,17 +2316,29 @@ impl App {
     ///
     /// [`preview_rename`]: Self::preview_rename
     /// [`preview_move`]: Self::preview_move
-    fn render_target_under(&self, mask: &Mask, path: &Path, root: &Path) -> Option<PathBuf> {
-        let track = TagEngine::read(path).ok()?;
+    ///
+    /// `Err(Some(field))` when the mask needs a placeholder this file leaves
+    /// empty (#411), so the caller can say which; `Err(None)` for any other
+    /// reason the file has no target (unreadable, an empty or `..` component).
+    fn render_target_under(
+        &self,
+        mask: &Mask,
+        path: &Path,
+        root: &Path,
+    ) -> Result<PathBuf, Option<String>> {
+        let track = TagEngine::read(path).map_err(|_| None)?;
         let rendered = mask
             .render_with(&track.tags, &FileContext::read(mask, &track))
-            .ok()?;
+            .map_err(|err| match err {
+                MaskError::MissingTag(field) => Some(field),
+                _ => None,
+            })?;
         let mut components: Vec<&str> = rendered.split(['/', '\\']).collect();
         if components
             .iter()
             .any(|part| part.trim().is_empty() || *part == "..")
         {
-            return None;
+            return Err(None);
         }
         // Extension goes on the last component, which is the file name.
         let last = match path.extension().and_then(|ext| ext.to_str()) {
@@ -2314,7 +2352,7 @@ impl App {
             target.push(component);
         }
         target.push(last);
-        Some(target)
+        Ok(target)
     }
 
     /// Rename in place (#37), and — a pattern carrying `/` or `\` (#382) —
@@ -2330,10 +2368,16 @@ impl App {
     ) -> Result<PlanDto, AppError> {
         let mask = Mask::parse(mask_pattern)?;
         let mut changes = Vec::new();
+        let mut unrendered = Vec::new();
         for path in paths {
             let root = path.parent().unwrap_or(path);
-            let Some(target) = self.render_target_under(&mask, path, root) else {
-                continue;
+            let target = match self.render_target_under(&mask, path, root) {
+                Ok(target) => target,
+                Err(Some(field)) => {
+                    tally_unrendered(&mut unrendered, field);
+                    continue;
+                }
+                Err(None) => continue,
             };
             if target == *path {
                 continue;
@@ -2353,14 +2397,16 @@ impl App {
             self.attach_sidecars(&mut change);
             changes.push(change);
         }
-        Ok(self.plan(
+        let mut plan = self.plan(
             PlanMessage::RenameByMask {
                 mask: mask_pattern.to_string(),
             },
             Vec::new(),
             changes,
             false,
-        ))
+        );
+        plan.unrendered = unrendered;
+        Ok(plan)
     }
 
     /// Build a tag plan by reading each file's own name through a mask (#139) —
@@ -3004,9 +3050,15 @@ impl App {
             None => self.library_root.clone(),
         };
         let mut changes = Vec::new();
+        let mut unrendered = Vec::new();
         for path in paths {
-            let Some(target) = self.render_target_under(&mask, path, &root) else {
-                continue;
+            let target = match self.render_target_under(&mask, path, &root) {
+                Ok(target) => target,
+                Err(Some(field)) => {
+                    tally_unrendered(&mut unrendered, field);
+                    continue;
+                }
+                Err(None) => continue,
             };
             if target == *path {
                 continue;
@@ -3034,7 +3086,7 @@ impl App {
             0 => Vec::new(),
             files => vec![PlanMessage::CarryingExtras { files }],
         };
-        Ok(self.plan(
+        let mut plan = self.plan(
             PlanMessage::ReorganizeByMask {
                 copy,
                 mask: mask_pattern.to_string(),
@@ -3043,7 +3095,9 @@ impl App {
             changes,
             // A copy empties nothing, so there is nothing to prune either way.
             prune_empty_dirs && !copy,
-        ))
+        );
+        plan.unrendered = unrendered;
+        Ok(plan)
     }
 
     /// Build a tag-edit plan from requested cell edits, without writing. Reads
@@ -5956,6 +6010,7 @@ mod tests {
             notes: Vec::new(),
             prune_empty_dirs: false,
             locked_skipped: Vec::new(),
+            unrendered: Vec::new(),
             changes: vec![FileChangeDto {
                 path: track.to_string_lossy().into_owned(),
                 rename_to: Some(elsewhere.join("stolen.flac").to_string_lossy().into_owned()),
@@ -6503,6 +6558,46 @@ mod tests {
     // the track's own current folder — not the library root preview_move
     // anchors an explicit reorganize to. A track two levels deep proves the
     // root really is each file's own parent, not a shared one.
+    #[test]
+    fn a_mask_that_needs_an_empty_tag_says_which() {
+        // #411: `%disc%` outside [...] on a file with no disc number renders
+        // nothing, so the file is left out — and the plan says why instead of
+        // looking like a mask that matched what was already there.
+        let dir = TempDir::new("unrendered");
+        let one = dir.tagged_flac("one.flac", "Artist", "One");
+        let two = dir.tagged_flac("two.flac", "Artist", "Two");
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_rename("%disc%%track% %title%", &[one.clone(), two.clone()])
+            .unwrap();
+        assert!(plan.changes.is_empty());
+        assert_eq!(
+            plan.unrendered,
+            vec![UnrenderedDto {
+                field: "disc".into(),
+                files: 2
+            }]
+        );
+
+        let moved = app
+            .preview_move(
+                "%disc%/%title%",
+                std::slice::from_ref(&one),
+                None,
+                false,
+                false,
+            )
+            .unwrap();
+        assert!(moved.changes.is_empty());
+        assert_eq!(moved.unrendered[0].field, "disc");
+
+        // Optional, the same mask renders and nothing is reported.
+        let fine = app.preview_rename("[%disc%]%title%", &[one, two]).unwrap();
+        assert_eq!(fine.changes.len(), 2);
+        assert!(fine.unrendered.is_empty());
+    }
+
     #[test]
     fn preview_rename_with_a_separator_restructures_under_the_files_own_folder() {
         let dir = TempDir::new("rename-subfolder");

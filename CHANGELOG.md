@@ -108,6 +108,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **RENAMER says which tag is missing when a mask can't name a file.** A
+  placeholder outside `[ ]` is required, so `%disc%` on a digital release with
+  no disc number left every file out — and the example just said "No
+  change". It now names the empty placeholder and how to make it optional, in
+  the example and after Preview. (#411)
 - **A move or copy preview that changes nothing says so instead of failing.**
   It showed "TypeError: null is not an object (evaluating
   'previewPlan.changes')" rather than "Nothing to move". (#410)
