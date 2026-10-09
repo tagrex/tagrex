@@ -702,6 +702,7 @@ export const ru = {
   "settings.language.aria": "Язык интерфейса",
   "settings.language.auto": "Авто",
   "settings.language.en": "English",
+  "settings.language.it": "Italiano",
   "settings.language.ru": "Русский",
   "settings.language.uk": "Українська",
   "settings.language.hint":

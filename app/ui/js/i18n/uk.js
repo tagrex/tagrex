@@ -703,6 +703,7 @@ export const uk = {
   "settings.language.aria": "Мова інтерфейсу",
   "settings.language.auto": "Авто",
   "settings.language.en": "English",
+  "settings.language.it": "Italiano",
   "settings.language.ru": "Русский",
   "settings.language.uk": "Українська",
   "settings.language.hint":

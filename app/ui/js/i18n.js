@@ -12,11 +12,12 @@
 // static text in place; anything a panel builds at runtime picks the new
 // language up the next time it renders.
 import { en } from "./i18n/en.js";
+import { it } from "./i18n/it.js";
 import { ru } from "./i18n/ru.js";
 import { uk } from "./i18n/uk.js";
 import { langMode, resolveLang, saveLangMode } from "./prefs.js";
 
-const CATALOGUES = { en, ru, uk };
+const CATALOGUES = { en, it, ru, uk };
 
 let lang = resolveLang(langMode());
 

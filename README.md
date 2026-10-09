@@ -19,8 +19,8 @@
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
 > preview player, a transactional undo journal, and an interface that speaks
-> English, Ukrainian and Russian. Not 1.0, so expect rough
-> edges — bug reports and feedback are welcome. How to use it is in the
+> English, Italian, Ukrainian and Russian. Not 1.0, so expect
+> rough edges — bug reports and feedback are welcome. How to use it is in the
 > [user guide](docs/guide/README.md); the design is written up in
 > [docs/architecture.md](docs/architecture.md); user-visible changes are in
 > [CHANGELOG.md](CHANGELOG.md).

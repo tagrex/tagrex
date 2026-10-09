@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The interface speaks Italian.** A full translation contributed by
+  @giallorosso84 — thank you! The strings added since it was made were
+  translated to match, and Italian is in the language list and picked by Auto
+  on an Italian system. (#413, #279)
 - **The interface language is picked from a list.** A button per language
   stopped fitting the settings row as languages were added; each is still
   named in itself, and a choice still applies at once. (#412)
