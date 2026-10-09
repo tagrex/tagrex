@@ -281,6 +281,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   content coming and going. The bar now reserves the full row's height
   unconditionally. (#380)
 
+### Removed
+
+- **The SwiftUI native-shell spike and its C bridge (`crates/ffi`).** The spike
+  isn't being continued; what it proved — the backend as its own crates
+  (`tagrex-commands`, `tagrex-core`, `tagrex-player`) behind a thin app — stays.
+  The bridge had no other user and had to mirror every new command. The spike
+  is kept as the `archive/spike-swiftui` tag. (#409)
+
 ## [0.18.0] - 2026-09-14
 
 This release adds two more Online metadata sources — Bandcamp and Soundeo — for

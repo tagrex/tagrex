@@ -13,10 +13,10 @@ publish = false
 [dependencies]
 tagrex-core.workspace = true
 # The command layer (#272). It used to be this crate's own src/lib.rs; it moved
-# out so the native shells can call it without linking the webview stack.
+# out so any interface can call it without linking the webview stack (#409).
 tagrex-commands = { path = "../crates/commands" }
 # The preview player and waveform decoder (#296). Moved out of this crate so the
-# native shells can drive playback; the rodio audio backend rides with it.
+# any interface can drive playback; the rodio audio backend rides with it.
 tagrex-player = { path = "../crates/player" }
 tagrex-providers-beatport = { path = "../crates/providers-beatport" }
 serde = { version = "1", features = ["derive"] }

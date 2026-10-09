@@ -4051,19 +4051,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tagrex-ffi"
-version = "0.18.0"
-dependencies = [
- "serde",
- "serde_json",
- "tagrex-commands",
- "tagrex-core",
- "tagrex-player",
- "tagrex-providers-beatport",
- "ureq",
-]
-
-[[package]]
 name = "tagrex-player"
 version = "0.18.0"
 dependencies = [

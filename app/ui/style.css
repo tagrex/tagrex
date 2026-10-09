@@ -3826,9 +3826,9 @@ button.release-import {
   /* A rounded rectangle like the cards and the catalogue pill, not a capsule
      (#335) — the app's shape language is rounded-rect, so a pill read foreign. */
   border-radius: var(--radius-sm);
-  /* A dark translucent scrim with a white glyph, the way the SwiftUI stand's
-     badge is drawn (#334): the cover art reads through, and white-on-dark stays
-     legible over light, dark and busy art alike — which a light pill did not. */
+  /* A dark translucent scrim with a white glyph (#334): the cover art reads
+     through, and white-on-dark stays legible over light, dark and busy art
+     alike — which a light pill did not. */
   background: rgba(0, 0, 0, 0.5);
   color: #fff;
   font-family: var(--font-mono-bundled);
