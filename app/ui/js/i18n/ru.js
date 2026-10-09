@@ -238,6 +238,7 @@ export const ru = {
   "ctx.trash": "В корзину…",
   "colmask.title": "Добавить колонку",
   "colmask.name": "Имя",
+  "colmask.pattern": "Шаблон",
   "colmask.namePlaceholder": "Исполнитель — Название",
   "colmask.align": "Выравнивание",
   "colmask.left": "Слева",

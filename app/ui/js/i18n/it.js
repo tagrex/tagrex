@@ -238,6 +238,7 @@ export const it = {
   "ctx.trash": "Sposta nel Cestino…",
   "colmask.title": "Aggiungi colonna",
   "colmask.name": "Nome",
+  "colmask.pattern": "Pattern",
   "colmask.namePlaceholder": "Artista — Titolo",
   "colmask.align": "Allineamento",
   "colmask.left": "Sinistra",

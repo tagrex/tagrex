@@ -238,6 +238,7 @@ export const en = {
   "ctx.trash": "Move to Trash…",
   "colmask.title": "Add column",
   "colmask.name": "Name",
+  "colmask.pattern": "Pattern",
   "colmask.namePlaceholder": "Artist — Title",
   "colmask.align": "Align",
   "colmask.left": "Left",

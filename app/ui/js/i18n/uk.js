@@ -239,6 +239,7 @@ export const uk = {
   "ctx.trash": "У кошик…",
   "colmask.title": "Додати колонку",
   "colmask.name": "Ім'я",
+  "colmask.pattern": "Шаблон",
   "colmask.namePlaceholder": "Виконавець — Назва",
   "colmask.align": "Вирівнювання",
   "colmask.left": "Ліворуч",

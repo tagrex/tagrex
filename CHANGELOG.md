@@ -115,6 +115,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The Add column dialog labels its pattern field "Pattern" again**, not the
+  raw key `renamer.pattern` it showed after RENAMER's second pattern was
+  removed. (#414)
 - **RENAMER says which tag is missing when a mask can't name a file.** A
   placeholder outside `[ ]` is required, so `%disc%` on a digital release with
   no disc number left every file out — and the example just said "No
