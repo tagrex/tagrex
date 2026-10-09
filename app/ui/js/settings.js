@@ -64,9 +64,7 @@ function setImportCoverChoice(choice) {
 // to redraw the parts it builds at runtime — its hints and counts — so the
 // switch shows behind the sheet rather than at the next navigation.
 function setLanguageChoice(mode) {
-  el("set-lang")
-    .querySelectorAll("[data-lang-mode]")
-    .forEach((b) => b.classList.toggle("active", b.dataset.langMode === mode));
+  el("set-lang").value = mode;
   setLanguage(mode, () => hooks.retranslate());
 }
 
@@ -399,10 +397,7 @@ el("set-import-cover").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-import-cover]");
   if (btn) setImportCoverChoice(btn.dataset.importCover);
 });
-el("set-lang").addEventListener("click", (e) => {
-  const btn = e.target.closest("[data-lang-mode]");
-  if (btn) setLanguageChoice(btn.dataset.langMode);
-});
+el("set-lang").addEventListener("change", (e) => setLanguageChoice(e.target.value));
 // Theme is a live control — switch immediately on click.
 el("set-theme").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-theme-mode]");

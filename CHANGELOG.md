@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The interface language is picked from a list.** A button per language
+  stopped fitting the settings row as languages were added; each is still
+  named in itself, and a choice still applies at once. (#412)
 - **The preset editor shows what a preset does as you build it.** Under the
   rules, "Try it on" takes a sample — the selected file's title or name, or a
   made-up one — and shows the result for each target the preset has rules
