@@ -12,7 +12,10 @@ publish = false
 # Cover art resize/recompress (#41). Only the two cover formats we handle, to
 # keep the dependency and build lean.
 image = { version = "0.25.5", default-features = false, features = ["jpeg", "png"] }
-lofty = "0.25.1"
+# Held below 0.25.4: its FileLike::splice truncates a file to the wrong length
+# when a shrinking edit ends at EOF, which destroys a FLAC/MP3 whose tag is the
+# last thing in it (lofty-rs#731). Lift once a fixed release is out.
+lofty = ">=0.25.1, <0.25.4"
 regex = "1.13.1"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 thiserror.workspace = true

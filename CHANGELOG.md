@@ -113,6 +113,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   way — the user's own token, a descriptive User-Agent, rate limiting — this is
   just the missing notice. (#361)
 
+### Changed
+
+- **Dependencies refreshed: lofty 0.25.3, Tauri 2.12.** lofty's tag writers
+  pick up fixes for several ways a write could damage a file — WAV files whose
+  ID3v2 chunk carried padding, MP4 files with no tags yet, and stray ID3v2
+  headers mid-stream. lofty is held below 0.25.4 for now: that release
+  truncates a FLAC or MP3 whose tag runs to the end of the file when the tag
+  shrinks, and the bound comes off once a fixed release is out. (#415)
+
 ### Fixed
 
 - **The Add column dialog labels its pattern field "Pattern" again**, not the
