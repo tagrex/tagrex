@@ -62,18 +62,23 @@ async function preview() {
     // space becoming an underscore is the usual wish, and exactly the wish that
     // must not reach the tags FROM NAME reads.
     const plan = await (reorganize ? movePlan(paths) : renamePlan(paths));
-    setPreviewPlan(await runChainOverPlan(plan, "renamer"));
+    const staged = await runChainOverPlan(plan, "renamer");
+    setPreviewPlan(staged);
     setPreviewSource("rename");
     hooks.renderPreview(previewPlan);
     if (reorganize) {
+      // Reported from the plan just built, not the staged one (#410): an empty
+      // plan makes renderPreview leave the diff state, which clears
+      // previewPlan out from under this message — the same trap #145 fixed
+      // for GENERATOR.
       const copy = moveMode === "copy";
       toast(
-        previewPlan.changes.length
+        staged.changes.length
           ? t(copy ? "toast.previewingCopy" : "toast.previewingMove", {
-              files: tn("unit.file", previewPlan.changes.length),
+              files: tn("unit.file", staged.changes.length),
             })
           : t("toast.nothingToMove"),
-        previewPlan.changes.length === 0
+        staged.changes.length === 0
       );
     }
   } catch (e) {

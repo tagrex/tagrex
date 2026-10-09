@@ -108,6 +108,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A move or copy preview that changes nothing says so instead of failing.**
+  It showed "TypeError: null is not an object (evaluating
+  'previewPlan.changes')" rather than "Nothing to move". (#410)
 - **ONLINE's query suggestions are as wide as the search box they drop
   from**, like the recent-folders list. (#408)
 - **The recent-folders list is as wide as the path box it drops from**, not
