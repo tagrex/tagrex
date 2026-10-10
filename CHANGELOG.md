@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **A write that fails part-way through Apply no longer leaves the library
+  half-changed.** Files written before the failure, moves, copies and the
+  folders created for them are now put back before the error is shown, so
+  nothing is left that Undo could not reach ([#441](https://github.com/tagrex/tagrex/issues/441)).
+
 ## [0.20.0] - 2026-10-10
 
 This release is about language and the keyboard. The interface now also speaks

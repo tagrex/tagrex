@@ -201,7 +201,9 @@ impl Executor {
     /// a plan touching a path that resolves outside all of them is rejected
     /// wholesale before anything is written. The entire plan is validated up
     /// front (root containment + staleness + rename collisions) so a bad file
-    /// cannot leave the batch half-applied.
+    /// cannot leave the batch half-applied. A write that fails at run time
+    /// anyway (a locked file, a share dropping out) is rolled back, best-effort,
+    /// before the error is returned, so the library is left as it was (#441).
     ///
     /// There is more than one root because a reorganize can file tracks into a
     /// folder outside the open library (#153). That second root is not inferred
@@ -246,26 +248,75 @@ impl Executor {
             }
         }
 
+        // Everything below touches disk. A failure part-way must not leave the
+        // library half-applied with nothing in the journal for Undo to find
+        // (#441), so what was done is tracked and put back before the error goes
+        // up. Rollback is best-effort: it tries every step and keeps going.
+        let mut written = Written::new(plan.changes.len());
+        let removed_dirs = match Self::write_phase(plan, &roots, &mut written) {
+            Ok(removed_dirs) => removed_dirs,
+            Err(error) => {
+                written.roll_back(plan, &[]);
+                return Err(error);
+            }
+        };
+        let created_dirs = std::mem::take(&mut written.created_dirs);
+
+        let mut batch = AppliedBatch {
+            // Placeholder: the journal assigns the real id on record so ids
+            // stay unique across restarts.
+            id: BatchId(0),
+            description: plan.description.clone(),
+            message: plan.message.clone(),
+            applied_at: now_unix_secs(),
+            plan: plan.clone(),
+            created_dirs,
+            removed_dirs,
+            allowed_roots: roots,
+        };
+        match journal.record(&batch) {
+            Ok(id) => batch.id = id,
+            Err(error) => {
+                written.created_dirs = batch.created_dirs;
+                written.roll_back(plan, &batch.removed_dirs);
+                return Err(error.into());
+            }
+        }
+        Ok(batch)
+    }
+
+    /// The write half of [`Executor::apply`]: tags, then moves and copies, then
+    /// sidecars, then the tags of copies. Progress is recorded in `written` as it
+    /// goes — before each step is attempted, so a step that fails half-way is
+    /// still covered by the rollback. Returns the directories pruned afterwards.
+    fn write_phase(
+        plan: &ChangePlan,
+        roots: &[PathBuf],
+        written: &mut Written,
+    ) -> Result<Vec<PathBuf>, PlanError> {
         // Tags first, at each file's original path — but only for the changes
         // that move. A copy must not touch its source at all (#153), so its tag
         // changes wait and are written to the copy below.
-        for change in &plan.changes {
+        for (index, change) in plan.changes.iter().enumerate() {
             if change.copy {
                 continue;
             }
+            written.tag_steps[index] = 1;
             write_tag_changes(&change.path, change, Direction::Apply)?;
+            written.tag_steps[index] = 2;
             apply_cover_change(&change.path, change, Direction::Apply)?;
+            written.tag_steps[index] = 3;
             write_blocks(&change.path, change, Direction::Apply)?;
         }
         // ...then the moves and copies, creating any folders the targets need.
         // Directories are created here rather than in the pre-flight so a
         // validation failure can't leave empty folders behind.
-        let mut created_dirs = Vec::new();
-        for change in &plan.changes {
+        for (index, change) in plan.changes.iter().enumerate() {
             if let Some(target) = effective_rename(change) {
                 if let Some(parent) = target.parent() {
-                    created_dirs.extend(create_dirs_recording(parent)?);
+                    written.created_dirs.extend(create_dirs_recording(parent)?);
                 }
+                written.transferred.push(index);
                 transfer(&change.path, target, change.copy)?;
             }
         }
@@ -274,8 +325,11 @@ impl Executor {
         for change in &plan.changes {
             for (from, to) in &change.sidecar_renames {
                 if let Some(parent) = to.parent() {
-                    created_dirs.extend(create_dirs_recording(parent)?);
+                    written.created_dirs.extend(create_dirs_recording(parent)?);
                 }
+                written
+                    .sidecars
+                    .push((from.clone(), to.clone(), change.copy));
                 transfer(from, to, change.copy)?;
             }
         }
@@ -296,26 +350,11 @@ impl Executor {
         // A move can leave the folder it emptied behind (#153). Removing those
         // is opt-in per plan, and only ever the directories THIS batch emptied —
         // recorded so undo can put them back.
-        let removed_dirs = if plan.prune_empty_dirs {
-            prune_emptied_dirs(plan, &roots, &created_dirs)
+        Ok(if plan.prune_empty_dirs {
+            prune_emptied_dirs(plan, roots, &written.created_dirs)
         } else {
             Vec::new()
-        };
-
-        let mut batch = AppliedBatch {
-            // Placeholder: the journal assigns the real id on record so ids
-            // stay unique across restarts.
-            id: BatchId(0),
-            description: plan.description.clone(),
-            message: plan.message.clone(),
-            applied_at: now_unix_secs(),
-            plan: plan.clone(),
-            created_dirs,
-            removed_dirs,
-            allowed_roots: roots,
-        };
-        batch.id = journal.record(&batch)?;
-        Ok(batch)
+        })
     }
 
     /// Roll a previously applied batch back: move every renamed file back to
@@ -416,6 +455,67 @@ impl Executor {
 
         journal.rollback(batch_id)?;
         Ok(())
+    }
+}
+
+/// What a partially failed [`Executor::apply`] has done to disk so far, so it
+/// can be put back (#441). Mirrors [`Executor::undo`], over only the steps that
+/// were reached.
+struct Written {
+    /// Per change: how far its in-place writes got. 0 = untouched, 1 = tag
+    /// fields attempted, 2 = + images attempted, 3 = + blocks attempted.
+    tag_steps: Vec<u8>,
+    /// Indices of changes whose move or copy was attempted.
+    transferred: Vec<usize>,
+    /// Sidecar (from, to, copy) transfers that were attempted.
+    sidecars: Vec<(PathBuf, PathBuf, bool)>,
+    created_dirs: Vec<PathBuf>,
+}
+
+impl Written {
+    fn new(changes: usize) -> Self {
+        Self {
+            tag_steps: vec![0; changes],
+            transferred: Vec::new(),
+            sidecars: Vec::new(),
+            created_dirs: Vec::new(),
+        }
+    }
+
+    /// Reverse what was done, in the order undo uses: restore pruned folders,
+    /// move or remove transfers, restore blocks/fields/images, drop created
+    /// folders. Every step is attempted and its error ignored: the caller is
+    /// already returning the failure that started this, and a step that never
+    /// took effect (the one that failed) has nothing to put back.
+    fn roll_back(&self, plan: &ChangePlan, removed_dirs: &[PathBuf]) {
+        for dir in removed_dirs {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        for (from, to, copy) in self.sidecars.iter().rev() {
+            let _ = untransfer(to, from, *copy);
+        }
+        for &index in self.transferred.iter().rev() {
+            let change = &plan.changes[index];
+            if let Some(target) = effective_rename(change) {
+                let _ = untransfer(target, &change.path, change.copy);
+            }
+        }
+        for (index, change) in plan.changes.iter().enumerate() {
+            let steps = self.tag_steps[index];
+            if change.copy || steps == 0 {
+                continue;
+            }
+            if steps >= 3 {
+                let _ = write_blocks(&change.path, change, Direction::Undo);
+            }
+            let _ = write_tag_changes(&change.path, change, Direction::Undo);
+            if steps >= 2 {
+                let _ = apply_cover_change(&change.path, change, Direction::Undo);
+            }
+        }
+        for dir in self.created_dirs.iter().rev() {
+            let _ = std::fs::remove_dir(dir);
+        }
     }
 }
 

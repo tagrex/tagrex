@@ -949,3 +949,73 @@ fn os_bookkeeping_files_are_recognised_by_name() {
         assert!(!is_os_junk(Path::new(real)), "{real}");
     }
 }
+
+#[test]
+fn a_write_failing_mid_batch_leaves_the_library_as_it_was() {
+    let dir = TempDir::new("midfail");
+    let a = dir.flac("a.flac");
+    let b = dir.flac("b.flac");
+    let c = dir.flac("c.flac");
+    let mut journal = VecJournal::new();
+
+    let change = |path: &Path, field: TagField, value: &str| FileChange {
+        path: path.to_path_buf(),
+        tag_changes: vec![FieldChange {
+            field,
+            old: None,
+            new: Some(value.to_string()),
+        }],
+        ..FileChange::default()
+    };
+    // The middle file's year is rejected when it is written, after the first
+    // file has already been written.
+    let plan = ChangePlan {
+        description: "mid-batch failure".to_string(),
+        changes: vec![
+            change(&a, TagField::Artist, "A"),
+            change(&b, TagField::Year, "222"),
+            change(&c, TagField::Artist, "C"),
+        ],
+        ..ChangePlan::default()
+    };
+    assert!(Executor::apply(&plan, &mut journal, &roots(dir.path())).is_err());
+
+    for path in [&a, &b, &c] {
+        let tags = TagEngine::read(path).unwrap().tags;
+        assert!(!tags.contains_key(&TagField::Artist), "{path:?}");
+        assert!(!tags.contains_key(&TagField::Year), "{path:?}");
+    }
+    assert!(journal.batches().unwrap().is_empty());
+}
+
+#[test]
+fn a_failure_after_the_copies_removes_them_and_their_folders() {
+    let dir = TempDir::new("copyfail");
+    let track = dir.flac("track.flac");
+    let mut journal = VecJournal::new();
+
+    let target = dir.path().join("Artist").join("Album").join("track.flac");
+    // A copy's tags are written last, after the copy exists and its folders
+    // have been created; the year is rejected at that point.
+    let plan = ChangePlan {
+        description: "copy then fail".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            tag_changes: vec![FieldChange {
+                field: TagField::Year,
+                old: None,
+                new: Some("222".to_string()),
+            }],
+            rename_to: Some(target.clone()),
+            copy: true,
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+    assert!(Executor::apply(&plan, &mut journal, &roots(dir.path())).is_err());
+
+    assert!(track.exists());
+    assert!(!target.exists());
+    assert!(!dir.path().join("Artist").exists());
+    assert!(journal.batches().unwrap().is_empty());
+}
