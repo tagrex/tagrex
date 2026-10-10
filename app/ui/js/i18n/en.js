@@ -181,15 +181,12 @@ export const en = {
   "topbar.collapsePanelTitle": "Collapse the mode panel (more room for the table)",
   "topbar.undo": "Undo the last applied batch",
   "topbar.settings": "Settings",
-  "mode.tagger": "TAGGER",
+  // The mode names (TAGGER, RENAMER…) are not catalogue strings: they read the
+  // same in every language (#424). What each mode does is.
   "mode.tagger.title": "Edit tags — from an online source, by hand, and cover art",
-  "mode.renamer": "RENAMER",
   "mode.renamer.title": "Rename files and reorganize them into folders",
-  "mode.generator": "GENERATOR",
   "mode.generator.title": "Generate and clean up tag/filename values",
-  "mode.deduplicator": "DEDUPLICATOR",
   "mode.deduplicator.title": "Find likely duplicate files in the library",
-  "mode.exporter": "EXPORTER",
   "mode.exporter.title": "Export playlists, CSV, and reports",
   "toolbar.group": "Group rows by a key",
   "toolbar.groupTitle": "Group rows by a key (view only — file order is unchanged)",

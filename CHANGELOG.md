@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The side-panel toggle sits at the far right of the top bar**, past Undo
   and Settings and right above the panel it shows and hides. (#421)
+- **The mode names read the same in every language.** TAGGER, RENAMER,
+  GENERATOR, DEDUPLICATOR and EXPORTER are the app's own vocabulary — the guide
+  and the interface's messages use them as they are — but the Russian and
+  Ukrainian tabs had translated them. The tabs now keep the names everywhere;
+  the tooltip saying what a mode does is still translated. (#424)
 
 ### Fixed
 
