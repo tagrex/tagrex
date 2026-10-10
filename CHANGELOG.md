@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-10
+
+This release is about language. The interface now also speaks German,
+Spanish and French. These are first drafts written by the maintainers rather
+than native speakers, so if one of them is your language, a review in #430
+would help. The work also caught the places that had stayed English, or
+stuck to the start-up language, in every translation: column names, the
+Group by menu, the online-import fields and the Add column dialog. The mode
+names TAGGER, RENAMER and the rest now read the same in every language.
+Besides that: a dragged row scrolls a long list when it reaches the edge, and
+letting go outside the list cancels the move.
+
 ### Added
 
 - **The interface speaks German.** A first draft by the maintainers rather
