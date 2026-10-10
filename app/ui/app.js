@@ -2980,12 +2980,12 @@ applyCheckboxCol(checkboxColEnabled());
 // defensive safety net, not the fix itself: after the first layout pass,
 // nudge --panel-inset by however far TAGGER/ONLINE's own search-format
 // select (default-visible at startup, no mode switch needed) still sits
-// from the topbar's settings icon, in case some other engine has its own
-// equivalent quirk (a <select> chrome inset, for instance) that plain 14px
-// doesn't already account for.
+// from the topbar's rightmost icon (the panel toggle since #421), in case
+// some other engine has its own equivalent quirk (a <select> chrome inset,
+// for instance) that plain 14px doesn't already account for.
 (function calibratePanelInset() {
   requestAnimationFrame(() => {
-    const ref = el("settings-open");
+    const ref = el("panel-toggle");
     const target = el("search-format");
     if (!ref || !target) return;
     const delta = ref.getBoundingClientRect().right - target.getBoundingClientRect().right;

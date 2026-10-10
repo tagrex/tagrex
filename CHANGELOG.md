@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The side-panel toggle sits at the far right of the top bar**, past Undo
+  and Settings and right above the panel it shows and hides. (#421)
+
 ### Fixed
 
 - **Dragging a row toward the edge of a scrolling list scrolls it.** In the

@@ -84,12 +84,13 @@
           <button class="mode-tab" data-mode="exporter" data-i18n-title="mode.exporter.title" title="Export playlists, CSV, and reports" data-i18n-aria-label="mode.exporter" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl" data-i18n="mode.exporter">EXPORTER</span></button>
         </nav>
         <div class="spacer" data-tauri-drag-region></div>
-        <!-- App-level actions (#343): the layout toggle, and — past a hairline —
-             undo and settings. They act on the app, not the library. -->
-        <button id="panel-toggle" class="icon" data-i18n-title="topbar.collapsePanelTitle" title="Collapse the mode panel (more room for the table)" data-i18n-aria-label="topbar.collapsePanel" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
-        <span class="topbar-div" aria-hidden="true"></span>
+        <!-- App-level actions (#343): undo and settings, and — past a hairline —
+             the layout toggle, at the far right above the panel it shows and
+             hides (#421). They act on the app, not the library. -->
         <button id="undo" class="icon" disabled data-i18n-title="topbar.undo" title="Undo the last applied batch" data-i18n-aria-label="topbar.undo" aria-label="Undo the last applied batch"><svg class="ico"><use href="#i-undo"/></svg></button>
         <button id="settings-open" class="icon gear" data-i18n-title="topbar.settings" title="Settings" data-i18n-aria-label="topbar.settings" aria-label="Settings"><svg class="ico"><use href="#i-settings"/></svg></button>
+        <span class="topbar-div" aria-hidden="true"></span>
+        <button id="panel-toggle" class="icon" data-i18n-title="topbar.collapsePanelTitle" title="Collapse the mode panel (more room for the table)" data-i18n-aria-label="topbar.collapsePanel" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
       </div>
       <!-- Row 2 (#343): the library path on its own line, full width, with the
            library actions (open, re-read) beside it. -->
