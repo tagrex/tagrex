@@ -4,7 +4,7 @@ Opened from the sliders icon at the top right.
 
 **Save commits, Cancel discards** — and Escape is Cancel. That applies to
 everything on this page except three controls that are deliberately live, because
-their whole point is seeing the effect: **Theme**, **Value font** and the two font
+their whole point is seeing the effect: **Theme**, **Accent colour**, **Value font** and the two font
 **size sliders** change the interface the moment you touch them, and are kept
 whether or not you press Save.
 
@@ -60,6 +60,13 @@ checkboxes on the [RENAMER](renamer.md#sidecar-files) panel.
 
 **Theme** — Auto follows your system appearance; Light and Dark force one.
 
+**Accent colour** — the colour of buttons, selections, links and the focus ring.
+Pick one of the nine swatches (the first is the brand green, the default) or use
+the rainbow swatch for any colour you like; **Reset** returns to the brand green.
+Text on the accent is kept readable: a colour that would be too light for white
+labels is darkened a little, and as text it is lightened or darkened for the
+current theme. The green of confirmed states and the red of errors do not change.
+
 **Selection checkbox column** — adds a checkbox column to the file table, and a
 select-all checkbox in its header. Off by default, since rows select on click.
 Unlike the two controls above it, this one takes effect on **Save**.
@@ -94,7 +101,7 @@ platform, under `com.tagrex.desktop`:
 | `journal.sqlite` | The undo journal — every applied batch, across libraries |
 | `discogs_token` | Your saved Discogs token |
 
-A few purely visual preferences — theme, column layout and widths, filter flags,
+A few purely visual preferences — theme, accent colour, column layout and widths, filter flags,
 grouping key, volume, the LAB fonts — are stored by the interface itself rather
 than in `settings.json`.
 

@@ -199,6 +199,142 @@ function applyBadgeFont(mode) {
   }
 }
 
+// Accent colour (#431): the brand green by default, or one of a few presets or
+// any colour the user picks. Only the base `--accent` is a free choice; the two
+// companions are derived so a custom colour stays readable: `--accent-text` is
+// the label on an accent fill (white, with the fill darkened until it clears
+// WCAG AA against it) and `--accent-ink` is the accent used as text on the page
+// surface (shifted darker in the light theme, lighter in the dark one). The
+// focus ring, row selection and dirty tints already derive from `--accent` in
+// the stylesheet, so they follow without being touched here. The semantic
+// colours (--add, --del) are deliberately left alone. The override is set as an
+// inline style on <html>, which wins over both theme palettes, and is recomputed
+// whenever the resolved theme changes because the ink depends on the surface.
+const ACCENT_STORAGE_KEY = "tagrex.accent";
+// `hex: null` is the brand green — no override at all. The swatch colour shown
+// for it is the stylesheet's light-theme fill.
+const ACCENT_BRAND_SWATCH = "#0b6b53";
+const ACCENT_PRESETS = [
+  { id: "green", hex: null },
+  { id: "teal", hex: "#0d9488" },
+  { id: "blue", hex: "#2563eb" },
+  { id: "indigo", hex: "#4f46e5" },
+  { id: "violet", hex: "#7c3aed" },
+  { id: "pink", hex: "#db2777" },
+  { id: "orange", hex: "#ea580c" },
+  { id: "amber", hex: "#d97706" },
+  { id: "slate", hex: "#475569" },
+];
+const ACCENT_MIN_CONTRAST = 4.5;
+// Least contrast a fill needs against the page surface to still read as a shape.
+const ACCENT_MIN_FILL_CONTRAST = 1.5;
+
+function normalizeHex(value) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(value || "").trim());
+  return m ? `#${m[1].toLowerCase()}` : null;
+}
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function rgbToHex([r, g, b]) {
+  return `#${[r, g, b].map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`;
+}
+function rgbToHsl([r, g, b]) {
+  const rn = r / 255;
+  const gn = g / 255;
+  const bn = b / 255;
+  const max = Math.max(rn, gn, bn);
+  const min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === rn) h = (gn - bn) / d + (gn < bn ? 6 : 0);
+  else if (max === gn) h = (bn - rn) / d + 2;
+  else h = (rn - gn) / d + 4;
+  return [h * 60, s, l];
+}
+function hslToRgb([h, s, l]) {
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [f(0) * 255, f(8) * 255, f(4) * 255];
+}
+function relativeLuminance(hex) {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrastRatio(a, b) {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+// Walk the colour's lightness one percent at a time in `direction` (-1 darker,
+// +1 lighter) until it clears `min` against `against`; the last step reached if
+// it never does (a pure white or black is as far as it can go).
+function shiftToContrast(hex, against, direction, min) {
+  const [h, s, l] = rgbToHsl(hexToRgb(hex));
+  let out = hex;
+  for (let step = 0; step <= 100; step += 1) {
+    const next = Math.min(1, Math.max(0, l + (direction * step) / 100));
+    out = rgbToHex(hslToRgb([h, s, next]));
+    if (contrastRatio(out, against) >= min) break;
+  }
+  return out;
+}
+// The three accent tokens for a chosen colour on a given surface.
+function deriveAccent(hex, surface, dark) {
+  const ink = shiftToContrast(hex, surface, dark ? 1 : -1, ACCENT_MIN_CONTRAST);
+  const fill = shiftToContrast(hex, "#ffffff", -1, ACCENT_MIN_CONTRAST);
+  // A near-black pick in the dark theme darkens to a fill that vanishes into the
+  // surface; there the readable ink becomes the fill and takes a black or white
+  // label, whichever reads better on it.
+  if (contrastRatio(fill, surface) < ACCENT_MIN_FILL_CONTRAST) {
+    const text = contrastRatio(ink, "#000000") >= contrastRatio(ink, "#ffffff") ? "#000000" : "#ffffff";
+    return { accent: ink, text, ink };
+  }
+  return { accent: fill, text: "#ffffff", ink };
+}
+function accentColor() {
+  try {
+    return normalizeHex(localStorage.getItem(ACCENT_STORAGE_KEY));
+  } catch (e) {
+    return null;
+  }
+}
+// Re-derive and stamp the accent for the current theme; the brand green (no
+// stored colour) just clears the override so the stylesheet's own palette shows.
+function applyAccent() {
+  const root = document.documentElement;
+  const hex = accentColor();
+  if (!hex) {
+    ["--accent", "--accent-text", "--accent-ink"].forEach((n) => root.style.removeProperty(n));
+    return;
+  }
+  const dark = root.dataset.theme === "dark";
+  const surface = normalizeHex(getComputedStyle(root).getPropertyValue("--bg")) || (dark ? "#16181d" : "#ffffff");
+  const { accent, text, ink } = deriveAccent(hex, surface, dark);
+  root.style.setProperty("--accent", accent);
+  root.style.setProperty("--accent-text", text);
+  root.style.setProperty("--accent-ink", ink);
+}
+// `null` goes back to the brand green.
+function saveAccent(hex) {
+  const value = normalizeHex(hex);
+  try {
+    if (value) localStorage.setItem(ACCENT_STORAGE_KEY, value);
+    else localStorage.removeItem(ACCENT_STORAGE_KEY);
+  } catch (e) {
+    /* localStorage unavailable — preference just won't persist */
+  }
+  applyAccent();
+}
+
 // Theme: Auto (follow OS) / Light / Dark. "auto" resolves to light/dark from the
 // OS preference and re-resolves when it changes; light/dark force a palette via
 // a data-theme attribute the stylesheet keys off. Persisted in localStorage.
@@ -223,12 +359,13 @@ function applyTheme(mode) {
     localStorage.setItem(THEME_STORAGE_KEY, mode);
   } catch (e) {
     /* localStorage unavailable — preference just won't persist */
-  }
+  }  applyAccent();
 }
 // Follow OS changes only while in Auto.
 prefersDarkMq.addEventListener("change", () => {
   if (themeMode() === "auto") {
     document.documentElement.dataset.theme = resolveTheme("auto");
+    applyAccent();
   }
 });
 // Apply as early as app.js runs, before the settings sheet is ever opened.
@@ -334,6 +471,11 @@ export {
   saveLangMode,
   applyTheme,
   resolveTheme,
+  ACCENT_PRESETS,
+  ACCENT_BRAND_SWATCH,
+  accentColor,
+  saveAccent,
+  normalizeHex,
   groupByPref,
   saveGroupBy,
 };

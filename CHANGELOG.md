@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Pick the accent colour** (Settings › Display, #431): nine swatches, the brand
+  green first and still the default, or any colour from the custom swatch, with
+  a Reset. It applies live, in light and dark, and survives a restart. Text on
+  the accent stays readable, so a pale pick is darkened a little rather than
+  refused; the green of confirmed states and the red of errors do not change.
+
 ## [0.20.0] - 2026-10-10
 
 This release is about language. The interface now also speaks German,

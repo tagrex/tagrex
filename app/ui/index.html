@@ -1038,6 +1038,17 @@
               </div>
             </div>
             <p class="settings-hint" data-i18n="settings.themeHint">Auto follows your system appearance; Light / Dark force one.</p>
+            <div class="settings-row col">
+              <label data-i18n="settings.accent">Accent colour</label>
+              <!-- Swatches are built in settings.js from ACCENT_PRESETS (#431). -->
+              <div class="accent-picker" id="set-accent" role="radiogroup" data-i18n-aria-label="settings.accent" aria-label="Accent colour">
+                <label class="accent-custom" data-i18n-title="settings.accent.custom" title="Custom colour">
+                  <input id="set-accent-custom" type="color" value="#0b6b53" data-i18n-aria-label="settings.accent.custom" aria-label="Custom colour" />
+                </label>
+                <button class="accent-reset" id="set-accent-reset" type="button" data-i18n="settings.accent.reset">Reset</button>
+              </div>
+            </div>
+            <p class="settings-hint" data-i18n="settings.accentHint">Colours buttons, selections, links and the focus ring. Text on the accent is kept readable, and the green of confirmed states and the red of errors do not change.</p>
             <div class="settings-row">
               <label for="set-checkbox-col" data-i18n="settings.checkboxCol">Selection checkbox column</label>
               <input id="set-checkbox-col" type="checkbox" />
