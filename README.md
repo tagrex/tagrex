@@ -19,7 +19,7 @@
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
 > preview player, a transactional undo journal, and an interface that speaks
-> English, Italian, Ukrainian and Russian. Not 1.0, so expect
+> English, German, Italian, Ukrainian and Russian. Not 1.0, so expect
 > rough edges — bug reports and feedback are welcome. How to use it is in the
 > [user guide](docs/guide/README.md); the design is written up in
 > [docs/architecture.md](docs/architecture.md); user-visible changes are in
@@ -144,7 +144,7 @@ rather than being stored verbatim, with a `MediaType` tag, a render-only
 Musepack, Monkey's Audio, WavPack. ID3v2 writes go through the concrete tag type
 so DJ cue points, ratings and ReplayGain frames survive a round-trip.
 
-**Comfort** — an interface in English, Italiano, Українська or Русский (or
+**Comfort** — an interface in English, Deutsch, Italiano, Українська or Русский (or
 whichever of them your system asks for), light/dark/auto themes, a bundled IBM
 Plex type set so text renders identically on every OS, adjustable table
 density, and a Settings › LAB section for typography still being trialled.

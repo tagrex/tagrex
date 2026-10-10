@@ -726,6 +726,7 @@ export const en = {
   "settings.language": "Language",
   "settings.language.aria": "Interface language",
   "settings.language.auto": "Auto",
+  "settings.language.de": "Deutsch",
   "settings.language.en": "English",
   "settings.language.it": "Italiano",
   "settings.language.ru": "Русский",

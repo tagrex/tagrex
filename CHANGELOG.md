@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The interface speaks German.** A first draft by the maintainers rather
+  than a native speaker, offered as Deutsch in Settings › Display and picked
+  by Auto on a German system; corrections from native speakers are welcome.
+  (#427)
+
 ### Changed
 
 - **The side-panel toggle sits at the far right of the top bar**, past Undo

@@ -724,6 +724,7 @@ export const it = {
   "settings.language": "Lingua",
   "settings.language.aria": "Lingua interfaccia",
   "settings.language.auto": "Auto",
+  "settings.language.de": "Deutsch",
   "settings.language.en": "English",
   "settings.language.it": "Italiano",
   "settings.language.ru": "Русский",
