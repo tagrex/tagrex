@@ -69,7 +69,7 @@ const GROUP_COMMON = ["", "folder", "release", "artist", "album", "albumartist"]
 // NB: distinct from groupLabel() below, which names a group HEADER (a folder or
 // tag value). This one names a grouping KEY for the menu/tooltip.
 function groupKeyLabel(value) {
-  if (value === "") return "None";
+  if (value === "") return t("group.none");
   if (value === "folder") return t("group.folder");
   if (value === "release") return t("group.release");
   if (value === "drop") return t("group.drop");
@@ -97,9 +97,12 @@ function populateGroupMenu() {
 
 // Reflect the current key onto the button + the menu's checkmarks. The button
 // tints whenever grouping is on, so "am I grouped?" is answerable at a glance.
+// This owns the button's title and accessible name: the button carries no
+// data-i18n of its own (#425), or the static-text pass at start-up would
+// replace "Group by: Folder" with a generic description.
 function syncGroupButton() {
   const btn = el("group-btn");
-  const label = `Group by: ${groupKeyLabel(groupBy)}`;
+  const label = t("group.buttonLabel", { key: groupKeyLabel(groupBy) });
   btn.title = label;
   btn.setAttribute("aria-label", label);
   btn.classList.toggle("active", groupBy !== "");
@@ -699,7 +702,7 @@ function colMenuRow(key, visible) {
 
   const label = document.createElement("span");
   label.className = "col-menu-label";
-  label.textContent = columnLabel(key) + (isFile ? " (always shown)" : "");
+  label.textContent = isFile ? t("column.alwaysShown", { name: columnLabel(key) }) : columnLabel(key);
 
   row.append(grip, box, label);
 

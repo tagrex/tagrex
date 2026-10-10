@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The file table's column names follow a language switch at once.** The
   header row and the Group by menu kept the language the app started in until
   the next launch. (#423)
+- **The Group by menu and the column picker are translated to the last
+  word.** The menu's "None", the button's "Group by: …" tooltip and the
+  "(always shown)" note on the column picker's File row were English in every
+  language. The tooltip also names the current grouping from the moment the
+  app starts, where it used to show a generic description until a grouping
+  was picked. (#425)
 
 ## [0.19.0] - 2026-10-10
 
