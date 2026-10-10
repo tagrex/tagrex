@@ -13,6 +13,10 @@
   Cross-platform audio tag editor. Table editing, bidirectional masks, transactional undo.
 </p>
 
+<p align="center">
+  <img src="docs/img/tagger.png" width="900" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
+</p>
+
 ---
 
 > **Status: 0.20.x.** Usable day to day: table editing, rename masks with a

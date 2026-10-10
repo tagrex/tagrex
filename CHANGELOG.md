@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   a short form (version, system, file format, steps), and questions and ideas
   are pointed to Discussions
   ([#443](https://github.com/tagrex/tagrex/issues/443)).
+- **A screenshot in the README.** The repository page now shows what the
+  Tagger view looks like
+  ([#444](https://github.com/tagrex/tagrex/issues/444)).
 
 ### Fixed
 
