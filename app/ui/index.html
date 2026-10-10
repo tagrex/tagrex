@@ -42,6 +42,7 @@
       <symbol id="i-tri-down" viewBox="0 0 16 16"><path d="M8 11.5 4.5 6h7Z" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-columns" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><line x1="6.2" y1="3" x2="6.2" y2="13"/><line x1="9.8" y1="3" x2="9.8" y2="13"/></symbol>
       <symbol id="i-presets" viewBox="0 0 16 16"><path d="M4.5 2.8h7a1 1 0 0 1 1 1v9.4l-4.5-2.8L4 13.2V3.8a1 1 0 0 1 1-1Z"/></symbol>
+      <symbol id="i-health" viewBox="0 0 16 16"><path d="M8 13.4 3.2 8.8a3 3 0 0 1 4.2-4.3l.6.6.6-.6a3 3 0 0 1 4.2 4.3Z"/><path d="M5 8.2h1.6l.9-1.6 1.2 2.6.7-1H11"/></symbol>
       <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.4 8.4 6.4 11.4 12.6 4.6"/></symbol>
       <symbol id="i-plus" viewBox="0 0 16 16"><line x1="8" y1="3.5" x2="8" y2="12.5"/><line x1="3.5" y1="8" x2="12.5" y2="8"/></symbol>
       <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2.5 5.3a1 1 0 0 1 1-1h2.7l1.2 1.4h5.1a1 1 0 0 1 1 1v4.6a1 1 0 0 1-1 1h-9.1a1 1 0 0 1-1-1Z"/></symbol>
@@ -151,6 +152,12 @@
           <div class="col-picker">
             <button id="presets-btn" class="icon" data-i18n-title="toolbar.presetsTitle" title="Save and re-apply filter + sort presets" data-i18n-aria-label="toolbar.presets" aria-label="Filter and sort presets"><svg class="ico"><use href="#i-presets"/></svg></button>
             <div id="presets-menu" class="col-menu" hidden></div>
+          </div>
+          <!-- Library health (#436): ready-made checks that narrow the table to
+               the files that need fixing. Popover built by health.js. -->
+          <div class="col-picker">
+            <button id="health-btn" class="icon" data-i18n-title="health.title" title="Library health" data-i18n-aria-label="health.title" aria-label="Library health"><svg class="ico"><use href="#i-health"/></svg></button>
+            <div id="health-menu" class="col-menu" hidden></div>
           </div>
           <!-- Configurable columns (#43): pick which tag fields show, and their
                order. The popover is built by renderColumnsMenu. -->

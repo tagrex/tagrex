@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Library health.** A button next to the presets lists ready-made checks with
+  a count each: missing tags, a title that is just the file name, a year that
+  is not a year, stray spaces, track numbers above their total or repeated,
+  albums whose tracks disagree, the same artist or genre spelled several ways,
+  unreadable files and files with several tag blocks. Choosing one narrows the
+  table to the files it flags, so what needs fixing is one click away
+  ([#436](https://github.com/tagrex/tagrex/issues/436)).
 - **Apply shows its progress and can be cancelled.** While a plan is being
   written, the bar at the bottom of the table swaps its buttons for a progress
   bar, the file in hand and a Cancel button. Cancelling stops before the next

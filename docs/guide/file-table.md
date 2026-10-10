@@ -78,6 +78,36 @@ so a field-scoped query finds what your eye finds.
 > Clear the filter if you want to be certain what you are about to change — the
 > preview will show you regardless.
 
+## Library health
+
+The heart button next to the presets button lists ready-made checks, each with
+the number of files it flags. Choosing one narrows the table to those files; the
+button lights up, the status line names the check, and choosing it again (or
+"Show all files") brings everything back. A check is a view, not an edit: fix
+what it shows the usual way and the file drops out of the list as it is
+re-read.
+
+- **Missing**: no title, artist, album, album artist, track number, year or
+  genre.
+- **Suspicious**: the title is the file name (with or without a leading track
+  number), a year that is not a year (not `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, or
+  before 1900 or after next year), a value with stray spaces around it.
+- **Albums**: a track number above its total, tracks of one album that
+  disagree on the total, the year or the album artist, and two files with the
+  same track number. An album is the files in one folder that share an album
+  name; a disc is told apart by its disc number.
+- **Library**: the same artist, album artist, album or genre written in more
+  than one way (case, accents, runs of spaces). The commonest spelling is taken
+  to be the intended one and the files with any other are flagged.
+- **Files**: tags that can't be read, and files carrying more than one tag
+  block.
+
+The checks work on what is already loaded, so there is no cover check: whether
+a file has a picture is not read until it is selected.
+
+The health filter works together with the filter box and is dropped when another
+folder is opened.
+
 ## Columns
 
 **Columns** in the toolbar opens a list of every available tag field. Tick the

@@ -5914,3 +5914,50 @@ body.drag-active #drop-overlay {
 .accent-reset {
   margin-left: var(--space-2);
 }
+
+/* ---- library health menu (#436) ---- */
+#health-menu {
+  min-width: 300px;
+}
+#health-btn.on {
+  color: var(--accent-ink);
+  background: var(--sel-tint);
+  border-color: var(--accent);
+}
+/* Rows are buttons, so the stock button box (border, shadow, padding) has to go
+   for them to read as menu rows like the ones in the other popovers. */
+.col-menu .health-row {
+  width: 100%;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.col-menu .health-row:hover:not([aria-disabled="true"]) {
+  background: var(--row-hover);
+}
+.col-menu .health-row[aria-disabled="true"] {
+  color: var(--muted);
+  cursor: default;
+}
+.col-menu .health-row[aria-disabled="true"]:hover {
+  background: none;
+}
+.col-menu .health-row.on {
+  color: var(--accent-ink);
+}
+.health-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.col-menu .health-row.on .health-count {
+  color: var(--accent-ink);
+}
+.col-menu .health-clear {
+  justify-content: flex-start;
+  color: var(--accent-ink);
+}

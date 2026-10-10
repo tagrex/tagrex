@@ -18,6 +18,7 @@ import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
 import { beginApplyProgress, endApplyProgress } from "./js/applyprogress.js";
+import { activeHealthLabel, clearHealth, healthAllows, initHealth } from "./js/health.js";
 import "./js/tablegestures.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
@@ -268,6 +269,9 @@ function recompileFilter() {
 }
 
 function matchesFilter(track) {
+  // The library health check that is on (#436) narrows the table before the
+  // filter box does.
+  if (!healthAllows(track.path)) return false;
   const { scope, needle, re } = filterQuery;
   if (!needle) return true;
   // A broken regex filters nothing (the box shows the error) so the UI never
@@ -1114,10 +1118,12 @@ function updateStatus() {
   }
   const selected = selectedPaths().length;
   const noun = total === 1 ? "file" : "files";
-  const files = filterText
-    ? `${tracks.filter(matchesFilter).length}/${total} ${noun}`
-    : `${total} ${noun}`;
-  statusSel.textContent = `${files} · ${selected} selected`;
+  const files =
+    filterText || activeHealthLabel()
+      ? `${tracks.filter(matchesFilter).length}/${total} ${noun}`
+      : `${total} ${noun}`;
+  const check = activeHealthLabel();
+  statusSel.textContent = `${files}${check ? ` (${check})` : ""} · ${selected} selected`;
 }
 
 function resetEdits() {
@@ -1713,6 +1719,7 @@ async function afterOpen(label) {
   setManualOrder(false);
   setFilterText("");
   el("filter").value = "";
+  clearHealth(); // a check belongs to the library it was run on (#436)
   syncFilterControls(); // clears the parsed query + any regex-error state
   setGroupBy(dropFolders ? "drop" : groupByPref(), { persist: false, rerender: false });
   renderTracks();
@@ -3042,6 +3049,10 @@ initTooltips();
 // Keyboard shortcuts (#432): one registry, rebindable in Settings. Select-all
 // has no button to press, so it hands its own handler in.
 initShortcuts({ selectAll: selectAllRows });
+initHealth(() => {
+  renderTracks();
+  updateStatus();
+});
 // Open whatever the OS handed the app on the way in (#51) — a folder from
 // "Open With", from the Dock icon, or from a second launch. After the hooks
 // above, since it opens through the same one a drop does.
