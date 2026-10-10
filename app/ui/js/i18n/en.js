@@ -520,6 +520,7 @@ export const en = {
   "error.plan.stale": "The file changed on disk since the plan was built: {path}",
   "error.plan.renameCollision": "A file is already there: {path}",
   "error.plan.outsideRoot": "That path resolves outside the allowed root: {path}",
+  "error.plan.rollbackIncomplete": "The apply failed and the library could not be fully restored: {count} item(s) are not as they were, the first at {path}. Cause: {detail}",
   "error.provider.network": "Network error: {detail}",
   "error.provider.rateLimited": "Rate limited — retry in {seconds} s",
   "error.provider.auth": "Authentication failed: {detail}",

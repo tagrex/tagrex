@@ -518,6 +518,7 @@ export const it = {
   "error.plan.stale": "Il file è cambiato su disco da quando il piano è stato creato: {path}",
   "error.plan.renameCollision": "Un file è già lì: {path}",
   "error.plan.outsideRoot": "Quel percorso risolve fuori dalla root consentita: {path}",
+  "error.plan.rollbackIncomplete": "L'applicazione è fallita e la libreria non è stata ripristinata del tutto: {count} elemento/i non sono come prima, il primo in {path}. Causa: {detail}",
   "error.provider.network": "Errore di rete: {detail}",
   "error.provider.rateLimited": "Rate limit — riprova tra {seconds} s",
   "error.provider.auth": "Autenticazione fallita: {detail}",

@@ -519,6 +519,7 @@ export const uk = {
   "error.plan.stale": "Файл змінився на диску відтоді, як було побудовано план: {path}",
   "error.plan.renameCollision": "Там уже є файл: {path}",
   "error.plan.outsideRoot": "Цей шлях веде за межі дозволеного кореня: {path}",
+  "error.plan.rollbackIncomplete": "Застосування не вдалося, і бібліотеку не вдалося повністю відновити: {count} елемент(ів) не в попередньому стані, перший — {path}. Причина: {detail}",
   "error.provider.network": "Помилка мережі: {detail}",
   "error.provider.rateLimited": "Надто часто — повторіть через {seconds} с",
   "error.provider.auth": "Не вдалося пройти перевірку справжності: {detail}",

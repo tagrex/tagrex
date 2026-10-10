@@ -518,6 +518,7 @@ export const ru = {
   "error.plan.stale": "Файл изменился на диске с тех пор, как был построен план: {path}",
   "error.plan.renameCollision": "Там уже есть файл: {path}",
   "error.plan.outsideRoot": "Этот путь ведёт за пределы разрешённого корня: {path}",
+  "error.plan.rollbackIncomplete": "Применение не удалось, и библиотеку не получилось полностью восстановить: {count} элемент(ов) не в прежнем состоянии, первый — {path}. Причина: {detail}",
   "error.provider.network": "Ошибка сети: {detail}",
   "error.provider.rateLimited": "Слишком часто — повторите через {seconds} с",
   "error.provider.auth": "Не удалось пройти проверку подлинности: {detail}",

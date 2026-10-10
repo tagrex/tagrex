@@ -518,6 +518,7 @@ export const fr = {
   "error.plan.stale": "Le fichier a changé sur le disque depuis la création du plan : {path}",
   "error.plan.renameCollision": "Un fichier s'y trouve déjà : {path}",
   "error.plan.outsideRoot": "Ce chemin sort de la racine autorisée : {path}",
+  "error.plan.rollbackIncomplete": "L'application a échoué et la bibliothèque n'a pas pu être entièrement restaurée : {count} élément(s) ne sont plus comme avant, le premier à {path}. Cause : {detail}",
   "error.provider.network": "Erreur réseau : {detail}",
   "error.provider.rateLimited": "Limite de requêtes atteinte — réessayer dans {seconds} s",
   "error.provider.auth": "Échec de l'authentification : {detail}",

@@ -255,10 +255,7 @@ impl Executor {
         let mut written = Written::new(plan.changes.len());
         let removed_dirs = match Self::write_phase(plan, &roots, &mut written) {
             Ok(removed_dirs) => removed_dirs,
-            Err(error) => {
-                written.roll_back(plan, &[]);
-                return Err(error);
-            }
+            Err(error) => return Err(written.roll_back_after(plan, &[], error)),
         };
         let created_dirs = std::mem::take(&mut written.created_dirs);
 
@@ -278,8 +275,7 @@ impl Executor {
             Ok(id) => batch.id = id,
             Err(error) => {
                 written.created_dirs = batch.created_dirs;
-                written.roll_back(plan, &batch.removed_dirs);
-                return Err(error.into());
+                return Err(written.roll_back_after(plan, &batch.removed_dirs, error.into()));
             }
         }
         Ok(batch)
@@ -482,22 +478,55 @@ impl Written {
         }
     }
 
+    /// Roll back, then pair `cause` with whatever the rollback could not undo
+    /// (#442): `cause` itself when everything is back, otherwise
+    /// [`PlanError::RollbackIncomplete`], so the user is told the library needs a
+    /// look instead of only that the write failed.
+    fn roll_back_after(
+        &self,
+        plan: &ChangePlan,
+        removed_dirs: &[PathBuf],
+        cause: PlanError,
+    ) -> PlanError {
+        let mut failed = self.roll_back(plan, removed_dirs);
+        if failed.is_empty() {
+            return cause;
+        }
+        PlanError::RollbackIncomplete {
+            cause: Box::new(cause),
+            count: failed.len(),
+            first: failed.swap_remove(0),
+        }
+    }
+
     /// Reverse what was done, in the order undo uses: restore pruned folders,
     /// move or remove transfers, restore blocks/fields/images, drop created
     /// folders. Every step is attempted and its error ignored: the caller is
-    /// already returning the failure that started this, and a step that never
-    /// took effect (the one that failed) has nothing to put back.
-    fn roll_back(&self, plan: &ChangePlan, removed_dirs: &[PathBuf]) {
+    /// already returning the failure that started this. Whether something is
+    /// back is decided by looking at the disk afterwards, not by the result of
+    /// the undo call — the step that failed usually fails to undo too, having
+    /// done nothing to undo. Returns the paths that are still not as they were.
+    fn roll_back(&self, plan: &ChangePlan, removed_dirs: &[PathBuf]) -> Vec<PathBuf> {
+        let mut failed = Vec::new();
         for dir in removed_dirs {
             let _ = std::fs::create_dir_all(dir);
+            if !dir.is_dir() {
+                failed.push(dir.clone());
+            }
         }
         for (from, to, copy) in self.sidecars.iter().rev() {
             let _ = untransfer(to, from, *copy);
+            if !is_untransferred(to, from, *copy) {
+                failed.push(from.clone());
+            }
         }
         for &index in self.transferred.iter().rev() {
             let change = &plan.changes[index];
             if let Some(target) = effective_rename(change) {
                 let _ = untransfer(target, &change.path, change.copy);
+                if !is_untransferred(target, &change.path, change.copy) {
+                    failed.push(change.path.clone());
+                }
             }
         }
         for (index, change) in plan.changes.iter().enumerate() {
@@ -512,10 +541,26 @@ impl Written {
             if steps >= 2 {
                 let _ = apply_cover_change(&change.path, change, Direction::Undo);
             }
+            // The file holds the values the plan recorded as `old` again, or it
+            // does not.
+            if ensure_not_stale(change).is_err() {
+                failed.push(change.path.clone());
+            }
         }
         for dir in self.created_dirs.iter().rev() {
             let _ = std::fs::remove_dir(dir);
         }
+        failed
+    }
+}
+
+/// Whether one [`transfer`] is undone: a move is back at `original` with nothing
+/// left at `target`, a copy is gone from `target`.
+fn is_untransferred(target: &Path, original: &Path, copy: bool) -> bool {
+    if copy {
+        !target.exists()
+    } else {
+        original.exists() && !target.exists()
     }
 }
 
@@ -924,4 +969,76 @@ pub enum PlanError {
     TagIo(#[from] crate::model::TagIoError),
     #[error("I/O error: {0}")]
     Io(#[source] std::io::Error),
+    /// A failed apply could not be fully rolled back (#442): `count` files,
+    /// folders or sidecars are not as they were, `first` being the first.
+    #[error("{cause}; {count} item(s) could not be put back, the first: {}", .first.display())]
+    RollbackIncomplete {
+        cause: Box<PlanError>,
+        count: usize,
+        first: PathBuf,
+    },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn change_for(path: &Path, artist: &str) -> FileChange {
+        FileChange {
+            path: path.to_path_buf(),
+            tag_changes: vec![FieldChange {
+                field: TagField::Artist,
+                old: None,
+                new: Some(artist.to_string()),
+            }],
+            ..FileChange::default()
+        }
+    }
+
+    fn temp_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tagrex-plan-{tag}-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A file the plan reached but that is no longer there cannot be put back:
+    /// the rollback has to say so.
+    #[test]
+    fn a_rollback_that_cannot_restore_a_file_reports_it() {
+        let dir = temp_dir("incomplete");
+        let gone = dir.join("gone.flac");
+        let plan = ChangePlan {
+            changes: vec![change_for(&gone, "A")],
+            ..ChangePlan::default()
+        };
+        let mut written = Written::new(1);
+        written.tag_steps[0] = 3;
+
+        let error = written.roll_back_after(&plan, &[], PlanError::Io(std::io::Error::other("x")));
+
+        match error {
+            PlanError::RollbackIncomplete { count, first, .. } => {
+                assert_eq!(count, 1);
+                assert_eq!(first, gone);
+            }
+            other => panic!("expected RollbackIncomplete, got {other:?}"),
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Nothing was reached, so there is nothing to put back and nothing to report.
+    #[test]
+    fn an_untouched_plan_rolls_back_silently() {
+        let dir = temp_dir("untouched");
+        let plan = ChangePlan {
+            changes: vec![change_for(&dir.join("never.flac"), "A")],
+            ..ChangePlan::default()
+        };
+        let written = Written::new(1);
+
+        let error = written.roll_back_after(&plan, &[], PlanError::Io(std::io::Error::other("x")));
+
+        assert!(matches!(error, PlanError::Io(_)));
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

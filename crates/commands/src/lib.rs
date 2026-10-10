@@ -746,6 +746,16 @@ fn error_message(error: &AppError) -> MessageDto {
             PlanError::Journal(detail) => coded("error.journal", arg("detail", detail)),
             PlanError::TagIo(detail) => coded("error.tag.backend", arg("detail", detail)),
             PlanError::Io(detail) => coded("error.io", arg("detail", detail)),
+            PlanError::RollbackIncomplete {
+                cause,
+                count,
+                first,
+            } => {
+                let mut args = arg("detail", cause);
+                args.insert("count".to_string(), count.to_string());
+                args.insert("path".to_string(), first.display().to_string());
+                coded("error.plan.rollbackIncomplete", args)
+            }
         },
         AppError::Journal(inner) => match inner {
             JournalError::Storage(detail) => coded("error.journal", arg("detail", detail)),

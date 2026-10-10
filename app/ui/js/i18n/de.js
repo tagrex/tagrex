@@ -514,6 +514,7 @@ export const de = {
   "error.plan.stale": "Die Datei hat sich auf der Festplatte geändert, seit der Plan erstellt wurde: {path}",
   "error.plan.renameCollision": "Dort liegt bereits eine Datei: {path}",
   "error.plan.outsideRoot": "Dieser Pfad liegt außerhalb des erlaubten Stammordners: {path}",
+  "error.plan.rollbackIncomplete": "Das Anwenden ist fehlgeschlagen und die Bibliothek ließ sich nicht vollständig wiederherstellen: {count} Element(e) sind nicht wie zuvor, das erste unter {path}. Ursache: {detail}",
   "error.provider.network": "Netzwerkfehler: {detail}",
   "error.provider.rateLimited": "Anfragelimit erreicht — erneut versuchen in {seconds} s",
   "error.provider.auth": "Authentifizierung fehlgeschlagen: {detail}",

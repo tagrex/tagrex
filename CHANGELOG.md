@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A failed Apply says so when it could not put everything back.** If the
+  rollback after a failed write cannot restore a file, move or folder, the
+  error now names how many items are not as they were and the first of them,
+  instead of reporting only the original failure
+  ([#442](https://github.com/tagrex/tagrex/issues/442)).
 - **A write that fails part-way through Apply no longer leaves the library
   half-changed.** Files written before the failure, moves, copies and the
   folders created for them are now put back before the error is shown, so

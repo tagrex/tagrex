@@ -516,6 +516,7 @@ export const es = {
   "error.plan.stale": "El archivo cambió en el disco después de crear el plan: {path}",
   "error.plan.renameCollision": "Ya hay un archivo ahí: {path}",
   "error.plan.outsideRoot": "Esa ruta queda fuera de la raíz permitida: {path}",
+  "error.plan.rollbackIncomplete": "La aplicación falló y la biblioteca no se pudo restaurar por completo: {count} elemento(s) no están como antes, el primero en {path}. Causa: {detail}",
   "error.provider.network": "Error de red: {detail}",
   "error.provider.rateLimited": "Límite de peticiones alcanzado — reintenta en {seconds} s",
   "error.provider.auth": "Error de autenticación: {detail}",
