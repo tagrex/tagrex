@@ -17,6 +17,7 @@ import { applyStaticText, planText, t as msg, tn } from "./js/i18n.js";
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
+import { beginApplyProgress, endApplyProgress } from "./js/applyprogress.js";
 import "./js/tablegestures.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
@@ -1772,6 +1773,9 @@ async function previewEdits() {
   }
 }
 
+// True while an Apply is running (#437).
+let applying = false;
+
 async function apply() {
   if (!previewPlan || previewPlan.changes.length === 0) return;
   const wasRename = previewSource === "rename";
@@ -1788,7 +1792,11 @@ async function apply() {
     return;
   }
   const appliedPaths = new Set(appliedPlan.changes.map((c) => c.path));
+  // A second Apply (the shortcut, a double click) would queue behind the first.
+  if (applying) return;
+  applying = true;
   try {
+    await beginApplyProgress();
     await invoke("apply_plan", { plan: appliedPlan });
     toast(msg("toast.applied", { files: tn("unit.file", appliedPlan.changes.length) }));
     if (wasRename) {
@@ -1810,7 +1818,14 @@ async function apply() {
     refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
-    toast(String(e), true);
+    // A cancel is the user's own doing and left everything as it was: say so
+    // rather than raising it as a failure (#437).
+    const code = e && e.failure && e.failure.message && e.failure.message.code;
+    if (code === "error.plan.cancelled") toast(msg("toast.applyCancelled"));
+    else toast(String(e), true);
+  } finally {
+    endApplyProgress();
+    applying = false;
   }
 }
 

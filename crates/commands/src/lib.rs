@@ -16,6 +16,7 @@ use std::path::{Component, Path, PathBuf};
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -30,7 +31,9 @@ use tagrex_core::model::{
     is_writable_value, CoverArt, CoverKind, Id3v2Revision, TagBlock, TagBlockContent, TagBlockKind,
     TagEngine, TagField,
 };
-use tagrex_core::plan::{BlockChange, ChangePlan, CoverChange, Executor, FieldChange, FileChange};
+use tagrex_core::plan::{
+    ApplyProgress, BlockChange, ChangePlan, CoverChange, Executor, FieldChange, FileChange,
+};
 use tagrex_core::provider::{FetchedImage, MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
 use tagrex_core::transform::{
@@ -746,6 +749,7 @@ fn error_message(error: &AppError) -> MessageDto {
             PlanError::Journal(detail) => coded("error.journal", arg("detail", detail)),
             PlanError::TagIo(detail) => coded("error.tag.backend", arg("detail", detail)),
             PlanError::Io(detail) => coded("error.io", arg("detail", detail)),
+            PlanError::Cancelled => coded("error.plan.cancelled", BTreeMap::new()),
             PlanError::RollbackIncomplete {
                 cause,
                 count,
@@ -4110,6 +4114,22 @@ impl App {
         let change_plan = plan.to_change_plan();
         let roots = self.allowed_roots();
         let batch = Executor::apply(&change_plan, &mut self.journal, &roots)?;
+        Ok(BatchDto::from(&batch))
+    }
+
+    /// [`App::apply`] that reports progress and can be cancelled (#437). A
+    /// cancel comes back as the `error.plan.cancelled` failure, with the library
+    /// as it was.
+    pub fn apply_with(
+        &mut self,
+        plan: &PlanDto,
+        progress: &mut dyn FnMut(&ApplyProgress),
+        cancel: &AtomicBool,
+    ) -> Result<BatchDto, AppError> {
+        let change_plan = plan.to_change_plan();
+        let roots = self.allowed_roots();
+        let batch =
+            Executor::apply_with(&change_plan, &mut self.journal, &roots, progress, cancel)?;
         Ok(BatchDto::from(&batch))
     }
 

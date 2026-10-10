@@ -10,6 +10,7 @@
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
@@ -215,6 +216,29 @@ impl Executor {
         journal: &mut dyn UndoJournal,
         allowed_roots: &[PathBuf],
     ) -> Result<AppliedBatch, PlanError> {
+        Self::apply_with(
+            plan,
+            journal,
+            allowed_roots,
+            &mut |_| {},
+            &AtomicBool::new(false),
+        )
+    }
+
+    /// [`Executor::apply`] that reports how far it has got and can be stopped
+    /// (#437). `progress` is called before each step of the write phase;
+    /// `cancel` is read between steps, never inside one, so a cancelled batch
+    /// cannot leave a half-written file behind. A cancel is rolled back exactly
+    /// like a failure and comes back as [`PlanError::Cancelled`], with nothing
+    /// changed and nothing journaled. Once every file is written the batch is
+    /// committed whatever the flag says.
+    pub fn apply_with(
+        plan: &ChangePlan,
+        journal: &mut dyn UndoJournal,
+        allowed_roots: &[PathBuf],
+        progress: &mut dyn FnMut(&ApplyProgress),
+        cancel: &AtomicBool,
+    ) -> Result<AppliedBatch, PlanError> {
         let roots = canonical_roots(allowed_roots)?;
 
         // Pre-flight: validate the WHOLE plan before touching disk. Rename
@@ -222,6 +246,12 @@ impl Executor {
         // destination.
         let mut planned_targets = HashSet::new();
         for change in &plan.changes {
+            // Reading every file to check it is not stale is the long part of a
+            // big apply on a slow disk, and it writes nothing, so a cancel here
+            // has nothing to put back (#437).
+            if cancel.load(Ordering::SeqCst) {
+                return Err(PlanError::Cancelled);
+            }
             ensure_within_roots(&change.path, &roots)?;
             ensure_not_stale(change)?;
             if let Some(target) = effective_rename(change) {
@@ -253,7 +283,8 @@ impl Executor {
         // (#441), so what was done is tracked and put back before the error goes
         // up. Rollback is best-effort: it tries every step and keeps going.
         let mut written = Written::new(plan.changes.len());
-        let removed_dirs = match Self::write_phase(plan, &roots, &mut written) {
+        let mut steps = Steps::new(count_steps(plan), progress, cancel);
+        let removed_dirs = match Self::write_phase(plan, &roots, &mut written, &mut steps) {
             Ok(removed_dirs) => removed_dirs,
             Err(error) => return Err(written.roll_back_after(plan, &[], error)),
         };
@@ -289,31 +320,36 @@ impl Executor {
         plan: &ChangePlan,
         roots: &[PathBuf],
         written: &mut Written,
+        steps: &mut Steps,
     ) -> Result<Vec<PathBuf>, PlanError> {
         // Tags first, at each file's original path — but only for the changes
         // that move. A copy must not touch its source at all (#153), so its tag
         // changes wait and are written to the copy below.
         for (index, change) in plan.changes.iter().enumerate() {
-            if change.copy {
+            if change.copy || !writes_in_place(change) {
                 continue;
             }
+            steps.begin(&change.path)?;
             written.tag_steps[index] = 1;
             write_tag_changes(&change.path, change, Direction::Apply)?;
             written.tag_steps[index] = 2;
             apply_cover_change(&change.path, change, Direction::Apply)?;
             written.tag_steps[index] = 3;
             write_blocks(&change.path, change, Direction::Apply)?;
+            steps.done();
         }
         // ...then the moves and copies, creating any folders the targets need.
         // Directories are created here rather than in the pre-flight so a
         // validation failure can't leave empty folders behind.
         for (index, change) in plan.changes.iter().enumerate() {
             if let Some(target) = effective_rename(change) {
+                steps.begin(&change.path)?;
                 if let Some(parent) = target.parent() {
                     written.created_dirs.extend(create_dirs_recording(parent)?);
                 }
                 written.transferred.push(index);
                 transfer(&change.path, target, change.copy)?;
+                steps.done();
             }
         }
         // Sidecars follow their file, the same way (#58), after the main
@@ -338,9 +374,14 @@ impl Executor {
             let Some(target) = effective_rename(change) else {
                 continue;
             };
+            if !writes_in_place(change) {
+                continue;
+            }
+            steps.begin(target)?;
             write_tag_changes(target, change, Direction::Apply)?;
             apply_cover_change(target, change, Direction::Apply)?;
             write_blocks(target, change, Direction::Apply)?;
+            steps.done();
         }
 
         // A move can leave the folder it emptied behind (#153). Removing those
@@ -452,6 +493,83 @@ impl Executor {
         journal.rollback(batch_id)?;
         Ok(())
     }
+}
+
+/// How far a running [`Executor::apply_with`] has got (#437). `total` counts the
+/// write steps of the whole plan (tags of a file, a move or copy, a sidecar),
+/// `done` those finished before `path`'s step, which is about to run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApplyProgress {
+    pub done: usize,
+    pub total: usize,
+    pub path: PathBuf,
+}
+
+/// Counts the steps of the write phase and is the one place it asks whether to
+/// go on: before every step, never inside one.
+struct Steps<'a> {
+    total: usize,
+    done: usize,
+    progress: &'a mut dyn FnMut(&ApplyProgress),
+    cancel: &'a AtomicBool,
+}
+
+impl<'a> Steps<'a> {
+    fn new(
+        total: usize,
+        progress: &'a mut dyn FnMut(&ApplyProgress),
+        cancel: &'a AtomicBool,
+    ) -> Self {
+        Self {
+            total,
+            done: 0,
+            progress,
+            cancel,
+        }
+    }
+
+    /// Called before a step: stops the batch if cancelled, else reports it.
+    fn begin(&mut self, path: &Path) -> Result<(), PlanError> {
+        if self.cancel.load(Ordering::SeqCst) {
+            return Err(PlanError::Cancelled);
+        }
+        (self.progress)(&ApplyProgress {
+            done: self.done,
+            total: self.total,
+            path: path.to_path_buf(),
+        });
+        Ok(())
+    }
+
+    fn done(&mut self) {
+        self.done += 1;
+    }
+}
+
+/// Whether the change writes tag fields, images or blocks into the file.
+fn writes_in_place(change: &FileChange) -> bool {
+    !change.tag_changes.is_empty()
+        || change.cover_change.is_some()
+        || !change.block_changes.is_empty()
+}
+
+/// The steps [`Executor::write_phase`] will take, counted the way it takes them.
+fn count_steps(plan: &ChangePlan) -> usize {
+    plan.changes
+        .iter()
+        .map(|change| {
+            let in_place = usize::from(writes_in_place(change));
+            let moves = usize::from(effective_rename(change).is_some());
+            // A copy's tags are written to the copy, a move's to the original:
+            // one in-place step either way, but only a copy needs a target.
+            let in_place = if change.copy && moves == 0 {
+                0
+            } else {
+                in_place
+            };
+            in_place + moves + change.sidecar_renames.len()
+        })
+        .sum()
 }
 
 /// What a partially failed [`Executor::apply`] has done to disk so far, so it
@@ -969,6 +1087,9 @@ pub enum PlanError {
     TagIo(#[from] crate::model::TagIoError),
     #[error("I/O error: {0}")]
     Io(#[source] std::io::Error),
+    /// The apply was cancelled between two files and rolled back (#437).
+    #[error("apply cancelled")]
+    Cancelled,
     /// A failed apply could not be fully rolled back (#442): `count` files,
     /// folders or sidecars are not as they were, `first` being the first.
     #[error("{cause}; {count} item(s) could not be put back, the first: {}", .first.display())]

@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tauri::{Manager, State};
@@ -41,6 +42,11 @@ type PendingOpen = Mutex<Vec<PathBuf>>;
 /// fires before the listener exists costs nothing — the startup drain picks the
 /// same paths up.
 const OPEN_PATHS_EVENT: &str = "tagrex://open-paths";
+/// Emitted while an apply runs (#437): `{ done, total, path }`.
+const APPLY_PROGRESS_EVENT: &str = "tagrex://apply-progress";
+/// The apply is reported at most this often; the files of a fast local apply go
+/// by faster than a window can repaint.
+const APPLY_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(60);
 
 /// The paths in a command line. Windows and Linux hand a folder over as an
 /// argument; macOS does not, and passes `-psn_…` of its own when Finder starts
@@ -616,9 +622,59 @@ fn player_status(player: State<Player>) -> PlayerStatus {
     player.status()
 }
 
+/// Asks the running apply to stop (#437). Its own state rather than part of
+/// [`AppState`]: the apply holds that lock for its whole run, and the request has
+/// to get through while it does.
+#[derive(Default)]
+struct ApplyControl(AtomicBool);
+
+#[derive(serde::Serialize, Clone)]
+struct ApplyProgressDto {
+    done: usize,
+    total: usize,
+    path: String,
+}
+
+// `async` so Tauri runs it off the main thread (a synchronous command runs ON
+// it): an apply over many files or a slow share would otherwise freeze the
+// window, its progress would never be painted and a cancel could not get in. No
+// `.await` inside, so the lock guard never crosses one.
 #[tauri::command]
-fn apply_plan(state: State<AppState>, plan: PlanDto) -> Result<BatchDto, ErrorDto> {
-    with_app_mut(&state, |app| app.apply(&plan).map_err(ErrorDto::from))
+async fn apply_plan(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    control: State<'_, ApplyControl>,
+    plan: PlanDto,
+) -> Result<BatchDto, ErrorDto> {
+    control.0.store(false, Ordering::SeqCst);
+    let mut last = std::time::Instant::now() - APPLY_PROGRESS_INTERVAL;
+    with_app_mut(&state, |app| {
+        app.apply_with(
+            &plan,
+            &mut |progress| {
+                if last.elapsed() < APPLY_PROGRESS_INTERVAL {
+                    return;
+                }
+                last = std::time::Instant::now();
+                let _ = tauri::Emitter::emit(
+                    &app_handle,
+                    APPLY_PROGRESS_EVENT,
+                    ApplyProgressDto {
+                        done: progress.done,
+                        total: progress.total,
+                        path: progress.path.to_string_lossy().into_owned(),
+                    },
+                );
+            },
+            &control.0,
+        )
+        .map_err(ErrorDto::from)
+    })
+}
+
+#[tauri::command]
+fn cancel_apply(control: State<ApplyControl>) {
+    control.0.store(true, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -1127,6 +1183,7 @@ fn main() {
         )
         .manage(AppState::default())
         .manage(ProviderState::default())
+        .manage(ApplyControl::default())
         // What the app was started with, waiting for the frontend to ask (#51).
         .manage(PendingOpen::new(paths_from_args(
             std::env::args_os().skip(1),
@@ -1178,6 +1235,7 @@ fn main() {
             export_html,
             export_xml,
             apply_plan,
+            cancel_apply,
             undo,
             history,
             provider_search,

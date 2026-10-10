@@ -1358,6 +1358,53 @@ body.diffing #tracks tbody tr.staged td.sel {
   padding-right: var(--space-5);
 }
 
+/* While an apply runs (#437) the bar swaps its gate buttons for a progress bar,
+   the file being written and a Cancel. The count stays: it is what is being
+   applied. */
+.diff-actionbar .ab-progress,
+.diff-actionbar #diff-cancel-apply {
+  display: none;
+}
+.diff-actionbar.applying .ab-progress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.diff-actionbar.applying #diff-cancel-apply {
+  display: inline-flex;
+}
+.diff-actionbar.applying .toggle-old,
+.diff-actionbar.applying .ab-sep,
+.diff-actionbar.applying #diff-discard,
+.diff-actionbar.applying #diff-apply {
+  display: none;
+}
+.diff-actionbar .ab-bar {
+  flex: 0 0 auto;
+  width: 140px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.diff-actionbar .ab-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent-ink);
+  transition: width 0.12s linear;
+}
+.diff-actionbar .ab-file {
+  min-width: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
 /* ---- duplicate finder (#40) ---- */
 .dup-bar {
   display: flex;

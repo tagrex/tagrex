@@ -3,6 +3,7 @@
 //! outside the per-test temp dir.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tagrex_core::journal::{UndoJournal, VecJournal};
 use tagrex_core::model::{TagEngine, TagField};
@@ -1017,5 +1018,102 @@ fn a_failure_after_the_copies_removes_them_and_their_folders() {
     assert!(track.exists());
     assert!(!target.exists());
     assert!(!dir.path().join("Artist").exists());
+    assert!(journal.batches().unwrap().is_empty());
+}
+
+fn set_artist_on(paths: &[&Path]) -> ChangePlan {
+    ChangePlan {
+        description: "set artist".to_string(),
+        changes: paths
+            .iter()
+            .map(|path| FileChange {
+                path: path.to_path_buf(),
+                tag_changes: vec![FieldChange {
+                    field: TagField::Artist,
+                    old: None,
+                    new: Some("Cancelled".to_string()),
+                }],
+                ..FileChange::default()
+            })
+            .collect(),
+        ..ChangePlan::default()
+    }
+}
+
+#[test]
+fn apply_reports_each_step_with_a_running_total() {
+    let dir = TempDir::new("progress");
+    let files = [dir.flac("a.flac"), dir.flac("b.flac"), dir.flac("c.flac")];
+    let mut journal = VecJournal::new();
+    let plan = set_artist_on(&[&files[0], &files[1], &files[2]]);
+
+    let mut seen = Vec::new();
+    Executor::apply_with(
+        &plan,
+        &mut journal,
+        &roots(dir.path()),
+        &mut |progress| seen.push((progress.done, progress.total)),
+        &AtomicBool::new(false),
+    )
+    .unwrap();
+
+    assert_eq!(seen, vec![(0, 3), (1, 3), (2, 3)]);
+}
+
+#[test]
+fn a_cancel_between_files_rolls_the_batch_back() {
+    let dir = TempDir::new("cancel");
+    let files = [dir.flac("a.flac"), dir.flac("b.flac"), dir.flac("c.flac")];
+    let mut journal = VecJournal::new();
+    let plan = set_artist_on(&[&files[0], &files[1], &files[2]]);
+
+    // Cancel as the second file is reported: it is still written, and the flag
+    // is read before the third, so two files are on disk when the batch stops.
+    let cancel = AtomicBool::new(false);
+    let mut written_when_stopped = 0;
+    let result = Executor::apply_with(
+        &plan,
+        &mut journal,
+        &roots(dir.path()),
+        &mut |progress| {
+            if progress.done == 1 {
+                cancel.store(true, Ordering::SeqCst);
+            }
+            written_when_stopped = progress.done + 1;
+        },
+        &cancel,
+    );
+
+    assert!(matches!(result, Err(PlanError::Cancelled)));
+    assert_eq!(written_when_stopped, 2);
+    for path in &files {
+        assert!(!TagEngine::read(path)
+            .unwrap()
+            .tags
+            .contains_key(&TagField::Artist));
+    }
+    assert!(journal.batches().unwrap().is_empty());
+}
+
+#[test]
+fn a_cancel_before_the_first_file_changes_nothing() {
+    let dir = TempDir::new("cancel-early");
+    let file = dir.flac("a.flac");
+    let mut journal = VecJournal::new();
+    let plan = set_artist_on(&[&file]);
+
+    let result = Executor::apply_with(
+        &plan,
+        &mut journal,
+        &roots(dir.path()),
+        &mut |_| {},
+        &AtomicBool::new(true),
+    );
+
+    assert!(matches!(result, Err(PlanError::Cancelled)));
+    assert!(!TagEngine::read(&file)
+        .unwrap()
+        .tags
+        .contains_key(&TagField::Artist));
     assert!(journal.batches().unwrap().is_empty());
 }

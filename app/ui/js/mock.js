@@ -700,6 +700,8 @@ function mockInvoke(cmd, args) {
       }
       s.history.unshift({ id: s.history.length + 1, description: args.plan.description, applied_at: 0 });
       return Promise.resolve({ id: s.history.length, description: args.plan.description, applied_at: 0 });
+    case "cancel_apply":
+      return Promise.resolve();
     case "history":
       return Promise.resolve(s.history);
     case "undo":

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Apply shows its progress and can be cancelled.** While a plan is being
+  written, the bar at the bottom of the table swaps its buttons for a progress
+  bar, the file in hand and a Cancel button. Cancelling stops before the next
+  file and puts back everything written so far, so the library is left as it
+  was and nothing is recorded in the undo history
+  ([#437](https://github.com/tagrex/tagrex/issues/437)).
+
 ### Changed
 
 - **The window reopens where you left it.** Size, position and the maximized
