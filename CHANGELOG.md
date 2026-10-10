@@ -14,6 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   a Reset. It applies live, in light and dark, and survives a restart. Text on
   the accent stays readable, so a pale pick is darkened a little rather than
   refused; the green of confirmed states and the red of errors do not change.
+- **Keyboard shortcuts for the main actions, rebindable in Settings.** Apply
+  (⌘↩), Discard (⌘⌫), undo the last batch (⌘Z), open (⌘O) and re-read (⌘R) a
+  folder, the filter (⌘F), play/pause (⌥Space; Ctrl+Shift+Space on Windows and
+  Linux), previous/next track (⌘←/⌘→), the five modes (⌘1–⌘5), the side panel
+  (⌥⌘S) and Settings (⌘,) — Ctrl instead of ⌘ outside macOS. Settings ›
+  Shortcuts lists them all: click one and press a new combination; one already
+  taken is refused with the action holding it named, and each resets on its
+  own or all at once. They follow the physical key, so a Cyrillic layout no
+  longer breaks ⌘A; a text field keeps its own keys, and tooltips show each
+  button's shortcut. (#432)
 
 ### Fixed
 

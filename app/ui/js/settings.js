@@ -10,6 +10,18 @@ import { applyStaticText, setLanguage, t, tOr } from "./i18n.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
+import {
+  ACTIONS,
+  actionLabel,
+  comboFromEvent,
+  comboOf,
+  formatCombo,
+  isDefault,
+  rebind,
+  resetAllShortcuts,
+  resetShortcut,
+  setCapturing,
+} from "./shortcuts.js";
 import { actionGroups, savedSettings, setSavedSettings } from "./state.js";
 import {
   applyBadgeFont,
@@ -72,6 +84,7 @@ function setLanguageChoice(mode) {
   setLanguage(mode, () => {
     hooks.retranslate();
     relabelImportFields();
+    renderShortcuts();
   });
 }
 
@@ -369,6 +382,7 @@ async function openSettings() {
   setBadgeFontChoice(badgeFont());
   setMediaGlyphChoice();
   renderPrioList();
+  renderShortcuts();
   el("settings").hidden = false;
 }
 
@@ -387,7 +401,99 @@ function setMediaGlyphChoice() {
 }
 
 function closeSettings() {
+  endCapture();
   el("settings").hidden = true;
+}
+
+// ---- keyboard shortcuts (#432) ----
+// One row per action in the registry: what it does, its combination, and a
+// Reset when it is not the default. Clicking the combination records the next
+// one pressed; Esc or a click elsewhere gives up. A binding applies and is
+// stored at once — the registry refuses a taken or reserved one and says why.
+let capturingId = null;
+
+function shortcutMessage(text) {
+  const msg = el("set-shortcuts-msg");
+  msg.textContent = text || "";
+  msg.hidden = !text;
+}
+
+function renderShortcuts() {
+  const host = el("set-shortcuts");
+  host.innerHTML = "";
+  for (const action of ACTIONS) {
+    const row = document.createElement("div");
+    row.className = "shortcut-row";
+    const label = document.createElement("span");
+    label.className = "shortcut-label";
+    label.textContent = actionLabel(action.id);
+    const combo = document.createElement("button");
+    combo.type = "button";
+    combo.className = "shortcut-combo";
+    combo.dataset.action = action.id;
+    const capturingThis = capturingId === action.id;
+    combo.classList.toggle("capturing", capturingThis);
+    combo.textContent = capturingThis ? t("shortcuts.press") : formatCombo(comboOf(action.id));
+    combo.addEventListener("click", () => startCapture(action.id));
+    const reset = document.createElement("button");
+    reset.type = "button";
+    reset.className = "text-btn shortcut-reset";
+    reset.textContent = t("settings.reset");
+    reset.title = t("shortcuts.resetOne", { combo: formatCombo(action.combo) });
+    reset.style.visibility = isDefault(action.id) ? "hidden" : "";
+    reset.addEventListener("click", () => {
+      const result = resetShortcut(action.id);
+      shortcutMessage(result.ok ? "" : result.error);
+      renderShortcuts();
+    });
+    row.append(label, combo, reset);
+    host.appendChild(row);
+  }
+}
+
+function startCapture(id) {
+  endCapture();
+  capturingId = id;
+  setCapturing(true);
+  shortcutMessage("");
+  document.addEventListener("keydown", onCaptureKey, true);
+  document.addEventListener("pointerdown", onCapturePointer, true);
+  renderShortcuts();
+  host().querySelector(`.shortcut-combo[data-action="${id}"]`)?.focus();
+}
+
+function host() {
+  return el("set-shortcuts");
+}
+
+function endCapture() {
+  if (!capturingId) return;
+  capturingId = null;
+  setCapturing(false);
+  document.removeEventListener("keydown", onCaptureKey, true);
+  document.removeEventListener("pointerdown", onCapturePointer, true);
+  renderShortcuts();
+}
+
+// Capture phase, ahead of everything: the key being recorded must not also do
+// what it does — Esc would close the sheet, ⌘R would re-read the folder.
+function onCaptureKey(e) {
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (e.code === "Escape" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+    endCapture();
+    return;
+  }
+  const combo = comboFromEvent(e);
+  if (!combo) return; // a modifier on its own — keep listening
+  const result = rebind(capturingId, combo);
+  shortcutMessage(result.ok ? "" : result.error);
+  endCapture();
+}
+
+function onCapturePointer(e) {
+  if (e.target.closest?.(".shortcut-combo.capturing")) return;
+  endCapture();
 }
 
 async function saveSettings() {
@@ -478,6 +584,12 @@ el("set-value-font").addEventListener("click", (e) => {
   if (btn) setValueFontChoice(btn.dataset.valueFont);
 });
 el("set-prio-reset").addEventListener("click", resetPriority);
+el("set-shortcuts-reset").addEventListener("click", () => {
+  endCapture();
+  resetAllShortcuts();
+  shortcutMessage("");
+  renderShortcuts();
+});
 el("beatport-signin").addEventListener("click", beatportSignIn);
 el("beatport-signout").addEventListener("click", beatportSignOut);
 // Table font size is a live control: drag to apply (and persist) immediately so

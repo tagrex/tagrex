@@ -27,7 +27,7 @@ read nothing else, read [Change plans, Apply and Undo](change-plans.md).
 6. [Mask reference](masks.md) — the placeholder language, in both directions
 7. [GENERATOR](generator.md) — transform presets, track numbering
 8. [DEDUPLICATOR and EXPORTER](duplicates-and-export.md) — find duplicates, write playlists and reports
-9. [Settings](settings.md) — every preference, and where they are stored
+9. [Settings](settings.md) — every preference, keyboard shortcuts, and where they are stored
 
 ## Conventions in this guide
 

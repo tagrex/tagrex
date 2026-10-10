@@ -16,6 +16,7 @@
 // and never the table: a cell's title is data-ish, follows the pointer across
 // hundreds of rows, and the native bubble is the right weight for it.
 import { el } from "./dom.js";
+import { shortcutHint } from "./shortcuts.js";
 
 // Long enough not to fire while the pointer crosses a row of buttons on its way
 // somewhere, short enough to feel like an answer rather than a wait.
@@ -46,11 +47,21 @@ function place(tip, target) {
   tip.style.top = below + h + 6 <= window.innerHeight ? `${below}px` : `${rect.top - gap - h}px`;
 }
 
+// The control's own text, then its keyboard shortcut (#432) — read from the
+// registry on every show, so a rebinding is in the very next tooltip.
 function show(target) {
-  const text = target.dataset.tipText;
-  if (!text) return;
+  const text = target.dataset.tipText || "";
+  const hint = shortcutHint(target);
+  if (!text && !hint) return;
   const tip = box();
-  tip.textContent = text;
+  tip.textContent = "";
+  if (text) tip.append(text);
+  if (hint) {
+    const kbd = document.createElement("kbd");
+    kbd.className = "tip-kbd";
+    kbd.textContent = hint;
+    tip.append(kbd);
+  }
   place(tip, target);
 }
 
@@ -72,11 +83,13 @@ export function hideTooltip() {
 
 function arm(target) {
   hideTooltip();
-  const text = target.getAttribute("title");
-  if (!text) return;
+  const text = target.getAttribute("title") || "";
+  // A labelled button with a shortcut (Apply, Discard) has no title, only the
+  // hint to show.
+  if (!text && !target.dataset.shortcut) return;
   anchor = target;
   target.dataset.tipText = text;
-  target.removeAttribute("title");
+  if (text) target.removeAttribute("title");
   timer = setTimeout(() => show(target), DELAY);
 }
 
@@ -85,7 +98,7 @@ export function initTooltips() {
   if (!box()) return;
   document.addEventListener("pointerover", (e) => {
     if (e.pointerType && e.pointerType !== "mouse") return;
-    const target = e.target.closest?.("[title]");
+    const target = e.target.closest?.("[title], [data-shortcut]");
     if (!target || !target.closest(SCOPE)) {
       if (anchor && !anchor.contains(e.target)) hideTooltip();
       return;

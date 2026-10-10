@@ -3,10 +3,10 @@
 Opened from the sliders icon at the top right.
 
 **Save commits, Cancel discards** — and Escape is Cancel. That applies to
-everything on this page except three controls that are deliberately live, because
+everything on this page except the controls that are deliberately live, because
 their whole point is seeing the effect: **Theme**, **Accent colour**, **Value font** and the two font
 **size sliders** change the interface the moment you touch them, and are kept
-whether or not you press Save.
+whether or not you press Save. **Shortcuts** apply at once too.
 
 The footer reads *Saved to this machine* as a reminder that none of this travels
 with your music or syncs anywhere.
@@ -71,6 +71,45 @@ current theme. The green of confirmed states and the red of errors do not change
 select-all checkbox in its header. Off by default, since rows select on click.
 Unlike the two controls above it, this one takes effect on **Save**.
 
+## Shortcuts
+
+Every keyboard shortcut in the app, one row per action. Click a combination and
+press the new one: it takes effect and is stored at once, like the theme, so
+Cancel does not take it back. **Escape** while recording gives up and leaves
+the old one. **Reset** next to a changed row brings its default back, and
+**Reset all** restores every default.
+
+A combination can belong to one action only: picking one that is taken is
+refused, and the message names the action holding it. The ones the system or
+text editing needs — ⌘C, ⌘V, ⌘X, ⌘Q, ⌘W, Tab, the arrows and Space on their own,
+and a few more — cannot be taken at all.
+
+Shortcuts follow the physical key, not the letter it types, so they work the
+same with a Cyrillic or any other keyboard layout. The tooltip of a button that
+has a shortcut shows it after its own text.
+
+| Action | macOS | Windows and Linux |
+| --- | --- | --- |
+| Apply the staged changes | ⌘↩ | Ctrl+Enter |
+| Discard the staged changes | ⌘⌫ | Ctrl+Backspace |
+| Undo the last applied batch | ⌘Z | Ctrl+Z |
+| Open a folder | ⌘O | Ctrl+O |
+| Re-read the open folder | ⌘R | Ctrl+R |
+| Go to the filter | ⌘F | Ctrl+F |
+| Select every row | ⌘A | Ctrl+A |
+| Play / pause | ⌥Space | Ctrl+Shift+Space |
+| Previous / next track | ⌘← / ⌘→ | Ctrl+Left / Ctrl+Right |
+| Switch to TAGGER … EXPORTER | ⌘1 … ⌘5 | Ctrl+1 … Ctrl+5 |
+| Show or hide the side panel | ⌥⌘S | Ctrl+Alt+S |
+| Open Settings | ⌘, | Ctrl+, |
+
+While you type in a text field or edit a cell, the field keeps the keys it
+uses itself — ⌘A selects its text, ⌘Z undoes typing, ⌘⌫ and ⌘← move or delete
+within the line. Opening a folder, re-reading it, the filter, the mode switches
+and Settings work from anywhere. No shortcut acts while Settings or a dialog is
+open, and one whose button is unavailable — Apply with nothing staged — does
+nothing.
+
 ## LAB
 
 Typography still being evaluated. These may change or be dropped in a later
@@ -102,8 +141,8 @@ platform, under `com.tagrex.desktop`:
 | `discogs_token` | Your saved Discogs token |
 
 A few purely visual preferences — theme, accent colour, column layout and widths, filter flags,
-grouping key, volume, the LAB fonts — are stored by the interface itself rather
-than in `settings.json`.
+grouping key, volume, keyboard shortcuts, the LAB fonts — are stored by the
+interface itself rather than in `settings.json`.
 
 **Nothing is stored inside your music folders**, and no database of your
 collection is kept. Delete the directory above and TagRex forgets your settings

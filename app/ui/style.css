@@ -796,6 +796,16 @@ button.io > .ico,
 .tooltip[hidden] {
   display: none;
 }
+/* The keyboard shortcut after the text (#432) — set apart, never split. */
+.tip-kbd {
+  margin-left: 8px;
+  font-family: inherit;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+.tip-kbd:first-child {
+  margin-left: 0;
+}
 
 /* Consistent thin scrollbars across every engine. All three Tauri webviews are
    WebKit/Chromium, so the ::-webkit-scrollbar pseudo covers them uniformly. */
@@ -4898,6 +4908,44 @@ td[data-field="year"],
   font-size: var(--text-2xs);
   color: var(--muted);
   line-height: var(--lh-snug);
+}
+
+/* Settings › Shortcuts (#432): what the action does, its combination as a key
+   cap that records a new one when clicked, and a Reset kept in place (only
+   hidden) so the caps line up whether a row has one or not. */
+.shortcut-list {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: var(--space-2);
+}
+.shortcut-row {
+  display: contents;
+}
+.shortcut-label {
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+.shortcut-combo {
+  min-width: 72px;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-size: var(--text-xs);
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.shortcut-combo.capturing {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+  color: var(--muted);
+}
+.shortcut-msg {
+  color: var(--del);
 }
 
 /* Read-priority list (#84): a compact drag-reorder stack where the top row is

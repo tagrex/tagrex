@@ -1056,6 +1056,19 @@
             <p class="settings-hint" data-i18n="settings.checkboxColHint">Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.</p>
           </div>
 
+          <!-- Keyboard shortcuts (#432): one row per action in the registry
+               (js/shortcuts.js), built by settings.js. A binding applies and is
+               stored at once, like the theme — Cancel does not take it back. -->
+          <div class="settings-group">
+            <h3 data-i18n="shortcuts.heading">Shortcuts</h3>
+            <div id="set-shortcuts" class="shortcut-list"></div>
+            <p id="set-shortcuts-msg" class="settings-hint shortcut-msg" role="status" hidden></p>
+            <div class="settings-inline">
+              <button id="set-shortcuts-reset" class="text-btn" type="button" data-i18n="shortcuts.resetAll">Reset all</button>
+            </div>
+            <p class="settings-hint" data-i18n="shortcuts.hint">Click a combination, then press the new one; Esc cancels. Changes apply at once.</p>
+          </div>
+
           <!-- LAB: typography knobs that are still being tried out. Grouped and
                labelled as experiments so it's clear they may change or go away,
                rather than sitting among the settled Display options. -->
