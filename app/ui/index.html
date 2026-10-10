@@ -699,6 +699,12 @@
       </div>
       </div>
       <div class="sb-right">
+        <!-- A newer release exists (#435): a quiet note, not a dialog. Opens the
+             releases page; the cross skips this version. Shown by updatecheck.js. -->
+        <span id="update-pill" class="update-pill" hidden>
+          <button id="update-open" class="update-open" type="button"></button>
+          <button id="update-skip" class="update-skip icon" type="button" data-i18n-title="update.skip" title="Don't tell me about this version" data-i18n-aria-label="update.skip" aria-label="Don't tell me about this version"><svg class="ico"><use href="#i-close"/></svg></button>
+        </span>
         <span id="status-sel" class="muted"></span>
         <button id="preview-edits" disabled data-i18n-title="statusbar.previewEditsTitle" title="Preview the pending inline cell edits" data-i18n="statusbar.previewEdits">Preview edits</button>
       </div>
@@ -931,6 +937,18 @@
               <label for="set-proxy" data-i18n="settings.proxy">Proxy</label>
               <input id="set-proxy" type="text" class="mono" data-i18n-placeholder="settings.proxyPlaceholder" placeholder="http://host:port  (blank = none)" spellcheck="false" />
             </div>
+            <div class="settings-row">
+              <label for="set-check-updates" data-i18n="settings.checkUpdates">Check for updates</label>
+              <input id="set-check-updates" type="checkbox" />
+            </div>
+            <div class="settings-row">
+              <span></span>
+              <div class="settings-inline">
+                <button id="update-check-now" class="text-btn" type="button" data-i18n="settings.checkNow">Check now</button>
+                <span id="update-result" class="settings-hint" role="status"></span>
+              </div>
+            </div>
+            <p class="settings-hint" data-i18n="settings.checkUpdatesHint">When TagRex starts it asks GitHub for the latest release and shows a note in the status bar if a newer one exists. Nothing is downloaded or installed, and nothing about you or your files is sent. Switched off, the app makes no such request.</p>
             <div class="settings-row">
               <label for="set-rate" data-i18n="settings.rateLimit">Rate limit</label>
               <div class="settings-inline">

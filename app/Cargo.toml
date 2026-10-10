@@ -38,6 +38,9 @@ open = "5"
 # between launches (#434). Registered with a filter in main.rs so the Beatport
 # sign-in window is never restored.
 tauri-plugin-window-state = "2"
+# One request to the GitHub Releases API to tell the user a newer release exists
+# (#435); the same client the provider crates use.
+ureq = "3.2.1"
 # Move files to the system Trash from the file table's context menu (#213).
 # Cross-platform (Finder's trash, the Windows recycle bin, the freedesktop
 # trash spec). `default-features = false` drops the `chrono` timestamp reader,

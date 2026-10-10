@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **TagRex tells you when a newer release exists.** At start-up it asks
+  GitHub's public Releases API for the latest published version and, if it is
+  newer than the one running, shows a quiet note in the status bar that opens
+  the releases page (the cross skips that version). Nothing is downloaded or
+  installed. On by default; Settings › Network has a switch to turn it off,
+  and a Check now button
+  ([#435](https://github.com/tagrex/tagrex/issues/435)).
 - **Library health.** A button next to the presets lists ready-made checks with
   a count each: missing tags, a title that is just the file name, a year that
   is not a year, stray spaces, track numbers above their total or repeated,

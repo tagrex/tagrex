@@ -29,6 +29,16 @@ side. A `429` response with `Retry-After` from the provider is always honoured
 regardless of what you set here, so lowering this is about being a good citizen,
 not about avoiding errors.
 
+**Check for updates** — on by default. When TagRex starts it makes one request
+to GitHub's public Releases API for the latest published release and compares
+its version with the one you are running. If a newer one exists, a quiet note
+appears in the status bar; it opens the releases page, and the cross beside it
+stops the note for that version. Nothing is downloaded or installed, and the
+request carries nothing about you or your files beyond what any HTTPS request
+does: your address and a user agent naming the TagRex version. The proxy above
+applies to it. Switched off, the app makes no such request. **Check now** asks
+once regardless and tells you what it found.
+
 ## Tag defaults
 
 **ID3 version** — which ID3v2 revision to write for MP3, AIFF and WAV. v2.4 is

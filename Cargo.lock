@@ -4146,6 +4146,7 @@ dependencies = [
  "tauri-plugin-window-state",
  "thiserror 1.0.69",
  "trash",
+ "ureq",
 ]
 
 [[package]]

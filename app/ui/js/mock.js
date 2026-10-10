@@ -1143,6 +1143,10 @@ function mockInvoke(cmd, args) {
           rules: [{ kind: "case", from: "", to: "", regex: false, style: "lower" }],
         },
       ]);
+    case "check_for_update":
+      return Promise.resolve(args.automatic ? null : { current: "0.20.0", latest: "0.20.0", newer: false });
+    case "open_releases_page":
+      return Promise.resolve();
     case "load_settings":
       return Promise.resolve(
         mockInvoke.state?.settings || {

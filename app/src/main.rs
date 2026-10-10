@@ -10,6 +10,8 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+mod update;
+
 use tauri::{Manager, State};
 
 use tagrex_commands::{
@@ -1047,6 +1049,31 @@ fn read_settings(app: &tauri::AppHandle) -> SettingsDto {
         .unwrap_or_default()
 }
 
+/// Ask GitHub whether a newer release exists (#435). `automatic` is the
+/// start-up check: it does nothing at all when the setting is off, so switching
+/// it off is enough to keep the app from making the request. The button in
+/// Settings asks regardless. `async` because the request blocks.
+#[tauri::command]
+async fn check_for_update(
+    app: tauri::AppHandle,
+    automatic: bool,
+) -> Result<Option<update::UpdateCheckDto>, ErrorDto> {
+    let settings = read_settings(&app);
+    if automatic && !settings.check_updates {
+        return Ok(None);
+    }
+    update::check(&settings.proxy)
+        .map(Some)
+        .map_err(|detail| ErrorDto::plain(format!("Could not check for updates: {detail}")))
+}
+
+/// Open the releases page in the system browser (#435). No argument: the address
+/// is fixed here, so nothing the frontend sends can make this open anything else.
+#[tauri::command]
+fn open_releases_page() -> Result<(), ErrorDto> {
+    open::that(update::RELEASES_PAGE).map_err(ErrorDto::from)
+}
+
 #[tauri::command]
 fn load_settings(app: tauri::AppHandle) -> Result<SettingsDto, ErrorDto> {
     Ok(read_settings(&app))
@@ -1251,6 +1278,8 @@ fn main() {
             beatport_logout,
             beatport_token,
             load_settings,
+            check_for_update,
+            open_releases_page,
             save_settings,
             player_play,
             player_set_next,

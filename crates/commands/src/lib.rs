@@ -999,6 +999,11 @@ pub struct SettingsDto {
     /// deserializes to.
     #[serde(default)]
     pub multi_value_separator: String,
+    /// Whether the app asks GitHub, at start-up, if a newer release exists
+    /// (#435). Notify only: nothing is downloaded. On unless switched off, which
+    /// is also what an older settings.json deserializes to.
+    #[serde(default = "default_check_updates")]
+    pub check_updates: bool,
 }
 
 fn default_carry_sidecars() -> bool {
@@ -1008,6 +1013,10 @@ fn default_carry_sidecars() -> bool {
 /// The default sidecar extension set (#58): lyrics, cue sheets, text notes, and
 /// per-track cover images.
 fn default_carry_folder_extras() -> bool {
+    true
+}
+
+fn default_check_updates() -> bool {
     true
 }
 
@@ -1038,6 +1047,7 @@ impl Default for SettingsDto {
             carry_folder_extras: default_carry_folder_extras(),
             import_skip_fields: Vec::new(),
             multi_value_separator: String::new(),
+            check_updates: default_check_updates(),
         }
     }
 }
@@ -6306,6 +6316,7 @@ mod tests {
             carry_folder_extras: true,
             import_skip_fields: Vec::new(),
             multi_value_separator: String::new(),
+            check_updates: true,
         });
         assert_eq!(app.cover_max_px.get(), 500);
         assert_eq!(app.cover_quality.get(), 90);

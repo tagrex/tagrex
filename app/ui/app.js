@@ -19,6 +19,7 @@ import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
 import { beginApplyProgress, endApplyProgress } from "./js/applyprogress.js";
 import { activeHealthLabel, clearHealth, healthAllows, initHealth } from "./js/health.js";
+import { initUpdateCheck } from "./js/updatecheck.js";
 import "./js/tablegestures.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
@@ -3053,6 +3054,7 @@ initHealth(() => {
   renderTracks();
   updateStatus();
 });
+initUpdateCheck();
 // Open whatever the OS handed the app on the way in (#51) — a folder from
 // "Open With", from the Dock icon, or from a second launch. After the hooks
 // above, since it opens through the same one a drop does.

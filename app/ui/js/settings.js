@@ -47,6 +47,7 @@ import {
   valueFont,
 } from "./prefs.js";
 import { MEDIA_GLYPH_SET_OPTIONS } from "./mediaglyphs.js";
+import { checkUpdateNow } from "./updatecheck.js";
 
 // ---- settings slide-over (#79) ----
 // App-wide preferences, opened from the top-bar gear. The Discogs token lives
@@ -349,6 +350,7 @@ async function openSettings() {
     const s = await invoke("load_settings", {});
     el("set-proxy").value = s.proxy || "";
     el("set-rate").value = s.rate_limit_per_min || 0;
+    el("set-check-updates").checked = s.check_updates !== false;
     setId3Choice(s.id3_v23 ? "v23" : "v24");
     setImportCoverChoice(s.import_cover || "if-missing");
     el("set-cover-max").value = s.cover_max_px || 0;
@@ -510,6 +512,7 @@ async function saveSettings() {
       ...savedSettings,
       proxy: el("set-proxy").value.trim(),
       rate_limit_per_min: Math.max(0, parseInt(el("set-rate").value, 10) || 0),
+      check_updates: el("set-check-updates").checked,
       id3_v23: id3Choice === "v23",
       read_priority: readPriority.slice(),
       multi_value_separator: el("set-multi-sep").value,
@@ -553,6 +556,7 @@ async function cancelSettings() {
 el("set-import-all").addEventListener("click", () => setAllImportFields(true));
 el("set-import-none").addEventListener("click", () => setAllImportFields(false));
 el("settings-open").addEventListener("click", openSettings);
+el("update-check-now").addEventListener("click", checkUpdateNow);
 el("settings-close").addEventListener("click", cancelSettings);
 el("settings-cancel").addEventListener("click", cancelSettings);
 el("settings-scrim").addEventListener("click", cancelSettings);

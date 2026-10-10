@@ -5961,3 +5961,34 @@ body.drag-active #drop-overlay {
   justify-content: flex-start;
   color: var(--accent-ink);
 }
+
+/* ---- a newer release exists (#435) ---- */
+.update-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+}
+.update-pill[hidden] {
+  display: none;
+}
+.update-pill .update-open {
+  padding: 0 var(--space-3);
+  height: var(--ctl-h-sm, 22px);
+  border-radius: 999px;
+  border-color: var(--accent);
+  background: var(--sel-tint);
+  box-shadow: none;
+  color: var(--accent-ink);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.update-pill .update-skip {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+}
