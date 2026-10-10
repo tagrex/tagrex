@@ -34,6 +34,10 @@ tauri-plugin-clipboard-manager = "2"
 # (`open`/`start`/`xdg-open`); the URL is built + validated in main.rs so only
 # Discogs/MusicBrainz release pages can ever be opened.
 open = "5"
+# Remembers the main window's size, position and maximized/fullscreen state
+# between launches (#434). Registered with a filter in main.rs so the Beatport
+# sign-in window is never restored.
+tauri-plugin-window-state = "2"
 # Move files to the system Trash from the file table's context menu (#213).
 # Cross-platform (Finder's trash, the Windows recycle bin, the freedesktop
 # trash spec). `default-features = false` drops the `chrono` timestamp reader,

@@ -1110,6 +1110,21 @@ fn main() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        // Size, position and maximized/fullscreen of the main window (#434).
+        // Not DECORATIONS or VISIBLE: the overlay title bar and the first show
+        // are the app's to decide. Only "main": the Beatport sign-in window is a
+        // one-off and must open at its own size every time.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED
+                        | tauri_plugin_window_state::StateFlags::FULLSCREEN,
+                )
+                .with_filter(|label| label == "main")
+                .build(),
+        )
         .manage(AppState::default())
         .manage(ProviderState::default())
         // What the app was started with, waiting for the frontend to ask (#51).

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The window reopens where you left it.** Size, position and the maximized
+  or full-screen state of the main window are remembered between launches
+  ([#434](https://github.com/tagrex/tagrex/issues/434)).
+
 ### Fixed
 
 - **A failed Apply says so when it could not put everything back.** If the
