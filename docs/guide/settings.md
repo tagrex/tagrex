@@ -8,6 +8,19 @@ their whole point is seeing the effect: **Theme**, **Accent colour**, **Value fo
 **size sliders** change the interface the moment you touch them, and are kept
 whether or not you press Save. **Shortcuts** apply at once too.
 
+**Search** — the box at the top narrows the page to the settings that match, by
+what they are called, in the language the interface is in, across every group.
+Several words must all be there; a group whose name matches shows in full.
+Escape empties the box (a second Escape closes Settings).
+
+**Reset to defaults** — a group whose settings differ from how TagRex ships shows
+a *Reset to defaults* link at its top right, and only then. It covers Network,
+Tag defaults, Cover art, Online import, Files, Display and LAB. The first five
+go back in the form and are kept when you Save, like any other edit; Display and
+LAB are live controls, so theirs applies at once. The Discogs token and the
+Beatport account have no default and no reset, and Shortcuts keep their own
+*Reset all*.
+
 The footer reads *Saved to this machine* as a reminder that none of this travels
 with your music or syncs anywhere.
 

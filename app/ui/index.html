@@ -903,7 +903,11 @@
           <div class="spacer"></div>
           <button id="settings-close" class="icon" data-i18n-title="action.close" title="Close" data-i18n-aria-label="action.close" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
         </div>
+        <div class="settings-search">
+          <input id="settings-search" type="search" data-i18n-placeholder="settings.search" placeholder="Search settings…" data-i18n-aria-label="settings.search" aria-label="Search settings" spellcheck="false" autocomplete="off" />
+        </div>
         <div class="settings-body">
+          <p id="settings-search-empty" class="settings-hint" data-i18n="settings.searchEmpty" hidden>No setting matches.</p>
           <div class="settings-group">
             <h3>Discogs</h3>
             <div class="settings-row">
@@ -931,11 +935,18 @@
             </p>
           </div>
 
-          <div class="settings-group">
+          <div class="settings-group" data-reset-group="network">
             <h3 data-i18n="settings.network">Network</h3>
             <div class="settings-row">
               <label for="set-proxy" data-i18n="settings.proxy">Proxy</label>
               <input id="set-proxy" type="text" class="mono" data-i18n-placeholder="settings.proxyPlaceholder" placeholder="http://host:port  (blank = none)" spellcheck="false" />
+            </div>
+            <div class="settings-row">
+              <label for="set-rate" data-i18n="settings.rateLimit">Rate limit</label>
+              <div class="settings-inline">
+                <input id="set-rate" type="number" min="0" class="mono" style="width: 64px" />
+                <span class="settings-hint" data-i18n="settings.rateHint">requests / min — 0 = no limit (429 / Retry-After is always honoured)</span>
+              </div>
             </div>
             <div class="settings-row">
               <label for="set-check-updates" data-i18n="settings.checkUpdates">Check for updates</label>
@@ -949,16 +960,9 @@
               </div>
             </div>
             <p class="settings-hint" data-i18n="settings.checkUpdatesHint">When TagRex starts it asks GitHub for the latest release and shows a note in the status bar if a newer one exists. Nothing is downloaded or installed, and nothing about you or your files is sent. Switched off, the app makes no such request.</p>
-            <div class="settings-row">
-              <label for="set-rate" data-i18n="settings.rateLimit">Rate limit</label>
-              <div class="settings-inline">
-                <input id="set-rate" type="number" min="0" class="mono" style="width: 64px" />
-                <span class="settings-hint" data-i18n="settings.rateHint">requests / min — 0 = no limit (429 / Retry-After is always honoured)</span>
-              </div>
-            </div>
           </div>
 
-          <div class="settings-group">
+          <div class="settings-group" data-reset-group="tags">
             <h3 data-i18n="settings.tagDefaults">Tag defaults</h3>
             <div class="settings-row">
               <label data-i18n="settings.id3Version">ID3 version</label>
@@ -985,7 +989,7 @@
             <p class="settings-hint" data-i18n="settings.multiSepHint">A track can carry several artists or genres. They are shown and edited as one value joined by this text, and written back as separate values. Only Artist, Album Artist, Genre and Composer are treated this way — every other field keeps a separator as part of its value. Leave it blank for a semicolon and a space.</p>
           </div>
 
-          <div class="settings-group">
+          <div class="settings-group" data-reset-group="cover">
             <h3 data-i18n="editor.coverArt">Cover art</h3>
             <div class="settings-row">
               <label for="set-cover-max" data-i18n="settings.coverMax">Max size</label>
@@ -1007,7 +1011,7 @@
           <!-- Which fields an online import may write (#152). The rows are built
                from the backend's own catalogue (`import_fields`), so the setting
                can never offer a field the import doesn't produce. -->
-          <div class="settings-group">
+          <div class="settings-group" data-reset-group="import">
             <h3 data-i18n="settings.onlineImport">Online import</h3>
             <p class="settings-hint" data-i18n="settings.importHint">Which tags an import from Discogs or MusicBrainz is allowed to write. Everything is on by default; a field switched off here is left exactly as the file has it.</p>
             <div id="set-import-fields" class="import-fields"></div>
@@ -1028,7 +1032,7 @@
             <p class="settings-hint" data-i18n="settings.importCoverHint" data-i18n-html>Whether an import also embeds the release's cover. <strong>If missing</strong> only fills in files that carry no artwork at all, so nothing you chose yourself is ever overwritten — decided per file, so a mixed selection gets it exactly where it's needed. <strong>Always</strong> replaces the cover a file already has. Either way the tags and the artwork are one change, so a single undo takes back both.</p>
           </div>
 
-          <div class="settings-group">
+          <div class="settings-group" data-reset-group="files">
             <h3 data-i18n="settings.files">Files</h3>
             <div class="settings-row col">
               <label for="set-sidecar-exts" data-i18n="settings.extensions">Extensions</label>
@@ -1037,7 +1041,7 @@
             <p class="settings-hint" data-i18n="settings.extensionsHint">Space- or comma-separated, without the dot. Case-insensitive.</p>
           </div>
 
-          <div class="settings-group">
+          <div class="settings-group" data-reset-group="display">
             <h3 data-i18n="settings.display">Display</h3>
             <div class="settings-row">
               <label for="set-lang" data-i18n="settings.language">Language</label>
@@ -1099,7 +1103,7 @@
           <!-- LAB: typography knobs that are still being tried out. Grouped and
                labelled as experiments so it's clear they may change or go away,
                rather than sitting among the settled Display options. -->
-          <div class="settings-group">
+          <div class="settings-group" data-reset-group="lab">
             <h3><span data-i18n="settings.lab">LAB</span> <span class="lab-tag" data-i18n="settings.experimental">experimental</span></h3>
             <p class="settings-hint settings-lab-note" data-i18n="settings.labNote">Typography still under evaluation. These may change or be dropped in a later release.</p>
             <div class="settings-row">

@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **Settings can be searched.** A box at the top narrows the page to the
+  settings that match, by name and in the interface's language, across all
+  groups ([#439](https://github.com/tagrex/tagrex/issues/439)).
+- **Each Settings group can be reset to its defaults.** A Reset to defaults
+  link appears at the top of a group, and only while something in it differs
+  from how TagRex ships. The Discogs token and the Beatport account are never
+  touched ([#438](https://github.com/tagrex/tagrex/issues/438)).
 - **TagRex tells you when a newer release exists.** At start-up it asks
   GitHub's public Releases API for the latest published version and, if it is
   newer than the one running, shows a quiet note in the status bar that opens
@@ -48,6 +55,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Settings › Network keeps Proxy and Rate limit together.** The update-check
+  rows moved below them, so the explanation of the update check no longer sits
+  between the two request settings
+  ([#446](https://github.com/tagrex/tagrex/issues/446)).
 - **A failed Apply says so when it could not put everything back.** If the
   rollback after a failed write cannot restore a file, move or folder, the
   error now names how many items are not as they were and the first of them,

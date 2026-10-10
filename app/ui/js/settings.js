@@ -25,6 +25,9 @@ import {
 import { actionGroups, savedSettings, setSavedSettings } from "./state.js";
 import {
   applyBadgeFont,
+  MEDIA_GLYPH_SET_DEFAULT,
+  TABLE_FONT_DEFAULT,
+  TRACKLIST_FONT_DEFAULT,
   clampTableFont,
   clampTracklistFont,
   applyCheckboxCol,
@@ -48,6 +51,12 @@ import {
 } from "./prefs.js";
 import { MEDIA_GLYPH_SET_OPTIONS } from "./mediaglyphs.js";
 import { checkUpdateNow } from "./updatecheck.js";
+import {
+  clearSettingsSearch,
+  initGroupResets,
+  initSettingsSearch,
+  refreshGroupResets,
+} from "./settingsui.js";
 
 // ---- settings slide-over (#79) ----
 // App-wide preferences, opened from the top-bar gear. The Discogs token lives
@@ -385,7 +394,9 @@ async function openSettings() {
   setMediaGlyphChoice();
   renderPrioList();
   renderShortcuts();
+  clearSettingsSearch();
   el("settings").hidden = false;
+  refreshGroupResets();
 }
 
 // Populate (once) and select the current value of the LAB media-glyph picker.
@@ -619,5 +630,102 @@ el("set-table-font").addEventListener("input", (e) => {
   applyTableFont(px);
   el("set-table-font-val").textContent = `${px}px`;
 });
+
+// ---- Reset to defaults, per group (#438) ----
+//
+// A group offers it only while something in it is off its default. The groups
+// kept by Save (Network to Files) go back in the form and take effect with Save,
+// like any edit there; Display and LAB are live controls, so theirs applies at
+// once. The tokens and the Beatport account have no default and no reset, and
+// the shortcuts keep their own Reset all.
+const sameList = (a, b) => a.length === b.length && a.every((value, index) => value === b[index]);
+
+initGroupResets([
+  {
+    id: "network",
+    isDefault: () =>
+      el("set-proxy").value.trim() === "" &&
+      (parseInt(el("set-rate").value, 10) || 0) === 0 &&
+      el("set-check-updates").checked,
+    reset: () => {
+      el("set-proxy").value = "";
+      el("set-rate").value = 0;
+      el("set-check-updates").checked = true;
+    },
+  },
+  {
+    id: "tags",
+    isDefault: () =>
+      id3Choice === "v24" && sameList(readPriority, PRIO_KEYS) && el("set-multi-sep").value === "",
+    reset: () => {
+      setId3Choice("v24");
+      resetPriority();
+      el("set-multi-sep").value = "";
+    },
+  },
+  {
+    id: "cover",
+    isDefault: () =>
+      (parseInt(el("set-cover-max").value, 10) || 0) === 0 &&
+      (parseInt(el("set-cover-quality").value, 10) || 85) === 85,
+    reset: () => {
+      el("set-cover-max").value = 0;
+      el("set-cover-quality").value = 85;
+    },
+  },
+  {
+    id: "import",
+    isDefault: () => importSkipFromForm().length === 0 && importCoverChoice === "if-missing",
+    reset: () => {
+      setAllImportFields(true);
+      setImportCoverChoice("if-missing");
+    },
+  },
+  {
+    id: "files",
+    isDefault: () =>
+      sameList(parseSidecarExts(el("set-sidecar-exts").value), DEFAULT_SIDECAR_EXTS),
+    reset: () => {
+      el("set-sidecar-exts").value = DEFAULT_SIDECAR_EXTS.join(" ");
+    },
+  },
+  {
+    id: "display",
+    isDefault: () =>
+      langMode() === "auto" &&
+      themeMode() === "auto" &&
+      accentColor() === null &&
+      !el("set-checkbox-col").checked,
+    reset: () => {
+      setLanguageChoice("auto");
+      setThemeChoice("auto");
+      setAccentChoice(null);
+      el("set-checkbox-col").checked = false;
+    },
+  },
+  {
+    id: "lab",
+    isDefault: () =>
+      mediaGlyphSet() === MEDIA_GLYPH_SET_DEFAULT &&
+      valueFont() === "mono" &&
+      tableFontPx() === TABLE_FONT_DEFAULT &&
+      tracklistFontPx() === TRACKLIST_FONT_DEFAULT &&
+      badgeFont() === "mono",
+    reset: () => {
+      setMediaGlyphSet(MEDIA_GLYPH_SET_DEFAULT);
+      el("set-media-glyphs").value = MEDIA_GLYPH_SET_DEFAULT;
+      document.dispatchEvent(new CustomEvent("tagrex:mediaglyphset"));
+      setValueFontChoice("mono");
+      applyTableFont(TABLE_FONT_DEFAULT);
+      el("set-table-font").value = TABLE_FONT_DEFAULT;
+      el("set-table-font-val").textContent = `${TABLE_FONT_DEFAULT}px`;
+      applyTracklistFont(TRACKLIST_FONT_DEFAULT);
+      el("set-tracklist-font").value = TRACKLIST_FONT_DEFAULT;
+      el("set-tracklist-font-val").textContent = `${TRACKLIST_FONT_DEFAULT}px`;
+      setBadgeFontChoice("mono");
+    },
+  },
+]);
+initSettingsSearch();
 
 export { openSettings, cancelSettings, updateSettingsDot };

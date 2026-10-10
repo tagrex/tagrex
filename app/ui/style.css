@@ -5992,3 +5992,30 @@ body.drag-active #drop-overlay {
   box-shadow: none;
   color: var(--muted);
 }
+
+/* ---- settings: search and per-group reset (#438, #439) ---- */
+.settings-search {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.settings-search input {
+  width: 100%;
+}
+.settings-group.search-hidden,
+.settings-group .search-hidden {
+  display: none;
+}
+.settings-group {
+  position: relative;
+}
+.settings-group > .group-reset {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0;
+  font-size: var(--text-2xs);
+}
+.settings-group > .group-reset[hidden] {
+  display: none;
+}
