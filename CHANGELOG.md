@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   language. The tooltip also names the current grouping from the moment the
   app starts, where it used to show a generic description until a grouping
   was picked. (#425)
+- **The Add column dialog fits its labels in every language.** Its label
+  column was a fixed width that English fit, so a longer label such as
+  «Выравнивание» ran under the align buttons; it now takes the widest label's
+  width, with the fields still starting on one line. Left / Center / Right fill
+  their control evenly, and the dialog's title and confirm button — "Add
+  column" or "Edit column", "Add column" or "Save" — are translated instead of
+  English everywhere, as are the column picker's tooltip and accessible names
+  for editing and removing one of your columns. (#426)
 
 ## [0.19.0] - 2026-10-10
 

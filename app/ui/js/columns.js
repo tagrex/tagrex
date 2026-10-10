@@ -263,8 +263,9 @@ function setColumnAlign(align) {
 
 function openColumnEditor(column) {
   editingColumn = column;
-  el("colmask-title").textContent = column ? "Edit column" : "Add column";
-  el("colmask-ok").textContent = column ? "Save" : "Add column";
+  // Set here rather than by data-i18n, which only knows one of the two (#426).
+  el("colmask-title").textContent = t(column ? "colmask.editTitle" : "colmask.title");
+  el("colmask-ok").textContent = t(column ? "action.save" : "colmask.title");
   el("colmask-name").value = column ? column.name : "";
   el("colmask-pattern").value = column ? column.pattern : "";
   setColumnAlign(column ? column.align : "left");
@@ -716,8 +717,8 @@ function colMenuRow(key, visible) {
     edit.type = "button";
     edit.className = "icon col-row-btn";
     edit.innerHTML = ico("rename");
-    edit.title = `Edit — ${custom.pattern}`;
-    edit.setAttribute("aria-label", `Edit column ${custom.name}`);
+    edit.title = t("columns.editThis", { pattern: custom.pattern });
+    edit.setAttribute("aria-label", t("columns.editAria", { name: custom.name }));
     edit.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
@@ -728,7 +729,7 @@ function colMenuRow(key, visible) {
     remove.className = "icon col-row-btn";
     remove.innerHTML = ico("close");
     remove.title = t("columns.removeThis");
-    remove.setAttribute("aria-label", `Remove column ${custom.name}`);
+    remove.setAttribute("aria-label", t("columns.removeAria", { name: custom.name }));
     remove.addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();

@@ -737,30 +737,32 @@
          other mask input has. -->
     <div id="colmask-modal" class="modal-backdrop" hidden>
       <div class="modal colmask" role="dialog" aria-modal="true" aria-labelledby="colmask-title">
-        <h3 id="colmask-title" class="modal-msg" data-i18n="colmask.title">Add column</h3>
-        <label class="colmask-row">
-          <span data-i18n="colmask.name">Name</span>
-          <input id="colmask-name" type="text" spellcheck="false" data-i18n-placeholder="colmask.namePlaceholder" placeholder="Artist — Title" />
-        </label>
-        <label class="colmask-row">
-          <span data-i18n="colmask.pattern">Pattern</span>
-          <span class="colmask-pattern">
-            <input id="colmask-pattern" type="text" class="mono" spellcheck="false" placeholder="%artist% — %title%" />
-            <button class="icon ph-btn" type="button" data-ph-target="colmask-pattern" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
-          </span>
-        </label>
-        <div class="colmask-row">
-          <span data-i18n="colmask.align">Align</span>
-          <div id="colmask-align" class="seg">
-            <button type="button" class="seg-btn active" data-align="left" data-i18n="colmask.left">Left</button>
-            <button type="button" class="seg-btn" data-align="center" data-i18n="colmask.center">Center</button>
-            <button type="button" class="seg-btn" data-align="right" data-i18n="colmask.right">Right</button>
+        <h3 id="colmask-title" class="modal-msg">Add column</h3>
+        <div class="colmask-fields">
+          <label class="colmask-row">
+            <span data-i18n="colmask.name">Name</span>
+            <input id="colmask-name" type="text" spellcheck="false" data-i18n-placeholder="colmask.namePlaceholder" placeholder="Artist — Title" />
+          </label>
+          <label class="colmask-row">
+            <span data-i18n="colmask.pattern">Pattern</span>
+            <span class="colmask-pattern">
+              <input id="colmask-pattern" type="text" class="mono" spellcheck="false" placeholder="%artist% — %title%" />
+              <button class="icon ph-btn" type="button" data-ph-target="colmask-pattern" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+            </span>
+          </label>
+          <div class="colmask-row">
+            <span data-i18n="colmask.align">Align</span>
+            <div id="colmask-align" class="seg">
+              <button type="button" class="seg-btn active" data-align="left" data-i18n="colmask.left">Left</button>
+              <button type="button" class="seg-btn" data-align="center" data-i18n="colmask.center">Center</button>
+              <button type="button" class="seg-btn" data-align="right" data-i18n="colmask.right">Right</button>
+            </div>
           </div>
         </div>
         <p class="settings-hint" data-i18n="colmask.hint">Read-only: the value is computed, so the cell can't be edited. It sorts on the rendered text, and it reflects what is on disk — staged edits show once applied.</p>
         <div class="modal-actions">
           <button id="colmask-cancel" data-i18n="action.cancel">Cancel</button>
-          <button id="colmask-ok" class="primary" data-i18n="colmask.title">Add column</button>
+          <button id="colmask-ok" class="primary">Add column</button>
         </div>
       </div>
     </div>
