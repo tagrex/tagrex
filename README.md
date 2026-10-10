@@ -15,7 +15,7 @@
 
 ---
 
-> **Status: 0.18.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.19.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
 > preview player, a transactional undo journal, and an interface that speaks
@@ -75,16 +75,21 @@ ago and forgot would be worse than none.
   auto-numbering on import. A **FROM NAME** sub-tab runs a mask the other way
   round — the file's own name read back into tags, with `%skip%` for the junk
   that maps to nothing and a live read-out of what the pattern is pulling out.
-- **RENAMER** — rename files and reorganize them into folders from a mask
-  (`%artist% - %title%`), with conditional `[...]` sections, zero-padding,
-  `%field:width%` and the function language below. Folder moves create and clean
-  up directories, and same-named sidecar files (`.lrc`, `.cue`, per-track
-  covers…) travel with the track.
+- **RENAMER** — rename files and sort them into folders from one mask
+  (`%artist% - %title%`; a `/` in it makes subfolders), with conditional `[...]`
+  sections, zero-padding, `%field:width%` and the function language below. What
+  the mask makes of the selected file shows under it as you type, and a mask
+  that can't render says which tag is empty. The result can also be moved or
+  copied into a different folder; the preview groups files under the folder
+  they land in. Folder moves create and clean up directories, and same-named
+  sidecar files (`.lrc`, `.cue`, per-track covers…) — and, if you like, the rest
+  of the folder — travel with the track.
 - **GENERATOR** — text transforms: case conversion, find/replace, remove
   diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key
-  notation. Rules are grouped into named presets, made in their own editor;
-  every rule names the field it acts on, so one preset can upper-case a
-  catalogue number while title-casing the titles.
+  notation. Rules are grouped into named presets, made in their own editor,
+  which tries them on a sample as you build them; every rule names the field it
+  acts on, so one preset can upper-case a catalogue number while title-casing
+  the titles.
 
 **Cleanup is part of the job, not a second step.** Tick presets in the dialog
 behind the wand and they run as part of importing a release, reading tags out
@@ -139,10 +144,10 @@ rather than being stored verbatim, with a `MediaType` tag, a render-only
 Musepack, Monkey's Audio, WavPack. ID3v2 writes go through the concrete tag type
 so DJ cue points, ratings and ReplayGain frames survive a round-trip.
 
-**Comfort** — an interface in English, Українська or Русский (or whichever of
-them your system asks for), light/dark/auto themes, a bundled IBM Plex type set
-so text renders identically on every OS, adjustable table density, and a
-Settings › LAB section for typography still being trialled.
+**Comfort** — an interface in English, Italiano, Українська or Русский (or
+whichever of them your system asks for), light/dark/auto themes, a bundled IBM
+Plex type set so text renders identically on every OS, adjustable table
+density, and a Settings › LAB section for typography still being trialled.
 
 ## Not yet
 

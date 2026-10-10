@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-10
+
+This release reworks the two places where a batch of files gets reshaped.
+RENAMER is now one mask instead of two separate patterns: a `/` in it sorts
+files into subfolders, an example of what it produces updates as you type, a
+mask that can't render says which tag is empty, and the preview groups files
+under the folder they land in. Transform presets are now made in their own
+Presets window, which shows the result on a sample as you edit; to run them you
+tick them in one shared list, and each job takes only the rules aimed at what it
+produces. The interface also speaks Italian, thanks to a contributed
+translation, and lofty and Tauri are updated.
+
 ### Added
 
 - **The interface speaks Italian.** A full translation contributed by
