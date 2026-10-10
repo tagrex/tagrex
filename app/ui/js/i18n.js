@@ -14,12 +14,13 @@
 import { de } from "./i18n/de.js";
 import { en } from "./i18n/en.js";
 import { es } from "./i18n/es.js";
+import { fr } from "./i18n/fr.js";
 import { it } from "./i18n/it.js";
 import { ru } from "./i18n/ru.js";
 import { uk } from "./i18n/uk.js";
 import { langMode, resolveLang, saveLangMode } from "./prefs.js";
 
-const CATALOGUES = { de, en, es, it, ru, uk };
+const CATALOGUES = { de, en, es, fr, it, ru, uk };
 
 let lang = resolveLang(langMode());
 

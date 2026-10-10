@@ -725,6 +725,7 @@ export const es = {
   "settings.language.de": "Deutsch",
   "settings.language.en": "English",
   "settings.language.es": "Español",
+  "settings.language.fr": "Français",
   "settings.language.it": "Italiano",
   "settings.language.ru": "Русский",
   "settings.language.uk": "Українська",

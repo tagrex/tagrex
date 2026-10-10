@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   than a native speaker, offered as Español in Settings › Display and picked
   by Auto on a Spanish system; corrections from native speakers are welcome.
   (#428)
+- **The interface speaks French.** A first draft by the maintainers rather
+  than a native speaker, offered as Français in Settings › Display and picked
+  by Auto on a French system; corrections from native speakers are welcome.
+  (#429)
 
 ### Changed
 
