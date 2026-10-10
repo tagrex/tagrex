@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The window reopens where you left it.** Size, position and the maximized
   or full-screen state of the main window are remembered between launches
   ([#434](https://github.com/tagrex/tagrex/issues/434)).
+- **Issue forms.** Reporting a bug or suggesting a feature on GitHub now opens
+  a short form (version, system, file format, steps), and questions and ideas
+  are pointed to Discussions
+  ([#443](https://github.com/tagrex/tagrex/issues/443)).
 
 ### Fixed
 
