@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Dragging a row toward the edge of a scrolling list scrolls it.** In the
+  column picker, once it was taller than its popover, a column could only be
+  dragged to a row already on screen — moving one above them meant scrolling
+  first and starting the drag again. Holding the pointer near the top or bottom
+  edge now scrolls the list, faster the closer to the edge, and the drop marker
+  follows the rows as they move. The same goes for every list that reorders by
+  dragging. (#419)
+
 ## [0.19.0] - 2026-10-10
 
 This release reworks the two places where a batch of files gets reshaped.
