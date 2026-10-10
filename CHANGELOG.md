@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **A screenshot in the README.** The repository page now shows what the
   Tagger view looks like
   ([#444](https://github.com/tagrex/tagrex/issues/444)).
+- **A change plan in the README.** A second screenshot shows a rename
+  previewed as a diff inside the table, before anything is written
+  ([#445](https://github.com/tagrex/tagrex/issues/445)).
 
 ### Fixed
 

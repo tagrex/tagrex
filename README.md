@@ -17,6 +17,10 @@
   <img src="docs/img/tagger.png" width="900" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
 </p>
 
+<p align="center">
+  <img src="docs/img/renamer-diff.png" width="900" alt="A rename previewed as a diff inside the table, with an Apply and Discard bar at the bottom">
+</p>
+
 ---
 
 > **Status: 0.20.x.** Usable day to day: table editing, rename masks with a
