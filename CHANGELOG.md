@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   quick flick off the list, or leaving the window, still applied the drop
   marker shown a moment before. The release point now decides: outside the
   list nothing moves. (#420)
+- **Settings › Online import names its fields in the interface's language.**
+  The list of what an import may write came from the backend as fixed English
+  labels and stayed "Title", "Artist"… in every language; each row now carries
+  a catalogue key, and switching the language with Settings open relabels it on
+  the spot. Reported by @giallorosso84. (#422)
 
 ## [0.19.0] - 2026-10-10
 

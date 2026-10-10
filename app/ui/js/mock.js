@@ -1066,12 +1066,12 @@ function mockInvoke(cmd, args) {
     }
     case "import_fields":
       return Promise.resolve([
-        { keys: ["title"], label: "Title" },
-        { keys: ["artist"], label: "Artist" },
-        { keys: ["album"], label: "Album" },
-        { keys: ["genre"], label: "Genre" },
-        { keys: ["url"], label: "Release webpage" },
-        { keys: ["custom:RELEASECOUNTRY"], label: "Release country" },
+        { keys: ["title"], label: "Title", code: "importField.title" },
+        { keys: ["artist"], label: "Artist", code: "importField.artist" },
+        { keys: ["album"], label: "Album", code: "importField.album" },
+        { keys: ["genre"], label: "Genre", code: "importField.genre" },
+        { keys: ["url"], label: "Release webpage", code: "importField.url" },
+        { keys: ["custom:RELEASECOUNTRY"], label: "Release country", code: "importField.releasecountry" },
         {
           keys: [
             "custom:DISCOGS_RELEASE_ID",
@@ -1079,6 +1079,7 @@ function mockInvoke(cmd, args) {
             "custom:BEATPORT_RELEASE_ID",
           ],
           label: "Release id",
+          code: "importField.releaseid",
         },
       ]);
     case "saved_discogs_token":

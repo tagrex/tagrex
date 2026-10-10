@@ -6,7 +6,7 @@
 // writes the whole thing back — `save_settings` overwrites settings.json with
 // what it is given, so the saved snapshot is spread rather than replaced.
 import { el, ico, toast } from "./dom.js";
-import { setLanguage, t } from "./i18n.js";
+import { setLanguage, t, tOr } from "./i18n.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
@@ -65,7 +65,10 @@ function setImportCoverChoice(choice) {
 // switch shows behind the sheet rather than at the next navigation.
 function setLanguageChoice(mode) {
   el("set-lang").value = mode;
-  setLanguage(mode, () => hooks.retranslate());
+  setLanguage(mode, () => {
+    hooks.retranslate();
+    relabelImportFields();
+  });
 }
 
 // Reflect + apply a theme choice from the segmented control (live, like the font
@@ -202,10 +205,23 @@ async function renderImportFields(skip) {
     box.checked = !field.keys.every((k) => denied.has(k));
     box.dataset.keys = field.keys.join(" ");
     const name = document.createElement("span");
-    name.textContent = field.label;
+    name.className = "import-field-name";
+    // The label in the interface's language (#422); the English the backend
+    // sent is the fallback for a code this catalogue doesn't know.
+    name.dataset.code = field.code || "";
+    name.dataset.label = field.label;
+    name.textContent = tOr(field.code, field.label);
     row.append(box, name);
     host.appendChild(row);
   }
+}
+
+// The language was switched with Settings open: relabel the rows in place, so
+// what is ticked stays as it is until Save.
+function relabelImportFields() {
+  el("set-import-fields")
+    .querySelectorAll(".import-field-name")
+    .forEach((name) => (name.textContent = tOr(name.dataset.code, name.dataset.label)));
 }
 
 // The deny list the form currently describes.

@@ -4890,6 +4890,10 @@ pub struct ImportFieldDto {
     /// unticking it means both.
     pub keys: Vec<String>,
     pub label: String,
+    /// Catalogue key for the label (#422), e.g. `importField.albumartist`; the
+    /// frontend shows `label` only when its catalogue has no such key.
+    #[serde(default)]
+    pub code: String,
 }
 
 /// Every tag field an online import can write (#152), in the order the setting
@@ -4905,9 +4909,15 @@ pub struct ImportFieldDto {
 /// release card, not something `preview_import` does, so there is nothing here
 /// to switch off.
 pub fn import_fields() -> Vec<ImportFieldDto> {
+    // The code is the storage key without the `custom:` namespace, lower-cased
+    // the way the built-in keys already are (#422).
     let one = |key: &str, label: &str| ImportFieldDto {
         keys: vec![key.to_string()],
         label: label.to_string(),
+        code: format!(
+            "importField.{}",
+            key.trim_start_matches("custom:").to_ascii_lowercase()
+        ),
     };
     vec![
         one("title", "Title"),
@@ -4938,6 +4948,7 @@ pub fn import_fields() -> Vec<ImportFieldDto> {
                 "custom:SOUNDEO_RELEASE_URL".to_string(),
             ],
             label: "Release id".to_string(),
+            code: "importField.releaseid".to_string(),
         },
     ]
 }
@@ -8346,6 +8357,23 @@ mod tests {
             })
             .collect();
         assert!(stale.is_empty(), "the setting lists dead fields: {stale:?}");
+    }
+
+    /// Every row carries its own catalogue key (#422): one the frontend can look
+    /// up, and not one shared with another row, or two rows would read the same.
+    #[test]
+    fn every_import_field_row_has_its_own_catalogue_code() {
+        let rows = import_fields();
+        let codes: std::collections::BTreeSet<&str> =
+            rows.iter().map(|f| f.code.as_str()).collect();
+        assert_eq!(codes.len(), rows.len(), "duplicate codes: {codes:?}");
+        for code in &codes {
+            let id = code.strip_prefix("importField.").unwrap_or("");
+            assert!(
+                !id.is_empty() && id.chars().all(|c| c.is_ascii_lowercase()),
+                "not a catalogue key: {code:?}"
+            );
+        }
     }
 
     #[test]
