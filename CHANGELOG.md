@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   than a native speaker, offered as Deutsch in Settings › Display and picked
   by Auto on a German system; corrections from native speakers are welcome.
   (#427)
+- **The interface speaks Spanish.** A first draft by the maintainers rather
+  than a native speaker, offered as Español in Settings › Display and picked
+  by Auto on a Spanish system; corrections from native speakers are welcome.
+  (#428)
 
 ### Changed
 

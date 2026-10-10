@@ -241,9 +241,9 @@ applyTheme(themeMode());
 // swap. `settings.json` stays out of it until something in the backend needs
 // to know.
 const LANG_STORAGE_KEY = "tagrex.lang";
-const LANG_MODES = ["auto", "en", "de", "it", "uk", "ru"];
+const LANG_MODES = ["auto", "en", "de", "es", "it", "uk", "ru"];
 // The languages there are catalogues for. "auto" resolves into one of these.
-const LANGUAGES = ["en", "de", "it", "uk", "ru"];
+const LANGUAGES = ["en", "de", "es", "it", "uk", "ru"];
 
 function langMode() {
   try {
