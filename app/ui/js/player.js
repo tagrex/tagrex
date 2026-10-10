@@ -603,6 +603,10 @@ function isPlayingPath(path) {
 // resize listener: the bar also grows when the mode panel is collapsed or the
 // splitter is dragged, and neither of those is a window resize.
 
+// The same goes for a colour change: the picture is made of --muted and --accent
+// read at draw time, so a new theme or accent repaints it at once (#433).
+document.addEventListener("tagrex:appearance", drawWave);
+
 if (window.ResizeObserver) {
   new ResizeObserver(() => drawWave()).observe(plWave.parentElement);
 } else {

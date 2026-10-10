@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the accent stays readable, so a pale pick is darkened a little rather than
   refused; the green of confirmed states and the red of errors do not change.
 
+### Fixed
+
+- **The player waveform repaints when the theme or the accent changes** (#433),
+  instead of keeping the old colours on a paused track until the next update.
+
 ## [0.20.0] - 2026-10-10
 
 This release is about language. The interface now also speaks German,
