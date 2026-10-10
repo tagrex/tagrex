@@ -146,9 +146,10 @@ so DJ cue points, ratings and ReplayGain frames survive a round-trip.
 
 **Comfort** — an interface in English, Deutsch, Español, Français, Italiano,
 Українська or Русский (or whichever of them your system asks for),
-light/dark/auto themes, a bundled IBM Plex type set so text renders identically
-on every OS, adjustable table density, and a Settings › LAB section for
-typography still being trialled.
+light/dark/auto themes with an accent colour of your choice, keyboard
+shortcuts for the main actions that you can rebind, a bundled IBM Plex type set
+so text renders identically on every OS, adjustable table density, and a
+Settings › LAB section for typography still being trialled.
 
 ## Not yet
 

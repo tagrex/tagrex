@@ -7,40 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added
-
-- **Pick the accent colour** (Settings › Display, #431): nine swatches, the brand
-  green first and still the default, or any colour from the custom swatch, with
-  a Reset. It applies live, in light and dark, and survives a restart. Text on
-  the accent stays readable, so a pale pick is darkened a little rather than
-  refused; the green of confirmed states and the red of errors do not change.
-- **Keyboard shortcuts for the main actions, rebindable in Settings.** Apply
-  (⌘↩), Discard (⌘⌫), undo the last batch (⌘Z), open (⌘O) and re-read (⌘R) a
-  folder, the filter (⌘F), play/pause (⌥Space; Ctrl+Shift+Space on Windows and
-  Linux), previous/next track (⌘←/⌘→), the five modes (⌘1–⌘5), the side panel
-  (⌥⌘S) and Settings (⌘,) — Ctrl instead of ⌘ outside macOS. Settings ›
-  Shortcuts lists them all: click one and press a new combination; one already
-  taken is refused with the action holding it named, and each resets on its
-  own or all at once. They follow the physical key, so a Cyrillic layout no
-  longer breaks ⌘A; a text field keeps its own keys, and tooltips show each
-  button's shortcut. (#432)
-
-### Fixed
-
-- **The player waveform repaints when the theme or the accent changes** (#433),
-  instead of keeping the old colours on a paused track until the next update.
-
 ## [0.20.0] - 2026-10-10
 
-This release is about language. The interface now also speaks German,
-Spanish and French. These are first drafts written by the maintainers rather
-than native speakers, so if one of them is your language, a review in #430
-would help. The work also caught the places that had stayed English, or
-stuck to the start-up language, in every translation: column names, the
-Group by menu, the online-import fields and the Add column dialog. The mode
-names TAGGER, RENAMER and the rest now read the same in every language.
-Besides that: a dragged row scrolls a long list when it reaches the edge, and
-letting go outside the list cancels the move.
+This release is about language and the keyboard. The interface now also speaks
+German, Spanish and French. These are first drafts written by the maintainers
+rather than native speakers, so if one of them is your language, a review in
+#430 would help. The work also caught the places that had stayed English, or
+stuck to the start-up language, in every translation, and the mode names
+TAGGER, RENAMER and the rest now read the same in every language. The main
+actions — apply, discard, undo, open, the filter, the player, the modes — have
+keyboard shortcuts, each rebindable in Settings › Shortcuts, and the accent
+colour can be picked in Settings › Display.
 
 ### Added
 
@@ -56,6 +33,21 @@ letting go outside the list cancels the move.
   than a native speaker, offered as Français in Settings › Display and picked
   by Auto on a French system; corrections from native speakers are welcome.
   (#429)
+- **Pick the accent colour** (Settings › Display, #431): nine swatches, the brand
+  green first and still the default, or any colour from the custom swatch, with
+  a Reset. It applies live, in light and dark, and survives a restart. Text on
+  the accent stays readable, so a pale pick is darkened a little rather than
+  refused; the green of confirmed states and the red of errors do not change.
+- **Keyboard shortcuts for the main actions, rebindable in Settings.** Apply
+  (⌘↩), Discard (⌘⌫), undo the last batch (⌘Z), open (⌘O) and re-read (⌘R) a
+  folder, the filter (⌘F), play/pause (⌥Space; Ctrl+Shift+Space on Windows and
+  Linux), previous/next track (⌘←/⌘→), the five modes (⌘1–⌘5), the side panel
+  (⌥⌘S) and Settings (⌘,) — Ctrl instead of ⌘ outside macOS. Settings ›
+  Shortcuts lists them all: click one and press a new combination; one already
+  taken is refused with the action holding it named, and each resets on its
+  own or all at once. They follow the physical key, so a Cyrillic layout no
+  longer breaks ⌘A; a text field keeps its own keys, and tooltips show each
+  button's shortcut. (#432)
 
 ### Changed
 
@@ -103,6 +95,8 @@ letting go outside the list cancels the move.
   column" or "Edit column", "Add column" or "Save" — are translated instead of
   English everywhere, as are the column picker's tooltip and accessible names
   for editing and removing one of your columns. (#426)
+- **The player waveform repaints when the theme or the accent changes** (#433),
+  instead of keeping the old colours on a paused track until the next update.
 
 ## [0.19.0] - 2026-10-10
 
