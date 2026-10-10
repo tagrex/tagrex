@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   edge now scrolls the list, faster the closer to the edge, and the drop marker
   follows the rows as they move. The same goes for every list that reorders by
   dragging. (#419)
+- **Letting go of a dragged row outside the list cancels the move.** Where it
+  landed used to be decided by the last place the pointer moved over, so a
+  quick flick off the list, or leaving the window, still applied the drop
+  marker shown a moment before. The release point now decides: outside the
+  list nothing moves. (#420)
 
 ## [0.19.0] - 2026-10-10
 

@@ -108,7 +108,20 @@ function enablePointerReorder(grip, item, container, itemSelector, onReorder, { 
       else row.classList.add(past ? "drop-below" : "drop-above");
       targetKey = row.dataset.key;
     };
-    const onUp = () => {
+    // Whether the pointer is over the list: inside the container and, when the
+    // list scrolls, inside the part of it on screen.
+    const insideList = (ev) => {
+      const boxes = [container.getBoundingClientRect()];
+      if (scroller) boxes.push(scroller.getBoundingClientRect());
+      return boxes.every(
+        (r) => ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom
+      );
+    };
+    const onUp = (ev) => {
+      // Let go outside the list and the drag is abandoned (#420), whatever
+      // marker the last move left — a release can arrive with no move at its
+      // own position (a quick flick off the list, or leaving the window).
+      if (!insideList(ev)) targetKey = null;
       document.removeEventListener("mousemove", onMove);
       document.removeEventListener("mouseup", onUp);
       if (scroller) scroller.removeEventListener("scroll", onScroll);
