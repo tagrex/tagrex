@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   labels and stayed "Title", "Artist"… in every language; each row now carries
   a catalogue key, and switching the language with Settings open relabels it on
   the spot. Reported by @giallorosso84. (#422)
+- **The file table's column names follow a language switch at once.** The
+  header row and the Group by menu kept the language the app started in until
+  the next launch. (#423)
 
 ## [0.19.0] - 2026-10-10
 

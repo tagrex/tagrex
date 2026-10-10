@@ -92,9 +92,14 @@ Object.assign(hooks, {
   // some of its own text, so it is asked to draw again (#50). The library
   // indicator is dynamic too (#287) — repaint it so an open folder's name and
   // path survive the language switch instead of being left on the placeholder.
+  // The table's header row and the Group by menu are built from the field
+  // catalogue at start-up, so they are rebuilt too (#423); the column picker
+  // builds itself each time it opens.
   retranslate: () => {
     (MODE_REFRESH[currentMode] || (() => {}))();
     renderRootDisplay();
+    renderTableHead();
+    populateGroupMenu();
   },
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
