@@ -84,6 +84,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and a light version like the hero image, so the labels, logos and names
   line up in a fixed grid
   ([#457](https://github.com/tagrex/tagrex/issues/457)).
+- **Logos are centred on their labels.** In the same picture each logo now
+  sits on the middle of the cap height of its name and the icons are sized by
+  visual weight, so the thin Linux mark no longer looks smaller than the solid
+  Windows and Rust ones
+  ([#458](https://github.com/tagrex/tagrex/issues/458)).
 
 ### Fixed
 
