@@ -115,6 +115,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Switching the language repaints the texts built at run time.** The release
+  cards and their open tracklists, the folder bands and the status line in the
+  table, and the Library health button follow the switch at once instead of
+  after a search or a restart; a release card's "— tracks" placeholder is
+  translated too ([#476](https://github.com/tagrex/tagrex/issues/476)).
 - **The release tracklist, the status bar and the folder band speak the chosen
   language.** Auto-match, Embed cover, the artwork buttons and their tooltips,
   the "N / M selected" and "N of M lengths match" readouts, the label picker and

@@ -48,6 +48,11 @@ function syncButton() {
   button.title = label ? t("health.active", { check: label }) : t("health.title");
 }
 
+// A language switch: the button's tooltip names the active check (#476).
+export function retranslateHealth() {
+  syncButton();
+}
+
 // Drops the active check without repainting: for a caller that is about to.
 export function clearHealth() {
   activeId = null;

@@ -123,6 +123,7 @@ export const fr = {
   "online.show": "Afficher",
   "online.perPage": "Résultats par page",
   "online.loadMore": "Charger plus de résultats",
+  "online.tracksUnknown": "— pistes",
   "online.automatch": "Appariement auto",
   "online.automatchTitle": "Réordonne les fichiers sélectionnés pour qu'ils suivent cette liste de pistes",
   "online.matchByLength": "Apparier par durée",

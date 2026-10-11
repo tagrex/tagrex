@@ -23,7 +23,13 @@ import {
   endApplyProgress,
   endUndoProgress,
 } from "./js/applyprogress.js";
-import { activeHealthLabel, clearHealth, healthAllows, initHealth } from "./js/health.js";
+import {
+  activeHealthLabel,
+  clearHealth,
+  healthAllows,
+  initHealth,
+  retranslateHealth,
+} from "./js/health.js";
 import { initUpdateCheck } from "./js/updatecheck.js";
 import "./js/tablegestures.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
@@ -58,7 +64,14 @@ import {
   setGroupBy,
 } from "./js/columns.js";
 import { dropGroupKey, folderGroupLabel, groupKeyOf, groupLabel } from "./js/grouping.js";
-import { loadSavedToken, refreshReleaseMatches, searchBusy, searchPerPage, stopLoading } from "./js/online.js";
+import {
+  loadSavedToken,
+  refreshReleaseMatches,
+  retranslateOnline,
+  searchBusy,
+  searchPerPage,
+  stopLoading,
+} from "./js/online.js";
 import { refreshGenerator, syncTransformPlacement } from "./js/generator.js";
 import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { migrateChains } from "./js/chains.js";
@@ -109,6 +122,13 @@ Object.assign(hooks, {
     renderRootDisplay();
     renderTableHead();
     populateGroupMenu();
+    // What is built from `t` at draw time stays in the old language until it is
+    // drawn again (#476): the table (folder bands), the status line, the release
+    // cards and the Library health button.
+    renderTracks();
+    updateStatus();
+    retranslateOnline();
+    retranslateHealth();
   },
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";

@@ -220,7 +220,7 @@ function countPillOf(id) {
 // "N tracks", or "N tracks · M discs" once the release is fetched; a dash before.
 function countLabel(id) {
   const release = releaseCache.get(id);
-  if (!release) return "— tracks";
+  if (!release) return t("online.tracksUnknown");
   const discs = discCount(release);
   const tracks = tn("unit.track", release.tracks.length);
   // Name the unit by medium (#341): a cassette set is "N cassettes", not discs.
@@ -324,6 +324,8 @@ function renderReleaseList() {
   });
   el("discogs-empty").hidden = releaseCandidates.length > 0;
   if (releaseCandidates.length === 0) {
+    // Named, so the static repaint of a language switch finds the right text.
+    el("discogs-empty").dataset.i18n = "online.noReleases";
     el("discogs-empty").textContent = t("online.noReleases");
     return;
   }
@@ -1513,4 +1515,10 @@ document.addEventListener("click", (e) => {
   });
 });
 
-export { loadSavedToken, refreshReleaseMatches, searchBusy, searchPerPage, stopLoading };
+// A language switch: the cards and their open tracklists are built at run time, so
+// they are drawn again from the cache (#476).
+function retranslateOnline() {
+  if (releaseCandidates.length > 0) renderReleaseList();
+}
+
+export { loadSavedToken, refreshReleaseMatches, retranslateOnline, searchBusy, searchPerPage, stopLoading };
