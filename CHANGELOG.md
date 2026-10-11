@@ -113,8 +113,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The "N / M selected" readout of a release's tracklist stays in view.** It
   used to sit at the far right of the scrolling title column and only came into
-  view after scrolling to the end of the longest title; it is pinned next to the
-  select-all box now ([#471](https://github.com/tagrex/tagrex/issues/471)).
+  view after scrolling to the end of the longest title; it is pinned to the
+  right edge of the card now, so it stays put while the titles scroll
+  ([#471](https://github.com/tagrex/tagrex/issues/471),
+  [#472](https://github.com/tagrex/tagrex/issues/472)).
 - **The filter box shows its whole placeholder.** The box is a little wider; with
   the larger text the hint was cut off at the right
   ([#470](https://github.com/tagrex/tagrex/issues/470)).
