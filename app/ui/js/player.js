@@ -99,38 +99,47 @@ function drawWave() {
   const width = Math.max(1, Math.round(wrap.clientWidth));
   const height = Math.max(1, Math.round(wrap.clientHeight));
   const dpr = window.devicePixelRatio || 1;
-  if (plWave.width !== Math.round(width * dpr) || plWave.height !== Math.round(height * dpr)) {
-    plWave.width = Math.round(width * dpr);
-    plWave.height = Math.round(height * dpr);
+  // Drawn in DEVICE pixels (#469). Bars one logical pixel wide, placed at logical
+  // multiples of two, landed between device pixels on a scale such as 1.25 or
+  // 1.5 and came out at uneven widths and brightness. Here a bar and the gap
+  // after it are the same whole number of device pixels, and so is the playhead.
+  const pw = Math.max(1, Math.round(width * dpr));
+  const ph = Math.max(1, Math.round(height * dpr));
+  if (plWave.width !== pw || plWave.height !== ph) {
+    plWave.width = pw;
+    plWave.height = ph;
   }
   const ctx = plWave.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, width, height);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, pw, ph);
 
+  const unit = Math.max(1, Math.round(dpr));
   const played = plDuration > 0 ? Math.min(1, Math.max(0, plPosition / plDuration)) : 0;
-  const middle = height / 2;
+  const middle = Math.round(ph / 2);
   // The unplayed half is drawn in the muted TEXT colour rather than the border
   // colour: a border is meant to be barely there, and at bar width it left the
   // rest of the track nearly invisible in both themes. Half opacity keeps it
   // quieter than the played part without disappearing into the panel.
-  const behind = themeColor("--muted", "#525a66");
+  const behind = themeColor("--muted", "#454c58");
   const ahead = themeColor("--accent", "#0b6b53");
 
   if (!wavePeaks || !wavePeaks.length) {
     ctx.globalAlpha = UNPLAYED_ALPHA;
     ctx.fillStyle = behind;
-    ctx.fillRect(0, middle - 0.5, width, 1);
+    ctx.fillRect(0, middle - Math.floor(unit / 2), pw, unit);
     ctx.globalAlpha = 1;
     if (played > 0) {
       ctx.fillStyle = ahead;
-      ctx.fillRect(0, middle - 0.5, width * played, 1);
+      ctx.fillRect(0, middle - Math.floor(unit / 2), Math.round(pw * played), unit);
     }
     return;
   }
 
-  const pitch = 2;
-  const bars = Math.max(1, Math.floor(width / pitch));
-  const playedX = width * played;
+  // Mirrored around the middle, one bar every two units, each bar the loudest
+  // bucket it covers.
+  const pitch = unit * 2;
+  const bars = Math.max(1, Math.floor(pw / pitch));
+  const playedX = pw * played;
   for (let bar = 0; bar < bars; bar += 1) {
     const from = Math.floor((bar * wavePeaks.length) / bars);
     const to = Math.max(from + 1, Math.floor(((bar + 1) * wavePeaks.length) / bars));
@@ -138,9 +147,9 @@ function drawWave() {
     for (let i = from; i < to && i < wavePeaks.length; i += 1) {
       if (wavePeaks[i] > peak) peak = wavePeaks[i];
     }
-    // A bar of at least one pixel each side of the middle, so a silent passage
-    // is still a line rather than a gap in the bar.
-    const half = Math.max(0.5, (peak / 255) * (height / 2 - 1));
+    // A bar of at least one unit each side of the middle, so a silent passage is
+    // still a line rather than a gap in the bar.
+    const half = Math.max(unit, Math.round((peak / 255) * (ph / 2 - unit)));
     const x = bar * pitch;
     // A bar counts as played once the playhead has ENTERED it. Requiring the
     // whole bar to be behind the head left the one under it grey, which read as
@@ -148,13 +157,13 @@ function drawWave() {
     const done = x < playedX;
     ctx.globalAlpha = done ? 1 : UNPLAYED_ALPHA;
     ctx.fillStyle = done ? ahead : behind;
-    ctx.fillRect(x, middle - half, pitch - 1, half * 2);
+    ctx.fillRect(x, middle - half, unit, half * 2);
   }
   ctx.globalAlpha = 1;
   // The playhead itself, so the boundary is readable even where the envelope is
   // flat and the two colours meet mid-bar.
   ctx.fillStyle = ahead;
-  ctx.fillRect(Math.min(width - 1, playedX), 0, 1, height);
+  ctx.fillRect(Math.min(pw - unit, Math.round(playedX)), 0, unit, ph);
 }
 
 // ---- preview player ----

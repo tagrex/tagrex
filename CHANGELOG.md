@@ -111,6 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The waveform's bars are even on every display scale.** They are drawn on
+  the device pixel grid now, so on scales such as 125% or 150% no bar comes out
+  thinner or fainter than its neighbours
+  ([#469](https://github.com/tagrex/tagrex/issues/469)).
 - **The waveform no longer keeps a green frame after a click.** The frame is
   shown for keyboard focus only now
   ([#468](https://github.com/tagrex/tagrex/issues/468)).
