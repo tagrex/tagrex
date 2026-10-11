@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Library health no longer blames the wrong copy of a spelling.** When two
+  spellings of a value were equally common (an album present twice, tagged
+  "Various" in one copy and "various" in the other), the check flagged
+  whichever it met first, which could be the properly tagged one. It now takes
+  the one with proper capitals as right over an all-lower or all-upper one, and
+  flags every file when even that does not decide
+  ([#486](https://github.com/tagrex/tagrex/issues/486)).
+
 ### Added
 
 - **Library health finds files without a cover.** A "No cover art" check sits

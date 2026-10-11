@@ -27,6 +27,12 @@ export const CHECKS = [
   { id: "multiBlock", group: "files" },
 ];
 
+// 1 for a spelling with both capitals and lower case, 0 for one that is all of
+// one kind: the former is what a person typed, the latter what a file name gave.
+function properCase(text) {
+  return text !== text.toLowerCase() && text !== text.toUpperCase() ? 1 : 0;
+}
+
 // The tags whose spelling is compared across the library.
 const SPELLING_FIELDS = ["artist", "albumartist", "album", "genre"];
 
@@ -159,15 +165,21 @@ export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
 
   // Where one value is spelled several ways, the commonest spelling is taken to
   // be the intended one and the files holding any other are what gets flagged.
+  // When two spellings are equally common, the one with proper capitals beats an
+  // all-lower or all-upper one (a copy tagged from file names is the usual
+  // other side); when even that does not decide, none is taken as right and
+  // every file holding any of them is flagged.
   for (const byKey of spellings) {
     for (const forms of byKey.values()) {
       if (forms.size < 2) continue;
-      let keep = null;
+      const ranked = [...forms].sort(
+        ([rawA, a], [rawB, b]) => b.count - a.count || properCase(rawB) - properCase(rawA)
+      );
+      const [topRaw, top] = ranked[0];
+      const [nextRaw, next] = ranked[1];
+      const tied = top.count === next.count && properCase(topRaw) === properCase(nextRaw);
       for (const [raw, entry] of forms) {
-        if (keep === null || entry.count > forms.get(keep).count) keep = raw;
-      }
-      for (const [raw, entry] of forms) {
-        if (raw !== keep) entry.paths.forEach((path) => flag("spelling", path));
+        if (tied || raw !== topRaw) entry.paths.forEach((path) => flag("spelling", path));
       }
     }
   }
