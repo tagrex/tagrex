@@ -102,6 +102,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **JetBrains Mono is credited.** The README tech stack named only IBM Plex,
   but the bundled monospace font is JetBrains Mono
   ([#463](https://github.com/tagrex/tagrex/issues/463)).
+- **The font licences ship with the fonts.** The SIL Open Font License text and
+  the IBM and JetBrains copyright notices sit next to the bundled fonts in
+  `app/ui/assets/THIRD-PARTY-FONT-LICENSES.md`, so they are in the repository
+  and inside the app alike; a style comment that called JetBrains Mono
+  Apache-2.0 now says what the font itself says
+  ([#462](https://github.com/tagrex/tagrex/issues/462)).
 
 ### Fixed
 

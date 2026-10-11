@@ -244,7 +244,9 @@ heavy lifting:
 - [IBM Plex](https://github.com/IBM/plex) for the interface and
   [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) for file names
   and tag values — the bundled fonts, both under the
-  [SIL Open Font License 1.1](https://openfontlicense.org/).
+  [SIL Open Font License 1.1](https://openfontlicense.org/); the licence texts
+  are in
+  [app/ui/assets/THIRD-PARTY-FONT-LICENSES.md](app/ui/assets/THIRD-PARTY-FONT-LICENSES.md).
 
 See [docs/architecture.md](docs/architecture.md) for the module layout and the
 reasoning behind it.

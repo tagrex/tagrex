@@ -1,9 +1,10 @@
-/* Bundled disambiguating monospace (#76): JetBrains Mono Regular, Apache-2.0,
+/* Bundled disambiguating monospace (#76): JetBrains Mono Regular, SIL OFL 1.1,
    subset to Latin + Cyrillic + punctuation, shipped as assets/tagrex-mono.woff2
    (a local bundled asset, so the UI stays self-contained and offline). Code
    ligatures are stripped so file names and tag values never fuse (e.g. "->"
    stays two glyphs). Backs the --font-mono-bundled token; the system stack
-   remains the fallback. */
+   remains the fallback. Licence text for every bundled font:
+   assets/THIRD-PARTY-FONT-LICENSES.md. */
 @font-face {
   font-family: "TagRex Mono";
   font-style: normal;
