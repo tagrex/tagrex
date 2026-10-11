@@ -80,6 +80,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   tagline say what TagRex runs on and what it is built with, each item with
   its logo
   ([#456](https://github.com/tagrex/tagrex/issues/456)).
+- **The platforms and stack block is aligned.** It is a picture now, in a dark
+  and a light version like the hero image, so the labels, logos and names
+  line up in a fixed grid
+  ([#457](https://github.com/tagrex/tagrex/issues/457)).
 
 ### Fixed
 

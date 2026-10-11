@@ -14,14 +14,10 @@
 </p>
 
 <p align="center">
-  <sub><b>RUNS ON</b></sub>&nbsp;&nbsp;
-  <img src="docs/img/icons/apple.svg" height="16" align="absmiddle" alt="Apple"> macOS&nbsp;&nbsp;
-  <img src="docs/img/icons/windows.svg" height="16" align="absmiddle" alt="Windows"> Windows&nbsp;&nbsp;
-  <img src="docs/img/icons/linux.svg" height="16" align="absmiddle" alt="Linux"> Linux
-  <br>
-  <sub><b>BUILT WITH</b></sub>&nbsp;&nbsp;
-  <img src="docs/img/icons/rust.svg" height="16" align="absmiddle" alt="Rust"> Rust&nbsp;&nbsp;
-  <img src="docs/img/icons/tauri.svg" height="16" align="absmiddle" alt="Tauri"> Tauri
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/platforms-dark.png">
+    <img src="docs/img/platforms-light.png" width="420" alt="Runs on macOS, Windows and Linux. Built with Rust and Tauri.">
+  </picture>
 </p>
 
 <p align="center">
