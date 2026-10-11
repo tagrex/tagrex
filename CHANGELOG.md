@@ -111,6 +111,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The filter box shows its whole placeholder.** The box is a little wider; with
+  the larger text the hint was cut off at the right
+  ([#470](https://github.com/tagrex/tagrex/issues/470)).
 - **Small text is larger and darker.** The type scale moves up a pixel
   (10, 11, 12 and 13 px become 11, 12, 13 and 14), and the grey of secondary
   text goes one step darker again. Thin strokes at the old sizes were

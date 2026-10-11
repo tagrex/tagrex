@@ -1730,7 +1730,7 @@ body:not(.show-checkbox) #tracks td.sel {
   display: inline-flex;
 }
 .filter-ctl #filter {
-  width: 200px;
+  width: 228px; /* the placeholder clipped at 200 once the type scale went up (#470) */
   padding-right: 52px; /* room for the two flag toggles */
 }
 /* A bad regex reddens the box (the match is suppressed, never thrown). */
