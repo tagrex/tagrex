@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The Settings search box matches the other fields.** It was the browser's
   bare search field, with its own border and focus outline; it now uses the
   shared field style and focus ring ([#484](https://github.com/tagrex/tagrex/issues/484)).
+- **The groups in Settings have icons.** Each group in the list on the left gets
+  one from the app's own outline set, so they are quicker to tell apart
+  ([#485](https://github.com/tagrex/tagrex/issues/485)).
 
 ## [0.21.0] - 2026-10-11
 

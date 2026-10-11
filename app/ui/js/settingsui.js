@@ -111,7 +111,17 @@ export function renderSettingsNav() {
       button.type = "button";
       button.className = "settings-nav-item";
       button.setAttribute("role", "tab");
-      button.textContent = groupLabel(group);
+      const label = document.createElement("span");
+      label.textContent = groupLabel(group);
+      if (group.dataset.icon) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "ico");
+        const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+        use.setAttribute("href", `#${group.dataset.icon}`);
+        svg.append(use);
+        button.append(svg);
+      }
+      button.append(label);
       button.addEventListener("click", () => selectSettingsGroup(i));
       return button;
     })

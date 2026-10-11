@@ -57,6 +57,12 @@
       <symbol id="i-refresh" viewBox="0 0 16 16"><path d="M13.2 8a5.2 5.2 0 1 1-1.6-3.7"/><path d="M13.4 2.4v3.2h-3.2"/></symbol>
       <symbol id="i-unlock" viewBox="0 0 16 16"><rect x="3.5" y="7" width="9" height="6.3" rx="1.3"/><path d="M5.3 7V5.4a2.7 2.7 0 0 1 5.4 0"/></symbol>
       <symbol id="i-import" viewBox="0 0 16 16"><line x1="3" y1="2.8" x2="3" y2="13.2"/><line x1="13.2" y1="8" x2="6" y2="8"/><path d="M9 5 6 8 9 11"/></symbol>
+      <symbol id="i-db" viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="4.5" ry="1.8"/><path d="M3.5 4v8c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8V4"/><path d="M3.5 8c0 1 2 1.8 4.5 1.8S12.5 9 12.5 8"/></symbol>
+      <symbol id="i-wifi" viewBox="0 0 16 16"><path d="M2.5 6.2a8 8 0 0 1 11 0"/><path d="M4.7 8.7a4.9 4.9 0 0 1 6.6 0"/><circle cx="8" cy="11.6" r="1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v7.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z"/><path d="M9 2.5v3h3"/></symbol>
+      <symbol id="i-monitor" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="7.8" rx="1.2"/><path d="M6 13.2h4M8 10.8v2.4"/></symbol>
+      <symbol id="i-command" viewBox="0 0 16 16"><path d="M6 6V4.3A1.7 1.7 0 1 0 4.3 6H6Zm0 0h4m-4 0v4m4-4V4.3A1.7 1.7 0 1 1 11.7 6H10Zm0 0v4m0 0h1.7a1.7 1.7 0 1 1-1.7 1.7V10Zm0 0H6m0 0v1.7A1.7 1.7 0 1 1 4.3 10H6Z"/></symbol>
+      <symbol id="i-flask" viewBox="0 0 16 16"><path d="M6.5 2.5h3"/><path d="M7 2.5v4L3.7 12a1 1 0 0 0 .9 1.5h6.8a1 1 0 0 0 .9-1.5L9 6.5v-4"/><path d="M5.2 10h5.6"/></symbol>
     </svg>
 
     <!-- Top bar: brand, mode tabs, library path + open, undo/settings — one strip
@@ -916,7 +922,7 @@
         </nav>
         <div class="settings-body">
           <p id="settings-search-empty" class="settings-hint" data-i18n="settings.searchEmpty" hidden>No setting matches.</p>
-          <div class="settings-group">
+          <div class="settings-group" data-icon="i-db">
             <h3 data-i18n="settings.sources">Sources</h3>
             <h4 class="settings-sub">Discogs</h4>
             <div class="settings-row">
@@ -941,7 +947,7 @@
             </p>
           </div>
 
-          <div class="settings-group" data-reset-group="network">
+          <div class="settings-group" data-icon="i-wifi" data-reset-group="network">
             <h3 data-i18n="settings.network">Network</h3>
             <div class="settings-row">
               <label for="set-proxy" data-i18n="settings.proxy">Proxy</label>
@@ -968,7 +974,7 @@
             <p class="settings-hint" data-i18n="settings.checkUpdatesHint">When TagRex starts it asks GitHub for the latest release and shows a note in the status bar if a newer one exists. Nothing is downloaded or installed, and nothing about you or your files is sent. Switched off, the app makes no such request.</p>
           </div>
 
-          <div class="settings-group" data-reset-group="tags">
+          <div class="settings-group" data-icon="i-tag" data-reset-group="tags">
             <h3 data-i18n="settings.tagDefaults">Tag defaults</h3>
             <div class="settings-row">
               <label data-i18n="settings.id3Version">ID3 version</label>
@@ -995,7 +1001,7 @@
             <p class="settings-hint" data-i18n="settings.multiSepHint">A track can carry several artists or genres. They are shown and edited as one value joined by this text, and written back as separate values. Only Artist, Album Artist, Genre and Composer are treated this way — every other field keeps a separator as part of its value. Leave it blank for a semicolon and a space.</p>
           </div>
 
-          <div class="settings-group" data-reset-group="cover">
+          <div class="settings-group" data-icon="i-image" data-reset-group="cover">
             <h3 data-i18n="editor.coverArt">Cover art</h3>
             <div class="settings-row">
               <label for="set-cover-max" data-i18n="settings.coverMax">Max size</label>
@@ -1017,7 +1023,7 @@
           <!-- Which fields an online import may write (#152). The rows are built
                from the backend's own catalogue (`import_fields`), so the setting
                can never offer a field the import doesn't produce. -->
-          <div class="settings-group" data-reset-group="import">
+          <div class="settings-group" data-icon="i-import" data-reset-group="import">
             <h3 data-i18n="settings.onlineImport">Online import</h3>
             <p class="settings-hint" data-i18n="settings.importHint">Which tags an import from Discogs or MusicBrainz is allowed to write. Everything is on by default; a field switched off here is left exactly as the file has it.</p>
             <div id="set-import-fields" class="import-fields"></div>
@@ -1038,7 +1044,7 @@
             <p class="settings-hint" data-i18n="settings.importCoverHint" data-i18n-html>Whether an import also embeds the release's cover. <strong>If missing</strong> only fills in files that carry no artwork at all, so nothing you chose yourself is ever overwritten — decided per file, so a mixed selection gets it exactly where it's needed. <strong>Always</strong> replaces the cover a file already has. Either way the tags and the artwork are one change, so a single undo takes back both.</p>
           </div>
 
-          <div class="settings-group" data-reset-group="files">
+          <div class="settings-group" data-icon="i-doc" data-reset-group="files">
             <h3 data-i18n="settings.files">Files</h3>
             <div class="settings-row col">
               <label for="set-sidecar-exts" data-i18n="settings.extensions">Extensions</label>
@@ -1047,7 +1053,7 @@
             <p class="settings-hint" data-i18n="settings.extensionsHint">Space- or comma-separated, without the dot. Case-insensitive.</p>
           </div>
 
-          <div class="settings-group" data-reset-group="display">
+          <div class="settings-group" data-icon="i-monitor" data-reset-group="display">
             <h3 data-i18n="settings.display">Display</h3>
             <div class="settings-row">
               <label for="set-lang" data-i18n="settings.language">Language</label>
@@ -1096,7 +1102,7 @@
           <!-- Keyboard shortcuts (#432): one row per action in the registry
                (js/shortcuts.js), built by settings.js. A binding applies and is
                stored at once, like the theme — Cancel does not take it back. -->
-          <div class="settings-group">
+          <div class="settings-group" data-icon="i-command">
             <h3 data-i18n="shortcuts.heading">Shortcuts</h3>
             <div id="set-shortcuts" class="shortcut-list"></div>
             <p id="set-shortcuts-msg" class="settings-hint shortcut-msg" role="status" hidden></p>
@@ -1109,7 +1115,7 @@
           <!-- LAB: typography knobs that are still being tried out. Grouped and
                labelled as experiments so it's clear they may change or go away,
                rather than sitting among the settled Display options. -->
-          <div class="settings-group" data-reset-group="lab">
+          <div class="settings-group" data-icon="i-flask" data-reset-group="lab">
             <h3><span data-i18n="settings.lab">LAB</span> <span class="lab-tag" data-i18n="settings.experimental">experimental</span></h3>
             <p class="settings-hint settings-lab-note" data-i18n="settings.labNote">Typography still under evaluation. These may change or be dropped in a later release.</p>
             <div class="settings-row">

@@ -4923,6 +4923,9 @@ td[data-field="year"],
   gap: 2px;
 }
 .settings-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   text-align: left;
   border: 0;
   background: none;
