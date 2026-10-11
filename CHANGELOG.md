@@ -64,6 +64,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Both themes in the hero image.** The front Tagger window is split along a
   diagonal, light on one side and dark on the other
   ([#452](https://github.com/tagrex/tagrex/issues/452)).
+- **The hero image follows the GitHub theme.** The diagonal split is gone: the
+  same three windows are shown in a dark and a light version, and the page
+  picks the one that matches the viewer's theme
+  ([#453](https://github.com/tagrex/tagrex/issues/453)).
 
 ### Fixed
 
