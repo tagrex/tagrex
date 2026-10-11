@@ -68,8 +68,11 @@
   --border: #e2e5ea;
   --text: #1a1d23;
   /* Nudged one step darker so muted text on --panel clears WCAG AA with margin
-     (was #6b7280 = 4.51, right on the line) — typography/colour audit. */
-  --muted: #636b76;
+     (was #6b7280 = 4.51, right on the line) — typography/colour audit. Then a
+     second step (#636b76 = 5.0 on --panel, 4.8 on a hovered row) because it is
+     drawn at 10 and 11 px in a regular weight, which Windows renders thin
+     enough that "passing" was not readable (#466): 6.5 and 6.2 now. */
+  --muted: #525a66;
   /* Brand green (from the logo, #085041) drives the accent; a clear red is
      reserved for danger — errors, deletions, and the "old" side of a diff — so
      problems stand out against all the positive/interactive green. */

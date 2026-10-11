@@ -113,7 +113,7 @@ function drawWave() {
   // colour: a border is meant to be barely there, and at bar width it left the
   // rest of the track nearly invisible in both themes. Half opacity keeps it
   // quieter than the played part without disappearing into the panel.
-  const behind = themeColor("--muted", "#636b76");
+  const behind = themeColor("--muted", "#525a66");
   const ahead = themeColor("--accent", "#0b6b53");
 
   if (!wavePeaks || !wavePeaks.length) {

@@ -111,6 +111,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Secondary text is easier to read on the light theme.** The grey of field
+  labels, hints, counts and column headings is a step darker (contrast 6.5
+  instead of 5.0 on the panel). It passed the accessibility threshold already,
+  but at 10 and 11 pixels it was faint, most of all on Windows
+  ([#466](https://github.com/tagrex/tagrex/issues/466)).
 - **A tooltip keeps a gap before its keyboard shortcut.** The shortcut sat
   against the text ("Choose a folder to openCtrl+O") because a rule meant for a
   tooltip made only of the shortcut also matched every other
