@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   text says so too. A lone checkbox in a Settings row now starts at the left of
   the value column on every system instead of landing at an engine-dependent
   spot ([#478](https://github.com/tagrex/tagrex/issues/478)).
+- **"Check now" and its result sit tight under the update checkbox.** They
+  were two loosely spaced lines apart from it; now they read as one group, the
+  result on its own line below the button
+  ([#479](https://github.com/tagrex/tagrex/issues/479)).
 
 ## [0.21.0] - 2026-10-11
 
