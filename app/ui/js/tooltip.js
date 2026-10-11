@@ -55,7 +55,13 @@ function show(target) {
   if (!text && !hint) return;
   const tip = box();
   tip.textContent = "";
-  if (text) tip.append(text);
+  // The text in an element of its own: `.tip-kbd:first-child` would otherwise
+  // match the hint whenever the text is a bare text node, and drop its gap (#465).
+  if (text) {
+    const label = document.createElement("span");
+    label.textContent = text;
+    tip.append(label);
+  }
   if (hint) {
     const kbd = document.createElement("kbd");
     kbd.className = "tip-kbd";

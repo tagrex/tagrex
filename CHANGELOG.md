@@ -111,6 +111,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A tooltip keeps a gap before its keyboard shortcut.** The shortcut sat
+  against the text ("Choose a folder to openCtrl+O") because a rule meant for a
+  tooltip made only of the shortcut also matched every other
+  ([#465](https://github.com/tagrex/tagrex/issues/465)).
 - **Windows: the folder button opens the folder it was given.** The path the
   chooser handed back lost every backslash on its way to the library
   (`C:Usersme`), so choosing a folder showed "No such folder" while dragging it
