@@ -468,7 +468,7 @@ function renderTableHead() {
     const lockedColumn = isFieldLocked(key);
     if (lockedColumn) {
       th.classList.add("locked");
-      th.title = `${th.title} · locked`;
+      th.title = t("columns.lockedTitle", { title: th.title });
     }
     // A drag grip on the right edge resizes the column; a label span keeps the
     // header text clipping (ellipsis) independent of the grip.

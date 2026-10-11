@@ -81,7 +81,7 @@ function groupLabel(key) {
   if (groupBy === "folder") return folderGroupLabel(key);
   // Release ids (esp. MusicBrainz UUIDs) are long; show a short, stable prefix.
   if (groupBy === "release") {
-    return key.length > 12 ? `Release ${key.slice(0, 8)}…` : `Release ${key}`;
+    return t("grouping.release", { id: key.length > 12 ? `${key.slice(0, 8)}…` : key });
   }
   return key;
 }

@@ -965,4 +965,10 @@ export const es = {
   "field.custom.MOOD": "Estado de ánimo",
   "field.custom.LANGUAGE": "Idioma",
   "app.cleared": "vaciado",
+  "player.volumeMuted": "Volumen: silenciado",
+  "player.volumeLevel": "Volumen: {percent} %",
+  "columns.lockedTitle": "{title} · bloqueado",
+  "grouping.release": "Lanzamiento {id}",
+  "unit.secondsShort": "{n} s",
+  "online.runs": "{file} dura {time}",
 };

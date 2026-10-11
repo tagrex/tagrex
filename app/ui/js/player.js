@@ -215,7 +215,7 @@ function applyVolume(level, { persist = true } = {}) {
   // The button on the bar carries the same glyph: the slider is folded away, so
   // this is the only place muted can be read without opening anything.
   el("pl-volume-btn").innerHTML = ico(v === 0 ? "volume-off" : "volume");
-  const barLabel = v === 0 ? "Volume — muted" : `Volume — ${Math.round(v * 100)}%`;
+  const barLabel = v === 0 ? t("player.volumeMuted") : t("player.volumeLevel", { percent: Math.round(v * 100) });
   el("pl-volume-btn").title = barLabel;
   el("pl-volume-btn").setAttribute("aria-label", barLabel);
   if (v > 0) volumeBeforeMute = v;

@@ -115,6 +115,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The length difference in a release tracklist, the volume button's
+  tooltip, a locked column's tooltip and a release group's header speak the
+  chosen language.** They were the last of the strings found by the
+  interface-wide pass ([#477](https://github.com/tagrex/tagrex/issues/477)).
 - **More of the interface speaks the chosen language.** Toasts, the tooltips
   and hints of the table, the cover editor, the player's repeat and mute buttons,
   the transform rule editor (rule names, step buttons, case styles, the

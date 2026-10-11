@@ -966,4 +966,10 @@ export const ru = {
   "field.custom.MOOD": "Настроение",
   "field.custom.LANGUAGE": "Язык",
   "app.cleared": "очищено",
+  "player.volumeMuted": "Громкость — выключена",
+  "player.volumeLevel": "Громкость — {percent}%",
+  "columns.lockedTitle": "{title} · заблокировано",
+  "grouping.release": "Релиз {id}",
+  "unit.secondsShort": "{n} с",
+  "online.runs": "{file} идёт {time}",
 };

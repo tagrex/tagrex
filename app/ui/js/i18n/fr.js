@@ -967,4 +967,10 @@ export const fr = {
   "field.custom.MOOD": "Ambiance",
   "field.custom.LANGUAGE": "Langue",
   "app.cleared": "effacé",
+  "player.volumeMuted": "Volume — coupé",
+  "player.volumeLevel": "Volume — {percent} %",
+  "columns.lockedTitle": "{title} · verrouillé",
+  "grouping.release": "Sortie {id}",
+  "unit.secondsShort": "{n} s",
+  "online.runs": "{file} dure {time}",
 };

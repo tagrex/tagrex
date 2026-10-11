@@ -967,4 +967,10 @@ export const uk = {
   "field.custom.MOOD": "Настрій",
   "field.custom.LANGUAGE": "Мова",
   "app.cleared": "очищено",
+  "player.volumeMuted": "Гучність — вимкнено",
+  "player.volumeLevel": "Гучність — {percent}%",
+  "columns.lockedTitle": "{title} · заблоковано",
+  "grouping.release": "Реліз {id}",
+  "unit.secondsShort": "{n} с",
+  "online.runs": "{file} триває {time}",
 };

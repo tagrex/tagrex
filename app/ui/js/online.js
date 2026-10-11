@@ -795,7 +795,7 @@ function deltaBand(delta) {
 function deltaLabel(delta) {
   const d = Math.abs(delta);
   const sign = delta > 0 ? "+" : delta < 0 ? "-" : "";
-  return `${sign}${d < 60 ? `${d}s` : fmtTime(d)}`;
+  return `${sign}${d < 60 ? t("unit.secondsShort", { n: d }) : fmtTime(d)}`;
 }
 
 // The duration cell of one track row: the release's own time, plus the
@@ -803,7 +803,7 @@ function deltaLabel(delta) {
 function durationCell(track, pair) {
   const base = track.duration_secs ? fmtTime(track.duration_secs) : "—";
   if (!pair) return base;
-  const title = `${fileName(pair.path)} runs ${fmtTime(pair.secs)}`;
+  const title = t("online.runs", { file: fileName(pair.path), time: fmtTime(pair.secs) });
   return `${base}<span class="tk-delta ${deltaBand(pair.delta)}" title="${escapeHtml(title)}">${deltaLabel(
     pair.delta,
   )}</span>`;

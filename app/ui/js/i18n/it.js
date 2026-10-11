@@ -967,4 +967,10 @@ export const it = {
   "field.custom.MOOD": "Mood",
   "field.custom.LANGUAGE": "Lingua",
   "app.cleared": "cancellato",
+  "player.volumeMuted": "Volume — disattivato",
+  "player.volumeLevel": "Volume — {percent}%",
+  "columns.lockedTitle": "{title} · bloccato",
+  "grouping.release": "Uscita {id}",
+  "unit.secondsShort": "{n} s",
+  "online.runs": "{file} dura {time}",
 };

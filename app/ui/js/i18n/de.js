@@ -963,4 +963,10 @@ export const de = {
   "field.custom.MOOD": "Stimmung",
   "field.custom.LANGUAGE": "Sprache",
   "app.cleared": "geleert",
+  "player.volumeMuted": "Lautstärke — stumm",
+  "player.volumeLevel": "Lautstärke — {percent} %",
+  "columns.lockedTitle": "{title} · gesperrt",
+  "grouping.release": "Veröffentlichung {id}",
+  "unit.secondsShort": "{n} s",
+  "online.runs": "{file} dauert {time}",
 };
