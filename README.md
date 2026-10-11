@@ -14,11 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/img/tagger.png" width="900" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
-</p>
-
-<p align="center">
-  <img src="docs/img/renamer-diff.png" width="900" alt="A rename previewed as a diff inside the table, with an Apply and Discard bar at the bottom">
+  <img src="docs/img/hero.png" width="900" alt="TagRex windows overlapped: the Tagger table in the light theme, a rename previewed as a diff in the Renamer, and a duplicate scan in the Deduplicator, both in the dark theme">
 </p>
 
 ---
@@ -60,12 +56,20 @@ beside the folder path re-reads what is open without losing your sort, filter or
 pending edits, and right-clicking a file offers to drop it from the list or move
 it to the system Trash.
 
+<p align="center">
+  <img src="docs/img/tagger.png" width="800" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
+</p>
+
 **Nothing is written until you look at it.** Every mutating operation — rename,
 move, tag edit, transform, import, cover embed — produces a change plan that is
 rendered as a diff *into the table itself*, with a per-row apply scope and an
 Apply/Discard bar. Applying goes through a transactional executor with a
 persistent SQLite undo journal, so a batch survives an application restart and
 can still be rolled back.
+
+<p align="center">
+  <img src="docs/img/renamer-diff.png" width="800" alt="A rename previewed as a diff inside the table, with an Apply and Discard bar at the bottom">
+</p>
 
 **Fields can be locked.** A padlock beside a field in the EDITOR panel puts it
 out of reach: no import, transform, rename or clear-tags can change it, its

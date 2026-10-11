@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **A change plan in the README.** A second screenshot shows a rename
   previewed as a diff inside the table, before anything is written
   ([#445](https://github.com/tagrex/tagrex/issues/445)).
+- **A hero image in the README.** The top of the repository page now shows the
+  Tagger, Renamer and Deduplicator windows overlapped, in both themes; the two
+  single screenshots moved next to the paragraphs they illustrate and show the
+  current interface
+  ([#450](https://github.com/tagrex/tagrex/issues/450)).
 
 ### Fixed
 
