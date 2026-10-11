@@ -17,7 +17,12 @@ import { applyStaticText, planText, t as msg, tn } from "./js/i18n.js";
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
-import { beginApplyProgress, endApplyProgress } from "./js/applyprogress.js";
+import {
+  beginApplyProgress,
+  beginUndoProgress,
+  endApplyProgress,
+  endUndoProgress,
+} from "./js/applyprogress.js";
 import { activeHealthLabel, clearHealth, healthAllows, initHealth } from "./js/health.js";
 import { initUpdateCheck } from "./js/updatecheck.js";
 import "./js/tablegestures.js";
@@ -1781,8 +1786,9 @@ async function previewEdits() {
   }
 }
 
-// True while an Apply is running (#437).
+// True while an Apply is running (#437), or an Undo (#448).
 let applying = false;
+let undoing = false;
 
 async function apply() {
   if (!previewPlan || previewPlan.changes.length === 0) return;
@@ -1801,7 +1807,7 @@ async function apply() {
   }
   const appliedPaths = new Set(appliedPlan.changes.map((c) => c.path));
   // A second Apply (the shortcut, a double click) would queue behind the first.
-  if (applying) return;
+  if (applying || undoing) return;
   applying = true;
   try {
     await beginApplyProgress();
@@ -1838,9 +1844,13 @@ async function apply() {
 }
 
 async function undo() {
+  // The backend takes one job at a time; a second click would only queue (#448).
+  if (applying || undoing) return;
+  undoing = true;
   try {
     const batches = await invoke("history", {});
     if (batches.length === 0) return;
+    await beginUndoProgress();
     await invoke("undo", { batchId: batches[0].id });
     toast("Undid last batch");
     resetEdits();
@@ -1853,6 +1863,9 @@ async function undo() {
     await refreshHistory();
   } catch (e) {
     toast(String(e), true);
+  } finally {
+    endUndoProgress();
+    undoing = false;
   }
 }
 

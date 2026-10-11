@@ -289,6 +289,7 @@ export const en = {
   "toast.applied": "Applied changes to {files}",
   "toast.applyCancelled": "Apply cancelled. Nothing was changed.",
   "apply.cancelling": "Cancelling…",
+  "undo.running": "Undoing…",
   "ctx.removeN": "Remove {files} from the list",
   "ctx.trashN": "Move {files} to Trash…",
   "confirm.trash": "Move {files} to the Trash? This is not part of the undo history — the Trash is where they can be got back from.",

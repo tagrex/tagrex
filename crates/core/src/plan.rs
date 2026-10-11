@@ -415,6 +415,18 @@ impl Executor {
         batch_id: BatchId,
         allowed_roots: &[PathBuf],
     ) -> Result<(), PlanError> {
+        Self::undo_with(journal, batch_id, allowed_roots, &mut |_| {})
+    }
+
+    /// [`Executor::undo`] that reports how far it has got (#448), the same way
+    /// [`Executor::apply_with`] does. There is no cancel: stopping half-way would
+    /// leave the batch partly undone, which is the state #441 removed for apply.
+    pub fn undo_with(
+        journal: &mut dyn UndoJournal,
+        batch_id: BatchId,
+        allowed_roots: &[PathBuf],
+        progress: &mut dyn FnMut(&ApplyProgress),
+    ) -> Result<(), PlanError> {
         let batch = journal
             .batches()?
             .into_iter()
@@ -458,20 +470,27 @@ impl Executor {
         // Reverse the transfers first, so tag restoration finds each file back
         // at its original path. Undoing a copy means removing the copy — the
         // source was never touched, so there is nothing else to put back.
+        let never = AtomicBool::new(false);
+        let mut steps = Steps::new(count_undo_steps(&batch.plan), progress, &never);
         for change in &batch.plan.changes {
             if let Some(target) = effective_rename(change) {
+                steps.begin(target)?;
                 untransfer(target, &change.path, change.copy)?;
+                steps.done();
             }
             for (from, to) in &change.sidecar_renames {
+                steps.begin(to)?;
                 untransfer(to, from, change.copy)?;
+                steps.done();
             }
         }
         for change in &batch.plan.changes {
             // A copy's tag changes were written to the copy, which no longer
             // exists; the source still holds its original values.
-            if change.copy {
+            if change.copy || !writes_in_place(change) {
                 continue;
             }
+            steps.begin(&change.path)?;
             // Blocks come back before the field and image values are restored,
             // mirroring apply in reverse. It matters when the block that was
             // stripped is the one the app reads from: put it back first and the
@@ -479,6 +498,7 @@ impl Executor {
             write_blocks(&change.path, change, Direction::Undo)?;
             write_tag_changes(&change.path, change, Direction::Undo)?;
             apply_cover_change(&change.path, change, Direction::Undo)?;
+            steps.done();
         }
 
         // Finally remove the folders this batch created, deepest first. Only
@@ -568,6 +588,20 @@ fn count_steps(plan: &ChangePlan) -> usize {
                 in_place
             };
             in_place + moves + change.sidecar_renames.len()
+        })
+        .sum()
+}
+
+/// The steps [`Executor::undo_with`] will take: each transfer and sidecar put
+/// back, then each file whose fields, images or blocks are restored.
+fn count_undo_steps(plan: &ChangePlan) -> usize {
+    plan.changes
+        .iter()
+        .map(|change| {
+            let restores = usize::from(!change.copy && writes_in_place(change));
+            restores
+                + usize::from(effective_rename(change).is_some())
+                + change.sidecar_renames.len()
         })
         .sum()
 }

@@ -287,6 +287,7 @@ export const it = {
   "toast.applied": "Modifiche applicate a {files}",
   "toast.applyCancelled": "Applicazione annullata. Non è stato modificato nulla.",
   "apply.cancelling": "Annullamento…",
+  "undo.running": "Annullamento in corso…",
   "ctx.removeN": "Rimuovi {files} dalla lista",
   "ctx.trashN": "Sposta {files} nel Cestino…",
   "confirm.trash": "Spostare {files} nel Cestino? Questo non fa parte della cronologia annullamenti — il Cestino è da dove possono essere recuperati.",

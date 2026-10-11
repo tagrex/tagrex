@@ -287,6 +287,7 @@ export const ru = {
   "toast.applied": "Изменения применены к {files}",
   "toast.applyCancelled": "Применение отменено. Ничего не изменено.",
   "apply.cancelling": "Отмена…",
+  "undo.running": "Откат…",
   "ctx.removeN": "Убрать из списка: {files}",
   "ctx.trashN": "В корзину: {files}",
   "confirm.trash": "Отправить в корзину {files}? Это не входит в историю отмены — вернуть их можно из корзины.",

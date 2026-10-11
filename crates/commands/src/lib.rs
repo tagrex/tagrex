@@ -4145,8 +4145,17 @@ impl App {
 
     /// Roll back a previously applied batch.
     pub fn undo(&mut self, batch_id: i64) -> Result<(), AppError> {
+        self.undo_with(batch_id, &mut |_| {})
+    }
+
+    /// [`App::undo`] that reports progress (#448).
+    pub fn undo_with(
+        &mut self,
+        batch_id: i64,
+        progress: &mut dyn FnMut(&ApplyProgress),
+    ) -> Result<(), AppError> {
         let roots = self.allowed_roots();
-        Executor::undo(&mut self.journal, BatchId(batch_id), &roots)?;
+        Executor::undo_with(&mut self.journal, BatchId(batch_id), &roots, progress)?;
         Ok(())
     }
 

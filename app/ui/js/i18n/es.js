@@ -285,6 +285,7 @@ export const es = {
   "toast.applied": "Cambios aplicados a {files}",
   "toast.applyCancelled": "Aplicación cancelada. No se cambió nada.",
   "apply.cancelling": "Cancelando…",
+  "undo.running": "Deshaciendo…",
   "ctx.removeN": "Quitar {files} de la lista",
   "ctx.trashN": "Mover {files} a la papelera…",
   "confirm.trash": "¿Mover {files} a la papelera? Esto no forma parte del historial de deshacer — es en la papelera donde se pueden recuperar.",

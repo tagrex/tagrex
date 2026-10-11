@@ -55,6 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Undoing a big batch no longer freezes the window.** Undo ran on the main
+  thread, so rolling back thousands of files (about 4.5 seconds for 20,000 on a
+  local disk) left the window unable to repaint or take a click. It now runs in
+  the background and shows a progress bar in the status bar
+  ([#448](https://github.com/tagrex/tagrex/issues/448)).
 - **Settings › Network keeps Proxy and Rate limit together.** The update-check
   rows moved below them, so the explanation of the update check no longer sits
   between the two request settings

@@ -288,6 +288,7 @@ export const uk = {
   "toast.applied": "Зміни застосовано до {files}",
   "toast.applyCancelled": "Застосування скасовано. Нічого не змінено.",
   "apply.cancelling": "Скасування…",
+  "undo.running": "Скасування змін…",
   "ctx.removeN": "Прибрати зі списку: {files}",
   "ctx.trashN": "У кошик: {files}",
   "confirm.trash": "Відправити в кошик {files}? Це не входить в історію скасування — повернути їх можна з кошика.",

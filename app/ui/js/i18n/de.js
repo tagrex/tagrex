@@ -283,6 +283,7 @@ export const de = {
   "toast.applied": "Änderungen auf {files} angewendet",
   "toast.applyCancelled": "Anwenden abgebrochen. Es wurde nichts geändert.",
   "apply.cancelling": "Wird abgebrochen …",
+  "undo.running": "Wird rückgängig gemacht …",
   "ctx.removeN": "{files} aus der Liste entfernen",
   "ctx.trashN": "{files} in den Papierkorb legen…",
   "confirm.trash": "{files} in den Papierkorb legen? Das gehört nicht zum Rückgängig-Verlauf — zurückholen lassen sie sich aus dem Papierkorb.",

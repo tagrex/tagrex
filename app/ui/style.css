@@ -6019,3 +6019,29 @@ body.drag-active #drop-overlay {
 .settings-group > .group-reset[hidden] {
   display: none;
 }
+
+/* ---- an undo in progress (#448) ---- */
+.busy-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+}
+.busy-pill[hidden] {
+  display: none;
+}
+.busy-pill .ab-bar {
+  flex: 0 0 auto;
+  width: 120px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.busy-pill .ab-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent-ink);
+  transition: width 0.12s linear;
+}

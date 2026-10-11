@@ -33,6 +33,35 @@ export async function beginApplyProgress() {
   if (events) unlisten = await events.listen(EVENT, (e) => paint(e.payload));
 }
 
+// The same events while an undo runs (#448), painted in the status bar since there
+// may be no diff bar to put them in. No Cancel: a rollback stopped half-way would
+// leave the batch partly undone.
+let undoUnlisten = null;
+let undoTimer = null;
+
+export async function beginUndoProgress() {
+  el("busy-fill").style.width = "0%";
+  el("busy-text").textContent = t("undo.running");
+  undoTimer = setTimeout(() => (el("busy-pill").hidden = false), SHOW_AFTER_MS);
+  const events = window.__TAURI__ && window.__TAURI__.event;
+  if (events) {
+    undoUnlisten = await events.listen(EVENT, (e) => {
+      const { done, total } = e.payload;
+      const percent = total ? Math.round((done / total) * 100) : 0;
+      el("busy-fill").style.width = `${percent}%`;
+      el("busy-text").textContent = `${t("undo.running")} ${percent}%`;
+    });
+  }
+}
+
+export function endUndoProgress() {
+  clearTimeout(undoTimer);
+  undoTimer = null;
+  if (undoUnlisten) undoUnlisten();
+  undoUnlisten = null;
+  el("busy-pill").hidden = true;
+}
+
 export function endApplyProgress() {
   clearTimeout(showTimer);
   showTimer = null;

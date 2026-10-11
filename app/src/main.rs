@@ -624,6 +624,29 @@ fn player_status(player: State<Player>) -> PlayerStatus {
     player.status()
 }
 
+/// The callback that turns the executor's progress into events (#437, #448),
+/// throttled so a fast run does not flood the window.
+fn progress_reporter(
+    app_handle: tauri::AppHandle,
+) -> impl FnMut(&tagrex_core::plan::ApplyProgress) {
+    let mut last = std::time::Instant::now() - APPLY_PROGRESS_INTERVAL;
+    move |progress| {
+        if last.elapsed() < APPLY_PROGRESS_INTERVAL {
+            return;
+        }
+        last = std::time::Instant::now();
+        let _ = tauri::Emitter::emit(
+            &app_handle,
+            APPLY_PROGRESS_EVENT,
+            ApplyProgressDto {
+                done: progress.done,
+                total: progress.total,
+                path: progress.path.to_string_lossy().into_owned(),
+            },
+        );
+    }
+}
+
 /// Asks the running apply to stop (#437). Its own state rather than part of
 /// [`AppState`]: the apply holds that lock for its whole run, and the request has
 /// to get through while it does.
@@ -649,28 +672,10 @@ async fn apply_plan(
     plan: PlanDto,
 ) -> Result<BatchDto, ErrorDto> {
     control.0.store(false, Ordering::SeqCst);
-    let mut last = std::time::Instant::now() - APPLY_PROGRESS_INTERVAL;
+    let mut report = progress_reporter(app_handle);
     with_app_mut(&state, |app| {
-        app.apply_with(
-            &plan,
-            &mut |progress| {
-                if last.elapsed() < APPLY_PROGRESS_INTERVAL {
-                    return;
-                }
-                last = std::time::Instant::now();
-                let _ = tauri::Emitter::emit(
-                    &app_handle,
-                    APPLY_PROGRESS_EVENT,
-                    ApplyProgressDto {
-                        done: progress.done,
-                        total: progress.total,
-                        path: progress.path.to_string_lossy().into_owned(),
-                    },
-                );
-            },
-            &control.0,
-        )
-        .map_err(ErrorDto::from)
+        app.apply_with(&plan, &mut report, &control.0)
+            .map_err(ErrorDto::from)
     })
 }
 
@@ -679,9 +684,20 @@ fn cancel_apply(control: State<ApplyControl>) {
     control.0.store(true, Ordering::SeqCst);
 }
 
+// `async` for the same reason as `apply_plan` (#448): a synchronous command runs
+// on the main thread, and rolling back a big batch took seconds with the window
+// frozen. Progress goes out as the same events; there is no cancel, because a
+// rollback stopped half-way would leave the batch partly undone.
 #[tauri::command]
-fn undo(state: State<AppState>, batch_id: i64) -> Result<(), ErrorDto> {
-    with_app_mut(&state, |app| app.undo(batch_id).map_err(ErrorDto::from))
+async fn undo(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    batch_id: i64,
+) -> Result<(), ErrorDto> {
+    let mut report = progress_reporter(app_handle);
+    with_app_mut(&state, |app| {
+        app.undo_with(batch_id, &mut report).map_err(ErrorDto::from)
+    })
 }
 
 #[tauri::command]

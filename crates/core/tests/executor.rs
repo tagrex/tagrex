@@ -1117,3 +1117,24 @@ fn a_cancel_before_the_first_file_changes_nothing() {
         .contains_key(&TagField::Artist));
     assert!(journal.batches().unwrap().is_empty());
 }
+
+#[test]
+fn undo_reports_each_step_with_a_running_total() {
+    let dir = TempDir::new("undo-progress");
+    let files = [dir.flac("a.flac"), dir.flac("b.flac"), dir.flac("c.flac")];
+    let mut journal = VecJournal::new();
+    let plan = set_artist_on(&[&files[0], &files[1], &files[2]]);
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
+
+    let mut seen = Vec::new();
+    Executor::undo_with(
+        &mut journal,
+        batch.id,
+        &roots(dir.path()),
+        &mut |progress| seen.push((progress.done, progress.total)),
+    )
+    .unwrap();
+
+    assert_eq!(seen, vec![(0, 3), (1, 3), (2, 3)]);
+    assert!(journal.batches().unwrap().is_empty());
+}

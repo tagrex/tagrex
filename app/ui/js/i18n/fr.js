@@ -287,6 +287,7 @@ export const fr = {
   "toast.applied": "Changements appliqués à {files}",
   "toast.applyCancelled": "Application annulée. Rien n'a été modifié.",
   "apply.cancelling": "Annulation…",
+  "undo.running": "Annulation du lot…",
   "ctx.removeN": "Retirer {files} de la liste",
   "ctx.trashN": "Placer {files} dans la corbeille…",
   "confirm.trash": "Placer {files} dans la corbeille ? Cela ne fait pas partie de l'historique d'annulation — c'est depuis la corbeille qu'on peut les récupérer.",

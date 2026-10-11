@@ -705,6 +705,9 @@
           <button id="update-open" class="update-open" type="button"></button>
           <button id="update-skip" class="update-skip icon" type="button" data-i18n-title="update.skip" title="Don't tell me about this version" data-i18n-aria-label="update.skip" aria-label="Don't tell me about this version"><svg class="ico"><use href="#i-close"/></svg></button>
         </span>
+        <!-- A rollback in progress (#448): undo has no bar of its own to borrow,
+             since the diff bar belongs to a staged plan. Driven by applyprogress.js. -->
+        <span id="busy-pill" class="busy-pill" hidden><span class="ab-bar"><span class="ab-bar-fill" id="busy-fill"></span></span><span id="busy-text" class="muted"></span></span>
         <span id="status-sel" class="muted"></span>
         <button id="preview-edits" disabled data-i18n-title="statusbar.previewEditsTitle" title="Preview the pending inline cell edits" data-i18n="statusbar.previewEdits">Preview edits</button>
       </div>
