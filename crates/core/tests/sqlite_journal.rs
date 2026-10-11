@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 
-use tagrex_core::journal::{SqliteJournal, UndoJournal};
+use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::model::{TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, Executor, FieldChange, FileChange};
 
@@ -315,4 +315,58 @@ fn ids_keep_climbing_across_reopens() {
 
     assert_ne!(first, second);
     assert!(second.0 > first.0);
+}
+
+#[test]
+fn one_batch_can_be_fetched_without_loading_the_others() {
+    let dir = TempDir::new("one-batch");
+    let first = dir.flac("first.flac");
+    let second = dir.flac("second.flac");
+    let mut journal = SqliteJournal::open(&dir.db()).unwrap();
+    let a = Executor::apply(
+        &set_artist(&first, None, Some("First")),
+        &mut journal,
+        &roots(dir.path()),
+    )
+    .unwrap();
+    let b = Executor::apply(
+        &set_artist(&second, None, Some("Second")),
+        &mut journal,
+        &roots(dir.path()),
+    )
+    .unwrap();
+
+    let fetched = journal.batch(a.id).unwrap().expect("the batch is there");
+    assert_eq!(fetched.id, a.id);
+    assert_eq!(fetched.plan.changes.len(), 1);
+    assert_eq!(fetched.plan.changes[0].path, first);
+    assert_eq!(
+        journal.batch(b.id).unwrap().unwrap().plan.changes[0].path,
+        second
+    );
+    assert!(journal.batch(BatchId(9999)).unwrap().is_none());
+}
+
+/// Every child table is read and deleted by its parent's id; without an index
+/// each of those lookups scans the whole table, and a journal with a few large
+/// batches took minutes to load or roll back (#449).
+#[test]
+fn the_journal_tables_are_indexed_by_their_parent() {
+    let dir = TempDir::new("indexes");
+    drop(SqliteJournal::open(&dir.db()).unwrap());
+    let conn = rusqlite::Connection::open(dir.db()).unwrap();
+    for query in [
+        "SELECT * FROM file_changes WHERE batch_id = 1",
+        "SELECT * FROM field_changes WHERE file_change_id = 1",
+        "SELECT * FROM cover_images WHERE file_change_id = 1",
+        "SELECT * FROM sidecar_renames WHERE file_change_id = 1",
+        "SELECT * FROM block_changes WHERE file_change_id = 1",
+        "SELECT * FROM block_change_fields WHERE block_change_id = 1",
+        "SELECT * FROM allowed_roots WHERE batch_id = 1",
+    ] {
+        let plan: String = conn
+            .query_row(&format!("EXPLAIN QUERY PLAN {query}"), [], |row| row.get(3))
+            .unwrap();
+        assert!(plan.contains("USING INDEX"), "{query}: {plan}");
+    }
 }

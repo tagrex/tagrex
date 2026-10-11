@@ -428,9 +428,7 @@ impl Executor {
         progress: &mut dyn FnMut(&ApplyProgress),
     ) -> Result<(), PlanError> {
         let batch = journal
-            .batches()?
-            .into_iter()
-            .find(|batch| batch.id == batch_id)
+            .batch(batch_id)?
             .ok_or(PlanError::Journal(JournalError::UnknownBatch(batch_id)))?;
 
         let mut roots = canonical_roots(allowed_roots)?;

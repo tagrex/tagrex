@@ -55,6 +55,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Undo and the history no longer take minutes on a big undo journal.** The
+  journal's tables had no indexes, so reading or deleting a batch scanned whole
+  tables once per file: with a few batches of 20,000 files, undoing even a tiny
+  batch took about three minutes and the history list the same. They are indexed
+  now (an existing journal is fixed the next time it opens): the same undo takes
+  milliseconds and the history under a second. Undo also reads only the batch it
+  undoes, and the history is fetched off the main thread, so the window stays
+  alive while it loads
+  ([#449](https://github.com/tagrex/tagrex/issues/449)).
 - **Undoing a big batch no longer freezes the window.** Undo ran on the main
   thread, so rolling back thousands of files (about 4.5 seconds for 20,000 on a
   local disk) left the window unable to repaint or take a click. It now runs in

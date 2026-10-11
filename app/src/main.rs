@@ -700,8 +700,11 @@ async fn undo(
     })
 }
 
+// `async` so it runs off the main thread (#449): the interface asks for the
+// history before and after every apply and undo, and a synchronous command
+// would hold the window for as long as the journal takes to read.
 #[tauri::command]
-fn history(state: State<AppState>) -> Result<Vec<BatchDto>, ErrorDto> {
+async fn history(state: State<'_, AppState>) -> Result<Vec<BatchDto>, ErrorDto> {
     with_app(&state, |app| app.history().map_err(ErrorDto::from))
 }
 

@@ -82,6 +82,13 @@ pub trait UndoJournal {
     /// All recorded batches, newest first.
     fn batches(&self) -> Result<Vec<AppliedBatch>, JournalError>;
 
+    /// One batch by id, or `None` when there is no such batch. A journal that
+    /// can fetch a single batch should say so: undoing one batch has no business
+    /// loading every other (#449).
+    fn batch(&self, id: BatchId) -> Result<Option<AppliedBatch>, JournalError> {
+        Ok(self.batches()?.into_iter().find(|batch| batch.id == id))
+    }
+
     /// Roll back a whole batch as a unit.
     fn rollback(&mut self, id: BatchId) -> Result<(), JournalError>;
 }
@@ -273,6 +280,28 @@ impl SqliteJournal {
         if !column_exists(&conn, "batches", "message")? {
             conn.execute_batch("ALTER TABLE batches ADD COLUMN message TEXT")?;
         }
+        // Every child table is read and deleted by its parent's id, and SQLite
+        // does not index a foreign key by itself. Without these, each of the
+        // lookups below — one per file, several per file — scanned its whole
+        // table, so loading or rolling back a batch cost the square of the
+        // journal's size: minutes for a few batches of 20,000 files (#449). An
+        // existing journal gets them on its next open.
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_file_changes_batch ON file_changes(batch_id);
+             CREATE INDEX IF NOT EXISTS idx_field_changes_file ON field_changes(file_change_id);
+             CREATE INDEX IF NOT EXISTS idx_cover_changes_file ON cover_changes(file_change_id);
+             CREATE INDEX IF NOT EXISTS idx_cover_images_file ON cover_images(file_change_id);
+             CREATE INDEX IF NOT EXISTS idx_sidecar_renames_file ON sidecar_renames(file_change_id);
+             CREATE INDEX IF NOT EXISTS idx_block_changes_file ON block_changes(file_change_id);
+             CREATE INDEX IF NOT EXISTS idx_block_change_fields_block ON block_change_fields(block_change_id);
+             CREATE INDEX IF NOT EXISTS idx_block_change_images_block ON block_change_images(block_change_id);
+             CREATE INDEX IF NOT EXISTS idx_block_removals_file ON block_removals(file_change_id);
+             CREATE INDEX IF NOT EXISTS idx_block_removal_fields_block ON block_removal_fields(block_removal_id);
+             CREATE INDEX IF NOT EXISTS idx_block_removal_images_block ON block_removal_images(block_removal_id);
+             CREATE INDEX IF NOT EXISTS idx_created_dirs_batch ON created_dirs(batch_id);
+             CREATE INDEX IF NOT EXISTS idx_removed_dirs_batch ON removed_dirs(batch_id);
+             CREATE INDEX IF NOT EXISTS idx_allowed_roots_batch ON allowed_roots(batch_id);",
+        )?;
         Ok(Self { conn })
     }
 }
@@ -439,25 +468,34 @@ impl UndoJournal for SqliteJournal {
         let mut batches = Vec::new();
         for row in rows {
             let (id, description, message, applied_at) = row?;
-            let changes = self.load_file_changes(id)?;
-            batches.push(AppliedBatch {
-                id: BatchId(id),
-                description: description.clone(),
-                message: message.clone(),
-                applied_at,
-                plan: ChangePlan {
-                    description,
-                    message,
-                    changes,
-                    // Apply-time only: what it caused is in `removed_dirs`.
-                    prune_empty_dirs: false,
-                },
-                created_dirs: self.load_paths("created_dirs", id)?,
-                removed_dirs: self.load_paths("removed_dirs", id)?,
-                allowed_roots: self.load_paths("allowed_roots", id)?,
-            });
+            batches.push(self.load_batch(id, description, message, applied_at)?);
         }
         Ok(batches)
+    }
+
+    fn batch(&self, id: BatchId) -> Result<Option<AppliedBatch>, JournalError> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT description, message, applied_at FROM batches WHERE id = ?1",
+                rusqlite::params![id.0],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .map(Some)
+            .or_else(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            })?;
+        row.map(|(description, message, applied_at)| {
+            self.load_batch(id.0, description, message, applied_at)
+        })
+        .transpose()
     }
 
     fn rollback(&mut self, id: BatchId) -> Result<(), JournalError> {
@@ -483,6 +521,33 @@ impl SqliteJournal {
             row.get::<_, String>(0).map(PathBuf::from)
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    /// A batch row with everything that hangs off it.
+    fn load_batch(
+        &self,
+        id: i64,
+        description: String,
+        message: Option<String>,
+        applied_at: i64,
+    ) -> Result<AppliedBatch, JournalError> {
+        let changes = self.load_file_changes(id)?;
+        Ok(AppliedBatch {
+            id: BatchId(id),
+            description: description.clone(),
+            message: message.clone(),
+            applied_at,
+            plan: ChangePlan {
+                description,
+                message,
+                changes,
+                // Apply-time only: what it caused is in `removed_dirs`.
+                prune_empty_dirs: false,
+            },
+            created_dirs: self.load_paths("created_dirs", id)?,
+            removed_dirs: self.load_paths("removed_dirs", id)?,
+            allowed_roots: self.load_paths("allowed_roots", id)?,
+        })
     }
 
     fn load_file_changes(&self, batch_id: i64) -> Result<Vec<FileChange>, JournalError> {
