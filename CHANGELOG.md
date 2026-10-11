@@ -111,6 +111,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Windows: the folder button opens the folder it was given.** The path the
+  chooser handed back lost every backslash on its way to the library
+  (`C:Usersme`), so choosing a folder showed "No such folder" while dragging it
+  in worked. A path typed or pasted in the path bar was affected the same way
+  ([#464](https://github.com/tagrex/tagrex/issues/464)).
 - **Undo and the history no longer take minutes on a big undo journal.** The
   journal's tables had no indexes, so reading or deleting a batch scanned whole
   tables once per file: with a few batches of 20,000 files, undoing even a tiny

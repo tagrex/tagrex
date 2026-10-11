@@ -1392,6 +1392,10 @@ function cleanPastedPath(raw) {
   if ((quote === "'" || quote === '"') && path.endsWith(quote) && path.length > 1) {
     path = path.slice(1, -1);
   }
+  // A Windows path (a drive letter or a UNC share) uses the backslash as its
+  // separator, not as an escape: unescaping turned C:\Users\me into C:Usersme and
+  // the folder chooser's own answer into "No such folder" (#464).
+  if (/^[A-Za-z]:[\\/]/.test(path) || path.startsWith("\\\\")) return path;
   return path.replace(/\\(.)/g, "$1").trim();
 }
 
