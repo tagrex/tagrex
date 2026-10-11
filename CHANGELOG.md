@@ -57,6 +57,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   single screenshots moved next to the paragraphs they illustrate and show the
   current interface
   ([#450](https://github.com/tagrex/tagrex/issues/450)).
+- **The Tagger leads the hero image.** It is the front window now, so the
+  release card, the track-length match and the preview player are the first
+  things the page shows
+  ([#451](https://github.com/tagrex/tagrex/issues/451)).
 
 ### Fixed
 
