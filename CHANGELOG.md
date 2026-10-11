@@ -76,6 +76,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   around the windows, so no edge keeps a trace of shadow, and the files were
   renamed so a cached copy of the earlier version is not shown
   ([#455](https://github.com/tagrex/tagrex/issues/455)).
+- **Platforms and stack with logos in the README.** Two short lines under the
+  tagline say what TagRex runs on and what it is built with, each item with
+  its logo
+  ([#456](https://github.com/tagrex/tagrex/issues/456)).
 
 ### Fixed
 

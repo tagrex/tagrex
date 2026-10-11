@@ -14,6 +14,17 @@
 </p>
 
 <p align="center">
+  <sub><b>RUNS ON</b></sub>&nbsp;&nbsp;
+  <img src="docs/img/icons/apple.svg" height="16" align="absmiddle" alt="Apple"> macOS&nbsp;&nbsp;
+  <img src="docs/img/icons/windows.svg" height="16" align="absmiddle" alt="Windows"> Windows&nbsp;&nbsp;
+  <img src="docs/img/icons/linux.svg" height="16" align="absmiddle" alt="Linux"> Linux
+  <br>
+  <sub><b>BUILT WITH</b></sub>&nbsp;&nbsp;
+  <img src="docs/img/icons/rust.svg" height="16" align="absmiddle" alt="Rust"> Rust&nbsp;&nbsp;
+  <img src="docs/img/icons/tauri.svg" height="16" align="absmiddle" alt="Tauri"> Tauri
+</p>
+
+<p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/img/showcase-dark.png">
     <img src="docs/img/showcase-light.png" width="900" alt="TagRex windows overlapped: the Tagger with a release card, track-length matching and the player, and behind it a rename previewed as a diff in the Renamer and a duplicate scan in the Deduplicator">
