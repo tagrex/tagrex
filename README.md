@@ -29,7 +29,7 @@
 
 ---
 
-> **Status: 0.20.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.21.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
 > preview player, a transactional undo journal, and an interface that speaks
@@ -86,6 +86,12 @@ out of reach: no import, transform, rename or clear-tags can change it, its
 table cells stop opening for editing, and a plan reports what the lock kept out
 rather than silently doing less. Locks last for the session — one you set months
 ago and forgot would be worse than none.
+
+**Problems come to you.** The heart button next to the presets lists ready-made
+checks — missing tags, a title that is only the file name, an odd year, stray
+spaces, track numbers above their total or repeated, albums whose tracks
+disagree, the same artist or genre spelled several ways, unreadable files — each
+with a count; choosing one narrows the table to the files it flags.
 
 **Modes**, each a verb applied to that table:
 

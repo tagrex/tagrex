@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-11
+
+This release is about trusting TagRex with a big library, on every desktop.
+Applying a plan shows its progress and can be cancelled, a write that fails
+part-way puts everything back, and undoing a big batch no longer freezes the
+window or takes minutes. A Library health menu finds what needs fixing, the
+interface follows the chosen language everywhere (and switches live), text is
+larger and easier to read on Windows and Linux, and the app remembers its window
+and tells you when a newer release exists.
+
 ### Added
 
 - **Settings can be searched.** A box at the top narrows the page to the
