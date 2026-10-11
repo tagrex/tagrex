@@ -2555,7 +2555,9 @@ body.show-checkbox tr.playing td.sel {
   height: 26px;
   border-radius: var(--radius-sm);
 }
-.pl-wave-wrap:focus-within {
+/* Only for keyboard focus (#468): `:focus-within` also matched after a mouse
+   click on the bar, and left the frame on for as long as the input held focus. */
+.pl-wave-wrap:has(#pl-seek:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }

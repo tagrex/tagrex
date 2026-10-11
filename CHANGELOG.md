@@ -111,6 +111,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The waveform no longer keeps a green frame after a click.** The frame is
+  shown for keyboard focus only now
+  ([#468](https://github.com/tagrex/tagrex/issues/468)).
 - **Secondary text is easier to read on the light theme.** The grey of field
   labels, hints, counts and column headings is a step darker (contrast 6.5
   instead of 5.0 on the panel). It passed the accessibility threshold already,
