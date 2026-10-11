@@ -466,6 +466,35 @@ fn cover_embed_read_remove_and_survives_a_tag_write() {
     std::fs::remove_file(&path).ok();
 }
 
+/// The listing's cover flag (#447) comes from the same probe as the tags, and
+/// follows the picture through an embed and a removal.
+#[test]
+fn listing_probe_reports_whether_a_file_carries_a_cover() {
+    let cover = CoverArt {
+        mime: "image/png".to_string(),
+        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5],
+        ..CoverArt::default()
+    };
+
+    let flac = temp_flac_path("has-cover");
+    std::fs::write(&flac, MINIMAL_FLAC).expect("write fixture");
+    let mp3 = std::env::temp_dir().join(format!("tagrex-has-cover-{}.mp3", std::process::id()));
+    std::fs::write(&mp3, minimal_mp3()).expect("write fixture");
+
+    for path in [&flac, &mp3] {
+        assert!(!TagEngine::read_with_props(path).unwrap().has_cover);
+        TagEngine::write_covers(path, std::slice::from_ref(&cover)).unwrap();
+        assert!(
+            TagEngine::read_with_props(path).unwrap().has_cover,
+            "{} should report its cover",
+            path.display()
+        );
+        TagEngine::write_covers(path, &[]).unwrap();
+        assert!(!TagEngine::read_with_props(path).unwrap().has_cover);
+        std::fs::remove_file(path).ok();
+    }
+}
+
 /// A tag write (and a cover embed) must preserve everything the text-only
 /// `TagMap` cannot express: DJ cue points and loops, ratings, ReplayGain — all
 /// of which live in ID3v2 frames like `PRIV`/`GEOB`.

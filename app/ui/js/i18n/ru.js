@@ -974,4 +974,5 @@ export const ru = {
   "online.runs": "{file} идёт {time}",
   "settings.groups": "Группы настроек",
   "settings.sources": "Источники",
+  "health.noCover": "Нет обложки",
 };

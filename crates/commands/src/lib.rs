@@ -68,6 +68,16 @@ pub struct TrackDto {
     /// that genuinely has no tags at all — which is itself worth seeing.
     #[serde(default)]
     pub tag_blocks: Vec<TagBlockDto>,
+    /// Whether any tag block carries a picture (#447), from the same probe. Only
+    /// a file that was read says `false`; one whose cover is not known (an
+    /// unreadable file, a conversion from tags alone) says `true`, so it is never
+    /// reported as missing a cover it was not looked at for.
+    #[serde(default = "default_has_cover")]
+    pub has_cover: bool,
+}
+
+fn default_has_cover() -> bool {
+    true
 }
 
 /// One tag block a file carries (#47).
@@ -111,6 +121,7 @@ impl TrackDto {
             unreadable: true,
             duration_secs: None,
             tag_blocks: Vec::new(),
+            has_cover: true,
         }
     }
 }
@@ -2061,6 +2072,7 @@ impl App {
                 Ok(read) => TrackDto {
                     duration_secs: Some(read.props.duration_secs),
                     tag_blocks: read.blocks.iter().map(TagBlockDto::from).collect(),
+                    has_cover: read.has_cover,
                     ..TrackDto::from(read.file)
                 },
                 Err(_) => TrackDto::unreadable(&path),
@@ -5364,6 +5376,7 @@ impl From<tagrex_core::model::TrackFile> for TrackDto {
             // nor which blocks the file carries.
             duration_secs: None,
             tag_blocks: Vec::new(),
+            has_cover: true,
         }
     }
 }

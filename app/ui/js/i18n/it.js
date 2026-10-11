@@ -975,4 +975,5 @@ export const it = {
   "online.runs": "{file} dura {time}",
   "settings.groups": "Gruppi di impostazioni",
   "settings.sources": "Fonti",
+  "health.noCover": "Nessuna copertina",
 };

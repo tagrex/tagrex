@@ -12,9 +12,15 @@ fn main() {
         std::process::exit(1);
     };
 
-    match TagEngine::read(&path) {
-        Ok(track) => {
+    match TagEngine::read_with_props(&path) {
+        Ok(read) => {
+            let track = read.file;
             println!("{}", track.path.display());
+            println!("has cover: {}", read.has_cover);
+            println!(
+                "cover read separately: {}",
+                matches!(TagEngine::read_cover(&path), Ok(Some(_)))
+            );
             println!("format: {:?}", track.format);
             if track.tags.is_empty() {
                 println!("(no tags found)");

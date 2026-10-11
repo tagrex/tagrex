@@ -831,6 +831,10 @@ pub struct TrackRead {
     pub file: TrackFile,
     pub props: AudioProps,
     pub blocks: Vec<TagBlock>,
+    /// Whether any tag block carries a picture (#447). Read off the parse the
+    /// tags come from, where the pictures are already decoded, so it costs
+    /// nothing; a folder image next to the file does not count.
+    pub has_cover: bool,
 }
 
 /// A single audio file as seen by the table model.
@@ -1184,6 +1188,10 @@ impl TagEngine {
         // fall back to lofty's primary/first tag. Resolve to a `TagType` while
         // the lock is held, then re-fetch the borrow so no guard outlives it.
         let present: Vec<TagType> = tagged_file.tags().iter().map(|t| t.tag_type()).collect();
+        let has_cover = tagged_file
+            .tags()
+            .iter()
+            .any(|tag| !tag.pictures().is_empty());
         let priority_type = READ_PRIORITY
             .read()
             .ok()
@@ -1251,6 +1259,7 @@ impl TagEngine {
             },
             props,
             blocks,
+            has_cover,
         })
     }
 

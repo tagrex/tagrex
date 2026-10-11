@@ -3,8 +3,7 @@
 // Pure: a list of tracks in, the paths each check flags out. No DOM, no imports,
 // so it can be read and tested on its own; health.js is the part that draws it.
 // Everything is derived from what the table already holds (tags, duration, the
-// tag blocks a file carries), which is why there is no cover check yet: whether a
-// file has a picture is not in the track list and would need a read per file.
+// tag blocks a file carries, and whether any block carries a picture, #447).
 
 // id: what the menu and the tests call the check. group: the menu section.
 // field: the tag a "missing" check is about.
@@ -16,6 +15,7 @@ export const CHECKS = [
   { id: "missing:track", group: "missing", field: "track" },
   { id: "missing:year", group: "missing", field: "year" },
   { id: "missing:genre", group: "missing", field: "genre" },
+  { id: "noCover", group: "missing" },
   { id: "titleIsFilename", group: "suspect" },
   { id: "badYear", group: "suspect" },
   { id: "whitespace", group: "suspect" },
@@ -84,8 +84,10 @@ export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
     const { dir, name } = splitPath(path);
 
     for (const check of CHECKS) {
-      if (check.group === "missing" && !value(check.field)) flag(check.id, path);
+      if (check.group === "missing" && check.field && !value(check.field)) flag(check.id, path);
     }
+    // Only a file that was read says so; a track without the flag is not accused.
+    if (track.has_cover === false) flag("noCover", path);
 
     const title = value("title");
     if (title) {

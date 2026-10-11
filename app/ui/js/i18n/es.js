@@ -973,4 +973,5 @@ export const es = {
   "online.runs": "{file} dura {time}",
   "settings.groups": "Grupos de ajustes",
   "settings.sources": "Fuentes",
+  "health.noCover": "Sin carátula",
 };

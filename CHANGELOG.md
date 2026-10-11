@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Library health finds files without a cover.** A "No cover art" check sits
+  with the missing tags. It reads whether any tag block carries a picture from
+  the same pass that already reads the tags, so it costs nothing extra on open;
+  a folder image next to the files does not count
+  ([#447](https://github.com/tagrex/tagrex/issues/447)).
+
 ## [0.22.0] - 2026-10-11
 
 This release is about Settings, which had grown into one long side panel. It is

@@ -268,8 +268,8 @@ function mockInvoke(cmd, args) {
       // so the Tag types column and the editor's line have something to show.
       // The first carries a `cover` so the editor's cover well and the player's
       // now-playing thumbnail (#275) both have embedded art to show in browser-dev.
-      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, cover: "#2f6f4f", tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }], tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
-      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "ID3v1", kind: "id3v1", read_from: false }], tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
+      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, cover: "#2f6f4f", has_cover: true, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }], tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
+      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, has_cover: false, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "ID3v1", kind: "id3v1", read_from: false }], tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
       { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "APE", kind: "ape", read_from: false }], tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996", bpm: "128", isrc: "BEA509600123" } },
     ],
     history: [],

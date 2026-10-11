@@ -971,4 +971,5 @@ export const de = {
   "online.runs": "{file} dauert {time}",
   "settings.groups": "Einstellungsgruppen",
   "settings.sources": "Quellen",
+  "health.noCover": "Kein Cover",
 };

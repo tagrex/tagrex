@@ -975,4 +975,5 @@ export const fr = {
   "online.runs": "{file} dure {time}",
   "settings.groups": "Groupes de réglages",
   "settings.sources": "Sources",
+  "health.noCover": "Pas de pochette",
 };

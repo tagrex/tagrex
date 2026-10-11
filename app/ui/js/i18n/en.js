@@ -977,4 +977,5 @@ export const en = {
   "online.runs": "{file} runs {time}",
   "settings.groups": "Settings groups",
   "settings.sources": "Sources",
+  "health.noCover": "No cover art",
 };

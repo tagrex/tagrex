@@ -975,4 +975,5 @@ export const uk = {
   "online.runs": "{file} триває {time}",
   "settings.groups": "Групи налаштувань",
   "settings.sources": "Джерела",
+  "health.noCover": "Немає обкладинки",
 };
