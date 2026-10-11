@@ -61,6 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   release card, the track-length match and the preview player are the first
   things the page shows
   ([#451](https://github.com/tagrex/tagrex/issues/451)).
+- **Both themes in the hero image.** The front Tagger window is split along a
+  diagonal, light on one side and dark on the other
+  ([#452](https://github.com/tagrex/tagrex/issues/452)).
 
 ### Fixed
 

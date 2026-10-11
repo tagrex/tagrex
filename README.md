@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/img/hero.png" width="900" alt="TagRex windows overlapped: the Tagger with a release card, track-length matching and the player in the light theme, behind it a rename previewed as a diff in the Renamer and a duplicate scan in the Deduplicator, both in the dark theme">
+  <img src="docs/img/hero.png" width="900" alt="TagRex windows overlapped: the Tagger with a release card, track-length matching and the player, split diagonally between the light and dark themes, behind it a rename previewed as a diff in the Renamer and a duplicate scan in the Deduplicator">
 </p>
 
 ---
