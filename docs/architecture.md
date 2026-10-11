@@ -17,8 +17,23 @@ preview *before* anything touches disk.
 
 Therefore the heart of TagRex is a single transactional pipeline:
 
-```text
-source of changes ──> plan ──> preview ──> apply ──> undo journal
+```mermaid
+flowchart LR
+  subgraph producers["Producers of changes"]
+    direction TB
+    M["Mask: rename, tags from a file name"]
+    T["Transforms"]
+    I["Online import<br/>Discogs, MusicBrainz, Beatport,<br/>Bandcamp, Soundeo"]
+    C["Cover art"]
+    E["Manual edit"]
+  end
+  producers -->|changes| G["App::plan<br/>the one gate<br/>field locks enforced"]
+  G -->|plan| V["Preview<br/>current to new,<br/>shown in the table"]
+  V -->|Apply| A["Transactional apply"]
+  V -->|Discard| N(["Nothing written"])
+  A -->|writes| F["Files on disk"]
+  A -->|old and new values| J[("Undo journal<br/>SQLite")]
+  J -.->|Undo restores| F
 ```
 
 Everything else — masks, transforms, online providers — is just a producer of
@@ -26,6 +41,40 @@ plans. No module writes tags or renames files directly; all writes go through
 the pipeline. This is an invariant, not a preference.
 
 ## Module map
+
+How the pieces depend on each other (an arrow means "uses"):
+
+```mermaid
+flowchart TB
+  UI["Interface: app/ui<br/>static HTML, CSS, ES modules"]
+  Shell["Tauri shell: app<br/>window, dialogs, clipboard, update check"]
+  Cmd["commands<br/>the App type: session state,<br/>the plan gate, the undo journal handle"]
+  subgraph Core["core"]
+    Tag["Tag engine (lofty)"]
+    Mask["Mask engine"]
+    Tr["Transforms"]
+    Scan["Scanner"]
+    Tx["Plan, apply, undo journal (SQLite)"]
+    Match["Matching"]
+    Cover["Cover art"]
+    Exp["Export"]
+  end
+  subgraph Prov["Provider crates, one per source"]
+    D["providers-discogs"]
+    MB["providers-musicbrainz"]
+    BP["providers-beatport"]
+    BC["providers-bandcamp"]
+    SO["providers-soundeo"]
+  end
+  Player["player<br/>rodio and Symphonia"]
+  UI -->|invoke| Shell
+  Shell --> Cmd
+  Cmd --> Core
+  Cmd --> Prov
+  Cmd --> Player
+  Prov -.->|implement the provider trait| Core
+  Player -.->|shared types| Core
+```
 
 ### Core (single Rust workspace member, always compiled)
 

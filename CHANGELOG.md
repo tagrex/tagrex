@@ -96,6 +96,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The tech stack lists its key libraries.** The README credits lofty, rodio
   and Symphonia, SQLite and the bundled IBM Plex fonts, with links
   ([#460](https://github.com/tagrex/tagrex/issues/460)).
+- **Architecture diagrams.** `docs/architecture.md` now draws the plan pipeline
+  (producers, the one gate, preview, apply, undo journal) and the crate layers
+  ([#461](https://github.com/tagrex/tagrex/issues/461)).
 
 ### Fixed
 
