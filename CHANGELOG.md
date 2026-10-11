@@ -72,6 +72,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   edge and showed as a hard-edged rectangle on a light page; they are softer
   now and fade out inside the picture
   ([#454](https://github.com/tagrex/tagrex/issues/454)).
+- **The hero image shadows fade out completely.** The picture has more room
+  around the windows, so no edge keeps a trace of shadow, and the files were
+  renamed so a cached copy of the earlier version is not shown
+  ([#455](https://github.com/tagrex/tagrex/issues/455)).
 
 ### Fixed
 
