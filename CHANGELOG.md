@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-10-12
+
+A follow-up about Library health. It can now find files without a cover, and the
+"same value spelled differently" check no longer guesses which spelling is the
+right one: it flags every file holding any spelling and lists the values that
+differ in the menu.
+
 ### Fixed
 
 - **Library health shows what differs instead of picking a spelling.** The
