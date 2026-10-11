@@ -68,6 +68,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   same three windows are shown in a dark and a light version, and the page
   picks the one that matches the viewer's theme
   ([#453](https://github.com/tagrex/tagrex/issues/453)).
+- **No grey box around the hero image.** Its shadows were cut off at the image
+  edge and showed as a hard-edged rectangle on a light page; they are softer
+  now and fade out inside the picture
+  ([#454](https://github.com/tagrex/tagrex/issues/454)).
 
 ### Fixed
 
