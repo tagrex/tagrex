@@ -971,4 +971,5 @@ export const es = {
   "grouping.release": "Lanzamiento {id}",
   "unit.secondsShort": "{n} s",
   "online.runs": "{file} dura {time}",
+  "settings.groups": "Grupos de ajustes",
 };

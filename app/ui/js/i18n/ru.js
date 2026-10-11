@@ -972,4 +972,5 @@ export const ru = {
   "grouping.release": "Релиз {id}",
   "unit.secondsShort": "{n} с",
   "online.runs": "{file} идёт {time}",
+  "settings.groups": "Группы настроек",
 };

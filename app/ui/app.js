@@ -130,9 +130,11 @@ Object.assign(hooks, {
     updateStatus();
     retranslateOnline();
     retranslateHealth();
+    renderSettingsNav();
   },
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
+import { renderSettingsNav } from "./js/settingsui.js";
 import {
   valueFont,
   applyValueFont,

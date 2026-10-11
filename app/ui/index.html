@@ -896,8 +896,9 @@
       </div>
     </div>
 
-    <!-- Settings slide-over (#79): app-wide preferences, opened from the top-bar
-         gear — deliberately outside the RENAMER/TAGGER/… per-mode panel flow. -->
+    <!-- Settings window (#79, reworked): app-wide preferences, opened from the top-bar
+         gear — a centred dialog with the groups listed on the left and one group
+         shown at a time (a search shows all that match) — deliberately outside the RENAMER/TAGGER/… per-mode panel flow. -->
     <div id="settings" class="settings-overlay" hidden>
       <div id="settings-scrim" class="settings-scrim"></div>
       <aside class="settings-sheet" role="dialog" aria-modal="true" data-i18n-aria-label="topbar.settings" aria-label="Settings">
@@ -906,9 +907,13 @@
           <div class="spacer"></div>
           <button id="settings-close" class="icon" data-i18n-title="action.close" title="Close" data-i18n-aria-label="action.close" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
         </div>
-        <div class="settings-search">
+        <div class="settings-main">
+        <nav class="settings-nav" data-i18n-aria-label="settings.groups" aria-label="Settings groups">
+          <div class="settings-search">
           <input id="settings-search" type="search" data-i18n-placeholder="settings.search" placeholder="Search settings…" data-i18n-aria-label="settings.search" aria-label="Search settings" spellcheck="false" autocomplete="off" />
-        </div>
+          </div>
+          <div id="settings-nav-list" class="settings-nav-list" role="tablist" aria-orientation="vertical"></div>
+        </nav>
         <div class="settings-body">
           <p id="settings-search-empty" class="settings-hint" data-i18n="settings.searchEmpty" hidden>No setting matches.</p>
           <div class="settings-group">
@@ -1148,6 +1153,7 @@
             </div>
             <p class="settings-hint" data-i18n="settings.badgeFontHint">The catalogue number and track count on a release card. Mono tells 0 from 8 apart and lines the numbers up down the list.</p>
           </div>
+        </div>
         </div>
         <div class="settings-foot">
           <span class="settings-hint" data-i18n="settings.savedHere">Saved to this machine.</span>

@@ -975,4 +975,5 @@ export const en = {
   "grouping.release": "Release {id}",
   "unit.secondsShort": "{n}s",
   "online.runs": "{file} runs {time}",
+  "settings.groups": "Settings groups",
 };

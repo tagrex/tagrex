@@ -973,4 +973,5 @@ export const uk = {
   "grouping.release": "Реліз {id}",
   "unit.secondsShort": "{n} с",
   "online.runs": "{file} триває {time}",
+  "settings.groups": "Групи налаштувань",
 };

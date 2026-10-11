@@ -973,4 +973,5 @@ export const fr = {
   "grouping.release": "Sortie {id}",
   "unit.secondsShort": "{n} s",
   "online.runs": "{file} dure {time}",
+  "settings.groups": "Groupes de réglages",
 };

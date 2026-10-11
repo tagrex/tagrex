@@ -969,4 +969,5 @@ export const de = {
   "grouping.release": "Veröffentlichung {id}",
   "unit.secondsShort": "{n} s",
   "online.runs": "{file} dauert {time}",
+  "settings.groups": "Einstellungsgruppen",
 };

@@ -50,6 +50,82 @@ export function initGroupResets(defs) {
   }
 }
 
+// ---- the groups list on the left ----
+//
+// One group fills the pane at a time; the list is built from the groups in the
+// markup, so a new group appears in it without further wiring. A search lifts
+// the limit and shows every group that has a match, and the list then shows
+// only those.
+const GROUP_KEY = "tagrex.settings.group";
+let activeGroup = 0;
+try {
+  activeGroup = Number(localStorage.getItem(GROUP_KEY)) || 0;
+} catch (e) {
+  /* the first group is the default */
+}
+
+function allGroups() {
+  return [...document.querySelectorAll(".settings-body .settings-group")];
+}
+
+function groupLabel(group) {
+  const title = group.querySelector("h3").cloneNode(true);
+  title.querySelectorAll(".lab-tag").forEach((tag) => tag.remove());
+  return title.textContent.trim();
+}
+
+function applyPane() {
+  const searching = el("settings-search").value.trim() !== "";
+  const groups = allGroups();
+  const buttons = [...el("settings-nav-list").children];
+  groups.forEach((group, i) => {
+    group.classList.toggle("pane-hidden", !searching && i !== activeGroup);
+    const button = buttons[i];
+    if (!button) return;
+    button.setAttribute("aria-selected", String(!searching && i === activeGroup));
+    button.tabIndex = i === activeGroup ? 0 : -1;
+    button.hidden = searching && group.classList.contains(HIDDEN);
+  });
+}
+
+export function selectSettingsGroup(index) {
+  const count = allGroups().length;
+  activeGroup = Math.min(Math.max(index, 0), count - 1);
+  try {
+    localStorage.setItem(GROUP_KEY, String(activeGroup));
+  } catch (e) {
+    /* only the remembered group is lost */
+  }
+  if (el("settings-search").value) clearSettingsSearch();
+  else applyPane();
+  document.querySelector(".settings-body").scrollTop = 0;
+}
+
+// Drawn when Settings opens and again when the interface language changes, so
+// the names follow the headings.
+export function renderSettingsNav() {
+  const list = el("settings-nav-list");
+  list.replaceChildren(
+    ...allGroups().map((group, i) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "settings-nav-item";
+      button.setAttribute("role", "tab");
+      button.textContent = groupLabel(group);
+      button.addEventListener("click", () => selectSettingsGroup(i));
+      return button;
+    })
+  );
+  list.onkeydown = (event) => {
+    const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    selectSettingsGroup(activeGroup + step);
+    list.children[activeGroup]?.focus();
+  };
+  applyPane();
+}
+
 // ---- search ----
 
 const HIDDEN = "search-hidden";
@@ -87,6 +163,7 @@ export function filterSettings(query) {
     anyShown = anyShown || groupShown;
   }
   el("settings-search-empty").hidden = anyShown || !terms.length;
+  applyPane();
 }
 
 export function clearSettingsSearch() {

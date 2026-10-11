@@ -53,6 +53,7 @@ import { MEDIA_GLYPH_SET_OPTIONS } from "./mediaglyphs.js";
 import { checkUpdateNow } from "./updatecheck.js";
 import {
   clearSettingsSearch,
+  renderSettingsNav,
   initGroupResets,
   initSettingsSearch,
   refreshGroupResets,
@@ -398,6 +399,7 @@ async function openSettings() {
   setMediaGlyphChoice();
   renderPrioList();
   renderShortcuts();
+  renderSettingsNav();
   clearSettingsSearch();
   el("settings").hidden = false;
   refreshGroupResets();

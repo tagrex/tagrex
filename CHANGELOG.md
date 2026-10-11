@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Check now shows its result on Linux again.** The line saying what the
   check found stayed hidden in the Linux web view; the row is now shown from code
   instead of by a style rule ([#481](https://github.com/tagrex/tagrex/issues/481)).
+- **Settings is a window with the groups listed on the left.** It had grown into
+  one long side panel of ten groups; now the list sits on the left and one group
+  fills the pane, so any group is a click away. The search stays above the list
+  and shows every group with a match; the last group opened is remembered, and
+  Up/Down move through the list ([#482](https://github.com/tagrex/tagrex/issues/482)).
 
 ## [0.21.0] - 2026-10-11
 
