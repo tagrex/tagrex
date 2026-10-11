@@ -89,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   visual weight, so the thin Linux mark no longer looks smaller than the solid
   Windows and Rust ones
   ([#458](https://github.com/tagrex/tagrex/issues/458)).
+- **A cascade layout for the hero image.** The three windows are larger and
+  overlap as a staircase, so they fill the picture and their text is readable
+  at the README width
+  ([#459](https://github.com/tagrex/tagrex/issues/459)).
 
 ### Fixed
 

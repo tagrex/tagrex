@@ -22,8 +22,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/showcase-dark.png">
-    <img src="docs/img/showcase-light.png" width="900" alt="TagRex windows overlapped: the Tagger with a release card, track-length matching and the player, and behind it a rename previewed as a diff in the Renamer and a duplicate scan in the Deduplicator">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/cascade-dark.png">
+    <img src="docs/img/cascade-light.png" width="900" alt="TagRex windows overlapped: the Tagger with a release card, track-length matching and the player, and behind it a rename previewed as a diff in the Renamer and a duplicate scan in the Deduplicator">
   </picture>
 </p>
 
