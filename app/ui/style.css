@@ -1728,9 +1728,15 @@ body:not(.show-checkbox) #tracks td.sel {
 .filter-ctl {
   position: relative;
   display: inline-flex;
+  /* The box takes the room between the buttons on its left and those on its
+     right, so the right-hand group sits at the edge of the row whatever the
+     window width (#473). 228 is what the placeholder needs (#470); under 160 the
+     row wraps as it always did. */
+  flex: 1 1 228px;
+  min-width: 160px;
 }
 .filter-ctl #filter {
-  width: 228px; /* the placeholder clipped at 200 once the type scale went up (#470) */
+  width: 100%;
   padding-right: 52px; /* room for the two flag toggles */
 }
 /* A bad regex reddens the box (the match is suppressed, never thrown). */

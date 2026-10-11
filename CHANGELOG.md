@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The filter box fills the toolbar row.** The buttons after it sit at the
+  right edge of the file table instead of wherever the box happens to end, so
+  they stay put when the window is resized
+  ([#473](https://github.com/tagrex/tagrex/issues/473)).
 - **The window reopens where you left it.** Size, position and the maximized
   or full-screen state of the main window are remembered between launches
   ([#434](https://github.com/tagrex/tagrex/issues/434)).
