@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-11
+
+This release is about Settings, which had grown into one long side panel. It is
+now a window with the groups listed on the left, each with an icon, one group
+filling the pane at a time, and a search that shows every group with a match;
+Discogs and Beatport share a Sources group. The note that a newer release
+exists moved into the top bar beside the mode tabs, and pressing Check now shows
+its result on Linux again.
+
 ### Changed
 
 - **The new-version note moved to the top bar.** It sits beside the mode tabs,
