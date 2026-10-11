@@ -661,7 +661,7 @@ function buildGroupHeader(key, count) {
   tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
       <span class="group-caret">${collapsed ? ico("chevron-right") : ico("caret-down")}</span>
       <span class="group-label">${escapeHtml(groupLabel(key))}</span>
-      <span class="group-count muted">· ${count} ${count === 1 ? "file" : "files"}</span>
+      <span class="group-count muted">· ${tn("unit.file", count)}</span>
     </td>`;
   return tr;
 }
@@ -1123,13 +1123,12 @@ function updateStatus() {
     return;
   }
   const selected = selectedPaths().length;
-  const noun = total === 1 ? "file" : "files";
   const files =
     filterText || activeHealthLabel()
-      ? `${tracks.filter(matchesFilter).length}/${total} ${noun}`
-      : `${total} ${noun}`;
+      ? `${tracks.filter(matchesFilter).length}/${tn("unit.file", total)}`
+      : tn("unit.file", total);
   const check = activeHealthLabel();
-  statusSel.textContent = `${files}${check ? ` (${check})` : ""} · ${selected} selected`;
+  statusSel.textContent = `${files}${check ? ` (${check})` : ""} · ${tn("count.selected", selected)}`;
 }
 
 function resetEdits() {

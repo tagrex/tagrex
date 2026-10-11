@@ -115,6 +115,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The release tracklist, the status bar and the folder band speak the chosen
+  language.** Auto-match, Embed cover, the artwork buttons and their tooltips,
+  the "N / M selected" and "N of M lengths match" readouts, the label picker and
+  the empty-state texts were English in every language; so were "N files · N
+  selected" at the bottom and the file count on a folder's band
+  ([#474](https://github.com/tagrex/tagrex/issues/474)).
 - **The "N / M selected" readout of a release's tracklist stays in view.** It
   used to sit at the far right of the scrolling title column and only came into
   view after scrolling to the end of the longest title; it is pinned to the

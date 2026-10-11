@@ -324,7 +324,7 @@ function renderReleaseList() {
   });
   el("discogs-empty").hidden = releaseCandidates.length > 0;
   if (releaseCandidates.length === 0) {
-    el("discogs-empty").textContent = "No releases found.";
+    el("discogs-empty").textContent = t("online.noReleases");
     return;
   }
   for (const c of releaseCandidates) {
@@ -440,7 +440,7 @@ function toggleQueryPresets() {
   if (offers.length === 0) {
     const empty = document.createElement("div");
     empty.className = "col-menu-row muted query-empty";
-    empty.textContent = "Select a track to build a query from";
+    empty.textContent = t("online.pickTrackForQuery");
     menu.appendChild(empty);
   }
   for (const offer of offers) {
@@ -488,7 +488,7 @@ function releaseBadge(c) {
   // The catalogue segment doubles as a link to the release's provider page (#92);
   // the click is caught in the release-list handler, which reads the card's id.
   const catno = c.catalog_number
-    ? `<span class="rb-catno" title="Open the release page">${escapeHtml(c.catalog_number)}</span>`
+    ? `<span class="rb-catno" title="${escapeHtml(t("online.openRelease"))}">${escapeHtml(c.catalog_number)}</span>`
     : "";
   return `<span class="rel-badge">${catno}<span class="rb-count tk-count">${escapeHtml(countLabel(c.id))}</span></span>`;
 }
@@ -524,7 +524,7 @@ function cardMarkup(c) {
           </span>
           <span class="release-caret" aria-hidden="true">${ico("chevron-right")}</span>
         </button>
-        <button class="release-import icon" type="button" data-act="import" title="Import this release into the selected files" aria-label="Import this release into the selected files"><svg class="ico"><use href="#i-import"/></svg></button>
+        <button class="release-import icon" type="button" data-act="import" title="${escapeHtml(t("online.importTitle"))}" aria-label="${escapeHtml(t("online.importTitle"))}"><svg class="ico"><use href="#i-import"/></svg></button>
       </div>
       <div class="release-tracklist"></div>
     </article>`;
@@ -816,7 +816,11 @@ function applyDurationDeltas(card, release) {
   const stated = release.tracks.filter((t) => t.duration_secs).length;
   const hits = [...pairs.values()].filter((p) => deltaBand(p.delta) === "match").length;
   const comparable = files > 0 && stated > 0;
-  fit.textContent = !comparable ? "" : hits ? `${hits} of ${stated} lengths match` : "no lengths match";
+  fit.textContent = !comparable
+    ? ""
+    : hits
+      ? t("online.lengthsMatch", { hits, stated })
+      : t("online.noLengthsMatch");
   fit.classList.toggle("hit", comparable && hits > 0);
   fit.classList.toggle("miss", comparable && hits === 0);
 }
@@ -871,8 +875,8 @@ function renderTracklist(card, release) {
   const labels = release.labels || [];
   const labelPicker =
     labels.length > 1
-      ? `<div class="tracklist-label"><label>Label · cat#
-          <select class="label-picker" title="Which label and catalogue number to write">${labels
+      ? `<div class="tracklist-label"><label>${t("online.labelCat")}
+          <select class="label-picker" title="${escapeHtml(t("online.labelPickerTitle"))}">${labels
             .map(
               (l, i) =>
                 `<option value="${i}">${escapeHtml(l.name)}${l.catalog_number ? " — " + escapeHtml(l.catalog_number) : ""}</option>`,
@@ -892,9 +896,9 @@ function renderTracklist(card, release) {
   // tooltip), which also frees the row of a text block.
   const resNote = res ? `<span class="tk-menu-note">${res}</span>` : "";
   const artTitle =
-    `Save this release's artwork next to the selected tracks` +
-    (res ? ` — front cover ${res}` : "") +
-    (images.length > 1 ? ` · ${images.length} images` : "");
+    t("online.saveArtworkTitle") +
+    (res ? ` — ${t("online.frontCover", { res })}` : "") +
+    (images.length > 1 ? ` · ${tn("unit.image", images.length)}` : "");
   const artCount = images.length > 1 ? `<span class="tk-art-count">${images.length}</span>` : "";
   // Saving artwork is one call with a boolean (saveReleaseImages), so it reads as
   // ONE control rather than two competing buttons: a plain button when the
@@ -904,25 +908,25 @@ function renderTracklist(card, release) {
   const saveBtn = !images.length
     ? ""
     : images.length === 1
-      ? `<button class="btn-sm io tk-art-btn" data-act="save-cover" aria-label="Save the cover next to the selected tracks as folder.jpg" title="${escapeHtml(artTitle)}">${ico("image")}</button>`
+      ? `<button class="btn-sm io tk-art-btn" data-act="save-cover" aria-label="${escapeHtml(t("online.saveCoverAria"))}" title="${escapeHtml(artTitle)}">${ico("image")}</button>`
       : `<div class="col-picker tk-save">
-           <button class="btn-sm io tk-art-btn" data-act="save-menu" aria-label="Save this release's artwork to disk" title="${escapeHtml(artTitle)}">${ico("image")}${artCount}${ico("caret-down")}</button>
+           <button class="btn-sm io tk-art-btn" data-act="save-menu" aria-label="${escapeHtml(t("online.saveMenuAria"))}" title="${escapeHtml(artTitle)}">${ico("image")}${artCount}${ico("caret-down")}</button>
            <div class="col-menu tk-save-menu" hidden>
-             <button type="button" class="col-menu-row tk-menu-item" data-act="save-cover">Save as folder.jpg${resNote}</button>
-             <button type="button" class="col-menu-row tk-menu-item" data-act="save-all">Save all ${images.length} images</button>
+             <button type="button" class="col-menu-row tk-menu-item" data-act="save-cover">${t("online.saveAsFolder")}${resNote}</button>
+             <button type="button" class="col-menu-row tk-menu-item" data-act="save-all">${t("online.saveAll", { images: tn("unit.image", images.length) })}</button>
            </div>
          </div>`;
   card.querySelector(".release-tracklist").innerHTML = `
     <div class="tracklist-actions">
-      <button class="btn-sm" data-act="automatch" title="Reorder the selected files to line up with this tracklist">Auto-match</button>
-      <button class="btn-sm" data-act="embed" title="Embed this release's cover into the selected files">Embed cover</button>
+      <button class="btn-sm" data-act="automatch" title="${escapeHtml(t("online.automatchTitle"))}">${t("online.automatch")}</button>
+      <button class="btn-sm" data-act="embed" title="${escapeHtml(t("online.embedTitle"))}">${t("online.embed")}</button>
       ${saveBtn}
     </div>
     ${labelPicker}
     <div class="tracklist-scroll"><table>
       <thead><tr class="tk-head">
-        <th class="tk-lead"><label class="tk-selall" title="Select all tracks / none"><input type="checkbox" class="tk-selall-box" aria-label="Select all tracks" /></label></th>
-        <th class="tk-selcount muted" colspan="2"><span class="tk-readout"><span class="tk-fit" title="How many of this release's lengths the selected files account for"></span><span class="tk-tally"></span></span></th>
+        <th class="tk-lead"><label class="tk-selall" title="${escapeHtml(t("online.selectAllTitle"))}"><input type="checkbox" class="tk-selall-box" aria-label="${escapeHtml(t("online.selectAllAria"))}" /></label></th>
+        <th class="tk-selcount muted" colspan="2"><span class="tk-readout"><span class="tk-fit" title="${escapeHtml(t("online.fitTitle"))}"></span><span class="tk-tally"></span></span></th>
       </tr></thead>
       <tbody>${rows}</tbody></table></div>`;
   // The import action moved to a header icon button (shown once loaded + expanded).
@@ -938,7 +942,7 @@ function updateTracklistCount(card) {
   const boxes = [...card.querySelectorAll(".release-tracklist tbody .tk-lead input")];
   const on = boxes.filter((b) => b.checked).length;
   const label = card.querySelector(".tk-tally");
-  if (label) label.textContent = `${on} / ${boxes.length} selected`;
+  if (label) label.textContent = t("online.tally", { on, total: boxes.length });
   // Mirror the tally onto the master checkbox that replaced the Enable/Disable
   // all pair — same tri-state contract as the file table's #select-all, so the
   // control shows the current scope instead of just offering two commands.
@@ -1032,10 +1036,8 @@ function selectionSignature() {
 function setMatchButton(card, byLength) {
   const btn = card.querySelector('[data-act="automatch"]');
   if (!btn) return;
-  btn.textContent = byLength ? "Match by length" : "Auto-match";
-  btn.title = byLength
-    ? "Reorder the selected files by the lengths this release lists, ignoring the names"
-    : "Reorder the selected files to line up with this tracklist";
+  btn.textContent = byLength ? t("online.matchByLength") : t("online.automatch");
+  btn.title = byLength ? t("online.matchByLengthTitle") : t("online.automatchTitle");
 }
 
 function armLengthMatch(card) {
@@ -1129,7 +1131,7 @@ function matchByLength(card) {
   const release = releaseCache.get(card.dataset.id);
   const paths = selectedPaths();
   if (!release || paths.length === 0) {
-    toast("Select the tracks to match against first", true);
+    toast(t("online.selectTracksFirst"), true);
     return;
   }
   const { pairs } = durationPairs(release);
@@ -1183,7 +1185,7 @@ async function autoMatchToRelease(card) {
   const paths = selectedPaths();
   const release = releaseCache.get(card.dataset.id);
   if (!release || paths.length === 0) {
-    toast("Select the tracks to match against first", true);
+    toast(t("online.selectTracksFirst"), true);
     return;
   }
   const releaseTracks = release.tracks.map((t) => ({
