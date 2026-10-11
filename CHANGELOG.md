@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The new-version note moved to the top bar.** It sits beside the mode tabs,
+  larger and set like them, instead of small in the status bar; the Settings
+  text says so too. A lone checkbox in a Settings row now starts at the left of
+  the value column on every system instead of landing at an engine-dependent
+  spot ([#478](https://github.com/tagrex/tagrex/issues/478)).
+
 ## [0.21.0] - 2026-10-11
 
 This release is about trusting TagRex with a big library, on every desktop.

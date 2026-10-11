@@ -636,7 +636,7 @@ export const en = {
   "settings.resetGroupTitle": "Put this group's settings back to how TagRex ships. Network to Files take effect when you Save.",
   "settings.search": "Search settings…",
   "settings.searchEmpty": "No setting matches.",
-  "settings.checkUpdatesHint": "When TagRex starts it asks GitHub for the latest release and shows a note in the status bar if a newer one exists. Nothing is downloaded or installed, and nothing about you or your files is sent. Switched off, the app makes no such request.",
+  "settings.checkUpdatesHint": "When TagRex starts it asks GitHub for the latest release and shows a note in the top bar if a newer one exists. Nothing is downloaded or installed, and nothing about you or your files is sent. Switched off, the app makes no such request.",
   "update.available": "TagRex {version} is available",
   "update.skip": "Don't tell me about this version",
   "update.upToDate": "You're up to date ({version})",

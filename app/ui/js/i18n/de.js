@@ -630,7 +630,7 @@ export const de = {
   "settings.resetGroupTitle": "Setzt die Einstellungen dieser Gruppe auf den Auslieferungszustand zurück. Netzwerk bis Dateien gelten nach dem Speichern.",
   "settings.search": "Einstellungen durchsuchen …",
   "settings.searchEmpty": "Keine Einstellung passt.",
-  "settings.checkUpdatesHint": "Beim Start fragt TagRex bei GitHub nach der neuesten Version und zeigt in der Statusleiste einen Hinweis, wenn es eine neuere gibt. Es wird nichts heruntergeladen oder installiert, und nichts über Sie oder Ihre Dateien wird gesendet. Ist die Option aus, stellt die App keine solche Anfrage.",
+  "settings.checkUpdatesHint": "Beim Start fragt TagRex bei GitHub nach der neuesten Version und zeigt in der oberen Leiste einen Hinweis, wenn es eine neuere gibt. Es wird nichts heruntergeladen oder installiert, und nichts über Sie oder Ihre Dateien wird gesendet. Ist die Option aus, stellt die App keine solche Anfrage.",
   "update.available": "TagRex {version} ist verfügbar",
   "update.skip": "Diese Version nicht mehr melden",
   "update.upToDate": "Sie sind auf dem neuesten Stand ({version})",

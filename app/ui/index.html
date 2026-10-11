@@ -88,6 +88,12 @@
           <button class="mode-tab" data-mode="exporter" data-i18n-title="mode.exporter.title" title="Export playlists, CSV, and reports" aria-label="EXPORTER"><svg class="ico"><use href="#i-export"/></svg><span class="lbl">EXPORTER</span></button>
         </nav>
         <div class="spacer" data-tauri-drag-region></div>
+        <!-- A newer release exists (#435): a note, not a dialog, in the top bar beside the
+             modes. Opens the releases page; the cross skips this version. Shown by updatecheck.js. -->
+        <span id="update-pill" class="update-pill" hidden>
+          <button id="update-open" class="update-open" type="button"></button>
+          <button id="update-skip" class="update-skip icon" type="button" data-i18n-title="update.skip" title="Don't tell me about this version" data-i18n-aria-label="update.skip" aria-label="Don't tell me about this version"><svg class="ico"><use href="#i-close"/></svg></button>
+        </span>
         <!-- App-level actions (#343): undo and settings, and — past a hairline —
              the layout toggle, at the far right above the panel it shows and
              hides (#421). They act on the app, not the library. -->
@@ -699,12 +705,6 @@
       </div>
       </div>
       <div class="sb-right">
-        <!-- A newer release exists (#435): a quiet note, not a dialog. Opens the
-             releases page; the cross skips this version. Shown by updatecheck.js. -->
-        <span id="update-pill" class="update-pill" hidden>
-          <button id="update-open" class="update-open" type="button"></button>
-          <button id="update-skip" class="update-skip icon" type="button" data-i18n-title="update.skip" title="Don't tell me about this version" data-i18n-aria-label="update.skip" aria-label="Don't tell me about this version"><svg class="ico"><use href="#i-close"/></svg></button>
-        </span>
         <!-- A rollback in progress (#448): undo has no bar of its own to borrow,
              since the diff bar belongs to a staged plan. Driven by applyprogress.js. -->
         <span id="busy-pill" class="busy-pill" hidden><span class="ab-bar"><span class="ab-bar-fill" id="busy-fill"></span></span><span id="busy-text" class="muted"></span></span>

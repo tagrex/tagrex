@@ -4943,6 +4943,13 @@ td[data-field="year"],
   font-size: var(--text-xs);
   color: var(--muted);
 }
+/* A lone checkbox is a grid item: left to itself it sits at an engine-dependent
+   spot (flush left in WKWebView, centred in the column in WebView2) with the
+   engine's own margin. Pin it to the start of the value column. */
+.settings-row > input[type="checkbox"] {
+  justify-self: start;
+  margin: 0;
+}
 /* Beatport account (#162): the status line and its buttons share the value
    column of a settings row, wrapping rather than clipping on a narrow sheet. */
 .bp-auth {
@@ -5996,25 +6003,27 @@ body.drag-active #drop-overlay {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--text-xs);
+  flex: none;
+  font-size: var(--text-md);
 }
 .update-pill[hidden] {
   display: none;
 }
 .update-pill .update-open {
-  padding: 0 var(--space-3);
-  height: var(--ctl-h-sm, 22px);
+  padding: 0 var(--space-5);
+  height: 34px;
   border-radius: 999px;
   border-color: var(--accent);
   background: var(--sel-tint);
   box-shadow: none;
   color: var(--accent-ink);
-  font-size: var(--text-xs);
+  font-size: var(--text-md);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
 }
 .update-pill .update-skip {
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 0;
   background: none;

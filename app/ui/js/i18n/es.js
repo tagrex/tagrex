@@ -632,7 +632,7 @@ export const es = {
   "settings.resetGroupTitle": "Devuelve los ajustes de este grupo a como vienen de fábrica. Los de Red a Archivos se aplican al Guardar.",
   "settings.search": "Buscar ajustes…",
   "settings.searchEmpty": "Ningún ajuste coincide.",
-  "settings.checkUpdatesHint": "Al iniciar, TagRex pregunta a GitHub por la última versión y muestra un aviso en la barra de estado si hay una más nueva. No se descarga ni se instala nada, y no se envía nada sobre ti ni tus archivos. Si lo desactivas, la aplicación no hace esa petición.",
+  "settings.checkUpdatesHint": "Al iniciar, TagRex pregunta a GitHub por la última versión y muestra un aviso en la barra superior si hay una más nueva. No se descarga ni se instala nada, y no se envía nada sobre ti ni tus archivos. Si lo desactivas, la aplicación no hace esa petición.",
   "update.available": "TagRex {version} está disponible",
   "update.skip": "No avisarme de esta versión",
   "update.upToDate": "Estás al día ({version})",

@@ -634,7 +634,7 @@ export const it = {
   "settings.resetGroupTitle": "Riporta le impostazioni di questo gruppo a come sono fornite. Quelle da Rete a File si applicano al Salvataggio.",
   "settings.search": "Cerca nelle impostazioni…",
   "settings.searchEmpty": "Nessuna impostazione corrisponde.",
-  "settings.checkUpdatesHint": "All'avvio TagRex chiede a GitHub l'ultima versione e mostra un avviso nella barra di stato se ne esiste una più recente. Non viene scaricato né installato nulla e non viene inviato nulla su di te o sui tuoi file. Se disattivata, l'app non fa alcuna richiesta.",
+  "settings.checkUpdatesHint": "All'avvio TagRex chiede a GitHub l'ultima versione e mostra un avviso nella barra in alto se ne esiste una più recente. Non viene scaricato né installato nulla e non viene inviato nulla su di te o sui tuoi file. Se disattivata, l'app non fa alcuna richiesta.",
   "update.available": "TagRex {version} è disponibile",
   "update.skip": "Non avvisarmi per questa versione",
   "update.upToDate": "Sei aggiornato ({version})",

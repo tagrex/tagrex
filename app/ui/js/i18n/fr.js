@@ -634,7 +634,7 @@ export const fr = {
   "settings.resetGroupTitle": "Remet les réglages de ce groupe comme à la livraison. Ceux de Réseau à Fichiers s'appliquent à l'enregistrement.",
   "settings.search": "Rechercher dans les réglages…",
   "settings.searchEmpty": "Aucun réglage ne correspond.",
-  "settings.checkUpdatesHint": "Au démarrage, TagRex demande à GitHub la dernière version et affiche une note dans la barre d'état s'il en existe une plus récente. Rien n'est téléchargé ni installé, et rien sur vous ou vos fichiers n'est envoyé. Désactivée, l'application n'envoie aucune requête de ce type.",
+  "settings.checkUpdatesHint": "Au démarrage, TagRex demande à GitHub la dernière version et affiche une note dans la barre du haut s'il en existe une plus récente. Rien n'est téléchargé ni installé, et rien sur vous ou vos fichiers n'est envoyé. Désactivée, l'application n'envoie aucune requête de ce type.",
   "update.available": "TagRex {version} est disponible",
   "update.skip": "Ne plus me parler de cette version",
   "update.upToDate": "Vous êtes à jour ({version})",
