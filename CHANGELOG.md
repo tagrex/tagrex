@@ -111,6 +111,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Small text is larger and darker.** The type scale moves up a pixel
+  (10, 11, 12 and 13 px become 11, 12, 13 and 14), and the grey of secondary
+  text goes one step darker again. Thin strokes at the old sizes were
+  anti-aliased to a light grey that no colour change alone could fix, so the
+  text stayed hard to read on Windows and Linux after the previous darkening
+  ([#467](https://github.com/tagrex/tagrex/issues/467)).
 - **The waveform's bars are even on every display scale.** They are drawn on
   the device pixel grid now, so on scales such as 125% or 150% no bar comes out
   thinner or fainter than its neighbours

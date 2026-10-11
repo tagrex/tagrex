@@ -68,11 +68,12 @@
   --border: #e2e5ea;
   --text: #1a1d23;
   /* Nudged one step darker so muted text on --panel clears WCAG AA with margin
-     (was #6b7280 = 4.51, right on the line) — typography/colour audit. Then a
-     second step (#636b76 = 5.0 on --panel, 4.8 on a hovered row) because it is
-     drawn at 10 and 11 px in a regular weight, which Windows renders thin
-     enough that "passing" was not readable (#466): 6.5 and 6.2 now. */
-  --muted: #525a66;
+     (was #6b7280 = 4.51, right on the line) — typography/colour audit. Then two
+     more steps (#466, #467): drawn at 11-12 px in a regular weight, one-pixel
+     strokes are anti-aliased to a light grey, so the contrast the eye gets is a
+     fraction of the nominal one (measured median 2.5 for 6.5 nominal). #454c58
+     is 8.1 nominal on --panel. */
+  --muted: #454c58;
   /* Brand green (from the logo, #085041) drives the accent; a clear red is
      reserved for danger — errors, deletions, and the "old" side of a diff — so
      problems stand out against all the positive/interactive green. */
@@ -114,10 +115,13 @@
     var(--font-ui);
 
   /* type: scale (tidies the ad-hoc 10/10.5/11/11.5/12/12.5/13px) */
-  --text-2xs: 10px;
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
+  /* One pixel up from the audit's scale (#467): most of the interface is set in
+     the two smallest sizes, and at 10 and 11 px the strokes are too thin to read
+     on Windows and Linux whatever the colour. */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-md: 14px;
   --text-lg: 15px;
   --lh-tight: 1.2;
   --lh-snug: 1.35;
