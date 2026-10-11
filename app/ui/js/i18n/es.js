@@ -974,4 +974,5 @@ export const es = {
   "settings.groups": "Grupos de ajustes",
   "settings.sources": "Fuentes",
   "health.noCover": "Sin carátula",
+  "health.spellingMore": "+{n} más",
 };

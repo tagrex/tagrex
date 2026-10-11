@@ -27,12 +27,6 @@ export const CHECKS = [
   { id: "multiBlock", group: "files" },
 ];
 
-// 1 for a spelling with both capitals and lower case, 0 for one that is all of
-// one kind: the former is what a person typed, the latter what a file name gave.
-function properCase(text) {
-  return text !== text.toLowerCase() && text !== text.toUpperCase() ? 1 : 0;
-}
-
 // The tags whose spelling is compared across the library.
 const SPELLING_FIELDS = ["artist", "albumartist", "album", "genre"];
 
@@ -70,7 +64,8 @@ function yearIsOdd(text, currentYear) {
   return year < 1900 || year > currentYear + 1;
 }
 
-// { sets: { id: Set<path> }, counts: { id: number }, flagged: Set<path> }
+// { sets: { id: Set<path> }, counts: { id: number }, flagged: Set<path>,
+//   details: { spelling: [{ field, forms: [{ value, count }] }] } }
 export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
   const sets = {};
   for (const check of CHECKS) sets[check.id] = new Set();
@@ -163,26 +158,24 @@ export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
     }
   }
 
-  // Where one value is spelled several ways, the commonest spelling is taken to
-  // be the intended one and the files holding any other are what gets flagged.
-  // When two spellings are equally common, the one with proper capitals beats an
-  // all-lower or all-upper one (a copy tagged from file names is the usual
-  // other side); when even that does not decide, none is taken as right and
-  // every file holding any of them is flagged.
-  for (const byKey of spellings) {
+  // Where one value is spelled several ways, every file holding any of the
+  // spellings is flagged. No spelling is taken to be the right one: that is not
+  // something the tags can say (an album present twice, a name that is
+  // legitimately capitalised in one copy), so the check shows what differs
+  // instead, in `details`, and leaves the choice to the person.
+  const details = [];
+  spellings.forEach((byKey, index) => {
     for (const forms of byKey.values()) {
       if (forms.size < 2) continue;
-      const ranked = [...forms].sort(
-        ([rawA, a], [rawB, b]) => b.count - a.count || properCase(rawB) - properCase(rawA)
-      );
-      const [topRaw, top] = ranked[0];
-      const [nextRaw, next] = ranked[1];
-      const tied = top.count === next.count && properCase(topRaw) === properCase(nextRaw);
-      for (const [raw, entry] of forms) {
-        if (tied || raw !== topRaw) entry.paths.forEach((path) => flag("spelling", path));
-      }
+      const list = [...forms].map(([value, entry]) => ({ value, count: entry.count }));
+      list.sort((a, b) => b.count - a.count);
+      details.push({ field: SPELLING_FIELDS[index], forms: list });
+      for (const entry of forms.values()) entry.paths.forEach((path) => flag("spelling", path));
     }
-  }
+  });
+  details.sort(
+    (a, b) => b.forms.reduce((n, f) => n + f.count, 0) - a.forms.reduce((n, f) => n + f.count, 0)
+  );
 
   const counts = {};
   const flagged = new Set();
@@ -190,5 +183,5 @@ export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
     counts[check.id] = sets[check.id].size;
     sets[check.id].forEach((path) => flagged.add(path));
   }
-  return { sets, counts, flagged };
+  return { sets, counts, flagged, details: { spelling: details } };
 }

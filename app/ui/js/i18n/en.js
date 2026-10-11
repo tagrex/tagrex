@@ -978,4 +978,5 @@ export const en = {
   "settings.groups": "Settings groups",
   "settings.sources": "Sources",
   "health.noCover": "No cover art",
+  "health.spellingMore": "+{n} more",
 };

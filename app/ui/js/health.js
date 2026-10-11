@@ -90,6 +90,28 @@ function row(label, count, id) {
   return button;
 }
 
+// What the spelling check found, as the values themselves: no side is picked,
+// the person sees which spellings sit side by side and how many files hold each.
+const SPELLING_LINES = 4;
+
+function appendSpellingDetails(menu, found) {
+  if (!found.length) return;
+  const box = document.createElement("div");
+  box.className = "health-detail";
+  for (const item of found.slice(0, SPELLING_LINES)) {
+    const line = document.createElement("div");
+    const forms = item.forms.map((form) => `${form.value} ×${form.count}`).join(" · ");
+    line.textContent = `${fieldLabel(item.field)}: ${forms}`;
+    box.appendChild(line);
+  }
+  if (found.length > SPELLING_LINES) {
+    const more = document.createElement("div");
+    more.textContent = t("health.spellingMore", { n: found.length - SPELLING_LINES });
+    box.appendChild(more);
+  }
+  menu.appendChild(box);
+}
+
 function renderMenu() {
   const menu = el("health-menu");
   menu.innerHTML = "";
@@ -100,7 +122,7 @@ function renderMenu() {
     menu.appendChild(empty);
     return;
   }
-  const { counts, flagged } = health();
+  const { counts, flagged, details } = health();
   if (activeId) {
     const clear = document.createElement("button");
     clear.type = "button";
@@ -121,7 +143,10 @@ function renderMenu() {
     heading.className = "col-menu-sep";
     heading.textContent = t(`health.group.${group}`);
     menu.appendChild(heading);
-    for (const check of checks) menu.appendChild(row(checkLabel(check), counts[check.id], check.id));
+    for (const check of checks) {
+      menu.appendChild(row(checkLabel(check), counts[check.id], check.id));
+      if (check.id === "spelling") appendSpellingDetails(menu, details.spelling);
+    }
   }
 }
 

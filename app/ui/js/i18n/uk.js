@@ -976,4 +976,5 @@ export const uk = {
   "settings.groups": "Групи налаштувань",
   "settings.sources": "Джерела",
   "health.noCover": "Немає обкладинки",
+  "health.spellingMore": "та ще {n}",
 };

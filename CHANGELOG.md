@@ -9,13 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **Library health no longer blames the wrong copy of a spelling.** When two
-  spellings of a value were equally common (an album present twice, tagged
-  "Various" in one copy and "various" in the other), the check flagged
-  whichever it met first, which could be the properly tagged one. It now takes
-  the one with proper capitals as right over an all-lower or all-upper one, and
-  flags every file when even that does not decide
-  ([#486](https://github.com/tagrex/tagrex/issues/486)).
+- **Library health shows what differs instead of picking a spelling.** The
+  "same value spelled differently" check used to take the commonest spelling as
+  the right one and flag the rest, which blamed an arbitrary copy when two were
+  equally common (an album present twice, tagged "Various" in one and "various"
+  in the other). It now flags every file holding any spelling of a split value
+  and lists the values under the check in the menu, such as "Album artist:
+  Various ×15 · various ×15", so the choice is yours
+  ([#486](https://github.com/tagrex/tagrex/issues/486),
+  [#487](https://github.com/tagrex/tagrex/issues/487)).
 
 ### Added
 

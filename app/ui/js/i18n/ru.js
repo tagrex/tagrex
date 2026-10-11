@@ -975,4 +975,5 @@ export const ru = {
   "settings.groups": "Группы настроек",
   "settings.sources": "Источники",
   "health.noCover": "Нет обложки",
+  "health.spellingMore": "и ещё {n}",
 };

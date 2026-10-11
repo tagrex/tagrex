@@ -6074,6 +6074,13 @@ body.drag-active #drop-overlay {
 .col-menu .health-row.on {
   color: var(--accent-ink);
 }
+.col-menu .health-detail {
+  padding: 0 var(--space-4) var(--space-2) var(--space-5);
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
 .health-count {
   color: var(--muted);
   font-variant-numeric: tabular-nums;

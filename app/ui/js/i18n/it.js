@@ -976,4 +976,5 @@ export const it = {
   "settings.groups": "Gruppi di impostazioni",
   "settings.sources": "Fonti",
   "health.noCover": "Nessuna copertina",
+  "health.spellingMore": "+{n} altri",
 };

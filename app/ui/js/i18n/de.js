@@ -972,4 +972,5 @@ export const de = {
   "settings.groups": "Einstellungsgruppen",
   "settings.sources": "Quellen",
   "health.noCover": "Kein Cover",
+  "health.spellingMore": "+{n} weitere",
 };
