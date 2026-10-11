@@ -972,4 +972,5 @@ export const es = {
   "unit.secondsShort": "{n} s",
   "online.runs": "{file} dura {time}",
   "settings.groups": "Grupos de ajustes",
+  "settings.sources": "Fuentes",
 };

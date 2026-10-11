@@ -974,4 +974,5 @@ export const fr = {
   "unit.secondsShort": "{n} s",
   "online.runs": "{file} dure {time}",
   "settings.groups": "Groupes de réglages",
+  "settings.sources": "Sources",
 };

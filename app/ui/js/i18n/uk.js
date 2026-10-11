@@ -974,4 +974,5 @@ export const uk = {
   "unit.secondsShort": "{n} с",
   "online.runs": "{file} триває {time}",
   "settings.groups": "Групи налаштувань",
+  "settings.sources": "Джерела",
 };

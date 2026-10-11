@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   fills the pane, so any group is a click away. The search stays above the list
   and shows every group with a match; the last group opened is remembered, and
   Up/Down move through the list ([#482](https://github.com/tagrex/tagrex/issues/482)).
+- **Discogs and Beatport share one Sources group in Settings.** They had a group
+  of one row each; now they sit under Sources, a heading per source
+  ([#483](https://github.com/tagrex/tagrex/issues/483)).
 
 ## [0.21.0] - 2026-10-11
 

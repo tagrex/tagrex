@@ -136,7 +136,13 @@ function blocksOf(group) {
   const blocks = [[]];
   for (const child of group.children) {
     if (child.tagName === "H3" || child.classList.contains("group-reset")) continue;
-    if (child.classList.contains("settings-row")) blocks.push([]);
+    // A sub-heading starts a block of its own; a row starts one too, unless it
+    // is the first thing under a sub-heading, which it stays with.
+    const last = blocks[blocks.length - 1];
+    const underHeading = last.length === 1 && last[0].tagName === "H4";
+    if (child.tagName === "H4" || (child.classList.contains("settings-row") && !underHeading)) {
+      blocks.push([]);
+    }
     blocks[blocks.length - 1].push(child);
   }
   return blocks.filter((block) => block.length);

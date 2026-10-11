@@ -4945,6 +4945,15 @@ td[data-field="year"],
 .settings-nav-item[hidden] {
   display: none;
 }
+.settings-group > h4.settings-sub {
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-bold);
+  color: var(--text);
+}
+.settings-group > h4.settings-sub:first-of-type {
+  margin-top: 0;
+}
 .settings-group.pane-hidden {
   display: none;
 }

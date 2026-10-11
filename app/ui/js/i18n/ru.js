@@ -973,4 +973,5 @@ export const ru = {
   "unit.secondsShort": "{n} с",
   "online.runs": "{file} идёт {time}",
   "settings.groups": "Группы настроек",
+  "settings.sources": "Источники",
 };

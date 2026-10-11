@@ -917,16 +917,14 @@
         <div class="settings-body">
           <p id="settings-search-empty" class="settings-hint" data-i18n="settings.searchEmpty" hidden>No setting matches.</p>
           <div class="settings-group">
-            <h3>Discogs</h3>
+            <h3 data-i18n="settings.sources">Sources</h3>
+            <h4 class="settings-sub">Discogs</h4>
             <div class="settings-row">
               <label for="discogs-token" data-i18n="settings.discogs.token">Personal token</label>
               <input id="discogs-token" type="password" class="mono" data-i18n-placeholder="settings.discogs.tokenPlaceholder" placeholder="Personal Discogs token" spellcheck="false" autocomplete="off" />
             </div>
             <p class="settings-hint" data-i18n="settings.discogs.hint">Used for search, release lookups, and cover fetches.</p>
-          </div>
-
-          <div class="settings-group">
-            <h3>Beatport</h3>
+            <h4 class="settings-sub">Beatport</h4>
             <div class="settings-row">
               <label data-i18n="settings.beatport.account">Account</label>
               <div class="bp-auth">
