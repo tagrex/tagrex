@@ -922,7 +922,7 @@ function renderTracklist(card, release) {
     <div class="tracklist-scroll"><table>
       <thead><tr class="tk-head">
         <th class="tk-lead"><label class="tk-selall" title="Select all tracks / none"><input type="checkbox" class="tk-selall-box" aria-label="Select all tracks" /></label></th>
-        <th class="tk-selcount muted" colspan="2"><span class="tk-fit" title="How many of this release's lengths the selected files account for"></span><span class="tk-tally"></span></th>
+        <th class="tk-selcount muted" colspan="2"><span class="tk-readout"><span class="tk-fit" title="How many of this release's lengths the selected files account for"></span><span class="tk-tally"></span></span></th>
       </tr></thead>
       <tbody>${rows}</tbody></table></div>`;
   // The import action moved to a header icon button (shown once loaded + expanded).

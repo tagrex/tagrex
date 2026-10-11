@@ -4130,7 +4130,7 @@ button.release-import {
   box-shadow: 1px 0 0 0 var(--border);
 }
 .tk-head .tk-selcount {
-  text-align: right;
+  text-align: left;
   font-size: var(--text-xs);
   /* The global `thead th` treatment (uppercase + tracking) is for column
      LABELS; this cell is a live readout, so it reads as plain text. */
@@ -4316,6 +4316,29 @@ button.tk-art-btn > .ico:last-child {
   color: var(--accent-ink);
 }
 
+/* The pinned lead column has a width of its own (#471), so something else can be
+   pinned right beside it: checkbox, its gap and padding, and a number of up to
+   three digits. */
+.release-tracklist table {
+  --tk-lead-w: calc(var(--space-2) * 3 + 13px + 3ch);
+}
+.release-tracklist td.tk-lead,
+.tk-head th.tk-lead {
+  box-sizing: border-box;
+  width: var(--tk-lead-w);
+  min-width: var(--tk-lead-w);
+  max-width: var(--tk-lead-w);
+}
+/* "N / M selected" and the length-match note stay in view while the long titles
+   scroll under them: the header cell spans the whole width of the longest row,
+   and the readout sticks to the scrollport just after the lead column. */
+.tk-head .tk-readout {
+  position: sticky;
+  left: calc(var(--tk-lead-w) + var(--space-2));
+  display: inline-block;
+  white-space: nowrap;
+}
+
 /* Leading group, pinned left: checkbox + track number. */
 .release-tracklist td.tk-lead {
   position: sticky;
@@ -4416,7 +4439,7 @@ button.tk-art-btn > .ico:last-child {
 /* The tally of matching lengths, left of the "N / M selected" readout in the
    tracklist header — floated because that cell is right-aligned text. */
 .tk-fit {
-  float: left;
+  margin-right: var(--space-4);
 }
 .tk-fit.hit {
   color: var(--add);
