@@ -99,6 +99,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Architecture diagrams.** `docs/architecture.md` now draws the plan pipeline
   (producers, the one gate, preview, apply, undo journal) and the crate layers
   ([#461](https://github.com/tagrex/tagrex/issues/461)).
+- **JetBrains Mono is credited.** The README tech stack named only IBM Plex,
+  but the bundled monospace font is JetBrains Mono
+  ([#463](https://github.com/tagrex/tagrex/issues/463)).
 
 ### Fixed
 

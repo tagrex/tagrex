@@ -241,7 +241,9 @@ heavy lifting:
 - [SQLite](https://www.sqlite.org/) through
   [rusqlite](https://github.com/rusqlite/rusqlite) — the undo journal that
   survives a restart.
-- [IBM Plex](https://github.com/IBM/plex) — the bundled type set, under the
+- [IBM Plex](https://github.com/IBM/plex) for the interface and
+  [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) for file names
+  and tag values — the bundled fonts, both under the
   [SIL Open Font License 1.1](https://openfontlicense.org/).
 
 See [docs/architecture.md](docs/architecture.md) for the module layout and the
