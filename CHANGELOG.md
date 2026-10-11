@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **"Check now" sits on the update checkbox's own line.** What the check found
   appears on a line below it, and only once there is something to say
   ([#480](https://github.com/tagrex/tagrex/issues/480)).
+- **Check now shows its result on Linux again.** The line saying what the
+  check found stayed hidden in the Linux web view; the row is now shown from code
+  instead of by a style rule ([#481](https://github.com/tagrex/tagrex/issues/481)).
 
 ## [0.21.0] - 2026-10-11
 

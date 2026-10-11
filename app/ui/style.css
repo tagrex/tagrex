@@ -6033,14 +6033,15 @@ body.drag-active #drop-overlay {
 
 /* Settings: "Check now" sits right after the update checkbox on the same line;
    what the check found appears on a line of its own below, and only once there
-   is something to say. */
+   is something to say (updatecheck.js unhides the row; a :has(:empty) rule did
+   not repaint in WebKitGTK). */
 .settings-inline > input[type="checkbox"] {
   margin: 0;
 }
 .settings-row.update-row {
   margin-top: calc(-1 * var(--space-2));
 }
-.settings-row.update-row:has(#update-result:empty) {
+.settings-row.update-row[hidden] {
   display: none;
 }
 

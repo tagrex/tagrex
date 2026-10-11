@@ -48,16 +48,20 @@ export function initUpdateCheck() {
 // The Settings button: asks regardless of the switch, and says what it found.
 export async function checkUpdateNow() {
   const out = el("update-result");
-  out.textContent = t("update.checking");
+  const say = (text) => {
+    out.textContent = text;
+    el("update-row").hidden = !text;
+  };
+  say(t("update.checking"));
   try {
     const result = await invoke("check_for_update", { automatic: false });
     if (result && result.newer) {
-      out.textContent = t("update.available", { version: result.latest });
+      say(t("update.available", { version: result.latest }));
       showPill(result.latest);
     } else if (result) {
-      out.textContent = t("update.upToDate", { version: result.current });
+      say(t("update.upToDate", { version: result.current }));
     }
   } catch (e) {
-    out.textContent = String(e);
+    say(String(e));
   }
 }
