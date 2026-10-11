@@ -16,6 +16,7 @@
 // operation quietly do less than it says it does — so the app forgets them when
 // it closes, and the only lock in force is one somebody set today.
 import { ico } from "./dom.js";
+import { t } from "./i18n.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 
@@ -90,8 +91,8 @@ export function lockButton(keys, label, onChanged) {
   button.className = "fe-lock" + (on ? " on" : "");
   button.innerHTML = ico(on ? "lock" : "unlock");
   button.title = on
-    ? `${label} is locked — no operation will change it. Click to unlock.`
-    : `Lock ${label} against changes`;
+    ? t("locks.titleOn", { label })
+    : t("locks.titleOff", { label });
   button.setAttribute("aria-label", button.title);
   button.setAttribute("aria-pressed", String(on));
   button.addEventListener("click", (e) => {

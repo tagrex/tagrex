@@ -176,7 +176,7 @@ function updateLoadMoreUi() {
   // The search button is one toggling slot (#111): magnifier ⇄ Stop square.
   const btn = el("discogs-search");
   btn.classList.toggle("busy", busy);
-  btn.title = busy ? "Stop loading" : "Search";
+  btn.title = busy ? t("online.stopLoading") : t("online.search");
   btn.setAttribute("aria-label", btn.title);
   const wrap = el("release-more");
   if (!wrap) return;
@@ -260,7 +260,13 @@ function mediaKind(format) {
   return "generic";
 }
 
+// What is WRITTEN to the MEDIA tag (see mediaTagValue): data, so it stays as it is
+// in every language. What the badge's tooltip says is `mediaTitle`.
 const MEDIA_LABEL = { vinyl: "Vinyl", cd: "CD", cassette: "Cassette", digital: "Digital", generic: "" };
+
+function mediaTitle(kind) {
+  return kind === "cd" ? "CD" : t(`media.${kind}`);
+}
 
 // Whether the medium is a physical disc/record set, so a Discogs format quantity
 // is a disc count rather than a file count (#337, #339): true for vinyl / CD /
@@ -294,8 +300,8 @@ function mediaBadgeMarkup(c) {
   const release = releaseCache.get(c.id);
   const discs = release ? discCount(release) : 1;
   const n = discs > 1 ? `<span class="n">×${discs}</span>` : "";
-  const label = MEDIA_LABEL[kind];
-  return `<span class="media-badge"${label ? ` title="${label}"` : ""}>${activeGlyphs()[kind]}${n}</span>`;
+  const label = MEDIA_LABEL[kind] && mediaTitle(kind);
+  return `<span class="media-badge"${label ? ` title="${escapeHtml(label)}"` : ""}>${activeGlyphs()[kind]}${n}</span>`;
 }
 
 // Swap every visible card's glyph when the LAB glyph-set pref changes, without a
@@ -406,10 +412,10 @@ function queryFromPreset(kind) {
 // search for, with where it came from as a hint, and "manual" stops being a
 // thing to choose (an empty field is already that).
 const QUERY_SOURCES = [
-  { kind: "folder", label: "Folder name" },
-  { kind: "filename", label: "File name" },
-  { kind: "album", label: "Album" },
-  { kind: "artist-title", label: "Artist + Title" },
+  { kind: "folder", label: "online.srcFolder" },
+  { kind: "filename", label: "online.srcFile" },
+  { kind: "album", label: "field.album" },
+  { kind: "artist-title", label: "online.srcArtistTitle" },
 ];
 
 function closeQueryPresets() {
@@ -425,8 +431,8 @@ function queryOffers() {
     const text = queryFromPreset(source.kind);
     if (!text) continue;
     const seen = byText.get(text);
-    if (seen) seen.labels.push(source.label);
-    else byText.set(text, { text, labels: [source.label] });
+    if (seen) seen.labels.push(t(source.label));
+    else byText.set(text, { text, labels: [t(source.label)] });
   }
   return [...byText.values()];
 }
@@ -1158,8 +1164,8 @@ function matchByLength(card) {
   if (matchedPairs.length === 0) {
     toast(
       ambiguous.size
-        ? "Those tracks are the same length — the order can't be told apart"
-        : "No lengths close enough to order by — leaving the order alone",
+        ? t("online.sameLength")
+        : t("online.noCloseLengths"),
       true,
     );
     return;
@@ -1276,7 +1282,7 @@ async function embedCoverFrom(card) {
     toast(
       previewPlan.changes.length
         ? t("toast.online.previewCover", { files: tn("unit.file", previewPlan.changes.length) })
-        : "Selected files already have this cover",
+        : t("toast.cover.sameCover"),
     );
   } catch (e) {
     toast(String(e), true);
@@ -1307,8 +1313,8 @@ async function saveReleaseImages(card, all) {
     let res = await invoke("save_release_images", args);
     if (res.conflicts && res.conflicts.length) {
       const ok = await confirmDialog(
-        `${res.conflicts.join(", ")} already exist${res.conflicts.length === 1 ? "s" : ""} in that folder. Overwrite?`,
-        "Overwrite",
+        tn("online.conflicts", res.conflicts.length, { files: res.conflicts.join(", ") }),
+        t("online.overwrite"),
       );
       if (!ok) return;
       res = await invoke("save_release_images", { ...args, overwrite: true });

@@ -54,7 +54,7 @@ function movePlan(paths) {
 async function preview() {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast(reorganize ? "Select the tracks to move first" : "Select at least one track", true);
+    toast(reorganize ? t("renamer.selectToMove") : t("toast.selectOneTrack"), true);
     return;
   }
   try {

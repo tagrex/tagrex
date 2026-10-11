@@ -83,8 +83,17 @@ function fieldLabel(key) {
   return known ? known[1] : key;
 }
 
+// The display name of a well-known custom frame (#474, #475), or null when the
+// frame is not one: the catalogue first, then the English table above.
+function customLabel(name) {
+  const key = `field.custom.${name}`;
+  const catalogued = t(key);
+  if (catalogued !== key) return catalogued;
+  return KNOWN_CUSTOM_LABELS[name] || null;
+}
+
 // Group key for a track that belongs to no dropped folder (a loose dropped
 // file, #127). Not a valid absolute path, so it can't collide with a folder key.
 const DROP_LOOSE_KEY = "::loose::";
 
-export { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS, DROP_LOOSE_KEY, fieldLabel };
+export { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS, DROP_LOOSE_KEY, fieldLabel, customLabel };

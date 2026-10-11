@@ -17,7 +17,7 @@ import {
   trackAt,
   tracks,
 } from "./state.js";
-import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, fieldLabel as catalogueLabel } from "./fields.js";
+import { EXTENDED_FIELDS, customLabel, fieldLabel as catalogueLabel } from "./fields.js";
 import { isFieldLocked, lockButton } from "./locks.js";
 import { hooks } from "./hooks.js";
 
@@ -196,9 +196,9 @@ function renderConvertButton(line, readKinds) {
   button.textContent = tr("blocks.convert");
   if (readKinds.size > 1) {
     button.disabled = true;
-    button.title = "The selected files read from different tag blocks — convert them separately";
+    button.title = tr("blocks.differentKinds");
   } else {
-    button.title = "Write these tags as a different kind of tag block";
+    button.title = tr("blocks.convertTitle");
     button.addEventListener("click", () => openConvertPicker([...readKinds][0]));
   }
   line.append(" ", button);
@@ -274,7 +274,7 @@ async function openConvertPicker(from) {
 function fieldLabel(key) {
   if (key.startsWith("custom:")) {
     const name = key.slice(7);
-    return KNOWN_CUSTOM_LABELS[name] || name;
+    return customLabel(name) || name;
   }
   return catalogueLabel(key);
 }
@@ -419,13 +419,13 @@ function validateFieldValue(key, value) {
   const v = value.trim();
   if (key === "year") {
     const year = v.split("-")[0];
-    return { ok: v === "" || /^\d{4}$/.test(year), hint: "4-digit year" };
+    return { ok: v === "" || /^\d{4}$/.test(year), hint: tr("editor.hintYear") };
   }
   if (key === "bpm") {
-    return { ok: v === "" || /^\d+(\.\d+)?$/.test(v), hint: "numbers only" };
+    return { ok: v === "" || /^\d+(\.\d+)?$/.test(v), hint: tr("editor.hintNumbers") };
   }
   // track / tracktotal / disc — a plain integer.
-  return { ok: v === "" || /^\d+$/.test(v), hint: "numbers only" };
+  return { ok: v === "" || /^\d+$/.test(v), hint: tr("editor.hintNumbers") };
 }
 
 function renderFieldEditor(paths) {
@@ -467,7 +467,7 @@ function renderFieldEditor(paths) {
   const advancedRows = [];
   for (const key of [...customs].sort()) {
     const raw = key.slice("custom:".length);
-    const friendly = KNOWN_CUSTOM_LABELS[raw.toUpperCase()];
+    const friendly = customLabel(raw.toUpperCase());
     if (friendly) promoted.push({ key, label: friendly });
     else advancedRows.push({ key, label: raw });
   }

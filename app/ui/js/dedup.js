@@ -64,7 +64,7 @@ function renderDuplicates(groups) {
   // "N copies" badge + the matched key.
   const rows = groups
     .map((g) => {
-      const head = `<tr class="dup-group"><td colspan="6"><span class="dup-badge">${g.files.length} copies</span><span class="dup-key">${escapeHtml(g.key)}</span></td></tr>`;
+      const head = `<tr class="dup-group"><td colspan="6"><span class="dup-badge">${escapeHtml(tn("dedup.copies", g.files.length))}</span><span class="dup-key">${escapeHtml(g.key)}</span></td></tr>`;
       const files = g.files
         .map(
           (f) => `<tr>
@@ -81,7 +81,7 @@ function renderDuplicates(groups) {
     })
     .join("");
   results.innerHTML = `<table class="files dup-results-table">
-    <thead><tr><th>File</th><th>Artist</th><th>Title</th><th>Album</th><th class="num">Length</th><th class="num">Size · Rate</th></tr></thead>
+    <thead><tr><th>${escapeHtml(t("column.file"))}</th><th>${escapeHtml(t("field.artist"))}</th><th>${escapeHtml(t("field.title"))}</th><th>${escapeHtml(t("field.album"))}</th><th class="num">${escapeHtml(t("field.length"))}</th><th class="num">${escapeHtml(t("dedup.sizeRate"))}</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
 

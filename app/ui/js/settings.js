@@ -321,9 +321,13 @@ async function refreshBeatportAccount() {
     /* treat an unreadable session as signed out */
   }
   el("beatport-account").textContent = status.authorized
-    ? `Signed in${status.username ? ` as ${status.username}` : ""}`
-    : "Not signed in";
-  el("beatport-signin").textContent = status.authorized ? "Sign in again…" : "Sign in…";
+    ? status.username
+      ? t("settings.beatport.signedInAs", { user: status.username })
+      : t("settings.beatport.signedIn")
+    : t("settings.beatport.notSignedIn");
+  el("beatport-signin").textContent = status.authorized
+    ? t("settings.beatport.signInAgain")
+    : t("settings.beatport.signIn");
   el("beatport-signout").hidden = !status.authorized;
 }
 
@@ -333,7 +337,7 @@ async function beatportSignIn() {
   el("beatport-account").textContent = t("settings.beatport.waiting");
   try {
     const username = await invoke("beatport_login", {});
-    toast(username ? `Signed in to Beatport as ${username}` : "Signed in to Beatport");
+    toast(username ? t("settings.beatport.toastAs", { user: username }) : t("settings.beatport.toast"));
   } catch (e) {
     toast(String(e), true);
   } finally {

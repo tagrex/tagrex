@@ -75,7 +75,7 @@ import {
 import { refreshGenerator, syncTransformPlacement } from "./js/generator.js";
 import { initActionGroups, initBuiltinGroups } from "./js/chain.js";
 import { migrateChains } from "./js/chains.js";
-import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS } from "./js/fields.js";
+import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS, fieldLabel } from "./js/fields.js";
 import { initPlaceholderReference } from "./js/placeholders.js";
 import { initMaskPresets } from "./js/maskpresets.js";
 import { initTooltips } from "./js/tooltip.js";
@@ -125,6 +125,7 @@ Object.assign(hooks, {
     // What is built from `t` at draw time stays in the old language until it is
     // drawn again (#476): the table (folder bands), the status line, the release
     // cards and the Library health button.
+    syncCssLabels();
     renderTracks();
     updateStatus();
     retranslateOnline();
@@ -322,7 +323,7 @@ function updateSortIndicators() {
     // vanishing, so the column still says what orders the list while admitting
     // that some rows are where they were put.
     ind.classList.toggle("manual", sorted && manualOrder);
-    ind.title = sorted && manualOrder ? "Some files were reordered by hand" : "";
+    ind.title = sorted && manualOrder ? msg("app.reorderedByHand") : "";
   });
 }
 
@@ -340,7 +341,7 @@ function syncFilterControls() {
   caseBtn.setAttribute("aria-pressed", String(filterCase));
   const box = el("filter");
   box.classList.toggle("filter-bad", filterError);
-  box.title = filterError ? "Invalid regular expression" : "";
+  box.title = filterError ? msg("app.invalidRegex") : "";
 }
 
 // A named preset captures the full view query: filter text + mode flags, the
@@ -404,7 +405,7 @@ function renderPresetsMenu() {
   if (!list.length) {
     const empty = document.createElement("div");
     empty.className = "col-menu-sep";
-    empty.textContent = "No saved presets";
+    empty.textContent = msg("app.noPresets");
     menu.appendChild(empty);
   }
   for (const p of list) {
@@ -425,7 +426,7 @@ function renderPresetsMenu() {
     del.type = "button";
     del.className = "preset-del";
     del.innerHTML = ico("close");
-    del.title = `Delete “${p.name}”`;
+    del.title = msg("app.deletePreset", { name: p.name });
     del.addEventListener("click", (e) => {
       e.stopPropagation();
       savePresets(loadPresets().filter((q) => q.name !== p.name));
@@ -441,13 +442,13 @@ function renderPresetsMenu() {
   foot.className = "col-menu-foot preset-save";
   const input = document.createElement("input");
   input.type = "text";
-  input.placeholder = "Save current as…";
+  input.placeholder = msg("app.saveCurrentAs");
   input.spellcheck = false;
   input.className = "preset-name";
   const save = document.createElement("button");
   save.type = "button";
   save.className = "text-btn";
-  save.textContent = "Save";
+  save.textContent = msg("action.save");
   const commit = () => {
     if (input.value.trim()) {
       saveCurrentPreset(input.value);
@@ -468,10 +469,18 @@ function renderPresetsMenu() {
 // A human-readable one-liner for a preset's tooltip.
 function presetSummary(p) {
   const bits = [];
-  if (p.filter) bits.push(`filter “${p.filter}”${p.regex ? " (regex)" : ""}${p.caseSensitive ? " (Aa)" : ""}`);
-  if (p.sortKey) bits.push(`sort ${columnLabel(p.sortKey)} ${p.sortDir === -1 ? "↓" : "↑"}`);
-  if (p.group) bits.push(`group by ${p.group}`);
-  return bits.length ? bits.join(" · ") : "empty view";
+  if (p.filter) {
+    bits.push(
+      msg("app.presetFilter", { filter: p.filter }) +
+        (p.regex ? " (regex)" : "") +
+        (p.caseSensitive ? " (Aa)" : ""),
+    );
+  }
+  if (p.sortKey) {
+    bits.push(msg("app.presetSort", { column: columnLabel(p.sortKey), dir: p.sortDir === -1 ? "↓" : "↑" }));
+  }
+  if (p.group) bits.push(msg("app.presetGroup", { group: p.group }));
+  return bits.length ? bits.join(" · ") : msg("app.presetEmpty");
 }
 
 // Build one track row. `groupKey` (when grouping) tags the row so a click on it
@@ -489,9 +498,9 @@ function buildTrackRow(track, groupKey) {
   if (track.unreadable) {
     tr.classList.add("unreadable");
     tr.innerHTML = `
-      <td class="sel"><input type="checkbox" disabled title="This file's tags couldn't be read" /></td>
-      <td class="file" title="${escapeHtml(track.path)} — tags couldn't be read">${escapeHtml(fileName(track.path))}</td>
-      <td class="unreadable-note" colspan="${visibleColumns.length - 1}">couldn't read tags — file left untouched</td>`;
+      <td class="sel"><input type="checkbox" disabled title="${escapeHtml(msg("app.unreadableTags"))}" /></td>
+      <td class="file" title="${escapeHtml(msg("app.unreadablePath", { path: track.path }))}">${escapeHtml(fileName(track.path))}</td>
+      <td class="unreadable-note" colspan="${visibleColumns.length - 1}">${escapeHtml(msg("app.unreadableNote"))}</td>`;
     return tr;
   }
   // Diff-state (#117): a staged plan renders its change into this same table in
@@ -567,7 +576,7 @@ function fillDiffRow(tr, track) {
     // Untouched row: current values, no apply tick, no editing/selection.
     tr.classList.add("untouched");
     tr.innerHTML =
-      `<td class="sel"><input type="checkbox" disabled title="Not part of this change" /></td>` +
+      `<td class="sel"><input type="checkbox" disabled title="${escapeHtml(msg("app.notPartOfChange"))}" /></td>` +
       `<td class="file" title="${escapeHtml(track.path)}">${escapeHtml(fileName(track.path))}</td>`;
     for (const field of visibleColumns) {
       if (field === "file") continue;
@@ -586,7 +595,7 @@ function fillDiffRow(tr, track) {
   tr.classList.add("staged");
   const ticked = applySelection.has(track.path);
   tr.innerHTML =
-    `<td class="sel"><input type="checkbox" class="apply-tick" ${ticked ? "checked" : ""} data-path="${escapeHtml(track.path)}" title="Include this file in Apply" /></td>` +
+    `<td class="sel"><input type="checkbox" class="apply-tick" ${ticked ? "checked" : ""} data-path="${escapeHtml(track.path)}" title="${escapeHtml(msg("app.includeInApply"))}" /></td>` +
     diffFileCellHtml(change, track);
   for (const field of visibleColumns) {
     if (field === "file") continue;
@@ -1330,6 +1339,12 @@ function exitDiffState() {
   updateRefreshButton(); // the re-read is reachable again (#212)
 }
 
+// The few words CSS draws (::before content) come from a custom property, so they
+// follow the interface language like everything else (#475).
+function syncCssLabels() {
+  document.documentElement.style.setProperty("--cleared-label", JSON.stringify(msg("app.cleared")));
+}
+
 // Sync the floating action bar (apply count + enabled) and the header select-all
 // tri-state to `applySelection`. Every changed file starts ticked; unticking
 // some narrows what a single Apply writes (#81).
@@ -1350,15 +1365,9 @@ function updateDiffBar() {
 
 // Main columns (mirror the file table, minus play).
 const DIFF_MAIN_COLS = ["file", "artist", "title", "album", "year"];
-const DIFF_LABELS = {
-  file: "File", artist: "Artist", title: "Title", album: "Album", year: "Year",
-  albumartist: "Album Artist", track: "Track", tracktotal: "Track Total",
-  disc: "Disc", media: "Media", genre: "Genre", composer: "Composer", publisher: "Publisher",
-  catalognumber: "Catalogue #", bpm: "BPM", isrc: "ISRC", key: "Key", url: "URL", comment: "Comment",
-};
 
 function diffLabel(field) {
-  return DIFF_LABELS[field] || (field.startsWith("custom:") ? field.slice(7) : field);
+  return field.startsWith("custom:") ? field.slice(7) : fieldLabel(field);
 }
 
 function diffDir(path) {
@@ -1375,10 +1384,10 @@ function diffCell(change, field, track) {
   const nv = tc.new == null ? "" : String(tc.new);
   const ov = tc.old == null ? "" : String(tc.old);
   if (tc.invalid) {
-    return { text: nv, cls: "error", title: `Invalid ${diffLabel(field)}: “${nv}” — keeping “${ov || "∅"}”`, old: ov };
+    return { text: nv, cls: "error", title: msg("app.invalidValue", { field: diffLabel(field), value: nv, old: ov || "∅" }), old: ov };
   }
-  if (nv === "") return { text: "", cls: "dirty cleared", title: `Cleared (was “${ov}”)`, old: ov };
-  return { text: nv, cls: "dirty", title: `was “${ov || "∅"}”`, old: ov };
+  if (nv === "") return { text: "", cls: "dirty cleared", title: msg("app.clearedWas", { old: ov }), old: ov };
+  return { text: nv, cls: "dirty", title: msg("app.was", { old: ov || "∅" }), old: ov };
 }
 
 async function refreshHistory() {
@@ -1581,7 +1590,7 @@ function updateLibAction() {
   // a folder to go and choose one, the import arrow to open what was typed.
   el("lib-action-glyph").setAttribute("href", dirty ? "#i-import" : "#i-folder");
   btn.classList.toggle("opening", dirty);
-  btn.title = dirty ? "Open the path you typed" : "Choose a folder to open";
+  btn.title = dirty ? msg("app.openTyped") : msg("topbar.chooseFolder");
   btn.setAttribute("aria-label", btn.title);
   // The title is off the element while the pointer is on it; put the new one
   // where the tooltip will find it rather than losing the change (#230).
@@ -1599,9 +1608,9 @@ function updateRefreshButton() {
   const staged = Boolean(diffByPath);
   btn.disabled = !openedRoot || staged;
   btn.title = staged
-    ? "Discard or apply the staged change before re-reading the folder"
-    : "Re-read the open folder";
-  btn.setAttribute("aria-label", "Re-read the open folder");
+    ? msg("app.rereadBlocked")
+    : msg("topbar.reread");
+  btn.setAttribute("aria-label", msg("topbar.reread"));
 }
 
 // Re-read the open folder (#212).
@@ -1689,7 +1698,7 @@ function leaveRootEdit() {
 async function openLibrary() {
   const root = cleanPastedPath(rootInput.value);
   if (!root) {
-    toast("Enter a library path first", true);
+    toast(msg("app.enterPath"), true);
     return;
   }
   // Show what is actually about to be opened, not what was pasted.
@@ -1704,7 +1713,7 @@ async function openLibrary() {
     // that keeps suggesting something unopenable is worse than a short one.
     if (recentRoots().includes(root)) {
       forgetRoot(root);
-      toast(`${folderName(root)} is no longer there — removed from recent folders`, true);
+      toast(msg("app.folderGone", { folder: folderName(root) }), true);
       return;
     }
     toast(String(e), true);
@@ -1792,7 +1801,7 @@ async function previewEdits() {
     }
   }
   if (list.length === 0) {
-    toast("No pending edits to preview", true);
+    toast(msg("app.noPendingEdits"), true);
     return;
   }
   try {
@@ -1825,7 +1834,7 @@ async function apply() {
     changes: previewPlan.changes.filter((c) => applySelection.has(c.path)),
   };
   if (appliedPlan.changes.length === 0) {
-    toast("Tick at least one row to apply", true);
+    toast(msg("app.tickOneRow"), true);
     return;
   }
   const appliedPaths = new Set(appliedPlan.changes.map((c) => c.path));
@@ -1875,7 +1884,7 @@ async function undo() {
     if (batches.length === 0) return;
     await beginUndoProgress();
     await invoke("undo", { batchId: batches[0].id });
-    toast("Undid last batch");
+    toast(msg("app.undid"));
     resetEdits();
     setTracks(await invoke("list_tracks", {}));
     sortTracks(); // the list came back in scan order (#196)
@@ -2060,10 +2069,10 @@ function showFileCtx(x, y, tr) {
   const many = fileCtxPaths.length > 1;
   fileCtx.querySelector('[data-cmd="hide"]').textContent = many
     ? msg("ctx.removeN", { files: tn("unit.file", fileCtxPaths.length) })
-    : "Remove from the list";
+    : msg("ctx.removeFromList");
   fileCtx.querySelector('[data-cmd="trash"]').textContent = many
     ? msg("ctx.trashN", { files: tn("unit.file", fileCtxPaths.length) })
-    : "Move to Trash…";
+    : msg("ctx.trash");
   fileCtx.hidden = false;
   const r = fileCtx.getBoundingClientRect();
   const pad = 8;
@@ -2287,7 +2296,7 @@ async function browseForFolder() {
   if (!dialog) {
     // Browser development has no native chooser: open the field instead, which
     // is the only way in there.
-    toast("Type a library path, then press Open");
+    toast(msg("app.typePath"));
     editRootPath();
     return;
   }
@@ -2676,7 +2685,7 @@ tracksBody.addEventListener(
 // pointer leaves a cell, re-arms on the next, and never shows mid-edit.
 const cellTip = document.createElement("div");
 cellTip.className = "cell-tip";
-cellTip.textContent = "Double-click to edit";
+cellTip.textContent = msg("app.dblClickEdit");
 cellTip.hidden = true;
 document.body.appendChild(cellTip);
 
@@ -2714,8 +2723,8 @@ tracksBody.addEventListener("pointermove", (e) => {
     // A locked cell explains itself rather than offering an edit it will
     // refuse — and says where the lock can be taken off again (#48).
     cellTip.textContent = cell.classList.contains("locked")
-      ? "Locked — unlock it in the EDITOR panel"
-      : "Double-click to edit";
+      ? msg("app.lockedCell")
+      : msg("app.dblClickEdit");
     const { clientX, clientY } = e;
     cellTipTimer = window.setTimeout(() => showCellTipAt(clientX, clientY), 350);
   }
@@ -2933,7 +2942,7 @@ function syncGroupToggle() {
   const btn = el("toggle-groups");
   if (!btn || btn.hidden) return;
   const anyOpen = viewGroups.some((key) => !collapsedGroups.has(key));
-  const label = anyOpen ? "Collapse every group" : "Expand every group";
+  const label = anyOpen ? msg("toolbar.collapseGroups") : msg("toolbar.expandGroups");
   btn.innerHTML = ico(anyOpen ? "collapse-all" : "expand-all");
   btn.title = label;
   btn.setAttribute("aria-label", label);
@@ -3080,6 +3089,7 @@ initMaskPresets();
 // Put the interface into the chosen language before anything else paints (#50).
 // Early, because the panels below read their own labels back out of the DOM.
 applyStaticText();
+syncCssLabels();
 // The app's own tooltips over the chrome (#230), for the controls that are a
 // glyph and nothing else.
 initTooltips();

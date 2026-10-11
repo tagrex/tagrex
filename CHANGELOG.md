@@ -115,6 +115,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **More of the interface speaks the chosen language.** Toasts, the tooltips
+  and hints of the table, the cover editor, the player's repeat and mute buttons,
+  the transform rule editor (rule names, step buttons, case styles, the
+  transliteration note), the duplicate finder's headings, the lock buttons, the
+  Beatport sign-in text, the names of the well-known custom tags, the labels of a
+  staged change and the word shown in a cleared cell were written in English in
+  every language. They come from the catalogues now, in all seven languages
+  ([#475](https://github.com/tagrex/tagrex/issues/475)).
 - **Switching the language repaints the texts built at run time.** The release
   cards and their open tracklists, the folder bands and the status line in the
   table, and the Library health button follow the switch at once instead of

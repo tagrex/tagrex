@@ -5,6 +5,7 @@
 // apart from the table renderer because GENERATOR reads the same keys when it
 // numbers tracks per group.
 import { fileName } from "./dom.js";
+import { t } from "./i18n.js";
 import { DROP_LOOSE_KEY } from "./fields.js";
 import { columnLabel } from "./columns.js";
 import { dropFolders, groupBy, sessionRoot } from "./state.js";
@@ -70,12 +71,12 @@ function folderGroupLabel(key) {
 // Human label for a group header ("(no artist)" etc.; folder shows its path).
 function groupLabel(key) {
   if (groupBy === "drop") {
-    return key === DROP_LOOSE_KEY ? "Files" : fileName(key);
+    return key === DROP_LOOSE_KEY ? t("grouping.files") : fileName(key);
   }
   if (key === "") {
-    if (groupBy === "folder") return "(no folder)";
-    if (groupBy === "release") return "(no release id)";
-    return `(no ${columnLabel(groupBy).toLowerCase()})`;
+    if (groupBy === "folder") return t("grouping.noFolder");
+    if (groupBy === "release") return t("grouping.noRelease");
+    return t("grouping.noValue", { column: columnLabel(groupBy) });
   }
   if (groupBy === "folder") return folderGroupLabel(key);
   // Release ids (esp. MusicBrainz UUIDs) are long; show a short, stable prefix.

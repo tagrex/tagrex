@@ -1222,7 +1222,8 @@ body.diffing #tracks tbody tr.staged td.sel {
   font-style: italic;
 }
 #tracks td.cleared::before {
-  content: "cleared";
+  /* Set from app.js in the interface's language (#475); English until then. */
+  content: var(--cleared-label, "cleared");
 }
 
 /* File cell on a rename/move (#37): the new name, the new relative folder

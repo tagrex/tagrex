@@ -119,7 +119,7 @@ function isVinylSide(value) {
 async function numberTracks() {
   const paths = selectedPaths(); // mapping order; reads `selection`, survives re-render
   if (paths.length === 0) {
-    toast("Select the tracks to number first", true);
+    toast(t("generator.selectToNumber"), true);
     return;
   }
   const start = Math.max(0, Math.floor(Number(el("autonum-start").value) || 1));
@@ -128,7 +128,7 @@ async function numberTracks() {
   const keepSides = el("autonum-keep-sides").checked;
   const discRaw = el("autonum-disc").value.trim();
   if (discRaw && !/^\d+$/.test(discRaw)) {
-    toast("Disc # must be a whole number", true);
+    toast(t("generator.discWhole"), true);
     return;
   }
   const disc = discRaw ? String(Number(discRaw)) : "";
@@ -154,7 +154,7 @@ async function numberTracks() {
     assigned.push({ path, number: n, gkey });
   }
   if (assigned.length === 0) {
-    toast("Nothing to number — every selected position was preserved");
+    toast(t("generator.nothingToNumber"));
     return;
   }
 
@@ -191,7 +191,7 @@ async function numberTracks() {
 async function splitVinylSides() {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select the tracks to split first", true);
+    toast(t("generator.selectToSplit"), true);
     return;
   }
   let changed = 0;
@@ -210,7 +210,7 @@ async function splitVinylSides() {
     changed += 1;
   }
   if (changed === 0) {
-    toast("No vinyl-side values (A1, B2) in the selection");
+    toast(t("generator.noSides"));
     return;
   }
   hooks.renderTracks();
@@ -231,7 +231,7 @@ async function previewTransform() {
   const wasStaged = overStagedPlan();
   const paths = selectedPaths();
   if (!wasStaged && !paths.length) {
-    toast("Select at least one file", true);
+    toast(t("toast.selectOneFile"), true);
     return;
   }
   try {
@@ -303,14 +303,14 @@ function swapChainTo(context) {
 // What each job's chain says about itself in the dialog, since it has no button
 // of its own to say it.
 const CONTEXT_NOTES = {
-  online: "Ticked presets run on the imported values when you import a release — their rules on tags; rules on file names are left for renaming.",
-  fromname: "Ticked presets run on the tags read out of the name when you press Preview tags — their rules on tags; rules on file names are left for renaming.",
-  renamer: "Ticked presets run on the new names when you preview a rename or a move — their rules on file names; rules on tags are left for the tag jobs.",
+  online: "generator.note.online",
+  fromname: "generator.note.fromname",
+  renamer: "generator.note.renamer",
 };
 const CONTEXT_TITLES = {
-  online: "Transform — imported values",
-  fromname: "Transform — tags from the file name",
-  renamer: "Transform — new names",
+  online: "generator.title.online",
+  fromname: "generator.title.fromname",
+  renamer: "generator.title.renamer",
 };
 
 function transformModalOpen() {
@@ -320,8 +320,8 @@ function transformModalOpen() {
 function openTransformModal() {
   const context = chainContext();
   if (!context || context === "generator") return;
-  el("transform-modal-title").textContent = CONTEXT_TITLES[context];
-  el("transform-context-note").textContent = CONTEXT_NOTES[context];
+  el("transform-modal-title").textContent = t(CONTEXT_TITLES[context]);
+  el("transform-context-note").textContent = t(CONTEXT_NOTES[context]);
   el("transform-context-note").hidden = false;
   // No run button here: the context's own action runs the chain (#237).
   el("transform-preview").hidden = true;

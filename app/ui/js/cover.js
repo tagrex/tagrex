@@ -24,14 +24,14 @@ const coverFileInput = el("cover-file");
 // What an image can say it depicts. The backend's storage keys; anything it
 // doesn't know reads back as "other", so this list is the whole menu.
 const COVER_KINDS = [
-  ["front", "Front cover"],
-  ["back", "Back cover"],
-  ["media", "Disc / media"],
-  ["leaflet", "Leaflet"],
-  ["artist", "Artist"],
-  ["logo", "Label logo"],
-  ["icon", "Icon"],
-  ["other", "Other"],
+  ["front", "cover.kind.front"],
+  ["back", "cover.kind.back"],
+  ["media", "cover.kind.media"],
+  ["leaflet", "cover.kind.leaflet"],
+  ["artist", "cover.kind.artist"],
+  ["logo", "cover.kind.logo"],
+  ["icon", "cover.kind.icon"],
+  ["other", "cover.kind.other"],
 ];
 
 // The set the strip is editing — the one every selected file carries. Replaced
@@ -258,8 +258,8 @@ async function showExternalCoverAction(paths) {
   const note = document.createElement("button");
   note.className = "btn cover-external";
   note.dataset.cover = "external";
-  note.textContent = "Use folder image";
-  note.title = "Embed the cover.jpg / folder.jpg sitting next to these tracks";
+  note.textContent = t("cover.useFolder");
+  note.title = t("cover.useFolderTitle");
   host.appendChild(note);
 }
 
@@ -289,7 +289,7 @@ async function embedExternalCover() {
 }
 
 function coverThumbImg(cover, cls) {
-  return `<img class="cover-thumb${cls ? " " + cls : ""}" alt="front cover" src="data:${cover.mime};base64,${cover.data_base64}" />`;
+  return `<img class="cover-thumb${cls ? " " + cls : ""}" alt="${escapeHtml(t("cover.altFront"))}" src="data:${cover.mime};base64,${cover.data_base64}" />`;
 }
 
 function renderCoverWell(summary) {
@@ -368,7 +368,7 @@ function renderCoverSet(summary) {
     const grip = document.createElement("span");
     grip.className = "cover-grip";
     grip.innerHTML = ico("grip");
-    grip.title = "Drag to reorder";
+    grip.title = t("action.dragToReorder");
     // Order is what the file stores, and some players show the first picture
     // rather than the front-typed one. Pointer events, not HTML5 DnD (#88).
     enablePointerReorder(grip, row, coverSetBox, ".cover-row", (draggedKey, targetKey, below) => {
@@ -385,16 +385,16 @@ function renderCoverSet(summary) {
 
     const thumb = document.createElement("img");
     thumb.className = "cover-thumb cover-row-thumb";
-    thumb.alt = image.description || "embedded image";
+    thumb.alt = image.description || t("cover.altEmbedded");
     thumb.src = `data:${image.mime};base64,${image.data_base64}`;
 
     const kind = document.createElement("select");
     kind.className = "cover-kind";
-    kind.title = "What this image shows";
+    kind.title = t("cover.kindTitle");
     for (const [value, label] of COVER_KINDS) {
       const option = document.createElement("option");
       option.value = value;
-      option.textContent = label;
+      option.textContent = t(label);
       option.selected = (image.kind || "front") === value;
       kind.appendChild(option);
     }
@@ -411,8 +411,8 @@ function renderCoverSet(summary) {
     remove.className = "icon cover-row-rm";
     remove.type = "button";
     remove.innerHTML = ico("close");
-    remove.title = "Remove this image";
-    remove.setAttribute("aria-label", "Remove this image");
+    remove.title = t("cover.removeImage");
+    remove.setAttribute("aria-label", t("cover.removeImage"));
     remove.addEventListener("click", () =>
       previewCoverSet(coverSet.filter((_, at) => at !== index))
     );
@@ -424,8 +424,8 @@ function renderCoverSet(summary) {
   const add = document.createElement("button");
   add.className = "btn cover-add";
   add.type = "button";
-  add.textContent = "Add image…";
-  add.title = "Embed another image beside the cover — a back cover, the disc, a leaflet";
+  add.textContent = t("cover.addImage");
+  add.title = t("cover.addImageTitle");
   add.addEventListener("click", () => {
     pickAppends = true;
     coverFileInput.value = ""; // allow re-picking the same file

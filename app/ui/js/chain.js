@@ -14,7 +14,7 @@ import { el, ico, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { enablePointerReorder } from "./reorder.js";
-import { EXTENDED_FIELDS } from "./fields.js";
+import { EXTENDED_FIELDS, fieldLabel } from "./fields.js";
 import {
   actionGroups,
   builtinGroups,
@@ -94,9 +94,9 @@ function ruleForGroup(r) {
 
 // Readable names for the scopes whose stored key isn't already a field label.
 const SCOPE_LABELS = {
-  tags: "all tags",
-  filename: "file name",
-  fileext: "file extension",
+  tags: "chain.scope.tags",
+  filename: "chain.scope.filename",
+  fileext: "chain.scope.fileext",
 };
 
 // Every target a rule can name (#250): all the tag fields the app models, plus
@@ -105,10 +105,10 @@ const SCOPE_LABELS = {
 // second copy of it in step by hand.
 function scopeOptions() {
   return [
-    ["tags", "All tag fields"],
-    ...EXTENDED_FIELDS,
-    ["filename", "File name"],
-    ["fileext", "File extension"],
+    ["tags", t("chain.scopeAll")],
+    ...EXTENDED_FIELDS.map(([key]) => [key, fieldLabel(key)]),
+    ["filename", t("chain.scopeFile")],
+    ["fileext", t("chain.scopeExt")],
   ];
 }
 
@@ -116,7 +116,11 @@ function scopeOptions() {
 function groupSummary(group) {
   const on = (group.rules || []).filter((r) => r.enabled !== false).length;
   const total = (group.rules || []).length;
-  const scope = SCOPE_LABELS[group.scope] || group.scope || "all tags";
+  const scope = SCOPE_LABELS[group.scope]
+    ? t(SCOPE_LABELS[group.scope])
+    : group.scope
+      ? fieldLabel(group.scope)
+      : t("chain.scope.tags");
   return `${on}/${tn("unit.step", total)} · ${scope}`;
 }
 
@@ -213,16 +217,16 @@ function createRuleChain({ ids }) {
       kind.className = "rule-kind";
       kind.textContent =
         rule.kind === "replace"
-          ? "Find and replace"
+          ? t("rule.replace")
           : rule.kind === "case"
-            ? "Change case"
+            ? t("rule.case")
             : rule.kind === "key"
-              ? "Key notation"
+              ? t("rule.key")
               : rule.kind === "transliterate"
-                ? "Transliterate to Latin"
+                ? t("rule.transliterate")
                 : rule.kind === "untransliterate"
-                  ? "Transliterate to Cyrillic"
-                  : "Remove diacritics";
+                  ? t("rule.untransliterate")
+                  : t("rule.diacritics");
 
       const spacer = document.createElement("span");
       spacer.className = "spacer";
@@ -232,7 +236,7 @@ function createRuleChain({ ids }) {
       // Enable/disable this step (#57): kept in the chain either way, skipped when off.
       const toggle = mkRuleIcon(
         "check",
-        rule.enabled === false ? "Step off — click to enable" : "Step on — click to disable",
+        rule.enabled === false ? t("chain.stepOff") : t("chain.stepOn"),
         false,
         () => {
           rule.enabled = rule.enabled === false;
@@ -244,12 +248,12 @@ function createRuleChain({ ids }) {
       acts.append(toggle);
       // ↑/↓ stay as the keyboard / no-pointer fallback for reordering.
       acts.append(
-        mkRuleIcon("caret-up", "Move up", index === 0, () => moveRule(index, index - 1)),
-        mkRuleIcon("caret-down", "Move down", index === rules.length - 1, () =>
+        mkRuleIcon("caret-up", t("chain.moveUp"), index === 0, () => moveRule(index, index - 1)),
+        mkRuleIcon("caret-down", t("chain.moveDown"), index === rules.length - 1, () =>
           moveRule(index, index + 1)
         )
       );
-      const remove = mkRuleIcon("close", "Remove rule", false, () => {
+      const remove = mkRuleIcon("close", t("chain.removeRule"), false, () => {
         rules.splice(index, 1);
         render();
       });
@@ -309,9 +313,9 @@ function createRuleChain({ ids }) {
         const flags = document.createElement("div");
         flags.className = "rule-flags";
         for (const [key, text, hint] of [
-          ["regex", "regex", "Treat the pattern as a regular expression"],
-          ["whole_word", "whole word", "Only match complete words"],
-          ["case_sensitive", "match case", "Distinguish upper and lower case"],
+          ["regex", "regex", t("chain.flagRegexTitle")],
+          ["whole_word", t("chain.flagWholeWord"), t("chain.flagWholeWordTitle")],
+          ["case_sensitive", t("chain.flagMatchCase"), t("chain.flagMatchCaseTitle")],
         ]) {
           const label = document.createElement("label");
           label.className = "rule-flag";
@@ -331,10 +335,10 @@ function createRuleChain({ ids }) {
         const seg = document.createElement("div");
         seg.className = "seg";
         for (const [value, text] of [
-          ["title", "Title"],
-          ["lower", "lower"],
-          ["upper", "UPPER"],
-          ["sentence", "Sentence"],
+          ["title", t("chain.caseTitle")],
+          ["lower", t("chain.caseLower")],
+          ["upper", t("chain.caseUpper")],
+          ["sentence", t("chain.caseSentence")],
         ]) {
           const btn = document.createElement("button");
           btn.type = "button";
@@ -359,7 +363,7 @@ function createRuleChain({ ids }) {
         for (const [value, text] of [
           ["camelot", "Camelot"],
           ["openkey", "Open Key"],
-          ["musical", "Musical"],
+          ["musical", t("chain.keyMusical")],
         ]) {
           const btn = document.createElement("button");
           btn.type = "button";
@@ -384,8 +388,7 @@ function createRuleChain({ ids }) {
         b.className = "rule-body";
         const note = document.createElement("span");
         note.className = "rule-note";
-        note.textContent =
-          "Latin → Russian Cyrillic, for tags that arrived romanized. The whole value converts or none of it does: it needs a trace of romanization (zh, kh, ts, ch, sh, yu, ya…) and nothing in it that was never Cyrillic (q, w, x, a bare c/h/j). So English text is left alone, and so are values mixing the two languages (Zhuk remix). ъ/ь can't be recovered and й/ы both come back as й.";
+        note.textContent = t("chain.untranslitNote");
         b.append(note);
         card.append(b);
       }

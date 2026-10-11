@@ -10,6 +10,7 @@
 // the values here come out as the name spells them and are tidied up on the
 // preview bar like everything else.
 import { el, escapeHtml, toast } from "./dom.js";
+import { t } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { chainHasRules, onChainChanged, runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
@@ -50,7 +51,7 @@ function saveFromNamePrefs() {
 async function previewTagsFromName() {
   const paths = selectedPaths();
   if (paths.length === 0) {
-    toast("Select at least one track", true);
+    toast(t("toast.selectOneTrack"), true);
     return;
   }
   try {
@@ -66,7 +67,7 @@ async function previewTagsFromName() {
     // Distinguish "nothing to do" from a silent no-op: with this feature an
     // empty plan usually means the pattern doesn't fit the names.
     if (plan.changes.length === 0) {
-      toast("No selected name gives this pattern anything new", true);
+      toast(t("fromname.nothingNew"), true);
       return;
     }
     setPreviewPlan(plan);
@@ -109,7 +110,7 @@ async function refreshNameProbe() {
   if (!box) return;
   const path = selectedPaths()[0];
   if (!path) {
-    box.innerHTML = `<div class="probe-fields"><div class="probe-miss">Select a track to see what the pattern reads.</div></div>`;
+    box.innerHTML = `<div class="probe-fields"><div class="probe-miss">${escapeHtml(t("fromname.probeSelect"))}</div></div>`;
     return;
   }
   try {
@@ -122,7 +123,7 @@ async function refreshNameProbe() {
     // the same list it read as the longest and least structured result there.
     const subject = `<div class="probe-subject">${escapeHtml(probe.subject)}</div>`;
     if (!probe.matched || probe.fields.length === 0) {
-      box.innerHTML = `${subject}<div class="probe-fields"><div class="probe-miss">This name doesn't fit the pattern.</div></div>`;
+      box.innerHTML = `${subject}<div class="probe-fields"><div class="probe-miss">${escapeHtml(t("fromname.probeNoMatch"))}</div></div>`;
       return;
     }
     const rows = (await throughChain(path, probe.fields))

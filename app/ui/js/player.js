@@ -209,7 +209,7 @@ function applyVolume(level, { persist = true } = {}) {
   invoke("player_set_volume", { level: v });
   el("pl-volume").value = String(Math.round(v * 100));
   el("pl-mute").innerHTML = ico(v === 0 ? "volume-off" : "volume");
-  const label = v === 0 ? "Unmute" : "Mute";
+  const label = v === 0 ? t("player.unmute") : t("player.mute");
   el("pl-mute").title = label;
   el("pl-mute").setAttribute("aria-label", label);
   // The button on the bar carries the same glyph: the slider is folded away, so
@@ -331,10 +331,10 @@ function applyRepeatMode(mode) {
   btn.innerHTML = ico("repeat") + (repeatMode === "one" ? `<span class="pl-repeat-one">1</span>` : "");
   const label =
     repeatMode === "off"
-      ? "Repeat off"
+      ? t("player.repeatOff")
       : repeatMode === "all"
-        ? "Repeat all"
-        : "Repeat this track";
+        ? t("player.repeatAll")
+        : t("player.repeatOne");
   btn.title = label;
   btn.setAttribute("aria-label", label);
   try {
@@ -392,7 +392,7 @@ function playTrack(path) {
   playingPath = path;
   plPaused = false;
   plTitle.textContent = playerLabel(path);
-  plTitle.title = `${path}\nClick to find this track in the table`;
+  plTitle.title = `${path}\n${t("player.findTrack")}`;
   playerBar.classList.remove("idle");
   setPlayerVisible(true);
   setPlayerControlsEnabled(true);
@@ -445,7 +445,7 @@ async function pollPlayerStatus() {
 
   if (changed) {
     plTitle.textContent = playerLabel(st.path);
-    plTitle.title = `${st.path}\nClick to find this track in the table`;
+    plTitle.title = `${st.path}\n${t("player.findTrack")}`;
     playerBar.classList.remove("idle");
     setPlayerVisible(true);
     setPlayerControlsEnabled(true);
