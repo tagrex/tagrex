@@ -6138,6 +6138,28 @@ body.drag-active #drop-overlay {
 }
 .settings-search input {
   width: 100%;
+  box-sizing: border-box;
+  appearance: none;
+  -webkit-appearance: none;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.settings-search input::placeholder {
+  color: var(--muted);
+}
+.settings-search input::-webkit-search-cancel-button,
+.settings-search input::-webkit-search-decoration {
+  -webkit-appearance: none;
+}
+.settings-search input:focus,
+.settings-search input:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
 }
 .settings-group.search-hidden,
 .settings-group .search-hidden {
