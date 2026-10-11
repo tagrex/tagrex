@@ -229,10 +229,22 @@ Linux additionally needs the usual WebKitGTK development packages; see the
 
 ## Tech stack
 
-Rust core ([lofty](https://github.com/Serial-ATA/lofty-rs) for tag I/O,
-[rodio](https://github.com/RustAudio/rodio)/Symphonia for playback) with a
-[Tauri](https://tauri.app/) shell. See
-[docs/architecture.md](docs/architecture.md) for the module layout and the
+A Rust core with a [Tauri](https://tauri.app/) shell and a plain HTML/CSS/JS
+interface — no frontend framework and no Node toolchain. The libraries doing the
+heavy lifting:
+
+- [lofty](https://github.com/Serial-ATA/lofty-rs) — reading and writing tags in
+  the supported formats.
+- [rodio](https://github.com/RustAudio/rodio) with
+  [Symphonia](https://github.com/pdeljanov/Symphonia) — the preview player and
+  the waveform.
+- [SQLite](https://www.sqlite.org/) through
+  [rusqlite](https://github.com/rusqlite/rusqlite) — the undo journal that
+  survives a restart.
+- [IBM Plex](https://github.com/IBM/plex) — the bundled type set, under the
+  [SIL Open Font License 1.1](https://openfontlicense.org/).
+
+See [docs/architecture.md](docs/architecture.md) for the module layout and the
 reasoning behind it.
 
 ## Attribution

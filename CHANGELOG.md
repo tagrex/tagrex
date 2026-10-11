@@ -93,6 +93,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   overlap as a staircase, so they fill the picture and their text is readable
   at the README width
   ([#459](https://github.com/tagrex/tagrex/issues/459)).
+- **The tech stack lists its key libraries.** The README credits lofty, rodio
+  and Symphonia, SQLite and the bundled IBM Plex fonts, with links
+  ([#460](https://github.com/tagrex/tagrex/issues/460)).
 
 ### Fixed
 
