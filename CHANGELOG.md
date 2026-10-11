@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   were two loosely spaced lines apart from it; now they read as one group, the
   result on its own line below the button
   ([#479](https://github.com/tagrex/tagrex/issues/479)).
+- **"Check now" sits on the update checkbox's own line.** What the check found
+  appears on a line below it, and only once there is something to say
+  ([#480](https://github.com/tagrex/tagrex/issues/480)).
 
 ## [0.21.0] - 2026-10-11
 

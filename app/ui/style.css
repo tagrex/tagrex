@@ -6031,22 +6031,16 @@ body.drag-active #drop-overlay {
   color: var(--muted);
 }
 
-/* Settings: the "Check now" button and what it found sit as one tight group
-   right under the checkbox they belong to, the result on its own line below the
-   button rather than wrapping beside it. */
+/* Settings: "Check now" sits right after the update checkbox on the same line;
+   what the check found appears on a line of its own below, and only once there
+   is something to say. */
+.settings-inline > input[type="checkbox"] {
+  margin: 0;
+}
 .settings-row.update-row {
   margin-top: calc(-1 * var(--space-2));
 }
-.update-line {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-}
-.update-line .text-btn {
-  padding-left: 0;
-}
-.update-line .settings-hint:empty {
+.settings-row.update-row:has(#update-result:empty) {
   display: none;
 }
 

@@ -953,14 +953,14 @@
             </div>
             <div class="settings-row">
               <label for="set-check-updates" data-i18n="settings.checkUpdates">Check for updates</label>
-              <input id="set-check-updates" type="checkbox" />
+              <div class="settings-inline">
+                <input id="set-check-updates" type="checkbox" />
+                <button id="update-check-now" class="text-btn" type="button" data-i18n="settings.checkNow">Check now</button>
+              </div>
             </div>
             <div class="settings-row update-row">
               <span></span>
-              <div class="update-line">
-                <button id="update-check-now" class="text-btn" type="button" data-i18n="settings.checkNow">Check now</button>
-                <span id="update-result" class="settings-hint" role="status"></span>
-              </div>
+              <span id="update-result" class="settings-hint" role="status"></span>
             </div>
             <p class="settings-hint" data-i18n="settings.checkUpdatesHint">When TagRex starts it asks GitHub for the latest release and shows a note in the status bar if a newer one exists. Nothing is downloaded or installed, and nothing about you or your files is sent. Switched off, the app makes no such request.</p>
           </div>
