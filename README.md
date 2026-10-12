@@ -30,6 +30,10 @@
   </picture>
 </p>
 
+<p align="center">
+  <img src="docs/img/demo.gif" width="720" alt="Sixteen files are selected, Preview rename shows the new names in the table with an Apply bar, Apply renames them, and Undo brings the old names back">
+</p>
+
 ---
 
 > **Status: 0.22.x.** Usable day to day: table editing, rename masks with a

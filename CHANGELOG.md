@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   even after a restart, fill tags from the online sources — instead of
   describing its internals
   ([#493](https://github.com/tagrex/tagrex/issues/493)).
+- **A short animation in the README.** Under the hero image, a looping demo
+  selects sixteen files, previews a rename as a diff in the table, applies it
+  and undoes it
+  ([#494](https://github.com/tagrex/tagrex/issues/494)).
 
 ## [0.22.2] - 2026-10-12
 
