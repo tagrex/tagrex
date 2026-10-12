@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Settings has a gear icon.** The top-bar button was a set of sliders, easy to
+  mistake for an equaliser or a filter; it is now a gear drawn in the app's own
+  outline style ([#490](https://github.com/tagrex/tagrex/issues/490)).
 - **Display is the first group in Settings.** It holds the language, so it has
   to be easy to reach when the interface is in a language you cannot read; the
   window opens on it until you choose another group, and the group you left is
