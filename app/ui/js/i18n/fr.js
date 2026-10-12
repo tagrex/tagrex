@@ -977,4 +977,5 @@ export const fr = {
   "settings.sources": "Sources",
   "health.noCover": "Pas de pochette",
   "health.spellingMore": "+{n} de plus",
+  "settings.general": "Général",
 };

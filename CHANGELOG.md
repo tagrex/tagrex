@@ -12,11 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **Settings has a gear icon.** The top-bar button was a set of sliders, easy to
   mistake for an equaliser or a filter; it is now a gear drawn in the app's own
   outline style ([#490](https://github.com/tagrex/tagrex/issues/490)).
-- **Display is the first group in Settings.** It holds the language, so it has
-  to be easy to reach when the interface is in a language you cannot read; the
-  window opens on it until you choose another group, and the group you left is
-  now remembered by name rather than by position
-  ([#489](https://github.com/tagrex/tagrex/issues/489)).
+- **General is the first group in Settings.** The group that held the language,
+  theme and accent, formerly Display, is renamed General and now also holds the
+  update check, which sat under Network among the proxy settings. It comes
+  first because it has the language, which has to be easy to reach when the
+  interface is in a language you cannot read; the window opens on it until you
+  choose another group, and the group you left is remembered by name rather
+  than by position ([#489](https://github.com/tagrex/tagrex/issues/489),
+  [#491](https://github.com/tagrex/tagrex/issues/491)).
 - **New defaults in Settings › LAB.** The value font is Sans and the table
   font 12 px out of the box, instead of Mono and 11 px; a value you have chosen
   yourself is kept, and Reset to defaults returns to the new ones

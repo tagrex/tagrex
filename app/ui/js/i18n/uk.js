@@ -977,4 +977,5 @@ export const uk = {
   "settings.sources": "Джерела",
   "health.noCover": "Немає обкладинки",
   "health.spellingMore": "та ще {n}",
+  "settings.general": "Загальні",
 };

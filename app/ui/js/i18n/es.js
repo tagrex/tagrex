@@ -975,4 +975,5 @@ export const es = {
   "settings.sources": "Fuentes",
   "health.noCover": "Sin carátula",
   "health.spellingMore": "+{n} más",
+  "settings.general": "General",
 };

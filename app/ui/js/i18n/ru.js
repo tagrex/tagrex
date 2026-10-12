@@ -976,4 +976,5 @@ export const ru = {
   "settings.sources": "Источники",
   "health.noCover": "Нет обложки",
   "health.spellingMore": "и ещё {n}",
+  "settings.general": "Общие",
 };

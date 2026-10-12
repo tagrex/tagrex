@@ -651,13 +651,10 @@ initGroupResets([
   {
     id: "network",
     isDefault: () =>
-      el("set-proxy").value.trim() === "" &&
-      (parseInt(el("set-rate").value, 10) || 0) === 0 &&
-      el("set-check-updates").checked,
+      el("set-proxy").value.trim() === "" && (parseInt(el("set-rate").value, 10) || 0) === 0,
     reset: () => {
       el("set-proxy").value = "";
       el("set-rate").value = 0;
-      el("set-check-updates").checked = true;
     },
   },
   {
@@ -697,17 +694,19 @@ initGroupResets([
     },
   },
   {
-    id: "display",
+    id: "general",
     isDefault: () =>
       langMode() === "auto" &&
       themeMode() === "auto" &&
       accentColor() === null &&
-      !el("set-checkbox-col").checked,
+      !el("set-checkbox-col").checked &&
+      el("set-check-updates").checked,
     reset: () => {
       setLanguageChoice("auto");
       setThemeChoice("auto");
       setAccentChoice(null);
       el("set-checkbox-col").checked = false;
+      el("set-check-updates").checked = true;
     },
   },
   {

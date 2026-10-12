@@ -60,7 +60,7 @@
       <symbol id="i-db" viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="4.5" ry="1.8"/><path d="M3.5 4v8c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8V4"/><path d="M3.5 8c0 1 2 1.8 4.5 1.8S12.5 9 12.5 8"/></symbol>
       <symbol id="i-wifi" viewBox="0 0 16 16"><path d="M2.5 6.2a8 8 0 0 1 11 0"/><path d="M4.7 8.7a4.9 4.9 0 0 1 6.6 0"/><circle cx="8" cy="11.6" r="1" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v7.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z"/><path d="M9 2.5v3h3"/></symbol>
-      <symbol id="i-monitor" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="7.8" rx="1.2"/><path d="M6 13.2h4M8 10.8v2.4"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 16 16"><line x1="2.5" y1="4.5" x2="13.5" y2="4.5"/><line x1="2.5" y1="8" x2="13.5" y2="8"/><line x1="2.5" y1="11.5" x2="13.5" y2="11.5"/><circle cx="6" cy="4.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="10.5" cy="8" r="1.7" fill="currentColor" stroke="none"/><circle cx="5" cy="11.5" r="1.7" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-command" viewBox="0 0 16 16"><path d="M6 6V4.3A1.7 1.7 0 1 0 4.3 6H6Zm0 0h4m-4 0v4m4-4V4.3A1.7 1.7 0 1 1 11.7 6H10Zm0 0v4m0 0h1.7a1.7 1.7 0 1 1-1.7 1.7V10Zm0 0H6m0 0v1.7A1.7 1.7 0 1 1 4.3 10H6Z"/></symbol>
       <symbol id="i-flask" viewBox="0 0 16 16"><path d="M6.5 2.5h3"/><path d="M7 2.5v4L3.7 12a1 1 0 0 0 .9 1.5h6.8a1 1 0 0 0 .9-1.5L9 6.5v-4"/><path d="M5.2 10h5.6"/></symbol>
     </svg>
@@ -922,8 +922,8 @@
         </nav>
         <div class="settings-body">
           <p id="settings-search-empty" class="settings-hint" data-i18n="settings.searchEmpty" hidden>No setting matches.</p>
-          <div class="settings-group" data-icon="i-monitor" data-reset-group="display">
-            <h3 data-i18n="settings.display">Display</h3>
+          <div class="settings-group" data-icon="i-sliders" data-reset-group="general">
+            <h3 data-i18n="settings.general">General</h3>
             <div class="settings-row">
               <label for="set-lang" data-i18n="settings.language">Language</label>
               <!-- A list rather than a button per language (#412): a segmented
@@ -966,6 +966,18 @@
               <input id="set-checkbox-col" type="checkbox" />
             </div>
             <p class="settings-hint" data-i18n="settings.checkboxColHint">Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.</p>
+            <div class="settings-row">
+              <label for="set-check-updates" data-i18n="settings.checkUpdates">Check for updates</label>
+              <div class="settings-inline">
+                <input id="set-check-updates" type="checkbox" />
+                <button id="update-check-now" class="text-btn" type="button" data-i18n="settings.checkNow">Check now</button>
+              </div>
+            </div>
+            <div id="update-row" class="settings-row update-row" hidden>
+              <span></span>
+              <span id="update-result" class="settings-hint" role="status"></span>
+            </div>
+            <p class="settings-hint" data-i18n="settings.checkUpdatesHint">When TagRex starts it asks GitHub for the latest release and shows a note in the status bar if a newer one exists. Nothing is downloaded or installed, and nothing about you or your files is sent. Switched off, the app makes no such request.</p>
           </div>
 
           <div class="settings-group" data-icon="i-db">
@@ -1006,18 +1018,6 @@
                 <span class="settings-hint" data-i18n="settings.rateHint">requests / min — 0 = no limit (429 / Retry-After is always honoured)</span>
               </div>
             </div>
-            <div class="settings-row">
-              <label for="set-check-updates" data-i18n="settings.checkUpdates">Check for updates</label>
-              <div class="settings-inline">
-                <input id="set-check-updates" type="checkbox" />
-                <button id="update-check-now" class="text-btn" type="button" data-i18n="settings.checkNow">Check now</button>
-              </div>
-            </div>
-            <div id="update-row" class="settings-row update-row" hidden>
-              <span></span>
-              <span id="update-result" class="settings-hint" role="status"></span>
-            </div>
-            <p class="settings-hint" data-i18n="settings.checkUpdatesHint">When TagRex starts it asks GitHub for the latest release and shows a note in the status bar if a newer one exists. Nothing is downloaded or installed, and nothing about you or your files is sent. Switched off, the app makes no such request.</p>
           </div>
 
           <div class="settings-group" data-icon="i-tag" data-reset-group="tags">

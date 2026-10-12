@@ -979,4 +979,5 @@ export const en = {
   "settings.sources": "Sources",
   "health.noCover": "No cover art",
   "health.spellingMore": "+{n} more",
+  "settings.general": "General",
 };

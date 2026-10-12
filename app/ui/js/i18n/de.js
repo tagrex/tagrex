@@ -973,4 +973,5 @@ export const de = {
   "settings.sources": "Quellen",
   "health.noCover": "Kein Cover",
   "health.spellingMore": "+{n} weitere",
+  "settings.general": "Allgemein",
 };

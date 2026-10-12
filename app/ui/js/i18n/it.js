@@ -977,4 +977,5 @@ export const it = {
   "settings.sources": "Fonti",
   "health.noCover": "Nessuna copertina",
   "health.spellingMore": "+{n} altri",
+  "settings.general": "Generale",
 };
