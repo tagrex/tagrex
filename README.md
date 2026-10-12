@@ -31,7 +31,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/img/demo.gif" width="720" alt="Sixteen files are selected, Preview rename shows the new names in the table with an Apply bar, Apply renames them, and Undo brings the old names back">
+  <img src="docs/img/demo-dark.gif" width="900" alt="A folder of untagged files is opened, a release is found on Discogs and matched, the tags are written, then a rename into a new folder is previewed, applied and undone">
 </p>
 
 ---

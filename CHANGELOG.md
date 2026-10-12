@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   rename diff come in a dark and a light version, scaled to twice their
   displayed width, and the page shows the one that matches the viewer's theme
   ([#495](https://github.com/tagrex/tagrex/issues/495)).
+- **The README demo tells the whole story.** The animation now follows a real
+  release from start to finish: open untagged files, search Discogs, match the
+  release and write the tags, play a track, preview a rename into a new folder,
+  apply it and undo it, with the typing and the tooltips left in
+  ([#496](https://github.com/tagrex/tagrex/issues/496)).
 
 ## [0.22.2] - 2026-10-12
 
