@@ -922,6 +922,52 @@
         </nav>
         <div class="settings-body">
           <p id="settings-search-empty" class="settings-hint" data-i18n="settings.searchEmpty" hidden>No setting matches.</p>
+          <div class="settings-group" data-icon="i-monitor" data-reset-group="display">
+            <h3 data-i18n="settings.display">Display</h3>
+            <div class="settings-row">
+              <label for="set-lang" data-i18n="settings.language">Language</label>
+              <!-- A list rather than a button per language (#412): a segmented
+                   control stops fitting the row at four. Each language is named
+                   in itself; only Auto is translated. -->
+              <select id="set-lang" data-i18n-aria-label="settings.language.aria" aria-label="Interface language">
+                <option value="auto" data-i18n="settings.language.auto">Auto</option>
+                <option value="en" data-i18n="settings.language.en">English</option>
+                <option value="de" data-i18n="settings.language.de">Deutsch</option>
+                <option value="es" data-i18n="settings.language.es">Español</option>
+                <option value="fr" data-i18n="settings.language.fr">Français</option>
+                <option value="it" data-i18n="settings.language.it">Italiano</option>
+                <option value="uk" data-i18n="settings.language.uk">Українська</option>
+                <option value="ru" data-i18n="settings.language.ru">Русский</option>
+              </select>
+            </div>
+            <p class="settings-hint" data-i18n="settings.language.hint">Auto follows your system language. A language the app has no catalogue for falls back to English.</p>
+            <div class="settings-row">
+              <label data-i18n="settings.theme">Theme</label>
+              <div class="seg" id="set-theme" role="tablist" data-i18n-aria-label="settings.theme" aria-label="Theme">
+                <button class="seg-btn" type="button" data-theme-mode="auto" data-i18n="settings.language.auto">Auto</button>
+                <button class="seg-btn" type="button" data-theme-mode="light" data-i18n="settings.theme.light">Light</button>
+                <button class="seg-btn" type="button" data-theme-mode="dark" data-i18n="settings.theme.dark">Dark</button>
+              </div>
+            </div>
+            <p class="settings-hint" data-i18n="settings.themeHint">Auto follows your system appearance; Light / Dark force one.</p>
+            <div class="settings-row col">
+              <label data-i18n="settings.accent">Accent colour</label>
+              <!-- Swatches are built in settings.js from ACCENT_PRESETS (#431). -->
+              <div class="accent-picker" id="set-accent" role="radiogroup" data-i18n-aria-label="settings.accent" aria-label="Accent colour">
+                <label class="accent-custom" data-i18n-title="settings.accent.custom" title="Custom colour">
+                  <input id="set-accent-custom" type="color" value="#0b6b53" data-i18n-aria-label="settings.accent.custom" aria-label="Custom colour" />
+                </label>
+                <button class="accent-reset" id="set-accent-reset" type="button" data-i18n="settings.accent.reset">Reset</button>
+              </div>
+            </div>
+            <p class="settings-hint" data-i18n="settings.accentHint">Colours buttons, selections, links and the focus ring. Text on the accent is kept readable, and the green of confirmed states and the red of errors do not change.</p>
+            <div class="settings-row">
+              <label for="set-checkbox-col" data-i18n="settings.checkboxCol">Selection checkbox column</label>
+              <input id="set-checkbox-col" type="checkbox" />
+            </div>
+            <p class="settings-hint" data-i18n="settings.checkboxColHint">Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.</p>
+          </div>
+
           <div class="settings-group" data-icon="i-db">
             <h3 data-i18n="settings.sources">Sources</h3>
             <h4 class="settings-sub">Discogs</h4>
@@ -1051,52 +1097,6 @@
               <input id="set-sidecar-exts" type="text" class="mono" data-i18n-placeholder="settings.extensionsPlaceholder" placeholder="lrc cue txt jpg jpeg png" spellcheck="false" />
             </div>
             <p class="settings-hint" data-i18n="settings.extensionsHint">Space- or comma-separated, without the dot. Case-insensitive.</p>
-          </div>
-
-          <div class="settings-group" data-icon="i-monitor" data-reset-group="display">
-            <h3 data-i18n="settings.display">Display</h3>
-            <div class="settings-row">
-              <label for="set-lang" data-i18n="settings.language">Language</label>
-              <!-- A list rather than a button per language (#412): a segmented
-                   control stops fitting the row at four. Each language is named
-                   in itself; only Auto is translated. -->
-              <select id="set-lang" data-i18n-aria-label="settings.language.aria" aria-label="Interface language">
-                <option value="auto" data-i18n="settings.language.auto">Auto</option>
-                <option value="en" data-i18n="settings.language.en">English</option>
-                <option value="de" data-i18n="settings.language.de">Deutsch</option>
-                <option value="es" data-i18n="settings.language.es">Español</option>
-                <option value="fr" data-i18n="settings.language.fr">Français</option>
-                <option value="it" data-i18n="settings.language.it">Italiano</option>
-                <option value="uk" data-i18n="settings.language.uk">Українська</option>
-                <option value="ru" data-i18n="settings.language.ru">Русский</option>
-              </select>
-            </div>
-            <p class="settings-hint" data-i18n="settings.language.hint">Auto follows your system language. A language the app has no catalogue for falls back to English.</p>
-            <div class="settings-row">
-              <label data-i18n="settings.theme">Theme</label>
-              <div class="seg" id="set-theme" role="tablist" data-i18n-aria-label="settings.theme" aria-label="Theme">
-                <button class="seg-btn" type="button" data-theme-mode="auto" data-i18n="settings.language.auto">Auto</button>
-                <button class="seg-btn" type="button" data-theme-mode="light" data-i18n="settings.theme.light">Light</button>
-                <button class="seg-btn" type="button" data-theme-mode="dark" data-i18n="settings.theme.dark">Dark</button>
-              </div>
-            </div>
-            <p class="settings-hint" data-i18n="settings.themeHint">Auto follows your system appearance; Light / Dark force one.</p>
-            <div class="settings-row col">
-              <label data-i18n="settings.accent">Accent colour</label>
-              <!-- Swatches are built in settings.js from ACCENT_PRESETS (#431). -->
-              <div class="accent-picker" id="set-accent" role="radiogroup" data-i18n-aria-label="settings.accent" aria-label="Accent colour">
-                <label class="accent-custom" data-i18n-title="settings.accent.custom" title="Custom colour">
-                  <input id="set-accent-custom" type="color" value="#0b6b53" data-i18n-aria-label="settings.accent.custom" aria-label="Custom colour" />
-                </label>
-                <button class="accent-reset" id="set-accent-reset" type="button" data-i18n="settings.accent.reset">Reset</button>
-              </div>
-            </div>
-            <p class="settings-hint" data-i18n="settings.accentHint">Colours buttons, selections, links and the focus ring. Text on the accent is kept readable, and the green of confirmed states and the red of errors do not change.</p>
-            <div class="settings-row">
-              <label for="set-checkbox-col" data-i18n="settings.checkboxCol">Selection checkbox column</label>
-              <input id="set-checkbox-col" type="checkbox" />
-            </div>
-            <p class="settings-hint" data-i18n="settings.checkboxColHint">Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.</p>
           </div>
 
           <!-- Keyboard shortcuts (#432): one row per action in the registry

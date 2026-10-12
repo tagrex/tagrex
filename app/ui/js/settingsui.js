@@ -57,15 +57,24 @@ export function initGroupResets(defs) {
 // the limit and shows every group that has a match, and the list then shows
 // only those.
 const GROUP_KEY = "tagrex.settings.group";
-let activeGroup = 0;
+// Remembered by name, not by position, so a reordered list still opens on the
+// group the person left (the first group, Display, until they choose another).
+let activeGroup = "";
 try {
-  activeGroup = Number(localStorage.getItem(GROUP_KEY)) || 0;
+  activeGroup = localStorage.getItem(GROUP_KEY) || "";
 } catch (e) {
   /* the first group is the default */
 }
 
 function allGroups() {
   return [...document.querySelectorAll(".settings-body .settings-group")];
+}
+
+// Position of the remembered group in the list as it stands now; the first one
+// when it is not there (never chosen, or no longer a group).
+function activeIndex() {
+  const i = allGroups().findIndex((group) => group.dataset.icon === activeGroup);
+  return i < 0 ? 0 : i;
 }
 
 function groupLabel(group) {
@@ -78,21 +87,23 @@ function applyPane() {
   const searching = el("settings-search").value.trim() !== "";
   const groups = allGroups();
   const buttons = [...el("settings-nav-list").children];
+  const current = activeIndex();
   groups.forEach((group, i) => {
-    group.classList.toggle("pane-hidden", !searching && i !== activeGroup);
+    group.classList.toggle("pane-hidden", !searching && i !== current);
     const button = buttons[i];
     if (!button) return;
-    button.setAttribute("aria-selected", String(!searching && i === activeGroup));
-    button.tabIndex = i === activeGroup ? 0 : -1;
+    button.setAttribute("aria-selected", String(!searching && i === current));
+    button.tabIndex = i === current ? 0 : -1;
     button.hidden = searching && group.classList.contains(HIDDEN);
   });
 }
 
 export function selectSettingsGroup(index) {
-  const count = allGroups().length;
-  activeGroup = Math.min(Math.max(index, 0), count - 1);
+  const groups = allGroups();
+  const chosen = groups[Math.min(Math.max(index, 0), groups.length - 1)];
+  activeGroup = chosen.dataset.icon || "";
   try {
-    localStorage.setItem(GROUP_KEY, String(activeGroup));
+    localStorage.setItem(GROUP_KEY, activeGroup);
   } catch (e) {
     /* only the remembered group is lost */
   }
@@ -130,8 +141,8 @@ export function renderSettingsNav() {
     const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
     if (!step) return;
     event.preventDefault();
-    selectSettingsGroup(activeGroup + step);
-    list.children[activeGroup]?.focus();
+    selectSettingsGroup(activeIndex() + step);
+    list.children[activeIndex()]?.focus();
   };
   applyPane();
 }
