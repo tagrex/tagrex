@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   selects sixteen files, previews a rename as a diff in the table, applies it
   and undoes it
   ([#494](https://github.com/tagrex/tagrex/issues/494)).
+- **The README screenshots follow the GitHub theme.** The Tagger table and the
+  rename diff come in a dark and a light version, scaled to twice their
+  displayed width, and the page shows the one that matches the viewer's theme
+  ([#495](https://github.com/tagrex/tagrex/issues/495)).
 
 ## [0.22.2] - 2026-10-12
 
