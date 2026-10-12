@@ -18,6 +18,10 @@ import { filterRegex, filterCase } from "./state.js";
 const VALUE_FONT_STORAGE_KEY = "tagrex.valueFont";
 const CONDENSED_STORAGE_KEY = "tagrex.condensedTable"; // legacy, migrated once
 const VALUE_FONTS = ["mono", "sans", "condensed"];
+// First-run default: the UI face reads better at table sizes than the mono one,
+// which stays one click away in Settings › LAB for anyone who wants columns of
+// digits aligned.
+const VALUE_FONT_DEFAULT = "sans";
 function valueFont() {
   try {
     const v = localStorage.getItem(VALUE_FONT_STORAGE_KEY);
@@ -25,12 +29,12 @@ function valueFont() {
     // Migrate the old table-only boolean: it only ever meant "condensed".
     if (localStorage.getItem(CONDENSED_STORAGE_KEY) === "1") return "condensed";
   } catch (e) {
-    return "mono";
+    return VALUE_FONT_DEFAULT;
   }
-  return "mono";
+  return VALUE_FONT_DEFAULT;
 }
 function applyValueFont(mode) {
-  const m = VALUE_FONTS.includes(mode) ? mode : "mono";
+  const m = VALUE_FONTS.includes(mode) ? mode : VALUE_FONT_DEFAULT;
   document.body.classList.toggle("value-font-sans", m === "sans");
   document.body.classList.toggle("value-font-condensed", m === "condensed");
   try {
@@ -94,10 +98,10 @@ function saveFilterMode() {
 const TABLE_FONT_STORAGE_KEY = "tagrex.tableFontPx";
 const TABLE_FONT_MIN = 10;
 const TABLE_FONT_MAX = 20;
-// First-run default (#274): a touch above the 10px floor so the table is a
-// little more legible out of the box while keeping its dense character. Anyone
-// who wants tighter drags it back down in Settings › Display.
-const TABLE_FONT_DEFAULT = 11;
+// First-run default (#274, raised to 12 with the sans value font): a touch above
+// the 10px floor so the table is legible out of the box while keeping its dense
+// character. Anyone who wants tighter drags it back down in Settings › LAB.
+const TABLE_FONT_DEFAULT = 12;
 function clampTableFont(px) {
   return Math.min(TABLE_FONT_MAX, Math.max(TABLE_FONT_MIN, px || TABLE_FONT_DEFAULT));
 }
@@ -450,6 +454,7 @@ export {
   clampTableFont,
   clampTracklistFont,
   valueFont,
+  VALUE_FONT_DEFAULT,
   applyValueFont,
   checkboxColEnabled,
   applyCheckboxCol,

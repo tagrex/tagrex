@@ -28,6 +28,7 @@ import {
   MEDIA_GLYPH_SET_DEFAULT,
   TABLE_FONT_DEFAULT,
   TRACKLIST_FONT_DEFAULT,
+  VALUE_FONT_DEFAULT,
   clampTableFont,
   clampTracklistFont,
   applyCheckboxCol,
@@ -713,7 +714,7 @@ initGroupResets([
     id: "lab",
     isDefault: () =>
       mediaGlyphSet() === MEDIA_GLYPH_SET_DEFAULT &&
-      valueFont() === "mono" &&
+      valueFont() === VALUE_FONT_DEFAULT &&
       tableFontPx() === TABLE_FONT_DEFAULT &&
       tracklistFontPx() === TRACKLIST_FONT_DEFAULT &&
       badgeFont() === "mono",
@@ -721,7 +722,7 @@ initGroupResets([
       setMediaGlyphSet(MEDIA_GLYPH_SET_DEFAULT);
       el("set-media-glyphs").value = MEDIA_GLYPH_SET_DEFAULT;
       document.dispatchEvent(new CustomEvent("tagrex:mediaglyphset"));
-      setValueFontChoice("mono");
+      setValueFontChoice(VALUE_FONT_DEFAULT);
       applyTableFont(TABLE_FONT_DEFAULT);
       el("set-table-font").value = TABLE_FONT_DEFAULT;
       el("set-table-font-val").textContent = `${TABLE_FONT_DEFAULT}px`;

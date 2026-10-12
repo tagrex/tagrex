@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **New defaults in Settings › LAB.** The value font is Sans and the table
+  font 12 px out of the box, instead of Mono and 11 px; a value you have chosen
+  yourself is kept, and Reset to defaults returns to the new ones
+  ([#488](https://github.com/tagrex/tagrex/issues/488)).
+
 ## [0.22.1] - 2026-10-12
 
 A follow-up about Library health. It can now find files without a cover, and the
