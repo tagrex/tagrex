@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-10-12
+
+A tidy-up of Settings. The groups are fewer and easier to reach: General comes
+first and holds the language, theme and update check, the cover settings sit
+with the tag defaults, and the top-bar button is a gear instead of sliders.
+The Settings › LAB fonts start at Sans and a 12 px table.
+
 ### Changed
 
 - **Cover art settings sit with the tag defaults.** The two rows (maximum size
