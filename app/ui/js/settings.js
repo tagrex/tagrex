@@ -660,19 +660,15 @@ initGroupResets([
   {
     id: "tags",
     isDefault: () =>
-      id3Choice === "v24" && sameList(readPriority, PRIO_KEYS) && el("set-multi-sep").value === "",
+      id3Choice === "v24" &&
+      sameList(readPriority, PRIO_KEYS) &&
+      el("set-multi-sep").value === "" &&
+      (parseInt(el("set-cover-max").value, 10) || 0) === 0 &&
+      (parseInt(el("set-cover-quality").value, 10) || 85) === 85,
     reset: () => {
       setId3Choice("v24");
       resetPriority();
       el("set-multi-sep").value = "";
-    },
-  },
-  {
-    id: "cover",
-    isDefault: () =>
-      (parseInt(el("set-cover-max").value, 10) || 0) === 0 &&
-      (parseInt(el("set-cover-quality").value, 10) || 85) === 85,
-    reset: () => {
       el("set-cover-max").value = 0;
       el("set-cover-quality").value = 85;
     },

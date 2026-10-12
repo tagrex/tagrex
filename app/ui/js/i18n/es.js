@@ -976,4 +976,5 @@ export const es = {
   "health.noCover": "Sin carátula",
   "health.spellingMore": "+{n} más",
   "settings.general": "General",
+  "settings.tagsAndCovers": "Etiquetas y carátulas",
 };

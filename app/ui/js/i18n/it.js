@@ -978,4 +978,5 @@ export const it = {
   "health.noCover": "Nessuna copertina",
   "health.spellingMore": "+{n} altri",
   "settings.general": "Generale",
+  "settings.tagsAndCovers": "Tag e copertine",
 };

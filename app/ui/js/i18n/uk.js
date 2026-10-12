@@ -978,4 +978,5 @@ export const uk = {
   "health.noCover": "Немає обкладинки",
   "health.spellingMore": "та ще {n}",
   "settings.general": "Загальні",
+  "settings.tagsAndCovers": "Теги й обкладинки",
 };

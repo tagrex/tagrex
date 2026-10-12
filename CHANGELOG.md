@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Cover art settings sit with the tag defaults.** The two rows (maximum size
+  and JPEG quality) had a group of their own; they are now under a Cover art
+  heading in a group called Tags and covers, with one Reset to defaults for the
+  whole group ([#492](https://github.com/tagrex/tagrex/issues/492)).
 - **Settings has a gear icon.** The top-bar button was a set of sliders, easy to
   mistake for an equaliser or a filter; it is now a gear drawn in the app's own
   outline style ([#490](https://github.com/tagrex/tagrex/issues/490)).

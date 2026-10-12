@@ -4954,7 +4954,7 @@ td[data-field="year"],
   font-weight: var(--fw-bold);
   color: var(--text);
 }
-.settings-group > h4.settings-sub:first-of-type {
+.settings-group > h3 + h4.settings-sub {
   margin-top: 0;
 }
 .settings-group.pane-hidden {

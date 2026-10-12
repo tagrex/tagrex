@@ -980,4 +980,5 @@ export const en = {
   "health.noCover": "No cover art",
   "health.spellingMore": "+{n} more",
   "settings.general": "General",
+  "settings.tagsAndCovers": "Tags and covers",
 };

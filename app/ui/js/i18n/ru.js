@@ -977,4 +977,5 @@ export const ru = {
   "health.noCover": "Нет обложки",
   "health.spellingMore": "и ещё {n}",
   "settings.general": "Общие",
+  "settings.tagsAndCovers": "Теги и обложки",
 };

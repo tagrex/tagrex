@@ -1021,7 +1021,7 @@
           </div>
 
           <div class="settings-group" data-icon="i-tag" data-reset-group="tags">
-            <h3 data-i18n="settings.tagDefaults">Tag defaults</h3>
+            <h3 data-i18n="settings.tagsAndCovers">Tags and covers</h3>
             <div class="settings-row">
               <label data-i18n="settings.id3Version">ID3 version</label>
               <div class="seg" id="set-id3" role="tablist" data-i18n-aria-label="settings.id3Version" aria-label="ID3 version">
@@ -1045,10 +1045,7 @@
               <input id="set-multi-sep" type="text" class="mono" style="width: 80px" placeholder="; " spellcheck="false" />
             </div>
             <p class="settings-hint" data-i18n="settings.multiSepHint">A track can carry several artists or genres. They are shown and edited as one value joined by this text, and written back as separate values. Only Artist, Album Artist, Genre and Composer are treated this way — every other field keeps a separator as part of its value. Leave it blank for a semicolon and a space.</p>
-          </div>
-
-          <div class="settings-group" data-icon="i-image" data-reset-group="cover">
-            <h3 data-i18n="editor.coverArt">Cover art</h3>
+            <h4 class="settings-sub" data-i18n="editor.coverArt">Cover art</h4>
             <div class="settings-row">
               <label for="set-cover-max" data-i18n="settings.coverMax">Max size</label>
               <div class="settings-inline">
@@ -1064,6 +1061,7 @@
               </div>
             </div>
             <p class="settings-hint" data-i18n="settings.coverHint">A larger fetched or chosen cover is downscaled and re-encoded as JPEG before embedding, so it doesn't bloat every file.</p>
+          
           </div>
 
           <!-- Which fields an online import may write (#152). The rows are built

@@ -978,4 +978,5 @@ export const fr = {
   "health.noCover": "Pas de pochette",
   "health.spellingMore": "+{n} de plus",
   "settings.general": "Général",
+  "settings.tagsAndCovers": "Tags et pochettes",
 };

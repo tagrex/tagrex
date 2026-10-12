@@ -974,4 +974,5 @@ export const de = {
   "health.noCover": "Kein Cover",
   "health.spellingMore": "+{n} weitere",
   "settings.general": "Allgemein",
+  "settings.tagsAndCovers": "Tags und Cover",
 };
