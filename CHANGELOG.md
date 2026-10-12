@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **The README tagline is in plain language.** It says what TagRex does for
+  you — edit in a table, see every change before it is written, undo a batch
+  even after a restart, fill tags from the online sources — instead of
+  describing its internals
+  ([#493](https://github.com/tagrex/tagrex/issues/493)).
+
 ## [0.22.2] - 2026-10-12
 
 A tidy-up of Settings. The groups are fewer and easier to reach: General comes

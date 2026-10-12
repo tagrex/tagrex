@@ -10,7 +10,10 @@
 </p>
 
 <p align="center">
-  Cross-platform audio tag editor. Table editing, bidirectional masks, transactional undo.
+  <b>A free tag editor for your music library — Windows, macOS and Linux.</b><br>
+  Edit tags and file names in a table, see exactly what will change before
+  anything is written, and roll any batch back, even after a restart.<br>
+  Fill tags from Discogs, MusicBrainz, Beatport, Bandcamp and Soundeo.
 </p>
 
 <p align="center">
