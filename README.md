@@ -53,6 +53,22 @@ Builds are on the [Releases](https://github.com/tagrex/tagrex/releases) page.
 
 Intel Macs are not built — Apple Silicon only.
 
+**First launch on macOS and Windows.** The builds are not signed with a paid
+developer certificate (no Apple notarization, no Windows code signing), so both
+systems warn the first time. On macOS, open **System Settings › Privacy &
+Security** and choose **Open Anyway** next to the TagRex message. On Windows,
+in the SmartScreen window click **More info**, then **Run anyway**.
+
+**Linux.** Only `.deb` and `.rpm` packages are published for now — there is no
+Flatpak, AUR package or AppImage yet
+([#503](https://github.com/tagrex/tagrex/issues/503)). From the folder you
+downloaded to:
+
+```sh
+sudo apt install ./TagRex_*_amd64.deb     # Debian, Ubuntu (arm64.deb on ARM)
+sudo dnf install ./TagRex-*.x86_64.rpm    # Fedora (aarch64.rpm on ARM)
+```
+
 ## What it does
 
 **A folder is the library.** Point TagRex at one and it recurses: type or browse

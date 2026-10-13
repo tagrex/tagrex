@@ -48,6 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   plain audio icon, as in the dark pair, since they have no cover until the
   tags are written; both pairs are shown at the same scale
   ([#501](https://github.com/tagrex/tagrex/issues/501)).
+- **The README Install section says what to expect.** It explains that the
+  macOS and Windows builds are unsigned and warn on the first launch, how to get
+  past the warning, and that Linux has only `.deb` and `.rpm` for now, with the
+  install commands
+  ([#502](https://github.com/tagrex/tagrex/issues/502)).
 
 ## [0.22.2] - 2026-10-12
 
