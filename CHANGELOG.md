@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   image markers, which follow the site theme (and the system one when the site
   is set to follow it)
   ([#498](https://github.com/tagrex/tagrex/issues/498)).
+- **A before-and-after of the files in the README.** Under the diff screenshot,
+  two Finder windows show the same batch on disk: the numbered files before
+  Apply, and the new folder with the renamed files after
+  ([#499](https://github.com/tagrex/tagrex/issues/499)).
 
 ## [0.22.2] - 2026-10-12
 

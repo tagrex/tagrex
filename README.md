@@ -85,6 +85,19 @@ can still be rolled back.
   <img src="docs/img/renamer-diff-light.png#gh-light-mode-only" width="800" alt="A rename previewed as a diff inside the table, with an Apply and Discard bar at the bottom">
 </p>
 
+The same batch in Finder, before and after Apply:
+
+<table align="center">
+  <tr>
+    <th align="center">Before</th>
+    <th align="center">After</th>
+  </tr>
+  <tr>
+    <td align="center" valign="top"><img src="docs/img/finder-before.png" width="258" alt="Finder: a folder named various la_bush as_5606 1996 holding fifteen files named 00001 la bush 1996.mp3 to 00015 la bush 1996.mp3"></td>
+    <td align="center" valign="top"><img src="docs/img/finder-after.png" width="468" alt="Finder: inside that folder a new folder named various_-_la_bush_-_music_from_the_temple_of_house_(as_5606)_(1996) holds files such as 101_the_x_factor_-_desert_rain.mp3"></td>
+  </tr>
+</table>
+
 **Fields can be locked.** A padlock beside a field in the EDITOR panel puts it
 out of reach: no import, transform, rename or clear-tags can change it, its
 table cells stop opening for editing, and a plan reports what the lock kept out
