@@ -3,10 +3,8 @@
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/wordmark-dark.svg">
-    <img src="assets/wordmark-light.svg" width="320" alt="/tagrex/">
-  </picture>
+  <img src="assets/wordmark-dark.svg#gh-dark-mode-only" width="320" alt="/tagrex/">
+  <img src="assets/wordmark-light.svg#gh-light-mode-only" width="320" alt="/tagrex/">
 </p>
 
 <p align="center">
@@ -17,24 +15,18 @@
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/platforms-dark.png">
-    <img src="docs/img/platforms-light.png" width="420" alt="Runs on macOS, Windows and Linux. Built with Rust and Tauri.">
-  </picture>
+  <img src="docs/img/platforms-dark.png#gh-dark-mode-only" width="420" alt="Runs on macOS, Windows and Linux. Built with Rust and Tauri.">
+  <img src="docs/img/platforms-light.png#gh-light-mode-only" width="420" alt="Runs on macOS, Windows and Linux. Built with Rust and Tauri.">
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/cascade-dark.png">
-    <img src="docs/img/cascade-light.png" width="900" alt="TagRex windows overlapped: the Tagger with a release card, track-length matching and the player, and behind it a rename previewed as a diff in the Renamer and a duplicate scan in the Deduplicator">
-  </picture>
+  <img src="docs/img/cascade-dark.png#gh-dark-mode-only" width="900" alt="TagRex windows overlapped: the Tagger with a release card, track-length matching and the player, and behind it a rename previewed as a diff in the Renamer and a duplicate scan in the Deduplicator">
+  <img src="docs/img/cascade-light.png#gh-light-mode-only" width="900" alt="TagRex windows overlapped: the Tagger with a release card, track-length matching and the player, and behind it a rename previewed as a diff in the Renamer and a duplicate scan in the Deduplicator">
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/demo-dark.gif">
-    <img src="docs/img/demo-light.gif" width="900" alt="A folder of untagged files is opened, a release is found on Discogs and matched, the tags are written, then a rename into a new folder is previewed, applied and undone">
-  </picture>
+  <img src="docs/img/demo-dark.gif#gh-dark-mode-only" width="900" alt="A folder of untagged files is opened, a release is found on Discogs and matched, the tags are written, then a rename into a new folder is previewed, applied and undone">
+  <img src="docs/img/demo-light.gif#gh-light-mode-only" width="900" alt="A folder of untagged files is opened, a release is found on Discogs and matched, the tags are written, then a rename into a new folder is previewed, applied and undone">
 </p>
 
 ---
@@ -77,10 +69,8 @@ pending edits, and right-clicking a file offers to drop it from the list or move
 it to the system Trash.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/tagger-dark.png">
-    <img src="docs/img/tagger-light.png" width="800" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
-  </picture>
+  <img src="docs/img/tagger-dark.png#gh-dark-mode-only" width="800" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
+  <img src="docs/img/tagger-light.png#gh-light-mode-only" width="800" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
 </p>
 
 **Nothing is written until you look at it.** Every mutating operation — rename,
@@ -91,10 +81,8 @@ persistent SQLite undo journal, so a batch survives an application restart and
 can still be rolled back.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/img/renamer-diff-dark.png">
-    <img src="docs/img/renamer-diff-light.png" width="800" alt="A rename previewed as a diff inside the table, with an Apply and Discard bar at the bottom">
-  </picture>
+  <img src="docs/img/renamer-diff-dark.png#gh-dark-mode-only" width="800" alt="A rename previewed as a diff inside the table, with an Apply and Discard bar at the bottom">
+  <img src="docs/img/renamer-diff-light.png#gh-light-mode-only" width="800" alt="A rename previewed as a diff inside the table, with an Apply and Discard bar at the bottom">
 </p>
 
 **Fields can be locked.** A padlock beside a field in the EDITOR panel puts it

@@ -31,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and a light version, each with a hairline border instead of a shadow, and the
   page shows the one that matches the viewer's theme
   ([#497](https://github.com/tagrex/tagrex/issues/497)).
+- **The README images follow the theme chosen on GitHub.** They were switched
+  by the operating system theme, so a light system with the dark GitHub theme
+  still showed the light pictures; they now use GitHub's own light and dark
+  image markers, which follow the site theme (and the system one when the site
+  is set to follow it)
+  ([#498](https://github.com/tagrex/tagrex/issues/498)).
 
 ## [0.22.2] - 2026-10-12
 
