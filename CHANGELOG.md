@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The Finder pair follows the GitHub theme.** The before-and-after windows
   come in a dark and a light version, picked like the other images
   ([#500](https://github.com/tagrex/tagrex/issues/500)).
+- **The light Finder "before" shot matches the story.** The files show the
+  plain audio icon, as in the dark pair, since they have no cover until the
+  tags are written; both pairs are shown at the same scale
+  ([#501](https://github.com/tagrex/tagrex/issues/501)).
 
 ## [0.22.2] - 2026-10-12
 
