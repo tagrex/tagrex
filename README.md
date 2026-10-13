@@ -93,8 +93,14 @@ The same batch in Finder, before and after Apply:
     <th align="center">After</th>
   </tr>
   <tr>
-    <td align="center" valign="top"><img src="docs/img/finder-before.png" width="258" alt="Finder: a folder named various la_bush as_5606 1996 holding fifteen files named 00001 la bush 1996.mp3 to 00015 la bush 1996.mp3"></td>
-    <td align="center" valign="top"><img src="docs/img/finder-after.png" width="468" alt="Finder: inside that folder a new folder named various_-_la_bush_-_music_from_the_temple_of_house_(as_5606)_(1996) holds files such as 101_the_x_factor_-_desert_rain.mp3"></td>
+    <td align="center" valign="top">
+      <img src="docs/img/finder-before-dark.png#gh-dark-mode-only" width="258" alt="Finder: a folder named various la_bush as_5606 1996 holding fifteen files named 00001 la bush 1996.mp3 to 00015 la bush 1996.mp3">
+      <img src="docs/img/finder-before-light.png#gh-light-mode-only" width="258" alt="Finder: a folder named various la_bush as_5606 1996 holding fifteen files named 00001 la bush 1996.mp3 to 00015 la bush 1996.mp3">
+    </td>
+    <td align="center" valign="top">
+      <img src="docs/img/finder-after-dark.png#gh-dark-mode-only" width="468" alt="Finder: inside that folder a new folder named various_-_la_bush_-_music_from_the_temple_of_house_(as_5606)_(1996) holds files such as 101_the_x_factor_-_desert_rain.mp3">
+      <img src="docs/img/finder-after-light.png#gh-light-mode-only" width="468" alt="Finder: inside that folder a new folder named various_-_la_bush_-_music_from_the_temple_of_house_(as_5606)_(1996) holds files such as 101_the_x_factor_-_desert_rain.mp3">
+    </td>
   </tr>
 </table>
 

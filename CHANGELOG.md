@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   two Finder windows show the same batch on disk: the numbered files before
   Apply, and the new folder with the renamed files after
   ([#499](https://github.com/tagrex/tagrex/issues/499)).
+- **The Finder pair follows the GitHub theme.** The before-and-after windows
+  come in a dark and a light version, picked like the other images
+  ([#500](https://github.com/tagrex/tagrex/issues/500)).
 
 ## [0.22.2] - 2026-10-12
 
