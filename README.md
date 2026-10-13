@@ -31,7 +31,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/img/demo-dark.gif" width="900" alt="A folder of untagged files is opened, a release is found on Discogs and matched, the tags are written, then a rename into a new folder is previewed, applied and undone">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/demo-dark.gif">
+    <img src="docs/img/demo-light.gif" width="900" alt="A folder of untagged files is opened, a release is found on Discogs and matched, the tags are written, then a rename into a new folder is previewed, applied and undone">
+  </picture>
 </p>
 
 ---

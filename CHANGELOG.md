@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   release and write the tags, play a track, preview a rename into a new folder,
   apply it and undo it, with the typing and the tooltips left in
   ([#496](https://github.com/tagrex/tagrex/issues/496)).
+- **The README demo follows the GitHub theme.** The walkthrough comes in a dark
+  and a light version, each with a hairline border instead of a shadow, and the
+  page shows the one that matches the viewer's theme
+  ([#497](https://github.com/tagrex/tagrex/issues/497)).
 
 ## [0.22.2] - 2026-10-12
 
