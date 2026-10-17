@@ -21,6 +21,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   layer (cpal 0.18) underneath playback; nothing changes in how the player
   behaves. (#511)
 
+### Fixed
+
+- **The preview player plays through Bluetooth headphones again.** Since the
+  move to rodio 0.23 it could not open headphones that take a smaller audio
+  buffer than it asked for, and dropped back to idle the moment a track
+  started; it now retries with a buffer the device accepts. (#513)
+
 ## [0.23.0] - 2026-10-17
 
 This release is mostly about keeping your files safe. Writing tags no longer

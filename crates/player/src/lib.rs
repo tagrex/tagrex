@@ -21,7 +21,10 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use rodio::stream::{DeviceSinkBuilder, MixerDeviceSink};
+use rodio::cpal::traits::HostTrait;
+use rodio::cpal::{self, BufferSize, SupportedBufferSize};
+use rodio::stream::{DeviceSinkBuilder, DeviceSinkError, MixerDeviceSink};
+use rodio::DeviceTrait;
 // rodio 0.22 renamed its `Sink` to `Player`, which is also the name of the
 // handle in this module — keep the old name for the queue on the device so the
 // two never read as the same thing.
@@ -195,7 +198,7 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
     // If no audio device is available (e.g. a headless box), give up quietly:
     // commands are dropped and the status stays idle. The rest of the app is
     // unaffected.
-    let mut device = match DeviceSinkBuilder::open_default_sink() {
+    let mut device = match open_output() {
         Ok(device) => device,
         Err(err) => {
             eprintln!("audio: no output device, preview disabled: {err}");
@@ -312,6 +315,34 @@ fn audio_thread(rx: Receiver<Cmd>, status: Arc<Mutex<PlayerStatus>>) {
 
         write_status(&status, &queue, &clock, paused, seek_refused);
     }
+}
+
+/// Open the default output device.
+///
+/// rodio asks every device for a fixed ~50 ms buffer — 2048 frames at 48 kHz —
+/// and since cpal 0.18 a device whose range stops short of that refuses the
+/// stream: Bluetooth headphones on macOS take at most 960 (#513). rodio's own
+/// fallback tries no other configuration there, so the retry is ours: the same
+/// device, with rodio's 50 ms clamped into the range the device reports.
+fn open_output() -> Result<MixerDeviceSink, DeviceSinkError> {
+    let first = match DeviceSinkBuilder::open_default_sink() {
+        Ok(device) => return Ok(device),
+        Err(err) => err,
+    };
+    let fitted = || -> Option<MixerDeviceSink> {
+        let device = cpal::default_host().default_output_device()?;
+        let config = device.default_output_config().ok()?;
+        let SupportedBufferSize::Range { min, max } = *config.buffer_size() else {
+            return None;
+        };
+        let frames = (config.sample_rate() / 20).clamp(min, max);
+        DeviceSinkBuilder::from_device(device)
+            .ok()?
+            .with_buffer_size(BufferSize::Fixed(frames))
+            .open_stream()
+            .ok()
+    };
+    fitted().ok_or(first)
 }
 
 /// A fresh queue on the output device. Play and Stop each start one, because a
