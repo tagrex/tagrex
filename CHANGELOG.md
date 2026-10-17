@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-17
+
+This release is mostly about keeping your files safe. Writing tags no longer
+damages WAV files, and a WAV already damaged that way is repaired by its next
+edit. Saving no longer cuts the time off a date written the way ffmpeg writes
+it. MP3s with padding before their audio, which refused every write, can be
+tagged again. The macOS download is now one universal app that also runs on
+Intel Macs. A cell you edit in the table is written when you press Enter, and
+undo takes it back.
+
 ### Changed
 
 - **A cell you edit in the table is written when you press Enter.** It used to
