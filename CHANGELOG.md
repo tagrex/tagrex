@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   move to rodio 0.23 it could not open headphones that take a smaller audio
   buffer than it asked for, and dropped back to idle the moment a track
   started; it now retries with a buffer the device accepts. (#513)
+- **The Mac app is signed as TagRex.** Only its executable carried a
+  signature, under a generated name, so macOS showed that name and a blank icon
+  for it — in the Now Playing widget once playback stops, for one. The whole
+  app is now signed under its bundle identifier. (#514)
 
 ## [0.23.0] - 2026-10-17
 
