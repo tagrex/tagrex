@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   back to what the file says. The row stays put even when its column is the sort
   key. **Preview edits** is gone; edits across a selection in EDITOR, imports and
   GENERATOR still show their plan first. (#507)
+- **The macOS release build runs on the macos-15 runner.** GitHub retires
+  macos-14 on 2 November 2026 and fails jobs on it during scheduled brownouts
+  until then, which would have published a release without its macOS download.
+  The app still runs on macOS 10.13 and later. (#508)
 - **base64 0.23.** The encoder that carries cover images and saved tag blocks
   between the app's two halves moves to its current major version; nothing
   about either changes. (#417)

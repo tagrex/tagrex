@@ -30,8 +30,10 @@ jobs:
       matrix:
         include:
           # ARM64
+          # macos-15, pinned (#508): macos-14 is retired on 2026-11-02, and
+          # macos-latest would move to a new image without a commit saying so.
           - name: macos-arm64
-            runner: macos-14
+            runner: macos-15
             bundles: dmg
           - name: windows-arm64
             runner: windows-11-arm
