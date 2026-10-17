@@ -47,11 +47,12 @@ Builds are on the [Releases](https://github.com/tagrex/tagrex/releases) page.
 
 | Platform | Architectures | Package |
 | --- | --- | --- |
-| macOS | Apple Silicon | `.dmg` |
+| macOS | Apple Silicon, Intel | `.dmg` |
 | Windows | x86-64, ARM64 | `.exe` installer |
 | Linux | x86-64, ARM64 | `.deb`, `.rpm` |
 
-Intel Macs are not built — Apple Silicon only.
+The macOS download is one universal app that runs natively on both Apple Silicon
+and Intel Macs.
 
 **First launch on macOS and Windows.** The builds are not signed with a paid
 developer certificate (no Apple notarization, no Windows code signing), so both

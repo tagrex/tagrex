@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   macos-14 on 2 November 2026 and fails jobs on it during scheduled brownouts
   until then, which would have published a release without its macOS download.
   The app still runs on macOS 10.13 and later. (#508)
+- **Intel Macs are supported.** The macOS download is now one universal app,
+  native on both Apple Silicon and Intel, built on the same runner as before;
+  it is about twice the size it was. (#509)
 - **base64 0.23.** The encoder that carries cover images and saved tag blocks
   between the app's two halves moves to its current major version; nothing
   about either changes. (#417)

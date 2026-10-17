@@ -1,10 +1,11 @@
 name: Release build
 
-# Builds the desktop app on native runners per OS/architecture, because cross-
-# compiling Tauri from one platform to another isn't practical — each needs its
-# own webview + linker. Coverage: macOS ARM64 only; Windows and Linux on both
-# ARM64 and x86-64. (macOS x64/Intel is intentionally left out.) All of these
-# runners are free for public repos.
+# Builds the desktop app on native runners per OS, because cross-compiling Tauri
+# from one platform to another isn't practical — each needs its own webview +
+# linker. Coverage: macOS as one universal app for Apple Silicon and Intel
+# (#509), built on the Apple Silicon runner, which compiles both halves;
+# Windows and Linux on both ARM64 and x86-64. All of these runners are free for
+# public repos.
 #
 # Run it manually from the Actions tab (workflow_dispatch), or push a `v*` tag
 # to also attach the bundles to a GitHub Release. Bundles are always uploaded as
@@ -29,20 +30,22 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ARM64
           # macos-15, pinned (#508): macos-14 is retired on 2026-11-02, and
           # macos-latest would move to a new image without a commit saying so.
-          - name: macos-arm64
+          # One universal app (#509): the Apple Silicon runner builds the Intel
+          # half too, so Intel Macs need no runner of their own.
+          - name: macos-universal
             runner: macos-15
             bundles: dmg
+            target: universal-apple-darwin
+          # ARM64
           - name: windows-arm64
             runner: windows-11-arm
             bundles: nsis
           - name: linux-arm64
             runner: ubuntu-24.04-arm
             bundles: deb,rpm
-          # x86-64 (macOS x64 / Intel intentionally omitted — Apple Silicon only
-          # for macOS; the macos-13 Intel runners also queue for a long time)
+          # x86-64
           - name: windows-x64
             runner: windows-latest
             bundles: nsis
@@ -54,6 +57,11 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+
+      # The universal macOS app needs the Intel half's standard library too.
+      - name: Add the Intel macOS target
+        if: matrix.target == 'universal-apple-darwin'
+        run: rustup target add x86_64-apple-darwin
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
@@ -78,7 +86,7 @@ jobs:
         run: cargo install tauri-cli --version "^2" --locked
 
       - name: Build the app bundle
-        run: cargo tauri build --bundles ${{ matrix.bundles }}
+        run: cargo tauri build --bundles ${{ matrix.bundles }} ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
       - name: Upload bundles as artifacts
         uses: actions/upload-artifact@v7
@@ -86,10 +94,10 @@ jobs:
           name: tagrex-${{ matrix.name }}
           if-no-files-found: error
           path: |
-            target/release/bundle/**/*.dmg
-            target/release/bundle/**/*.exe
-            target/release/bundle/**/*.deb
-            target/release/bundle/**/*.rpm
+            target/**/release/bundle/**/*.dmg
+            target/**/release/bundle/**/*.exe
+            target/**/release/bundle/**/*.deb
+            target/**/release/bundle/**/*.rpm
 
       # The release page's text is the changelog's own section for this version
       # (#261). The file already says what changed, in the words it was written
@@ -119,7 +127,7 @@ jobs:
         with:
           body_path: RELEASE_NOTES.md
           files: |
-            target/release/bundle/**/*.dmg
-            target/release/bundle/**/*.exe
-            target/release/bundle/**/*.deb
-            target/release/bundle/**/*.rpm
+            target/**/release/bundle/**/*.dmg
+            target/**/release/bundle/**/*.exe
+            target/**/release/bundle/**/*.deb
+            target/**/release/bundle/**/*.rpm
