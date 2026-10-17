@@ -1,9 +1,9 @@
 //! End-to-end read/write smoke test against a real (synthetic) FLAC file.
 //!
 //! There's no test-fixture audio in the repo yet, so this builds the
-//! smallest file FLAC parsers accept by hand: the `fLaC` magic plus a single
-//! STREAMINFO metadata block, no audio frames. Enough for lofty to identify
-//! the format and read/write a Vorbis Comments block.
+//! smallest file FLAC parsers accept by hand: the `fLaC` magic, a STREAMINFO
+//! and a PADDING block, then one frame of silence. Enough for lofty to
+//! identify the format and read/write a Vorbis Comments block.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -14,7 +14,8 @@ use tagrex_core::model::{
 };
 
 /// `fLaC` + a non-last STREAMINFO block (34 bytes, all zeroed out except a
-/// plausible sample rate/channels/bit depth) + a trailing PADDING block.
+/// plausible sample rate/channels/bit depth) + a trailing PADDING block + one
+/// audio frame.
 ///
 /// STREAMINFO-only files (no padding) make lofty's FLAC writer index past
 /// the metadata block when it tries to splice one in, since it assumes
@@ -22,7 +23,7 @@ use tagrex_core::model::{
 /// every file a real encoder produces, but not of a hand-built minimal one.
 /// Shaping the fixture the way real encoders do (metadata always followed by
 /// padding) avoids that and exercises the same code path real files take.
-const MINIMAL_FLAC: [u8; 62] = [
+const MINIMAL_FLAC: [u8; 76] = [
     0x66, 0x4c, 0x61, 0x43, 0x00, 0x00, 0x00,
     0x22, // "fLaC" + STREAMINFO header (not last), length 34
     0x10, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
@@ -33,6 +34,10 @@ const MINIMAL_FLAC: [u8; 62] = [
     0x00, // PADDING header (last), length 16
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // padding content
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // One audio frame (#416): 4096 samples of stereo silence, two CONSTANT
+    // subframes, with their CRCs. A file is tags followed by audio, and a
+    // tag write is only ever tested against that shape.
+    0xff, 0xf8, 0xc9, 0x18, 0x00, 0xc2, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb8, 0xee,
 ];
 
 fn temp_flac_path(name: &str) -> PathBuf {

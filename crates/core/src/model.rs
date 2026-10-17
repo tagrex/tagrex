@@ -1280,6 +1280,7 @@ impl TagEngine {
     /// Only [`plan::Executor`](crate::plan::Executor) is allowed to call this —
     /// see the crate-level invariant.
     pub fn write(file: &TrackFile) -> Result<(), TagIoError> {
+        ensure_audio_after_tags(&file.path)?;
         // Guard the year before touching the file. It is written as a timestamp
         // (ID3v2.4 TDRC / Vorbis DATE / MP4 ©day) whose year MUST be exactly 4
         // digits; lofty accepts a shorter one like "222" on write but then
@@ -1383,6 +1384,7 @@ impl TagEngine {
         covers: &[CoverArt],
         revision: Option<Id3v2Revision>,
     ) -> Result<(), TagIoError> {
+        ensure_audio_after_tags(path)?;
         let mut synthetic = bytes.to_vec();
         let mut silence = vec![0xFF, 0xFB, 0x90, 0x00];
         silence.resize(SILENT_MPEG_FRAME_LEN, 0);
@@ -1424,6 +1426,7 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn set_id3v2_revision(path: &Path, revision: Id3v2Revision) -> Result<bool, TagIoError> {
+        ensure_audio_after_tags(path)?;
         let Some(container) = container_of(path)? else {
             return Ok(false);
         };
@@ -1470,6 +1473,7 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn remove_block(path: &Path, kind: TagBlockKind) -> Result<(), TagIoError> {
+        ensure_audio_after_tags(path)?;
         // An AIFF's or a WAV's ID3v2 is a chunk this module writes itself
         // (#358, #505); taking it out goes the same way.
         if kind == TagBlockKind::Id3v2
@@ -1516,6 +1520,7 @@ impl TagEngine {
         revision: Option<Id3v2Revision>,
         content: &TagBlockContent,
     ) -> Result<(), TagIoError> {
+        ensure_audio_after_tags(path)?;
         let options = match (kind, revision) {
             (TagBlockKind::Id3v2, Some(revision)) => {
                 WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3)
@@ -1565,6 +1570,7 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn write_covers(path: &Path, covers: &[CoverArt]) -> Result<(), TagIoError> {
+        ensure_audio_after_tags(path)?;
         // Same reason as `write`: going through the generic tag would drop an
         // MP3's non-representable frames, so edit the concrete tag instead.
         if is_id3v2_container(path) {
@@ -2212,6 +2218,61 @@ fn raw_id3v2_block(path: &Path, container: FileType) -> Result<Option<Vec<u8>>, 
             }
         }
         _ => Ok(None),
+    }
+}
+
+/// Refuse to write a file whose tags run to its very end — a FLAC with no
+/// audio frame after its metadata, an MP3 or AAC that is nothing but an ID3v2
+/// block (#416). The tag library's writer cuts such a file to the wrong
+/// length when its tags get shorter (lofty-rs#731), destroying what is left
+/// of it. A real track always has audio after its tags, so this costs one
+/// nothing; the only shape that could be damaged gets an honest error instead,
+/// before anything is touched.
+fn ensure_audio_after_tags(path: &Path) -> Result<(), TagIoError> {
+    if tags_reach_eof(path)? {
+        return Err(TagIoError::Malformed(format!(
+            "{} holds tags but no audio after them; writing to it could cut it short",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Whether the file ends where its tags do: an ID3v2 block at the start that
+/// runs to the end, or a FLAC's metadata blocks that do. Every other shape —
+/// a container with its own structure, a file with audio after its tags —
+/// answers `false`.
+fn tags_reach_eof(path: &Path) -> Result<bool, TagIoError> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let mut pos = 0u64;
+    // An ID3v2 block first: where MP3 and AAC keep their tag, and one a FLAC
+    // can carry ahead of its `fLaC` marker.
+    let mut head = [0u8; 10];
+    if file.read_exact(&mut head).is_ok() && &head[..3] == b"ID3" {
+        let footer = if head[5] & 0x10 != 0 { 10 } else { 0 };
+        pos = 10 + u64::from(syncsafe_u32(&head[6..10])) + footer;
+        if pos >= len {
+            return Ok(true);
+        }
+    }
+    file.seek(SeekFrom::Start(pos))?;
+    let mut magic = [0u8; 4];
+    if file.read_exact(&mut magic).is_err() || &magic != b"fLaC" {
+        return Ok(false);
+    }
+    pos += 4;
+    loop {
+        let mut header = [0u8; 4];
+        file.seek(SeekFrom::Start(pos))?;
+        if file.read_exact(&mut header).is_err() {
+            return Ok(true);
+        }
+        pos += 4 + u64::from(u32::from_be_bytes([0, header[1], header[2], header[3]]));
+        if header[0] & 0x80 != 0 {
+            return Ok(pos >= len);
+        }
     }
 }
 
@@ -3460,6 +3521,52 @@ mod tests {
 
     fn riff_size_matches(bytes: &[u8]) -> bool {
         u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize == bytes.len() - 8
+    }
+
+    /// #416: a file that is tags and nothing else — no audio frame after a
+    /// FLAC's metadata, an MP3 that is only its ID3v2 block — is refused before
+    /// anything is written, since the tag library's writer can cut exactly that
+    /// shape to the wrong length. The file is left byte for byte as it was.
+    #[test]
+    fn a_file_with_no_audio_after_its_tags_is_refused_untouched() {
+        let mut flac = b"fLaC\x80\x00\x00\x22".to_vec(); // STREAMINFO, last block
+        flac.extend_from_slice(&[
+            0x10, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0a, 0xc4, 0x42, 0xf0,
+        ]);
+        flac.resize(8 + 34, 0);
+        let mut mp3 = b"ID3\x04\x00\x00\x00\x00\x00\x0b".to_vec();
+        mp3.extend_from_slice(b"TIT2\x00\x00\x00\x01\x00\x00\x00"); // one empty title
+        for (name, bytes) in [("flac", flac), ("mp3", mp3)] {
+            let path =
+                std::env::temp_dir().join(format!("tagrex-no-audio-{}.{name}", std::process::id()));
+            std::fs::write(&path, &bytes).unwrap();
+            assert!(
+                tags_reach_eof(&path).unwrap(),
+                "{name}: tags run to the end"
+            );
+            let mut tags = TagMap::new();
+            tags.insert(TagField::Title, "Anything".to_string());
+            let written = TagEngine::write(&TrackFile {
+                path: path.clone(),
+                format: if name == "flac" {
+                    AudioFormat::Flac
+                } else {
+                    AudioFormat::Mp3
+                },
+                tags,
+            });
+            assert!(
+                matches!(written, Err(TagIoError::Malformed(_))),
+                "{name}: {written:?}"
+            );
+            assert!(TagEngine::remove_block(&path, TagBlockKind::Id3v2).is_err());
+            assert_eq!(std::fs::read(&path).unwrap(), bytes, "{name}: untouched");
+            std::fs::remove_file(&path).ok();
+        }
+        // A file with audio after its tags answers no, and is written as usual.
+        let path = mp3_with_raw_frames("with-audio", &[("TIT2", "Title")]);
+        assert!(!tags_reach_eof(&path).unwrap());
+        std::fs::remove_file(&path).ok();
     }
 
     /// #505: the WAV chunk writer keeps the audio and every other chunk, swaps

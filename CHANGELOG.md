@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **base64 0.23.** The encoder that carries cover images and saved tag blocks
   between the app's two halves moves to its current major version; nothing
   about either changes. (#417)
+- **lofty 0.25.4.** The tag library was held at 0.25.3 for a bug that
+  shortens a file whose tags run to its very end when they get smaller; only a
+  file with no audio after its tags can meet it, and real tracks always have
+  some. The hold is lifted. (#416)
+- **A file that holds tags but no audio is no longer written to.** A FLAC with
+  no audio frame after its metadata, or an MP3 that is nothing but its tag
+  block, is the one shape that tag library bug can damage; such a file now
+  gets a clear error and is left exactly as it was. (#416)
 - **thiserror 2.** The library behind the app's error types moves to its
   current major version; every error message reads exactly as before. (#418)
 - **The README tagline is in plain language.** It says what TagRex does for
