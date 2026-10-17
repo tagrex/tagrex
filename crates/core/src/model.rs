@@ -13,7 +13,7 @@ use lofty::error::{FileEncodingError, FileParseError, TagEncodingError};
 use lofty::file::{AudioFile, FileType, TaggedFileExt};
 use lofty::flac::FlacFile;
 use lofty::id3::v1::Id3v1Tag;
-use lofty::id3::v2::{ExtendedTextFrame, Frame, Id3v2Tag, Id3v2Version};
+use lofty::id3::v2::{BinaryFrame, ExtendedTextFrame, Frame, FrameId, Id3v2Tag, Id3v2Version};
 use lofty::iff::aiff::{AiffFile, AiffTextChunks};
 use lofty::iff::wav::{RiffInfoList, WavFile};
 use lofty::mp4::{Atom, AtomData, AtomIdent, Ilst};
@@ -23,6 +23,7 @@ use lofty::ogg::tag::VorbisComments;
 use lofty::ogg::{OggPictureStorage, OpusFile, SpeexFile, VorbisFile};
 use lofty::picture::{MimeType, Picture, PictureInformation, PictureType};
 use lofty::probe::Probe;
+use lofty::tag::items::Timestamp;
 use lofty::tag::{Accessor, ItemKey, ItemValue, MergeTag, SplitTag, Tag, TagExt, TagItem, TagType};
 use lofty::wavpack::WavPackFile;
 use lofty::TextEncoding;
@@ -1394,6 +1395,9 @@ impl TagEngine {
             .ok_or_else(|| {
                 TagIoError::UnsupportedFormat("the journaled ID3v2 block did not parse".to_string())
             })?;
+        // The parse just now trims a timestamp the same way a file read does;
+        // the bytes still hold its text (#504).
+        keep_timestamp_text(&mut tag, bytes);
         for cover in covers {
             tag.insert_picture(picture_from_cover(cover));
         }
@@ -1764,6 +1768,40 @@ fn save_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), Tag
                 true
             });
         }
+        // Dates (#504). The model holds every timestamp frame and has just
+        // written each one from what it read — for a timestamp lofty cannot
+        // parse whole, the trimmed date. Where the model still holds that date,
+        // nobody edited it, so the file's own text goes back instead; where it
+        // holds something else the edit stands, and where it holds nothing the
+        // field was cleared and stays cleared.
+        let verbatim: Vec<(String, String)> = (&original)
+            .into_iter()
+            .filter(|frame| {
+                matches!(frame, Frame::Binary(_)) && is_timestamp_frame_id(frame.id().as_str())
+            })
+            .filter_map(|frame| {
+                Some((
+                    frame.id().as_str().to_string(),
+                    timestamp_frame_value(frame)?,
+                ))
+            })
+            .collect();
+        for (id, text) in &verbatim {
+            let trimmed = text
+                .parse::<Timestamp>()
+                .ok()
+                .map(|stamp| stamp.to_string());
+            let modelled = (&updated)
+                .into_iter()
+                .find(|frame| frame.id().as_str() == id)
+                .and_then(timestamp_frame_value);
+            if modelled.is_some() && modelled == trimmed {
+                updated.retain(|frame| frame.id().as_str() != id);
+                if let Some(frame) = verbatim_timestamp_frame(id, text) {
+                    updated.insert(frame);
+                }
+            }
+        }
         for frame in &original {
             if is_model_text_frame(frame) {
                 continue;
@@ -2007,11 +2045,14 @@ fn is_model_text_frame(frame: &Frame<'_>) -> bool {
     // TDRC (recording time) is a `Timestamp` frame, not `Text`, but the model
     // round-trips it as `Year`. Without excluding the original, a file left with
     // a stale/duplicate TDRC (e.g. two TDRC frames from another tagger) leaks the
-    // old year back on write and overwrites the value we just set.
+    // old year back on write and overwrites the value we just set. The other
+    // timestamp frames come back through the model too, as fields of their
+    // own, so carrying them as well left two of each on every write (#504).
     matches!(
         frame,
         Frame::Text(_) | Frame::UserText(_) | Frame::Comment(_)
-    ) || matches!(frame.id().as_str(), "TDRC" | "WOAF")
+    ) || is_timestamp_frame_id(frame.id().as_str())
+        || frame.id().as_str() == "WOAF"
 }
 
 /// The file's concrete ID3v2 tag, if it has one. Dispatches on the container so
@@ -2023,14 +2064,239 @@ fn read_id3v2(
     options: ParseOptions,
 ) -> Result<Option<Id3v2Tag>, TagIoError> {
     let mut file = buffered(path)?;
-    let tag = match Some(container) {
+    let mut tag = match Some(container) {
         Some(FileType::Mpeg) => MpegFile::read_from(&mut file, options)?.id3v2().cloned(),
         Some(FileType::Aac) => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
         Some(FileType::Aiff) => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
         Some(FileType::Wav) => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
         _ => None,
     };
+    // Every write, undo snapshot and revision switch starts here, so this is
+    // where a timestamp lofty would trim gets its text back (#504). Only a tag
+    // that has timestamp frames pays for reading the block a second time.
+    if let Some(tag) = tag.as_mut() {
+        if (&*tag)
+            .into_iter()
+            .any(|frame| is_timestamp_frame_id(frame.id().as_str()))
+        {
+            if let Some(block) = raw_id3v2_block(path, container)? {
+                keep_timestamp_text(tag, &block);
+            }
+        }
+    }
     Ok(tag)
+}
+
+/// The ID3v2 frames lofty reads as dates (#504).
+const TIMESTAMP_FRAME_IDS: [&str; 5] = ["TDEN", "TDOR", "TDRC", "TDRL", "TDTG"];
+
+fn is_timestamp_frame_id(id: &str) -> bool {
+    TIMESTAMP_FRAME_IDS.contains(&id)
+}
+
+/// The file's ID3v2 block as it sits on disk, header included: at the start of
+/// an MP3 or AAC stream, or the `ID3 ` chunk of an AIFF or a WAV. Read by
+/// seeking, so the audio is never loaded.
+fn raw_id3v2_block(path: &Path, container: FileType) -> Result<Option<Vec<u8>>, TagIoError> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let mut header = [0u8; 12];
+    match container {
+        FileType::Mpeg | FileType::Aac => {
+            if file.read_exact(&mut header[..10]).is_err() || &header[..3] != b"ID3" {
+                return Ok(None);
+            }
+            let footer = if header[5] & 0x10 != 0 { 10 } else { 0 };
+            let len = 10 + syncsafe_u32(&header[6..10]) as usize + footer;
+            let mut block = vec![0u8; len];
+            file.seek(SeekFrom::Start(0))?;
+            if file.read_exact(&mut block).is_err() {
+                return Ok(None);
+            }
+            Ok(Some(block))
+        }
+        FileType::Aiff | FileType::Wav => {
+            let big_endian = container == FileType::Aiff;
+            if file.read_exact(&mut header).is_err() {
+                return Ok(None);
+            }
+            let mut pos = 12u64;
+            let mut chunk = [0u8; 8];
+            loop {
+                file.seek(SeekFrom::Start(pos))?;
+                if file.read_exact(&mut chunk).is_err() {
+                    return Ok(None);
+                }
+                let size_bytes = [chunk[4], chunk[5], chunk[6], chunk[7]];
+                let size = if big_endian {
+                    u32::from_be_bytes(size_bytes)
+                } else {
+                    u32::from_le_bytes(size_bytes)
+                } as u64;
+                if chunk[..4].eq_ignore_ascii_case(b"ID3 ") {
+                    let mut block = vec![0u8; size as usize];
+                    if file.read_exact(&mut block).is_err() {
+                        return Ok(None);
+                    }
+                    return Ok(Some(block));
+                }
+                pos += 8 + size + (size & 1);
+            }
+        }
+        _ => Ok(None),
+    }
+}
+
+fn syncsafe_u32(bytes: &[u8]) -> u32 {
+    bytes
+        .iter()
+        .fold(0, |acc, byte| (acc << 7) | u32::from(byte & 0x7F))
+}
+
+/// The timestamp frames of a raw ID3v2 block whose text lofty would not write
+/// back as it found it (#504). lofty parses `TDEN`/`TDRC`/… into a date, and a
+/// timestamp written with a space where ID3v2.4 wants a `T` —
+/// `2010-05-27 14:43:18`, as ffmpeg writes it — parses as `2010-05-27`, so a
+/// plain re-save drops the time. A frame whose text survives the round trip is
+/// not listed; nor is anything this walk cannot read safely — a tag or frame
+/// that is unsynchronised, compressed or encrypted, a non-ASCII value.
+fn lossy_timestamps(block: &[u8]) -> Vec<(String, String)> {
+    let mut lossy = Vec::new();
+    if block.len() < 10 || &block[..3] != b"ID3" {
+        return lossy;
+    }
+    let version = block[3];
+    let flags = block[5];
+    if !(version == 3 || version == 4) || flags & 0x80 != 0 {
+        return lossy;
+    }
+    let end = (10 + syncsafe_u32(&block[6..10]) as usize).min(block.len());
+    let mut pos = 10;
+    if flags & 0x40 != 0 && block.len() >= 14 {
+        pos += if version == 4 {
+            syncsafe_u32(&block[10..14]) as usize
+        } else {
+            4 + u32::from_be_bytes([block[10], block[11], block[12], block[13]]) as usize
+        };
+    }
+    while pos + 10 <= end && block[pos] != 0 {
+        let id = &block[pos..pos + 4];
+        let size = if version == 4 {
+            syncsafe_u32(&block[pos + 4..pos + 8])
+        } else {
+            u32::from_be_bytes([
+                block[pos + 4],
+                block[pos + 5],
+                block[pos + 6],
+                block[pos + 7],
+            ])
+        } as usize;
+        let format_flags = block[pos + 9];
+        let start = pos + 10;
+        pos = start + size;
+        if pos > end {
+            break;
+        }
+        let encoded = if version == 4 {
+            format_flags & 0x0F != 0
+        } else {
+            format_flags & 0xE0 != 0
+        };
+        let Ok(id) = std::str::from_utf8(id) else {
+            continue;
+        };
+        if encoded || !is_timestamp_frame_id(id) || size < 2 {
+            continue;
+        }
+        let Some(text) = timestamp_text(&block[start..pos]) else {
+            continue;
+        };
+        let reread = text
+            .parse::<Timestamp>()
+            .ok()
+            .map(|stamp| stamp.to_string());
+        if reread.as_deref() != Some(text.as_str()) {
+            lossy.push((id.to_string(), text));
+        }
+    }
+    lossy
+}
+
+/// The text of a timestamp frame's content (an encoding byte, then the text),
+/// without its terminator. `None` unless it is plain ASCII — which every
+/// timestamp is — in any of the four ID3v2 encodings.
+fn timestamp_text(content: &[u8]) -> Option<String> {
+    let (encoding, data) = content.split_first()?;
+    let text = match encoding {
+        0 | 3 => String::from_utf8(data.to_vec()).ok()?,
+        1 | 2 => {
+            let mut units: Vec<u16> = data
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|pair| {
+                    if *encoding == 2 {
+                        u16::from_be_bytes(*pair)
+                    } else {
+                        u16::from_le_bytes(*pair)
+                    }
+                })
+                .collect();
+            if *encoding == 1 {
+                match units.first() {
+                    Some(0xFEFF) => {
+                        units.remove(0);
+                    }
+                    Some(0xFFFE) => {
+                        units.remove(0);
+                        for unit in &mut units {
+                            *unit = unit.swap_bytes();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            String::from_utf16(&units).ok()?
+        }
+        _ => return None,
+    };
+    let text = text.trim_end_matches('\0');
+    (text.is_ascii() && !text.is_empty()).then(|| text.to_string())
+}
+
+/// Swap each timestamp frame lofty trimmed for one that carries the text as it
+/// was on disk (#504). The frame is kept verbatim — lofty writes a binary frame
+/// as it gets it — in ISO-8859-1, which holds any timestamp and is valid in both
+/// ID3v2.3 and 2.4.
+fn keep_timestamp_text(tag: &mut Id3v2Tag, block: &[u8]) {
+    let lossy = lossy_timestamps(block);
+    if lossy.is_empty() {
+        return;
+    }
+    tag.retain(|frame| !lossy.iter().any(|(id, _)| frame.id().as_str() == id));
+    for (id, text) in lossy {
+        if let Some(frame) = verbatim_timestamp_frame(&id, &text) {
+            tag.insert(frame);
+        }
+    }
+}
+
+fn verbatim_timestamp_frame(id: &str, text: &str) -> Option<Frame<'static>> {
+    let id = FrameId::new(id.to_string()).ok()?;
+    let mut data = vec![0u8];
+    data.extend_from_slice(text.as_bytes());
+    Some(Frame::Binary(BinaryFrame::new(id, data)))
+}
+
+/// What a timestamp frame says, whichever form it is in: lofty's date, a text
+/// frame, or the verbatim frame [`keep_timestamp_text`] puts in place (#504).
+fn timestamp_frame_value(frame: &Frame<'_>) -> Option<String> {
+    match frame {
+        Frame::Timestamp(stamp) => Some(stamp.timestamp.to_string()),
+        Frame::Text(text) => Some(text.value.to_string()),
+        Frame::Binary(binary) => timestamp_text(&binary.data),
+        _ => None,
+    }
 }
 
 /// Whether `path` is an ID3v2-carrying container, for the cover paths that only
@@ -2937,6 +3203,166 @@ mod tests {
         });
         assert_eq!(saved_cover.as_deref(), Some(cover.as_slice()));
 
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// An MP3 whose ID3v2.4 block is written by hand, frame by frame, so it can
+    /// hold what lofty would never write itself (#504). Each frame is a
+    /// latin-1 text frame: an encoding byte, the text, a terminator.
+    fn mp3_with_raw_frames(name: &str, frames: &[(&str, &str)]) -> PathBuf {
+        let syncsafe = |n: usize| {
+            [
+                ((n >> 21) & 0x7F) as u8,
+                ((n >> 14) & 0x7F) as u8,
+                ((n >> 7) & 0x7F) as u8,
+                (n & 0x7F) as u8,
+            ]
+        };
+        let mut body = Vec::new();
+        for (id, text) in frames {
+            let mut content = vec![0u8];
+            content.extend_from_slice(text.as_bytes());
+            content.push(0);
+            body.extend_from_slice(id.as_bytes());
+            body.extend_from_slice(&syncsafe(content.len()));
+            body.extend_from_slice(&[0, 0]);
+            body.extend_from_slice(&content);
+        }
+        let mut bytes = b"ID3\x04\x00\x00".to_vec();
+        bytes.extend_from_slice(&syncsafe(body.len()));
+        bytes.extend(body);
+        let mut silence = vec![0xFF, 0xFB, 0x90, 0x00];
+        silence.resize(SILENT_MPEG_FRAME_LEN, 0);
+        for _ in 0..SILENT_MPEG_FRAMES {
+            bytes.extend_from_slice(&silence);
+        }
+        let path = std::env::temp_dir().join(format!(
+            "tagrex-timestamps-{name}-{}.mp3",
+            std::process::id()
+        ));
+        std::fs::write(&path, bytes).expect("write the fixture");
+        path
+    }
+
+    /// Every timestamp frame in the file's ID3v2 block as `(id, text)`, read
+    /// from the bytes on disk rather than through lofty, which would trim them.
+    fn timestamps_on_disk(path: &Path) -> Vec<(String, String)> {
+        let block = raw_id3v2_block(path, FileType::Mpeg)
+            .expect("read the block")
+            .expect("an ID3v2 block");
+        let version = block[3];
+        let end = 10 + syncsafe_u32(&block[6..10]) as usize;
+        let mut found = Vec::new();
+        let mut pos = 10;
+        while pos + 10 <= end && block[pos] != 0 {
+            let id = String::from_utf8_lossy(&block[pos..pos + 4]).to_string();
+            let size = if version == 4 {
+                syncsafe_u32(&block[pos + 4..pos + 8])
+            } else {
+                u32::from_be_bytes([
+                    block[pos + 4],
+                    block[pos + 5],
+                    block[pos + 6],
+                    block[pos + 7],
+                ])
+            } as usize;
+            if is_timestamp_frame_id(&id) {
+                let text = timestamp_text(&block[pos + 10..pos + 10 + size]).unwrap_or_default();
+                found.push((id, text));
+            }
+            pos += 10 + size;
+        }
+        found.sort();
+        found
+    }
+
+    const FFMPEG_STYLE_FRAMES: [(&str, &str); 5] = [
+        ("TIT2", "Before"),
+        // A space where ID3v2.4 wants a `T`, as ffmpeg writes it: lofty reads
+        // it as the date alone.
+        ("TDEN", "2010-05-27 14:43:18"),
+        ("TDOR", "1996-03-01"),
+        ("TDRC", "1996"),
+        ("TDTG", "2011-02-03T04:05:06"),
+    ];
+
+    fn expected(changes: &[(&str, Option<&str>)]) -> Vec<(String, String)> {
+        let mut want: Vec<(String, String)> = FFMPEG_STYLE_FRAMES[1..]
+            .iter()
+            .map(|(id, text)| (id.to_string(), text.to_string()))
+            .collect();
+        for (id, text) in changes {
+            want.retain(|(have, _)| have != id);
+            if let Some(text) = text {
+                want.push((id.to_string(), text.to_string()));
+            }
+        }
+        want.sort();
+        want
+    }
+
+    /// #504: editing an unrelated field rewrote every timestamp lofty could
+    /// not parse whole as its date alone — and wrote it twice, once from the
+    /// model and once carried over. Each timestamp now comes back once, as the
+    /// file had it.
+    #[test]
+    fn an_edit_leaves_every_untouched_timestamp_as_it_was() {
+        let path = mp3_with_raw_frames("edit", &FFMPEG_STYLE_FRAMES);
+        let mut file = TagEngine::read(&path).expect("read");
+        file.tags.insert(TagField::Title, "After".to_string());
+        TagEngine::write(&file).expect("write");
+
+        assert_eq!(timestamps_on_disk(&path), expected(&[]));
+        assert_eq!(
+            TagEngine::read(&path)
+                .expect("reread")
+                .tags
+                .get(&TagField::Title)
+                .map(String::as_str),
+            Some("After")
+        );
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// #504: a timestamp the user did change is written as they typed it, and
+    /// one they cleared stays gone — the file's own text only stands in for a
+    /// value nobody touched.
+    #[test]
+    fn an_edited_or_cleared_timestamp_is_not_overridden_by_the_old_text() {
+        let path = mp3_with_raw_frames("change", &FFMPEG_STYLE_FRAMES);
+        let mut file = TagEngine::read(&path).expect("read");
+        file.tags.insert(
+            TagField::Custom("TDEN".to_string()),
+            "2011-01-01".to_string(),
+        );
+        TagEngine::write(&file).expect("write");
+        assert_eq!(
+            timestamps_on_disk(&path),
+            expected(&[("TDEN", Some("2011-01-01"))])
+        );
+        std::fs::remove_file(&path).ok();
+
+        let path = mp3_with_raw_frames("clear", &FFMPEG_STYLE_FRAMES);
+        let mut file = TagEngine::read(&path).expect("read");
+        file.tags.remove(&TagField::Custom("TDEN".to_string()));
+        TagEngine::write(&file).expect("write");
+        assert_eq!(timestamps_on_disk(&path), expected(&[("TDEN", None)]));
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// #504: undoing the removal of an ID3v2 block puts its timestamps back as
+    /// they were, through the snapshot taken before the removal and the restore
+    /// that parses it again — both of which trimmed them.
+    #[test]
+    fn a_restored_id3v2_block_keeps_its_timestamps_text() {
+        let path = mp3_with_raw_frames("restore", &FFMPEG_STYLE_FRAMES);
+        let bytes = TagEngine::dump_id3v2(&path)
+            .expect("dump")
+            .expect("a block");
+        TagEngine::remove_block(&path, TagBlockKind::Id3v2).expect("remove");
+        TagEngine::restore_id3v2_bytes(&path, &bytes, &[], Some(Id3v2Revision::V4))
+            .expect("restore");
+        assert_eq!(timestamps_on_disk(&path), expected(&[]));
         std::fs::remove_file(&path).ok();
     }
 

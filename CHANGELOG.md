@@ -59,6 +59,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   install commands
   ([#502](https://github.com/tagrex/tagrex/issues/502)).
 
+### Fixed
+
+- **Saving tags no longer cuts the time off a date written the ffmpeg way.**
+  A timestamp such as `2010-05-27 14:43:18` — a space where the standard
+  wants a `T`, common in converted MP3s — was read as the date alone, so any
+  edit to the file, and the undo of removing its ID3v2 block, wrote it back as
+  `2010-05-27`; an edit also left the frame in the file twice. Untouched
+  timestamps now keep their exact text and appear once; one you change or
+  clear is written as you left it. (#504)
+
 ## [0.22.2] - 2026-10-12
 
 A tidy-up of Settings. The groups are fewer and easier to reach: General comes
