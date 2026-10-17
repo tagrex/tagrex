@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **base64 0.23.** The encoder that carries cover images and saved tag blocks
+  between the app's two halves moves to its current major version; nothing
+  about either changes. (#417)
 - **The README tagline is in plain language.** It says what TagRex does for
   you — edit in a table, see every change before it is written, undo a batch
   even after a restart, fill tags from the online sources — instead of

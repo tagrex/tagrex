@@ -18,7 +18,7 @@ tagrex-providers-soundeo = { path = "../providers-soundeo" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror.workspace = true
-base64 = "0.22.1"
+base64 = "0.23.1"
 # Move files to the system Trash (#213). Cross-platform (Finder's trash, the
 # Windows recycle bin, the freedesktop trash spec). `default-features = false`
 # drops the `chrono` timestamp reader, which only matters for *listing* what is
