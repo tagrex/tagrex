@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The minimum Rust version is 1.90.** Tauri already required it, so the
   1.89 the project declared could not build the app; the whole workspace is now
   built and tested on 1.90 to back the number. (#512)
+- **The preview player moves to rodio 0.23.** It brings a newer audio output
+  layer (cpal 0.18) underneath playback; nothing changes in how the player
+  behaves. (#511)
 
 ## [0.23.0] - 2026-10-17
 

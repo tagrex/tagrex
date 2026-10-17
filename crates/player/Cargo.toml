@@ -18,8 +18,9 @@ serde = { version = "1", features = ["derive"] }
 # has no seek support at all, and the Symphonia route couldn't seek either
 # because the decoder was never told the file's length (#190). Symphonia handles
 # every format here, which is where seek support lives; `recording` and the
-# dither noise generator are not ours to carry.
-rodio = { version = "0.22", default-features = false, features = [
+# dither noise generator are not ours to carry. 0.23 changes only the audio I/O
+# layer underneath (cpal 0.18) and its error types (#511).
+rodio = { version = "0.23", default-features = false, features = [
   "playback",
   "symphonia-all",
 ] }
