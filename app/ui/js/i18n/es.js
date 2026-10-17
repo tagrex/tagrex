@@ -264,8 +264,6 @@ export const es = {
   "player.seek": "Buscar posición",
   "player.volume": "Volumen",
   "player.mute": "Silenciar",
-  "statusbar.previewEdits": "Previsualizar ediciones",
-  "statusbar.previewEditsTitle": "Previsualizar las ediciones pendientes en las celdas",
   "drop.title": "Suelta aquí",
   "drop.sub": "Se abre una carpeta o unos archivos · una sola imagen se convierte en la portada",
   "ctx.cut": "Cortar",

@@ -266,8 +266,6 @@ export const ru = {
   "player.seek": "Перемотка",
   "player.volume": "Громкость",
   "player.mute": "Без звука",
-  "statusbar.previewEdits": "Показать правки",
-  "statusbar.previewEditsTitle": "Показать несохранённые правки ячеек",
   "drop.title": "Бросьте сюда",
   "drop.sub": "Папка или файлы открываются · одиночное изображение станет обложкой",
   "ctx.cut": "Вырезать",

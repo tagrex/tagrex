@@ -38,15 +38,28 @@ Two habits worth forming now:
 
 ## 3. Change one thing
 
-Double-click a cell in the table — say a **Title** — and type. The cell marks
-itself as edited, and **Preview edits** in the status bar at the bottom lights up.
+Double-click a cell in the table — say a **Title** — type, and press **Enter**
+(or click anywhere else). That is all: the new value is written to the file, and
+the cell now shows what is on disk. **Escape** instead leaves the cell as it was.
 
-Nothing has been written. The edit is pending, sitting in the app, and you can
-keep making more.
+A value the field cannot hold — a three-digit year, a letter in a track number —
+is not written: the cell goes back to what the file says, and a message says why.
 
-## 4. See the change before it happens
+## 4. Undo it
 
-Press **Preview edits**.
+Press the undo arrow in the top bar, or ⌘Z. The edit is rolled back.
+
+The undo journal is a database on disk, not a list in memory: close TagRex,
+reopen it, open the same library, and the undo is still there waiting. That is
+what makes it safe to apply a change to four hundred files at the end of a long
+evening.
+
+## 5. See a bigger change before it happens
+
+A single cell is written as you type it, because what you typed is already on
+screen. Everything that changes many files at once is shown first. Select a few
+rows, open **TAGGER › EDITOR**, change their **Album** and press **Stage field
+changes**.
 
 The table turns into a diff. Changed cells show their new value; a bar floats
 over the table saying how many files are about to change, with **Show old
@@ -57,19 +70,10 @@ The checkbox column that appears is not a selection — it is the *apply scope*.
 Untick a row and it is left out when you apply. This is the moment to disagree
 with the tool.
 
-## 5. Apply
+## 6. Apply
 
-Press **Apply**. Now it is written, and the table returns to normal.
-
-## 6. Undo it
-
-Press the undo arrow in the top bar. The batch is rolled back — every file in it,
-as one unit.
-
-The undo journal is a database on disk, not a list in memory: close TagRex,
-reopen it, open the same library, and the undo is still there waiting. That is
-what makes it safe to apply a change to four hundred files at the end of a long
-evening.
+Press **Apply**. Now it is written, and the table returns to normal. The undo
+arrow takes the whole batch back — every file in it, as one unit.
 
 ## Where to go next
 

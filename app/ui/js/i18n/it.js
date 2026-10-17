@@ -266,8 +266,6 @@ export const it = {
   "player.seek": "Cerca posizione",
   "player.volume": "Volume",
   "player.mute": "Muto",
-  "statusbar.previewEdits": "Anteprima modifiche",
-  "statusbar.previewEditsTitle": "Anteprima delle modifiche in linea in sospeso",
   "drop.title": "Rilascia qui",
   "drop.sub": "Una cartella o file si aprono · una singola immagine diventa la copertina",
   "ctx.cut": "Taglia",

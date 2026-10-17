@@ -203,7 +203,6 @@ const tracksBody = el("tracks-body");
 const tracksEmpty = el("tracks-empty");
 const applyBtn = el("diff-apply");
 const previewBtn = el("preview");
-const previewEditsBtn = el("preview-edits");
 const undoBtn = el("undo");
 const selectAll = el("select-all");
 const statusSel = el("status-sel");
@@ -1131,7 +1130,6 @@ function renderTracks() {
   syncGroupToggle();
 
   previewBtn.disabled = tracks.length === 0;
-  updateEditsButton();
   // While diffing the sel column is the apply scope, not the selection, so the
   // selection UI must not repaint the checkboxes — refresh the action bar instead.
   if (diffByPath) updateDiffBar();
@@ -1164,7 +1162,6 @@ function updateStatus() {
 
 function resetEdits() {
   edits.clear();
-  updateEditsButton();
 }
 
 // Move pending edits from old paths to new paths after a rename is applied, so
@@ -1194,7 +1191,6 @@ function onCellEdit(td) {
     td.classList.add("error");
     td.classList.remove("dirty");
     unstage();
-    updateEditsButton();
     return;
   }
   td.classList.remove("error");
@@ -1206,11 +1202,99 @@ function onCellEdit(td) {
     if (!edits.has(path)) edits.set(path, new Map());
     edits.get(path).set(field, value);
   }
-  updateEditsButton();
 }
 
-function updateEditsButton() {
-  previewEditsBtn.disabled = edits.size === 0;
+// ---- writing a cell edit (#507) ----
+// A cell is written the moment it is committed — Enter, or leaving it — as one
+// batch of its own in the undo journal, so the undo arrow and ⌘Z take it back
+// like anything else. There is no preview: the new value is what was just
+// typed, already on screen, and staging it behind Preview edits + Apply was two
+// clicks to confirm what nobody needed shown. The panels that change many files
+// at once (EDITOR, imports, GENERATOR) keep theirs.
+//
+// One write at a time: committing a cell and moving straight on to the next
+// queues the second behind the first, and both wait out an apply or an undo
+// already running.
+let cellWrites = Promise.resolve();
+// What is already queued, by file and field: Enter both blurs the cell and asks
+// for the write itself, and only one of the two should reach the backend.
+const queuedCellWrites = new Map();
+
+function commitCellEdit(td) {
+  const { path, field, original } = td.dataset;
+  // A value that failed validation was never staged; the cell goes back to what
+  // the file says and the reason is shown, rather than leaving text on screen
+  // that is not in the file.
+  if (td.classList.contains("error")) {
+    const { hint } = validateFieldValue(field, td.textContent.trim());
+    td.textContent = original;
+    td.classList.remove("error");
+    if (hint) toast(hint, true);
+    return;
+  }
+  const value = edits.get(path)?.get(field);
+  if (value === undefined) return; // nothing changed
+  const key = `${path}\u0000${field}`;
+  if (queuedCellWrites.get(key) === value) return;
+  queuedCellWrites.set(key, value);
+  cellWrites = cellWrites.then(async () => {
+    await writeCellEdit(path, field, value);
+    if (queuedCellWrites.get(key) === value) queuedCellWrites.delete(key);
+  });
+}
+
+async function writeCellEdit(path, field, value) {
+  while (applying || undoing) await new Promise((resolve) => setTimeout(resolve, 50));
+  // Taken off the pending set whatever happens next: written, refused, or
+  // failed, the cell then shows what the file says.
+  const pending = edits.get(path);
+  if (pending?.get(field) === value) {
+    pending.delete(field);
+    if (pending.size === 0) edits.delete(path);
+  }
+  applying = true;
+  try {
+    const plan = await invoke("preview_tag_edits", { edits: [{ path, field, value }], cover: null });
+    if (plan.changes.length > 0) {
+      await invoke("apply_plan", { plan });
+      await refreshHistory();
+    }
+  } catch (e) {
+    toast(String(e), true);
+  } finally {
+    applying = false;
+  }
+  await refreshTrackInPlace(path);
+}
+
+// Bring one file's row up to date without re-sorting or regrouping the table:
+// the edited row stays under the pointer even when its column is the sort key,
+// and moves the next time the table is sorted or filtered.
+async function refreshTrackInPlace(path) {
+  try {
+    const fresh = (await invoke("list_tracks", {})).find((track) => track.path === path);
+    const track = trackAt(path);
+    if (fresh && track) Object.assign(track, fresh);
+  } catch (e) {
+    toast(String(e), true);
+  }
+  invalidateCustomColumns();
+  renderWindow({ force: true });
+  refreshCustomColumnCells();
+  if (currentMode === "tagger") refreshFieldEditor();
+}
+
+// Escape leaves a cell as it was: the typed value is dropped and nothing is
+// written.
+function cancelCellEdit(td) {
+  const { path, field, original } = td.dataset;
+  const pending = edits.get(path);
+  if (pending) {
+    pending.delete(field);
+    if (pending.size === 0) edits.delete(path);
+  }
+  td.textContent = original;
+  td.classList.remove("dirty", "error");
 }
 
 // Reveal the file table. The Preview view is gone (#117): a staged plan now
@@ -1641,7 +1725,6 @@ async function refreshLibrary() {
       const firstReadable = fresh.find((track) => !track.unreadable);
       if (firstReadable) selection.add(firstReadable.path);
     }
-    updateEditsButton();
     renderTracks();
     refreshCustomColumnCells();
     syncSelectionUI();
@@ -1853,7 +1936,6 @@ async function apply() {
       // Drop only the applied files' edits; unticked files keep their staged
       // edits so a follow-up apply can still write them.
       for (const path of appliedPaths) edits.delete(path);
-      updateEditsButton();
     }
     // cover apply leaves the tag-edits buffer untouched (separate change kind)
     setTracks(await invoke("list_tracks", {}));
@@ -2096,7 +2178,6 @@ function dropFromList(paths) {
     const firstReadable = tracks.find((track) => !track.unreadable);
     if (firstReadable) selection.add(firstReadable.path);
   }
-  updateEditsButton();
   renderTracks();
   syncSelectionUI();
 }
@@ -2209,7 +2290,6 @@ document.addEventListener("click", (e) => {
   if (!menu.hidden && !menu.contains(e.target)) closeRecentMenu();
 });
 
-previewEditsBtn.addEventListener("click", previewEdits);
 applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
 el("fields-add").addEventListener("click", addCustomField);
@@ -2675,6 +2755,7 @@ tracksBody.addEventListener(
     if (e.target.classList && e.target.classList.contains("editable")) {
       e.target.contentEditable = "false";
       endCellSuggest(); // the suggestion list belongs to the edit (#63)
+      commitCellEdit(e.target); // leaving the cell writes it (#507)
     }
   },
   true,
@@ -3008,15 +3089,21 @@ tracksBody.addEventListener("keydown", (e) => {
   // only once an arrow has stepped into it (#63) — so a cell nobody is reading
   // suggestions for still commits on Enter exactly as it always has.
   if (cellSuggestKey(e)) return;
-  if (e.key === "Enter") {
+  if (e.key === "Enter" || e.key === "Escape") {
     e.preventDefault();
+    // Escape is the cell's own: it must not also stop a search or close
+    // something else.
+    if (e.key === "Escape") e.stopPropagation();
     // Ending the edit ends the suggestions with it, said here rather than left
     // to the blur listener below: turning contentEditable off moves focus to
     // the body WITHOUT firing a blur on the cell, so the list would stay on
-    // screen over a cell nobody is editing any more (#63).
+    // screen over a cell nobody is editing any more (#63) — and for the same
+    // reason the write is asked for here too (#507).
     endCellSuggest();
+    if (e.key === "Escape") cancelCellEdit(e.target);
     e.target.contentEditable = "false";
     e.target.blur();
+    if (e.key === "Enter") commitCellEdit(e.target);
   }
 });
 

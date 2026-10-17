@@ -168,13 +168,18 @@ thing, and live in [GENERATOR](generator.md).
 the two never fight. Enter commits the cell and leaves edit mode; clicking away
 commits it too.
 
-There is no per-cell undo. To back out of an edit, either retype the old value,
-or press **Discard** on the preview once you have staged it — that throws away
-every pending edit at once.
+A committed cell is written at once, as a change of its own in the undo journal:
+the undo arrow in the top bar, or ⌘Z, takes back the last one. **Escape** leaves
+the cell as it was, writing nothing. A value the field cannot hold — a
+three-digit year, a letter in a track number — is not written; the cell goes
+back to what the file says and a message says why.
 
-Edited cells are marked as dirty and nothing is written yet: the edits pile up
-until you press **Preview edits** in the status bar, which turns them into a
-change plan like any other operation. See
+The row stays where it is after the write, even when the edited column is the
+one the table is sorted by; it moves the next time you sort or filter.
+
+A cell is the one edit without a preview, because what you typed is already on
+screen. Edits across a selection go through **TAGGER › EDITOR**, which shows the
+plan first like every other operation. See
 [Change plans, Apply and Undo](change-plans.md).
 
 ## Clearing tags

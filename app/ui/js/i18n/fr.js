@@ -266,8 +266,6 @@ export const fr = {
   "player.seek": "Se déplacer",
   "player.volume": "Volume",
   "player.mute": "Couper le son",
-  "statusbar.previewEdits": "Aperçu des modifications",
-  "statusbar.previewEditsTitle": "Aperçu des modifications de cellules en cours",
   "drop.title": "Déposer ici",
   "drop.sub": "Un dossier ou des fichiers s'ouvrent · une image seule devient la pochette",
   "ctx.cut": "Couper",

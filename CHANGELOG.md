@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A cell you edit in the table is written when you press Enter.** It used to
+  wait for **Preview edits** in the status bar and then **Apply** — two clicks to
+  confirm a value already on screen. Now Enter, or leaving the cell, writes it as
+  a change of its own that the undo arrow and ⌘Z take back; Escape leaves the
+  cell as it was; a value the field cannot hold is not written and the cell goes
+  back to what the file says. The row stays put even when its column is the sort
+  key. **Preview edits** is gone; edits across a selection in EDITOR, imports and
+  GENERATOR still show their plan first. (#507)
 - **base64 0.23.** The encoder that carries cover images and saved tag blocks
   between the app's two halves moves to its current major version; nothing
   about either changes. (#417)

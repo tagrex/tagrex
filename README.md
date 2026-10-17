@@ -79,7 +79,8 @@ manager — **Open With**, the Dock icon, or the command line.
 configurable tag columns, grouping by any modeled field, filtering (substring or
 regex, optionally field-scoped as `artist:aphex`) and saved filter/sort presets.
 Selection is first-class: click, ⌘/Ctrl, Shift ranges, keyboard. Tag cells edit
-in place, offering the values the library already holds as you type. A button
+in place, offering the values the library already holds as you type, and a cell
+is written when you press Enter — a change of its own that undo takes back. A button
 beside the folder path re-reads what is open without losing your sort, filter or
 pending edits, and right-clicking a file offers to drop it from the list or move
 it to the system Trash.
@@ -89,8 +90,9 @@ it to the system Trash.
   <img src="docs/img/tagger-light.png#gh-light-mode-only" width="800" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
 </p>
 
-**Nothing is written until you look at it.** Every mutating operation — rename,
-move, tag edit, transform, import, cover embed — produces a change plan that is
+**Nothing is written until you look at it.** Every operation that changes files
+in bulk — rename, move, a tag edit across a selection, transform, import, cover
+embed — produces a change plan that is
 rendered as a diff *into the table itself*, with a per-row apply scope and an
 Apply/Discard bar. Applying goes through a transactional executor with a
 persistent SQLite undo journal, so a batch survives an application restart and

@@ -6,8 +6,8 @@ everything.
 
 ## The cycle
 
-1. **You ask for something** — edit cells, run a transform, preview a rename,
-   import a release, embed a cover.
+1. **You ask for something** — edit tags across a selection, run a transform,
+   preview a rename, import a release, embed a cover.
 2. **TagRex builds a change plan** and draws it into the file table as a diff.
    Nothing has been written.
 3. **You review it**, and untick any row you disagree with.
@@ -16,6 +16,11 @@ everything.
 
 Steps 2–4 look identical no matter which mode produced the plan. A rename, a tag
 edit and a cover embed are all just plans.
+
+The one edit that skips the plan is a single cell typed in the table: it is
+written when you press Enter or leave the cell, because what you typed is
+already on screen. It still lands in the undo journal as a batch of its own, so
+**Undo** takes it back like anything else.
 
 ## Reading the diff
 
@@ -45,9 +50,8 @@ not a failure.
 recorded in the journal as a single batch, so it undoes as a unit: a
 reorganize that renamed four hundred files is one entry, not four hundred.
 
-**Discard** throws the plan away. If the plan came from pending inline cell edits
-or a release import, Discard also drops those staged values — the plan owned
-them. Any other kind of plan just disappears, leaving what it was built from
+**Discard** throws the plan away. If the plan came from staged EDITOR edits or a
+release import, Discard also drops those staged values — the plan owned them. Any other kind of plan just disappears, leaving what it was built from
 untouched.
 
 ## Undo

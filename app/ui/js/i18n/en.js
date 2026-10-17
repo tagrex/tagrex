@@ -268,8 +268,6 @@ export const en = {
   "player.seek": "Seek",
   "player.volume": "Volume",
   "player.mute": "Mute",
-  "statusbar.previewEdits": "Preview edits",
-  "statusbar.previewEditsTitle": "Preview the pending inline cell edits",
   "drop.title": "Drop here",
   "drop.sub": "A folder or files open · a single image becomes the cover",
   "ctx.cut": "Cut",

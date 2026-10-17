@@ -262,8 +262,6 @@ export const de = {
   "player.seek": "Springen",
   "player.volume": "Lautstärke",
   "player.mute": "Stumm",
-  "statusbar.previewEdits": "Bearbeitungen anzeigen",
-  "statusbar.previewEditsTitle": "Vorschau der ausstehenden Zellbearbeitungen",
   "drop.title": "Hier ablegen",
   "drop.sub": "Ein Ordner oder Dateien werden geöffnet · ein einzelnes Bild wird zum Cover",
   "ctx.cut": "Ausschneiden",

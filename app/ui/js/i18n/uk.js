@@ -267,8 +267,6 @@ export const uk = {
   "player.seek": "Перемотування",
   "player.volume": "Гучність",
   "player.mute": "Без звуку",
-  "statusbar.previewEdits": "Показати правки",
-  "statusbar.previewEditsTitle": "Показати незбережені правки комірок",
   "drop.title": "Киньте сюди",
   "drop.sub": "Папка або файли відкриваються · одиночне зображення стане обкладинкою",
   "ctx.cut": "Вирізати",
