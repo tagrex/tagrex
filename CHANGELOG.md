@@ -68,6 +68,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `2010-05-27`; an edit also left the frame in the file twice. Untouched
   timestamps now keep their exact text and appear once; one you change or
   clear is written as you left it. (#504)
+- **Writing tags no longer damages WAV files.** The tag library left a WAV's
+  RIFF size short of the file after a write, and the next write — an undo,
+  another edit — then added a fresh tag past what it took for junk, until the
+  file ended in a chunk claiming gigabytes and its tags no longer read. A WAV
+  that already arrived with a short size could not be edited at all. TagRex now
+  writes a WAV's (and, for the undo and revision paths too, an AIFF's) ID3 chunk
+  itself: the audio and every other chunk stay byte for byte, the size is
+  recomputed, and a file damaged this way is put right by its next edit. (#505)
 
 ## [0.22.2] - 2026-10-12
 

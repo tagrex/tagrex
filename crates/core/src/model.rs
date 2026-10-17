@@ -1405,7 +1405,10 @@ impl TagEngine {
             Some(revision) => WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3),
             None => id3_write_options(),
         };
-        tag.save_to_path(path, options)?;
+        match container_of(path)? {
+            Some(container) => save_id3v2_tag_with(path, container, &tag, options)?,
+            None => tag.save_to_path(path, options)?,
+        }
         Ok(())
     }
 
@@ -1427,8 +1430,10 @@ impl TagEngine {
         let Some(tag) = read_id3v2(path, container, custom_item_options())? else {
             return Ok(false);
         };
-        tag.save_to_path(
+        save_id3v2_tag_with(
             path,
+            container,
+            &tag,
             WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3),
         )?;
         Ok(true)
@@ -1465,6 +1470,14 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn remove_block(path: &Path, kind: TagBlockKind) -> Result<(), TagIoError> {
+        // An AIFF's or a WAV's ID3v2 is a chunk this module writes itself
+        // (#358, #505); taking it out goes the same way.
+        if kind == TagBlockKind::Id3v2
+            && matches!(container_of(path)?, Some(FileType::Aiff | FileType::Wav))
+            && write_iff_id3(path, None)?
+        {
+            return Ok(());
+        }
         let mut handle = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
@@ -1510,7 +1523,13 @@ impl TagEngine {
             (TagBlockKind::Id3v2, None) => id3_write_options(),
             _ => WriteOptions::default(),
         };
-        tag_for_block(kind, content).save_to_path(path, options)?;
+        let tag = tag_for_block(kind, content);
+        if kind == TagBlockKind::Id3v2 {
+            if let Some(container @ (FileType::Aiff | FileType::Wav)) = container_of(path)? {
+                return save_id3v2_tag_with(path, container, &Id3v2Tag::from(tag), options);
+            }
+        }
+        tag.save_to_path(path, options)?;
         Ok(())
     }
 
@@ -1560,8 +1579,9 @@ impl TagEngine {
             for cover in covers {
                 tag.insert_picture(picture_from_cover(cover));
             }
-            // AIFF gets the hand-written `ID3 ` chunk (#358), same as the text
-            // write, so lofty's AIFF writer can't drop the cover on a later edit.
+            // AIFF and WAV get the hand-written `ID3 ` chunk (#358, #505), same
+            // as the text write, so lofty's IFF writers can't drop the cover or
+            // break the container on a later edit.
             save_id3v2_tag(path, container, &tag)?;
             return Ok(());
         }
@@ -1847,81 +1867,129 @@ fn save_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), Tag
 
 /// Persist an [`Id3v2Tag`] to a file, choosing the writer by container.
 ///
-/// AIFF goes through [`write_aiff_id3`] rather than lofty's `save_to_path`: the
-/// backend's own AIFF writer leaves a run of zero-length chunks after the tag on
+/// AIFF and WAV go through [`write_iff_id3`] rather than lofty's `save_to_path`.
+/// The backend's AIFF writer leaves a run of zero-length chunks after the tag on
 /// a rewrite, which strict decoders reject and which, on the *next* write, makes
-/// it drop the embedded cover (#358). Writing the `ID3 ` chunk into the container
-/// directly sidesteps that entirely — the audio is preserved byte for byte and
-/// the tag is clean every time. Every other ID3v2 container keeps lofty's
-/// container-aware save, which is well-behaved for them.
+/// it drop the embedded cover (#358); its WAV writer leaves the RIFF size short
+/// of the file, and the next write then appends a fresh tag past what it takes
+/// for junk, until the file ends in a chunk that claims gigabytes (#505).
+/// Writing the `ID3 ` chunk into the container directly sidesteps both — the
+/// audio is preserved byte for byte and the container is clean every time.
+/// Every other ID3v2 container keeps lofty's container-aware save, which is
+/// well-behaved for them.
 fn save_id3v2_tag(path: &Path, container: FileType, tag: &Id3v2Tag) -> Result<(), TagIoError> {
-    if container == FileType::Aiff {
+    save_id3v2_tag_with(path, container, tag, id3_write_options())
+}
+
+/// [`save_id3v2_tag`] at an explicit revision — the restore of a journaled
+/// block and a revision switch choose theirs (#205, #206); they go through the
+/// same writers so that neither can undo what #358 and #505 fixed.
+fn save_id3v2_tag_with(
+    path: &Path,
+    container: FileType,
+    tag: &Id3v2Tag,
+    options: WriteOptions,
+) -> Result<(), TagIoError> {
+    if matches!(container, FileType::Aiff | FileType::Wav) {
         let mut bytes = Vec::new();
-        tag.dump_to(&mut bytes, id3_write_options())?;
-        write_aiff_id3(path, &bytes)?;
-        return Ok(());
+        tag.dump_to(&mut bytes, options)?;
+        if write_iff_id3(path, Some(&bytes))? {
+            return Ok(());
+        }
     }
-    tag.save_to_path(path, id3_write_options())?;
+    tag.save_to_path(path, options)?;
     Ok(())
 }
 
-/// Write `id3_bytes` (a complete serialized ID3v2 tag) into an AIFF as its
-/// `ID3 ` chunk, rebuilding the container by hand.
+/// Put `id3_bytes` into an AIFF or a WAV as its `ID3 ` chunk — or, given
+/// `None`, take the chunk out — rebuilding the container by hand (#358, #505).
 ///
-/// The standard chunks — `COMM`/`SSND` (the audio), `FLLR`, `COMT` and the rest
-/// — are kept byte for byte; any existing `ID3 ` chunk is replaced, and anything
-/// past the first unreadable chunk (junk another encoder appended, #357) is
-/// dropped. The fresh `ID3 ` chunk goes last, with no reserved padding, so the
-/// file stays clean and playable across repeated edits. Atomic: written to a
-/// sibling temp file and renamed over the original.
-fn write_aiff_id3(path: &Path, id3_bytes: &[u8]) -> Result<(), TagIoError> {
+/// Every other chunk — `COMM`/`SSND` or `fmt `/`data` (the audio), `COMT`,
+/// `LIST`, `JUNK` and the rest — is kept byte for byte; any existing ID3 chunk
+/// (`ID3 ` or `id3 `) is replaced, and anything past the first unreadable chunk
+/// (junk another encoder appended, #357, or a broken write left, #505) is
+/// dropped. The fresh `ID3 ` chunk goes last, with no reserved padding. The
+/// size in the header is recomputed, never trusted: a WAV whose RIFF size falls
+/// short of the file is walked to its real end, so the chunks past the stated
+/// size are kept and the stale size corrected.
+///
+/// Returns `false`, touching nothing, for a file that is not a FORM/AIFF or a
+/// RIFF/WAVE — or one whose audio this walk cannot reach, so that a rebuild
+/// could never lose it. Atomic: written to a sibling temp file and renamed over
+/// the original.
+fn write_iff_id3(path: &Path, id3_bytes: Option<&[u8]>) -> Result<bool, TagIoError> {
     let raw = std::fs::read(path)?;
-    if raw.len() < 12 || &raw[0..4] != b"FORM" {
-        return Err(TagIoError::UnsupportedFormat(
-            path.to_string_lossy().into_owned(),
-        ));
+    if raw.len() < 12 {
+        return Ok(false);
     }
-    let form_type = &raw[8..12];
+    let (big_endian, audio_id): (bool, &[u8; 4]) = match (&raw[0..4], &raw[8..12]) {
+        (b"FORM", _) => (true, b"SSND"),
+        (b"RIFF", b"WAVE") => (false, b"data"),
+        _ => return Ok(false),
+    };
+    let read_size = |bytes: [u8; 4]| {
+        if big_endian {
+            u32::from_be_bytes(bytes)
+        } else {
+            u32::from_le_bytes(bytes)
+        }
+    };
+    let write_size = |size: u32| {
+        if big_endian {
+            size.to_be_bytes()
+        } else {
+            size.to_le_bytes()
+        }
+    };
 
-    // Keep every valid chunk except an existing `ID3 `; stop at the first chunk
-    // that isn't well-formed, which is where a broken container's junk begins.
+    // Keep every valid chunk except an existing ID3 one; stop at the first
+    // chunk that isn't well-formed, which is where a broken container's junk
+    // begins.
     let mut body: Vec<u8> = Vec::new();
+    let mut saw_audio = false;
     let mut pos = 12usize;
     while pos + 8 <= raw.len() {
         let id = &raw[pos..pos + 4];
-        let size =
-            u32::from_be_bytes([raw[pos + 4], raw[pos + 5], raw[pos + 6], raw[pos + 7]]) as usize;
+        let size = read_size([raw[pos + 4], raw[pos + 5], raw[pos + 6], raw[pos + 7]]) as usize;
         let payload_end = pos + 8 + size;
         let id_ok = id.iter().all(|b| b.is_ascii_graphic() || *b == b' ');
         if !id_ok || payload_end > raw.len() {
             break;
         }
+        if id == audio_id {
+            saw_audio = true;
+        }
         let chunk_end = (payload_end + (size & 1)).min(raw.len());
-        if id != b"ID3 " {
+        if !id.eq_ignore_ascii_case(b"ID3 ") {
             body.extend_from_slice(&raw[pos..chunk_end]);
         }
         pos = chunk_end;
     }
-
-    // The fresh ID3 chunk, word-aligned.
-    body.extend_from_slice(b"ID3 ");
-    body.extend_from_slice(&(id3_bytes.len() as u32).to_be_bytes());
-    body.extend_from_slice(id3_bytes);
-    if id3_bytes.len() % 2 == 1 {
-        body.push(0);
+    if !saw_audio {
+        return Ok(false);
     }
 
-    let form_size = (4 + body.len()) as u32; // the form-type plus the chunks
+    // The fresh ID3 chunk, word-aligned.
+    if let Some(id3_bytes) = id3_bytes {
+        body.extend_from_slice(b"ID3 ");
+        body.extend_from_slice(&write_size(id3_bytes.len() as u32));
+        body.extend_from_slice(id3_bytes);
+        if id3_bytes.len() % 2 == 1 {
+            body.push(0);
+        }
+    }
+
+    let container_size = (4 + body.len()) as u32; // the form type plus the chunks
     let mut out = Vec::with_capacity(12 + body.len());
-    out.extend_from_slice(b"FORM");
-    out.extend_from_slice(&form_size.to_be_bytes());
-    out.extend_from_slice(form_type);
+    out.extend_from_slice(&raw[0..4]);
+    out.extend_from_slice(&write_size(container_size));
+    out.extend_from_slice(&raw[8..12]);
     out.extend_from_slice(&body);
 
-    let tmp = path.with_extension("tagrex-aiff-tmp");
+    let tmp = path.with_extension("tagrex-iff-tmp");
     std::fs::write(&tmp, &out)?;
     std::fs::rename(&tmp, path)?;
-    Ok(())
+    Ok(true)
 }
 
 /// Rebuild a malformed AIFF whose chunk chain is severed after the audio.
@@ -3366,6 +3434,151 @@ mod tests {
         std::fs::remove_file(&path).ok();
     }
 
+    /// Build a RIFF/WAVE from `(chunk-id, payload)` pairs; `riff_size` overrides
+    /// the size in the header, for a file whose header lies about it (#505).
+    fn wav_bytes(chunks: &[(&[u8; 4], &[u8])], riff_size: Option<u32>) -> Vec<u8> {
+        let mut body = Vec::new();
+        for (id, payload) in chunks {
+            body.extend_from_slice(*id);
+            body.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+            body.extend_from_slice(payload);
+            if payload.len() % 2 == 1 {
+                body.push(0); // word-align
+            }
+        }
+        let mut out = Vec::new();
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&riff_size.unwrap_or((4 + body.len()) as u32).to_le_bytes());
+        out.extend_from_slice(b"WAVE");
+        out.extend_from_slice(&body);
+        out
+    }
+
+    /// A playable mono 16-bit PCM WAV: the `fmt ` chunk lofty needs to read the
+    /// file, and a short run of silence as its audio.
+    const PCM_FMT: [u8; 16] = [1, 0, 1, 0, 0x40, 0x1F, 0, 0, 0x80, 0x3E, 0, 0, 2, 0, 16, 0];
+
+    fn riff_size_matches(bytes: &[u8]) -> bool {
+        u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize == bytes.len() - 8
+    }
+
+    /// #505: the WAV chunk writer keeps the audio and every other chunk, swaps
+    /// the ID3 chunk whatever case its id is in, corrects a RIFF size that falls
+    /// short of the file, and drops the junk a broken write left at the end.
+    #[test]
+    fn write_iff_id3_repairs_a_wav_and_replaces_its_tag() {
+        let mut bytes = wav_bytes(
+            &[
+                (b"fmt ", &PCM_FMT),
+                (b"data", &[0; 8]),
+                (b"LIST", b"INFOtags"),
+                (b"id3 ", b"old-tag"),
+            ],
+            Some(20),
+        );
+        bytes.extend_from_slice(b"\xbe\xf0\x39\x77");
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes()); // a chunk running off the end
+
+        let path = std::env::temp_dir().join(format!("tagrex-wav-id3-{}.wav", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(write_iff_id3(&path, Some(b"NEW-ID3-BYTES")).unwrap());
+        let out = std::fs::read(&path).unwrap();
+        assert!(riff_size_matches(&out));
+        let expected = wav_bytes(
+            &[
+                (b"fmt ", &PCM_FMT),
+                (b"data", &[0; 8]),
+                (b"LIST", b"INFOtags"),
+                (b"ID3 ", b"NEW-ID3-BYTES"),
+            ],
+            None,
+        );
+        assert_eq!(out, expected);
+
+        // Taking the tag out leaves the rest exactly as it was.
+        assert!(write_iff_id3(&path, None).unwrap());
+        let out = std::fs::read(&path).unwrap();
+        let expected = wav_bytes(
+            &[
+                (b"fmt ", &PCM_FMT),
+                (b"data", &[0; 8]),
+                (b"LIST", b"INFOtags"),
+            ],
+            None,
+        );
+        assert_eq!(out, expected);
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// #505: a WAV whose audio chunk this walk cannot reach — a streamed file
+    /// with an open-ended `data` size — is left untouched rather than rebuilt
+    /// without its audio.
+    #[test]
+    fn write_iff_id3_leaves_a_wav_alone_when_it_cannot_reach_the_audio() {
+        let mut bytes = wav_bytes(&[(b"fmt ", &PCM_FMT)], None);
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&u32::MAX.to_le_bytes());
+        bytes.extend_from_slice(&[0; 32]);
+        let path =
+            std::env::temp_dir().join(format!("tagrex-wav-stream-{}.wav", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+        assert!(!write_iff_id3(&path, Some(b"TAG")).unwrap());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// #505: the whole path, as a user meets it — repeated edits, the undo of a
+    /// block removal — keeps a WAV's RIFF size equal to its length, so the tag
+    /// reads back every time. The backend's own WAV writer left it short, and
+    /// the next write corrupted the file; one that arrived short could not be
+    /// edited at all.
+    #[test]
+    fn a_wav_survives_repeated_writes_and_a_block_removal_undo() {
+        for (name, riff_size) in [("healthy", None), ("short", Some(100u32))] {
+            let bytes = wav_bytes(&[(b"fmt ", &PCM_FMT), (b"data", &[0; 4000])], riff_size);
+            let path = std::env::temp_dir().join(format!(
+                "tagrex-wav-writes-{name}-{}.wav",
+                std::process::id()
+            ));
+            std::fs::write(&path, &bytes).unwrap();
+            for title in ["First", "A longer second title", "3"] {
+                let mut file = TagEngine::read(&path).expect("read");
+                file.tags.insert(TagField::Title, title.to_string());
+                TagEngine::write(&file).expect("write");
+                let out = std::fs::read(&path).unwrap();
+                assert!(
+                    riff_size_matches(&out),
+                    "{name}: RIFF size after writing {title:?}"
+                );
+                let reread = TagEngine::read(&path).expect("reread");
+                assert_eq!(
+                    reread.tags.get(&TagField::Title).map(String::as_str),
+                    Some(title)
+                );
+            }
+            let saved = TagEngine::dump_id3v2(&path)
+                .expect("dump")
+                .expect("a block");
+            TagEngine::remove_block(&path, TagBlockKind::Id3v2).expect("remove");
+            assert!(riff_size_matches(&std::fs::read(&path).unwrap()));
+            assert!(!TagEngine::read(&path)
+                .expect("read")
+                .tags
+                .contains_key(&TagField::Title));
+            TagEngine::restore_id3v2_bytes(&path, &saved, &[], None).expect("restore");
+            assert!(riff_size_matches(&std::fs::read(&path).unwrap()));
+            assert_eq!(
+                TagEngine::read(&path)
+                    .expect("read")
+                    .tags
+                    .get(&TagField::Title)
+                    .map(String::as_str),
+                Some("3")
+            );
+            std::fs::remove_file(&path).ok();
+        }
+    }
+
     /// Build a FORM/AIFF from `(chunk-id, payload)` pairs, for the repair tests.
     fn aiff_bytes(chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
         let mut body = Vec::new();
@@ -3470,7 +3683,7 @@ mod tests {
         let path =
             std::env::temp_dir().join(format!("tagrex-aiff-id3-{}.aiff", std::process::id()));
         std::fs::write(&path, &bytes).unwrap();
-        write_aiff_id3(&path, b"NEW-ID3-BYTES").unwrap();
+        assert!(write_iff_id3(&path, Some(b"NEW-ID3-BYTES")).unwrap());
 
         let out = std::fs::read(&path).unwrap();
         // Well-formed FORM/AIFF with the size field matching the file.
