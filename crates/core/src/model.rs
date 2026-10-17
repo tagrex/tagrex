@@ -48,8 +48,17 @@ pub fn set_write_id3v23(v23: bool) {
 }
 
 /// The write options for an ID3v2 save, honoring the version preference.
+/// Every write's options: the backend's defaults, with the junk window the
+/// reader already allows (#204, #506). The backend checks a file's format again
+/// before it writes, looking a bounded distance past the tag for the audio, so
+/// a file with more than 1024 bytes of junk there — padding left by an encoder
+/// — was read fine and then refused on every write.
+fn write_options() -> WriteOptions {
+    WriteOptions::default().parse_options(ParseOptions::new().max_junk_bytes(STUBBORN_JUNK_BYTES))
+}
+
 fn id3_write_options() -> WriteOptions {
-    WriteOptions::default().use_id3v23(WRITE_ID3V23.load(Ordering::Relaxed))
+    write_options().use_id3v23(WRITE_ID3V23.load(Ordering::Relaxed))
 }
 
 /// User-preferred order for choosing which tag block a multi-tag file is read
@@ -1363,7 +1372,7 @@ impl TagEngine {
         };
         tag.retain(|frame| !matches!(frame, Frame::Picture(_)));
         let mut bytes = Vec::new();
-        tag.dump_to(&mut bytes, WriteOptions::default())?;
+        tag.dump_to(&mut bytes, write_options())?;
         Ok(Some(bytes))
     }
 
@@ -1404,7 +1413,7 @@ impl TagEngine {
             tag.insert_picture(picture_from_cover(cover));
         }
         let options = match revision {
-            Some(revision) => WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3),
+            Some(revision) => write_options().use_id3v23(revision == Id3v2Revision::V3),
             None => id3_write_options(),
         };
         match container_of(path)? {
@@ -1437,7 +1446,7 @@ impl TagEngine {
             path,
             container,
             &tag,
-            WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3),
+            write_options().use_id3v23(revision == Id3v2Revision::V3),
         )?;
         Ok(true)
     }
@@ -1487,7 +1496,7 @@ impl TagEngine {
             .write(true)
             .open(path)?;
         kind.to_tag_type()
-            .remove_from(&mut handle, WriteOptions::default())?;
+            .remove_from(&mut handle, write_options())?;
         Ok(())
     }
 
@@ -1523,10 +1532,10 @@ impl TagEngine {
         ensure_audio_after_tags(path)?;
         let options = match (kind, revision) {
             (TagBlockKind::Id3v2, Some(revision)) => {
-                WriteOptions::default().use_id3v23(revision == Id3v2Revision::V3)
+                write_options().use_id3v23(revision == Id3v2Revision::V3)
             }
             (TagBlockKind::Id3v2, None) => id3_write_options(),
-            _ => WriteOptions::default(),
+            _ => write_options(),
         };
         let tag = tag_for_block(kind, content);
         if kind == TagBlockKind::Id3v2 {
@@ -1598,7 +1607,7 @@ impl TagEngine {
         for cover in covers {
             tag.push_picture(picture_from_cover(cover));
         }
-        tag.save_to_path(path, WriteOptions::default())?;
+        tag.save_to_path(path, write_options())?;
         Ok(())
     }
 }
@@ -1700,9 +1709,9 @@ fn sync_id3v1(path: &Path, tags: &TagMap) -> Result<(), TagIoError> {
             .read(true)
             .write(true)
             .open(path)?;
-        TagType::Id3v1.remove_from(&mut handle, WriteOptions::default())?;
+        TagType::Id3v1.remove_from(&mut handle, write_options())?;
     } else {
-        legacy.save_to_path(path, WriteOptions::default())?;
+        legacy.save_to_path(path, write_options())?;
     }
     Ok(())
 }
@@ -2537,7 +2546,7 @@ fn save_with_custom_items(
             for (name, value) in raw_custom_fields(tags, tag_type) {
                 merged.push(name.to_string(), value.to_string());
             }
-            merged.save_to_path(path, WriteOptions::default())?;
+            merged.save_to_path(path, write_options())?;
         }
         TagType::Ape => {
             let (remainder, _) = read_ape(path, container, tag_only_options())?
@@ -2562,7 +2571,7 @@ fn save_with_custom_items(
                     merged.insert(item);
                 }
             }
-            merged.save_to_path(path, WriteOptions::default())?;
+            merged.save_to_path(path, write_options())?;
         }
         TagType::Mp4Ilst => {
             // The MP4 conversion *does* carry the file's own atoms across, so
@@ -2579,9 +2588,9 @@ fn save_with_custom_items(
                     AtomData::UTF8(value.to_string()),
                 ));
             }
-            merged.save_to_path(path, WriteOptions::default())?;
+            merged.save_to_path(path, write_options())?;
         }
-        _ => tag.save_to_path(path, WriteOptions::default())?,
+        _ => tag.save_to_path(path, write_options())?,
     }
     Ok(())
 }
@@ -3521,6 +3530,40 @@ mod tests {
 
     fn riff_size_matches(bytes: &[u8]) -> bool {
         u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]) as usize == bytes.len() - 8
+    }
+
+    /// #506: an MP3 whose audio starts more than 1024 bytes past its tag — an
+    /// empty, padded ID3v2.3 block followed by a run of zeros, as an encoder
+    /// left five files in a real library — read fine but refused every write:
+    /// the backend checks the format again before writing, with a narrower junk
+    /// window than the reader allows. It now writes, and the audio, junk and all,
+    /// is untouched.
+    #[test]
+    fn an_mp3_with_junk_before_its_audio_can_be_written() {
+        let mut bytes = b"ID3\x03\x00\x00\x00\x00\x00\x64".to_vec(); // 100 bytes of padding
+        bytes.resize(10 + 100 + 1100, 0); // and 1100 zeros before the audio
+        let audio_at = bytes.len();
+        let mut silence = vec![0xFF, 0xFB, 0x90, 0x00];
+        silence.resize(SILENT_MPEG_FRAME_LEN, 0);
+        for _ in 0..SILENT_MPEG_FRAMES {
+            bytes.extend_from_slice(&silence);
+        }
+        let audio = bytes[audio_at..].to_vec();
+        let path = std::env::temp_dir().join(format!("tagrex-junk-{}.mp3", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+
+        let mut file = TagEngine::read(&path).expect("read");
+        file.tags.insert(TagField::Title, "Written".to_string());
+        TagEngine::write(&file).expect("the write must succeed");
+
+        let reread = TagEngine::read(&path).expect("reread");
+        assert_eq!(
+            reread.tags.get(&TagField::Title).map(String::as_str),
+            Some("Written")
+        );
+        let out = std::fs::read(&path).unwrap();
+        assert!(out.ends_with(&audio), "the audio is untouched");
+        std::fs::remove_file(&path).ok();
     }
 
     /// #416: a file that is tags and nothing else — no audio frame after a

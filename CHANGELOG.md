@@ -84,6 +84,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   writes a WAV's (and, for the undo and revision paths too, an AIFF's) ID3 chunk
   itself: the audio and every other chunk stay byte for byte, the size is
   recomputed, and a file damaged this way is put right by its next edit. (#505)
+- **MP3s with padding before their audio can be tagged again.** A file whose
+  audio starts more than 1 KB past its tag — an encoder's empty, padded tag
+  followed by a run of zeros — opened fine but every write to it failed with
+  "failed to write to file", because the format check before a write looked a
+  shorter distance for the audio than the one at read time. Writes now look as
+  far as reads do. (#506)
 
 ## [0.22.2] - 2026-10-12
 
