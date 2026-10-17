@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Dependencies refreshed: Tauri 2.12.4.** The Tauri runtime and its dialog,
+  clipboard and single-instance plugins move to their latest patch releases,
+  along with rustls, tokio, serde_json and the rest of the dependency tree. The
+  Windows app now carries the C runtime inside its executable instead of
+  relying on the system's copy. (#510)
+
 ## [0.23.0] - 2026-10-17
 
 This release is mostly about keeping your files safe. Writing tags no longer
