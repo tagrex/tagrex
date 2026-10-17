@@ -17,10 +17,12 @@ version = "0.23.0"
 edition = "2021"
 license = "GPL-3.0-only"
 repository = "https://github.com/tagrex/tagrex"
-# Verified minimum toolchain. Set by the tag backend, which requires 1.89 as of
-# its 0.25 release (#201) — the core crates cannot ask for less than what they
-# are built on. Bumping edition to 2024 requires rust-version >= 1.85.
-rust-version = "1.89"
+# Verified minimum toolchain. Set by Tauri, which requires 1.90 (#512); the tag
+# backend alone would need 1.89 as of its 0.25 release (#201), but no crate here
+# is published, so one number for the whole workspace is the honest one. Check a
+# change with `cargo +<version> build --workspace` before writing it down.
+# Bumping edition to 2024 requires rust-version >= 1.85.
+rust-version = "1.90"
 
 [workspace.dependencies]
 thiserror = "2"

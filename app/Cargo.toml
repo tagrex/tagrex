@@ -5,8 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-# The GUI shell's own minimum is Tauri 2's 1.82, which the workspace's 1.89 now
-# covers — the tag backend asks for more than the shell does (#201).
+# The GUI shell sets the workspace minimum: Tauri requires 1.90 (#512).
 rust-version.workspace = true
 publish = false
 

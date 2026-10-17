@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   along with rustls, tokio, serde_json and the rest of the dependency tree. The
   Windows app now carries the C runtime inside its executable instead of
   relying on the system's copy. (#510)
+- **The minimum Rust version is 1.90.** Tauri already required it, so the
+  1.89 the project declared could not build the app; the whole workspace is now
+  built and tested on 1.90 to back the number. (#512)
 
 ## [0.23.0] - 2026-10-17
 
