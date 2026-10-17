@@ -973,6 +973,9 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case "player_status":
       return Promise.resolve(mockPlayer.status());
+    // The system's Now Playing (#218): no system to tell in a browser.
+    case "media_session_update":
+      return Promise.resolve();
     // The placeholder reference (#148). A trimmed stand-in: enough of each group
     // for the popover's grouping, filtering and insertion to be exercised in the
     // browser. The real list comes off the parser's own tables.

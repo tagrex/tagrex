@@ -204,7 +204,8 @@ keeps every frame rather than rebuilding it. All staged, all undoable.
 **A preview player** — gapless playback with prev/next, a three-state repeat and
 volume, for checking that a file is what its tags claim. The seek bar draws the
 track's loudness envelope, so an intro, a breakdown and a drop are three
-different shapes to aim at.
+different shapes to aim at. On macOS the media keys, the Now Playing widget and
+headphone controls drive it too.
 
 **Vinyl-aware** — side letters map to disc numbers (`A1` → disc 1, track 1)
 rather than being stored verbatim, with a `MediaType` tag, a render-only

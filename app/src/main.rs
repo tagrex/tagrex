@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+mod media_session;
 mod update;
 
 use tauri::{Manager, State};
@@ -622,6 +623,12 @@ fn player_set_volume(player: State<Player>, level: f64) {
 #[tauri::command]
 fn player_status(player: State<Player>) -> PlayerStatus {
     player.status()
+}
+
+/// What the preview player is doing, for the system's Now Playing (#218).
+#[tauri::command]
+async fn media_session_update(app: tauri::AppHandle, now: media_session::NowPlaying) {
+    media_session::update(app, now).await;
 }
 
 /// The callback that turns the executor's progress into events (#437, #448),
@@ -1243,6 +1250,7 @@ fn main() {
                 .lock()
                 .unwrap()
                 .apply_settings(&settings);
+            media_session::install(app.handle());
             Ok(())
         })
         .manage(Player::new())
@@ -1316,6 +1324,7 @@ fn main() {
             preview_transform_groups,
             preview_transform_over_plan,
             player_status,
+            media_session_update,
             take_launch_paths
         ])
         .build(tauri::generate_context!())

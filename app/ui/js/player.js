@@ -48,6 +48,11 @@ let plPosition = 0;
 /// How opaque the part of the track that has not played yet is drawn.
 const UNPLAYED_ALPHA = 0.5;
 
+// What the system's Now Playing was last told (#218): the track, its state and
+// where playback was at that moment. The system runs its own clock from there,
+// so it is told again only when the picture would otherwise go wrong.
+let published = null;
+
 // Ask for the waveform of `path`, and paint it if it is still the track playing
 // when it arrives. A failure is silent: a missing picture is cosmetic, and a
 // file that cannot be decoded here is one the player has already complained
@@ -279,6 +284,7 @@ function playerIdle() {
   plPosition = 0;
   drawWave();
   clearPlayerCover(); // #275
+  publishNowPlaying(0); // #218: nothing is playing any more
   playerBar.classList.add("idle");
   setPlayerVisible(false);
   setPlayerControlsEnabled(false);
@@ -477,6 +483,96 @@ async function pollPlayerStatus() {
   }
   plTime.textContent = `${fmtTime(st.position_secs)} / ${fmtTime(plDuration)}`;
   plToggle.innerHTML = ico(plPaused ? "play" : "pause");
+  if (nowPlayingStale(st.position_secs)) publishNowPlaying(st.position_secs);
+}
+
+// The system media session (#218): the Mac's media keys, the Now Playing widget
+// and headphone controls. The system only sends those to the app that says what
+// it is playing, so every change of track, state or position is reported here,
+// from the same poll that keeps the bar in step.
+function nowPlayingTags() {
+  const track = tracks.find((x) => x.path === playingPath);
+  const tags = (track && track.tags) || {};
+  return {
+    title: (tags.title || "").trim() || fileName(playingPath),
+    artist: (tags.artist || "").trim(),
+    album: (tags.album || "").trim(),
+  };
+}
+
+function publishNowPlaying(position) {
+  if (!playingPath) {
+    if (published && published.path === null) return;
+    published = { path: null };
+    invoke("media_session_update", {
+      now: { state: "stopped", path: null, title: "", artist: "", album: "", duration_secs: 0, position_secs: 0 },
+    }).catch(() => {});
+    return;
+  }
+  const tags = nowPlayingTags();
+  published = {
+    path: playingPath,
+    paused: plPaused,
+    duration: plDuration,
+    label: `${tags.title}\n${tags.artist}\n${tags.album}`,
+    position,
+    at: performance.now(),
+  };
+  invoke("media_session_update", {
+    now: {
+      state: plPaused ? "paused" : "playing",
+      path: playingPath,
+      ...tags,
+      duration_secs: plDuration,
+      position_secs: position,
+    },
+  }).catch(() => {});
+}
+
+// Whether the system's picture has drifted from the player's: another track, a
+// pause, a length that was not known yet, edited tags, or a position that jumped
+// — a seek, from the bar or from the system's own widget.
+function nowPlayingStale(position) {
+  if (!published || published.path !== playingPath) return true;
+  if (published.paused !== plPaused || published.duration !== plDuration) return true;
+  const tags = nowPlayingTags();
+  if (published.label !== `${tags.title}\n${tags.artist}\n${tags.album}`) return true;
+  const expected = published.position + (plPaused ? 0 : (performance.now() - published.at) / 1000);
+  return Math.abs(position - expected) > 2;
+}
+
+// A remote command from the system, handled as the matching control would be —
+// except that Play resumes the paused track. The bar's button plays the selected
+// row when paused, which is a choice made on screen; a media key is pressed
+// without looking, and after Next the selection is still the first track.
+function onMediaControl(control) {
+  switch (control && control.action) {
+    case "toggle":
+      if (playingPath) togglePlay();
+      else playPauseFromBar();
+      break;
+    case "play":
+      if (playingPath && plPaused) togglePlay();
+      else if (!playingPath) playPauseFromBar();
+      break;
+    case "pause":
+      if (playingPath && !plPaused) togglePlay();
+      break;
+    case "stop":
+      if (playingPath) stopPlayback();
+      break;
+    case "next":
+      el("pl-next").click();
+      break;
+    case "previous":
+      el("pl-prev").click();
+      break;
+    case "seek":
+      if (playingPath && Number.isFinite(control.position_secs)) {
+        invoke("player_seek", { secs: control.position_secs });
+      }
+      break;
+  }
 }
 
 // The track the bottom Play button starts when nothing is playing: the active
@@ -627,5 +723,8 @@ if (window.ResizeObserver) {
 // repeat mode or a volume was remembered.
 applyRepeatMode(repeatMode);
 applyVolume(storedVolume(), { persist: false });
+
+const tauriEvents = window.__TAURI__ && window.__TAURI__.event;
+if (tauriEvents) tauriEvents.listen("tagrex://media-control", (e) => onMediaControl(e.payload));
 
 export { fmtTime, showPlayerBar, playTrack, isPlayingPath };

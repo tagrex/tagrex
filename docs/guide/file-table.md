@@ -210,3 +210,10 @@ volume level persists between runs.
 The track name comes from the tags — "Wish Mountain — Radio" rather than
 `102_wish_mountain_-_radio.mp3` — falling back to the file name when the tags
 are empty.
+
+On macOS the player is a system media player: the keyboard's play/pause, next
+and previous keys drive it, and so do headphone controls and the Now Playing
+widget in Control Center, which shows the track's title, artist, album and
+cover and lets you drag its position. No permission is needed. macOS sends
+these keys to whichever app is playing, so while another player is the one
+playing, they stay with it.

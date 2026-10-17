@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The Mac's media keys drive the preview player.** Play/pause, next and
+  previous on the keyboard, headphone controls and the Now Playing widget in
+  Control Center work on it, and the widget shows the playing track's title,
+  artist, album and cover and can move its position. TagRex registers as a
+  media player instead of capturing the keys, so it needs no Accessibility
+  permission and does not take the keys from another player while that one is
+  playing. (#218)
+
 ### Changed
 
 - **Dependencies refreshed: Tauri 2.12.4.** The Tauri runtime and its dialog,
