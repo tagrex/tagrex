@@ -4144,7 +4144,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-single-instance",
  "tauri-plugin-window-state",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "trash",
  "ureq",
 ]
@@ -4162,7 +4162,7 @@ dependencies = [
  "tagrex-providers-discogs",
  "tagrex-providers-musicbrainz",
  "tagrex-providers-soundeo",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "trash",
 ]
 
@@ -4174,7 +4174,7 @@ dependencies = [
  "lofty",
  "regex",
  "rusqlite",
- "thiserror 1.0.69",
+ "thiserror 2.0.21",
  "walkdir",
 ]
 
