@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-18
+
+This release reads tags out of a tracklist and lets the system drive the
+player. FROM TEXT, a new TAGGER sub-tab, takes a tracklist pasted from a forum
+post, a CD insert or a release page and hands each track to a selected file,
+with a mask it can suggest from the list's own layout and the tabs and dashes
+that trip masks up made visible. The Mac's media keys, the Now Playing widget
+and headphone buttons now control the preview player, as MPRIS clients do on
+Linux, and the Mac app is signed as TagRex rather than under a generated name.
+
 ### Added
 
 - **The Mac's media keys drive the preview player.** Play/pause, next and
@@ -60,17 +70,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- **The preview player plays through Bluetooth headphones again.** Since the
-  move to rodio 0.23 it could not open headphones that take a smaller audio
-  buffer than it asked for, and dropped back to idle the moment a track
-  started; it now retries with a buffer the device accepts. (#513)
+- **Bluetooth headphones work with the new audio layer.** With rodio 0.23 the
+  player could not open headphones that take a smaller audio buffer than it
+  asked for, and dropped back to idle the moment a track started; it now
+  retries with a buffer the device accepts. Found before release — 0.23.0
+  plays through them as it always did. (#513)
 - **The Mac app is signed as TagRex.** Only its executable carried a
   signature, under a generated name, so macOS showed that name and a blank icon
   for it — in the Now Playing widget once playback stops, for one. The whole
   app is now signed under its bundle identifier. (#514)
-- **The Linux and Windows builds pass their lint check again.** The media
-  session from #218 left its shared types unused on those platforms, which
-  failed the build's warnings check there. (#517)
+- **The Linux and Windows builds pass their lint check.** The media session
+  from #218 left its shared types unused on those platforms, which failed the
+  build's warnings check there before it reached a release. (#517)
 
 ## [0.23.0] - 2026-10-17
 

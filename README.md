@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 0.23.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.24.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
 > lookups, cover art, tag block conversion, duplicate detection, exports, a
 > preview player, a transactional undo journal, and an interface that speaks
