@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   manager, where it used to wipe the first block and leave a row-by-row
   ⌘-click as the only way to skip one. A plain click followed by Shift-click
   works as before. (#523)
+- **AcoustID is no longer listed as coming.** Measured on a real club-music
+  collection it named about 30% of files, and only 3–10% of the untagged rips
+  and vinyl it would be for; the README's "Not yet" promise is gone and the
+  numbers are on the issue. (#60)
 - **The file table guide lists ⌘/Ctrl-A and click-to-deselect.** It still said
   there was no ⌘/Ctrl-A, months after the shortcut arrived. (#524)
 

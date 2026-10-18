@@ -127,7 +127,12 @@ Planned plugin families:
 
 - **Audio fingerprinting (AcoustID).** That is the territory of the
   automation-first taggers; the first versions prioritize manual control over
-  automagic. Also drags in a Chromaprint dependency.
+  automagic. The Chromaprint objection is gone — a pure-Rust implementation
+  exists — so it was measured instead (#60): on 291 files of a club-music
+  collection AcoustID named about 30% correctly, 50–90% of CD-era mainstream
+  but 3–10% of the untagged rips, vinyl and masters a fingerprint lookup is for,
+  and a few wrong answers came back at near-certain scores. Deferred on those
+  numbers, to be re-measured rather than re-argued.
 - **ReplayGain.** Audio analysis, not metadata editing. Different world.
 - **Scripting / actions**, as the established taggers offer them. This is the
   one on this list that has largely happened, and along the predicted line: the
@@ -186,7 +191,8 @@ why the parts were built in that sequence, and it held.
 4. ~~Covers and exporters.~~
 5. Revisit the deferred list — in progress: the duplicate finder and the extra
    formats came off it, scripting arrived as chains and mask functions, and
-   AcoustID and ReplayGain are still where they were.
+   AcoustID was measured and stays deferred on the numbers (#60), and
+   ReplayGain is still where it was.
 
 ## Prior art and positioning
 

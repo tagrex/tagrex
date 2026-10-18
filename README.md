@@ -225,10 +225,6 @@ shortcuts for the main actions that you can rebind, a bundled IBM Plex type set
 so text renders identically on every OS, adjustable table density, and a
 Settings › LAB section for typography still being trialled.
 
-## Not yet
-
-- **AcoustID** fingerprinting.
-
 ## Motivation
 
 For years, [TagScanner](https://www.xdlab.ru/) and [Mp3tag](https://www.mp3tag.de/en/)
