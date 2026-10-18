@@ -34,6 +34,7 @@ import { initUpdateCheck } from "./js/updatecheck.js";
 import "./js/tablegestures.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
+import { refreshTextProbe, scheduleTextProbe } from "./js/fromtext.js";
 import { refreshDeduplicator, runDuplicateScan } from "./js/dedup.js";
 import {
   chooseCover,
@@ -2047,6 +2048,7 @@ function setMode(name) {
 function refreshTagger() {
   refreshFieldEditor();
   scheduleNameProbe(); // no-op unless FROM NAME is the open sub-tab
+  scheduleTextProbe(); // the same for FROM TEXT, whose counts follow the selection
 }
 
 document.querySelectorAll(".mode-tab").forEach((tab) => {
@@ -2325,6 +2327,7 @@ function setSubtab(name) {
   // The probe is only computed while it's on screen; opening the tab is when it
   // has to catch up with the current selection and pattern.
   if (name === "filename") refreshNameProbe();
+  if (name === "fromtext") refreshTextProbe();
   // Each sub-tab is its own chain context — ONLINE and FROM NAME have one,
   // EDITOR deliberately has none (#236).
   syncTransformPlacement();
@@ -2577,6 +2580,7 @@ function syncSelectionUI() {
   if (currentMode === "tagger") {
     refreshFieldEditor();
     scheduleNameProbe();
+    scheduleTextProbe();
     // An expanded release card compares its listed lengths against the selected
     // files (#188), so the deltas go stale the moment the selection moves.
     refreshReleaseMatches();

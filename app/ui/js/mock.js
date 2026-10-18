@@ -451,6 +451,43 @@ function mockInvoke(cmd, args) {
       const fields = mockExtractFromName(args.mask, subject);
       return Promise.resolve({ subject, fields: fields || [], matched: !!fields });
     }
+    // FROM TEXT (#61): the lines the mask fits are the tracks, and the nth
+    // track goes to the nth path — the backend's pairing.
+    case "probe_tags_from_text": {
+      const lines = args.text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line !== "");
+      const mask = args.mask.replace(/\\t/g, "\t");
+      const tracks = lines.map((line) => [line, mockExtractFromName(mask, line)]).filter(([, f]) => f);
+      const first = tracks.length
+        ? { subject: tracks[0][0], fields: tracks[0][1], matched: true }
+        : { subject: lines[0] || "", fields: [], matched: false };
+      return Promise.resolve({ first, tracks: tracks.length, skipped: lines.length - tracks.length });
+    }
+    case "preview_tags_from_text": {
+      const tracks = args.text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+        .map((line) => mockExtractFromName(args.mask.replace(/\\t/g, "\t"), line))
+        .filter(Boolean);
+      const changes = args.paths
+        .map((p, i) => {
+          const t = findTrack(p);
+          if (!t || i >= tracks.length) return null;
+          const tag_changes = tracks[i]
+            .filter(([field, value]) => value && (t.tags[field] || "") !== value)
+            .map(([field, value]) => ({ field, old: t.tags[field] || null, new: value, invalid: false }));
+          return tag_changes.length ? { path: p, rename_to: null, tag_changes } : null;
+        })
+        .filter(Boolean);
+      return Promise.resolve(
+        plan(`Tags from text: ${args.mask}`, { code: "plan.tagsFromText", args: { mask: args.mask } }, changes)
+      );
+    }
+    case "read_text_list":
+      return Promise.resolve("01. Mock Artist - Mock Title\n02. Mock Artist - Second Title\n");
     case "preview_tags_from_name": {
       const changes = args.paths
         .map((p) => {

@@ -285,7 +285,9 @@ function chainContext() {
   if (currentMode === "renamer") return "renamer";
   if (currentMode !== "tagger") return null;
   const sub = document.querySelector(".subtab.active")?.dataset.subtab;
-  if (sub === "filename") return "fromname";
+  // FROM TEXT (#61) reads values out of a string with a mask too, and takes
+  // FROM NAME's chain rather than a third one.
+  if (sub === "filename" || sub === "fromtext") return "fromname";
   if (sub === "online") return "online";
   return null;
 }

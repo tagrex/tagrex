@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   media player instead of capturing the keys, so it needs no Accessibility
   permission and does not take the keys from another player while that one is
   playing. (#218)
+- **Tags from a text list.** A new FROM TEXT sub-tab in TAGGER reads a pasted
+  or opened tracklist with a mask, the way FROM NAME reads a file name, and
+  hands the nth track to the nth selected file. Lines the mask doesn't fit — a
+  heading, a side label — are skipped rather than paired, the panel says how
+  tracks, files and skipped lines add up before anything is staged, and `\t`
+  in the mask matches the tabs of a table copied from a web page. (#61)
 - **On Linux the preview player is an MPRIS media player.** It appears on the
   session bus as TagRex, so the media keys, the desktop's media widget and
   `playerctl` can play, pause, stop, skip and seek it, and they show the

@@ -145,6 +145,8 @@ with a count; choosing one narrows the table to the files it flags.
   auto-numbering on import. A **FROM NAME** sub-tab runs a mask the other way
   round — the file's own name read back into tags, with `%skip%` for the junk
   that maps to nothing and a live read-out of what the pattern is pulling out.
+  **FROM TEXT** does the same with a pasted or opened tracklist, one line per
+  selected file, skipping the headings and side labels the mask doesn't fit.
 - **RENAMER** — rename files and sort them into folders from one mask
   (`%artist% - %title%`; a `/` in it makes subfolders), with conditional `[...]`
   sections, zero-padding, `%field:width%` and the function language below. What

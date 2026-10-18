@@ -19,8 +19,8 @@ use tagrex_commands::{
     ActionGroupDto, AlignMatchDto, App, AppError, BatchDto, BlockTargetsDto, CandidateDto,
     CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateGroupDto, ErrorDto,
     ImportFieldDto, ImportSelectionDto, ImportTrackDto, NameProbeDto, PlaceholderDto, PlanDto,
-    ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TrackDto,
-    TransformRuleDto,
+    ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TextProbeDto,
+    TrackDto, TransformRuleDto,
 };
 use tagrex_player::{Player, PlayerStatus};
 
@@ -263,6 +263,40 @@ fn probe_tags_from_name(
         app.probe_tags_from_name(&mask, &PathBuf::from(path))
             .map_err(ErrorDto::from)
     })
+}
+
+/// Tags from a text list (#61): one line per selected file, in order.
+#[tauri::command]
+fn preview_tags_from_text(
+    state: State<AppState>,
+    mask: String,
+    text: String,
+    paths: Vec<String>,
+) -> Result<PlanDto, ErrorDto> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.preview_tags_from_text(&mask, &text, &paths)
+            .map_err(ErrorDto::from)
+    })
+}
+
+#[tauri::command]
+fn probe_tags_from_text(
+    state: State<AppState>,
+    mask: String,
+    text: String,
+) -> Result<TextProbeDto, ErrorDto> {
+    with_app(&state, |app| {
+        app.probe_tags_from_text(&mask, &text)
+            .map_err(ErrorDto::from)
+    })
+}
+
+/// Read a text list the user picked for the FROM TEXT panel (#61). Stateless,
+/// like [`read_cover_image`]: the file is the user's explicit choice.
+#[tauri::command]
+fn read_text_list(path: String) -> Result<String, ErrorDto> {
+    tagrex_commands::read_text_list(&PathBuf::from(path)).map_err(ErrorDto::from)
 }
 
 #[tauri::command]
@@ -1267,6 +1301,9 @@ fn main() {
             preview_rename,
             preview_tags_from_name,
             probe_tags_from_name,
+            preview_tags_from_text,
+            probe_tags_from_text,
+            read_text_list,
             preview_move,
             preview_transform,
             preview_tag_edits,

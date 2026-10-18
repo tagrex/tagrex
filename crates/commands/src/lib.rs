@@ -29,7 +29,7 @@ use tagrex_core::mask::{FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{
     is_writable_value, CoverArt, CoverKind, Id3v2Revision, TagBlock, TagBlockContent, TagBlockKind,
-    TagEngine, TagField,
+    TagEngine, TagField, TagMap,
 };
 use tagrex_core::plan::{
     ApplyProgress, BlockChange, ChangePlan, CoverChange, Executor, FieldChange, FileChange,
@@ -178,6 +178,15 @@ pub struct NameProbeDto {
     pub subject: String,
     pub fields: Vec<(String, String)>,
     pub matched: bool,
+}
+
+/// What a mask makes of a text list (#61): the first track's read-out, and how
+/// many tracks the list holds and lines it skips under that mask.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TextProbeDto {
+    pub first: NameProbeDto,
+    pub tracks: usize,
+    pub skipped: usize,
 }
 
 /// An embedded image crossing the IPC boundary: base64 data + MIME, plus what
@@ -422,6 +431,9 @@ pub enum PlanMessage {
     TagsFromName {
         mask: String,
     },
+    TagsFromText {
+        mask: String,
+    },
     Transform {
         scope: String,
     },
@@ -469,6 +481,7 @@ impl PlanMessage {
         match self {
             Self::RenameByMask { .. } => "plan.renameByMask",
             Self::TagsFromName { .. } => "plan.tagsFromName",
+            Self::TagsFromText { .. } => "plan.tagsFromText",
             Self::Transform { .. } => "plan.transform",
             Self::ReorganizeByMask { copy: false, .. } => "plan.reorganizeByMask",
             Self::ReorganizeByMask { copy: true, .. } => "plan.copyByMask",
@@ -501,6 +514,7 @@ impl PlanMessage {
         match self {
             Self::RenameByMask { mask }
             | Self::TagsFromName { mask }
+            | Self::TagsFromText { mask }
             | Self::ReorganizeByMask { mask, .. } => {
                 args.insert("mask".to_string(), mask.clone());
             }
@@ -538,6 +552,7 @@ impl PlanMessage {
         match self {
             Self::RenameByMask { mask } => format!("Rename by mask: {mask}"),
             Self::TagsFromName { mask } => format!("Tags from name: {mask}"),
+            Self::TagsFromText { mask } => format!("Tags from text: {mask}"),
             Self::Transform { scope } => format!("Transform ({scope})"),
             Self::ReorganizeByMask { copy, mask } => {
                 format!(
@@ -809,6 +824,7 @@ fn error_message(error: &AppError) -> MessageDto {
         }
         AppError::EmptyDrop => coded("error.emptyDrop", BTreeMap::new()),
         AppError::NotAnImage(path) => coded("error.notAnImage", arg("path", path)),
+        AppError::NotATextList(path) => coded("error.notATextList", arg("path", path)),
         AppError::MissingDestination(path) => coded("error.missingDestination", arg("path", path)),
         AppError::MissingLibrary(path) => coded("error.missingLibrary", arg("path", path)),
         AppError::Io(detail) => coded("error.io", arg("detail", detail)),
@@ -2573,6 +2589,114 @@ impl App {
             subject,
             fields,
             matched: true,
+        })
+    }
+
+    /// Preview tags read from a text list (#61): one line per track, parsed
+    /// with a mask and paired with `paths` in order.
+    ///
+    /// The extract direction of the mask again, as in
+    /// [`preview_tags_from_name`](Self::preview_tags_from_name), but the subject
+    /// is a line of pasted or loaded text — a tracklist from a forum post, a CD
+    /// insert, a release page no source has. Only the lines the mask fits are
+    /// tracks (see [`text_list_tracks`]): a blank line, a heading or a "Side A"
+    /// is skipped rather than handed a file, and the nth track goes to the nth
+    /// path. Extra tracks or extra files are left out — the panel says how many
+    /// of each there are, and how many lines it skipped, before anything is
+    /// staged.
+    pub fn preview_tags_from_text(
+        &self,
+        mask_pattern: &str,
+        text: &str,
+        paths: &[PathBuf],
+    ) -> Result<PlanDto, AppError> {
+        let mask = Mask::parse(&text_list_mask(mask_pattern))?;
+        let (tracks, _) = text_list_tracks(&mask, text)?;
+        let mut changes = Vec::new();
+        for (path, (_, extracted)) in paths.iter().zip(tracks) {
+            let Ok(track) = TagEngine::read(path) else {
+                continue;
+            };
+
+            let mut tag_changes = Vec::new();
+            for (field, value) in &extracted {
+                let value = normalize_extracted(field, value);
+                if value.is_empty() {
+                    continue;
+                }
+                let old = track.tags.get(field).cloned();
+                if old.as_deref() == Some(value.as_str()) {
+                    continue;
+                }
+                tag_changes.push(FieldChangeDto::new(
+                    field.to_storage_key(),
+                    old,
+                    Some(value),
+                ));
+            }
+            if tag_changes.is_empty() {
+                continue;
+            }
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes,
+                cover_change: None,
+                sidecar_renames: Vec::new(),
+                block_changes: Vec::new(),
+                copy: false,
+                rename_root: None,
+                creates_folder: false,
+                folder_extras: Vec::new(),
+            });
+        }
+        Ok(self.plan(
+            PlanMessage::TagsFromText {
+                mask: mask_pattern.to_string(),
+            },
+            Vec::new(),
+            changes,
+            false,
+        ))
+    }
+
+    /// What a mask makes of a text list (#61), for the live probe: how many
+    /// tracks it finds and how many lines it skips, and what it pulls out of
+    /// the first track — the one the first selected file gets. With no track
+    /// at all, the first line is the subject, unmatched, so the probe shows what
+    /// the pattern failed on.
+    pub fn probe_tags_from_text(
+        &self,
+        mask_pattern: &str,
+        text: &str,
+    ) -> Result<TextProbeDto, AppError> {
+        let mask = Mask::parse(&text_list_mask(mask_pattern))?;
+        let (tracks, skipped) = text_list_tracks(&mask, text)?;
+        let first = match tracks.first() {
+            Some((line, tags)) => NameProbeDto {
+                subject: (*line).to_string(),
+                fields: tags
+                    .iter()
+                    .map(|(field, value)| {
+                        (field.to_storage_key(), normalize_extracted(field, value))
+                    })
+                    .filter(|(_, value)| !value.is_empty())
+                    .collect(),
+                matched: true,
+            },
+            None => NameProbeDto {
+                subject: text_list_lines(text)
+                    .first()
+                    .map(|line| (*line).to_string())
+                    .unwrap_or_default(),
+                fields: Vec::new(),
+                matched: false,
+            },
+        };
+        Ok(TextProbeDto {
+            first,
+            tracks: tracks.len(),
+            skipped,
         })
     }
 
@@ -4921,6 +5045,87 @@ pub fn read_cover_image(path: &Path) -> Result<CoverArtDto, AppError> {
     })
 }
 
+/// The tracks of a text list (#61): its lines, trimmed, without the blank
+/// ones. A pasted tracklist is spaced out more often than not, and a blank line
+/// is never a track — counting it would pair every later line with the wrong
+/// file.
+pub fn text_list_lines(text: &str) -> Vec<&str> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+/// A FROM TEXT mask with `\t` read as a tab (#61). A tracklist copied from a
+/// web page is often a table, its columns separated by tabs, and a tab cannot
+/// be typed into the mask box — Tab moves the focus. The backslash has no other
+/// meaning here: it is a folder separator only when the subject is a path.
+fn text_list_mask(pattern: &str) -> String {
+    pattern.replace("\\t", "\t")
+}
+
+/// One track of a text list: the line, and what the mask read from it.
+type TextTrack<'a> = (&'a str, TagMap);
+
+/// The tracks of a text list (#61) under `mask`: each non-blank line the mask
+/// fits, with what it read, and how many non-blank lines it did not fit. A
+/// tracklist copied from anywhere carries a heading, a "Side A", a catalogue
+/// line; none of those is a track, and pairing one with a file would shift every
+/// later line onto the wrong file. The count of skipped lines is what keeps a
+/// mistyped track from going unnoticed. A mask that cannot extract at all is an
+/// error, as in FROM NAME.
+fn text_list_tracks<'a>(
+    mask: &Mask,
+    text: &'a str,
+) -> Result<(Vec<TextTrack<'a>>, usize), AppError> {
+    let mut tracks = Vec::new();
+    let mut skipped = 0;
+    for line in text_list_lines(text) {
+        match mask.extract(line) {
+            Ok(tags) => tracks.push((line, tags)),
+            Err(MaskError::NoMatch) => skipped += 1,
+            Err(err) => return Err(err.into()),
+        }
+    }
+    Ok((tracks, skipped))
+}
+
+/// The largest text list [`read_text_list`] reads. A tracklist is a few
+/// kilobytes; anything near this is not one.
+const TEXT_LIST_MAX_BYTES: u64 = 1024 * 1024;
+
+/// Read a text list the user picked (#61). Stateless, like
+/// [`read_cover_image`]: the file is the user's explicit choice, not a library
+/// file. UTF-8, with or without a byte-order mark, and UTF-16 with one; a file
+/// that is too large or holds NUL bytes is refused as not a text list rather
+/// than pasted into the panel as garbage.
+pub fn read_text_list(path: &Path) -> Result<String, AppError> {
+    let not_text = || AppError::NotATextList(path.display().to_string());
+    if std::fs::metadata(path)?.len() > TEXT_LIST_MAX_BYTES {
+        return Err(not_text());
+    }
+    let bytes = std::fs::read(path)?;
+    let utf16 = |rest: &[u8], unit: fn([u8; 2]) -> u16| {
+        let units: Vec<u16> = rest
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| unit(*pair))
+            .collect();
+        String::from_utf16_lossy(&units)
+    };
+    let text = match bytes.as_slice() {
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, u16::from_le_bytes),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, u16::from_be_bytes),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        rest => String::from_utf8_lossy(rest).into_owned(),
+    };
+    if text.contains('\0') {
+        return Err(not_text());
+    }
+    Ok(text)
+}
+
 fn non_empty(value: Option<String>) -> Option<String> {
     value.filter(|v| !v.is_empty())
 }
@@ -5576,6 +5781,8 @@ pub enum AppError {
     EmptyDrop,
     #[error("not an image file: {0}")]
     NotAnImage(String),
+    #[error("not a text list: {0}")]
+    NotATextList(String),
     #[error("the destination folder does not exist: {0}")]
     MissingDestination(String),
     #[error("no such folder: {0}")]
@@ -6792,6 +6999,166 @@ mod tests {
             tags.get(&TagField::Title).map(String::as_str),
             Some("Track 5")
         );
+    }
+
+    // A text list (#61): blank lines are not tracks, so the third written line
+    // still goes to the second file, and the whole thing undoes as one batch.
+    #[test]
+    fn tags_from_text_pairs_lines_with_files_in_order() {
+        let dir = TempDir::new("fromtext");
+        let first = dir.tagged_flac("a.flac", "Unknown", "Track 1");
+        let second = dir.tagged_flac("b.flac", "Unknown", "Track 2");
+        let mut app = open_app(&dir);
+
+        let text = "01. The X Factor - Desert Rain\r\n\r\n  02. Wish Mountain - Radio  \n\n";
+        let plan = app
+            .preview_tags_from_text(
+                "%track%. %artist% - %title%",
+                text,
+                &[first.clone(), second.clone()],
+            )
+            .unwrap();
+        assert_eq!(plan.changes.len(), 2);
+        let value = |change: &FileChangeDto, field: &str| {
+            change
+                .tag_changes
+                .iter()
+                .find(|c| c.field == field)
+                .and_then(|c| c.new.clone())
+        };
+        assert_eq!(plan.changes[0].path, first.to_string_lossy());
+        assert_eq!(
+            value(&plan.changes[0], "artist").as_deref(),
+            Some("The X Factor")
+        );
+        assert_eq!(value(&plan.changes[0], "track").as_deref(), Some("1"));
+        assert_eq!(plan.changes[1].path, second.to_string_lossy());
+        assert_eq!(value(&plan.changes[1], "title").as_deref(), Some("Radio"));
+        assert_eq!(value(&plan.changes[1], "track").as_deref(), Some("2"));
+
+        let batch = app.apply(&plan).unwrap();
+        let tags = TagEngine::read(&second).unwrap().tags;
+        assert_eq!(
+            tags.get(&TagField::Artist).map(String::as_str),
+            Some("Wish Mountain")
+        );
+        app.undo(batch.id).unwrap();
+        let tags = TagEngine::read(&second).unwrap().tags;
+        assert_eq!(
+            tags.get(&TagField::Artist).map(String::as_str),
+            Some("Unknown")
+        );
+        assert_eq!(
+            tags.get(&TagField::Title).map(String::as_str),
+            Some("Track 2")
+        );
+    }
+
+    // A heading and a side label are not tracks: they are skipped, not paired,
+    // so the first track still goes to the first file. A track whose artist and
+    // title are already there brings only its number; a spare track is left
+    // out.
+    #[test]
+    fn tags_from_text_skips_lines_the_mask_does_not_fit() {
+        let dir = TempDir::new("fromtext-skip");
+        let first = dir.tagged_flac("a.flac", "Unknown", "Track 1");
+        let second = dir.tagged_flac("b.flac", "Same", "Same");
+        let third = dir.tagged_flac("c.flac", "Unknown", "Track 3");
+        let app = open_app(&dir);
+
+        let text = "Various - Compilation (1996)\nSide A\n1. A - One\n2. Same - Same\nSide B\n3. C - Three\n4. Spare - Line";
+        let mask = "%track%. %artist% - %title%";
+        let plan = app
+            .preview_tags_from_text(mask, text, &[first.clone(), second.clone(), third.clone()])
+            .unwrap();
+        let paths: Vec<&str> = plan.changes.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                first.to_string_lossy(),
+                second.to_string_lossy(),
+                third.to_string_lossy()
+            ]
+        );
+        let fields = |i: usize| -> Vec<(String, Option<String>)> {
+            plan.changes[i]
+                .tag_changes
+                .iter()
+                .map(|c| (c.field.clone(), c.new.clone()))
+                .collect()
+        };
+        assert!(fields(0).contains(&("title".to_string(), Some("One".to_string()))));
+        assert_eq!(fields(1), [("track".to_string(), Some("2".to_string()))]);
+        assert!(fields(2).contains(&("title".to_string(), Some("Three".to_string()))));
+
+        let probe = app.probe_tags_from_text(mask, text).unwrap();
+        assert_eq!((probe.tracks, probe.skipped), (4, 3));
+        assert_eq!(probe.first.subject, "1. A - One");
+        assert!(probe.first.matched);
+        assert!(probe
+            .first
+            .fields
+            .contains(&("artist".to_string(), "A".to_string())));
+    }
+
+    // A tracklist copied from a release page is a table: number, artist with a
+    // dash, title and length, separated by tabs. `\t` in the mask is a tab.
+    #[test]
+    fn tags_from_text_reads_tab_separated_columns() {
+        let dir = TempDir::new("fromtext-tabs");
+        let app = open_app(&dir);
+        let text = "La Bush - Music From The Temple Of House (AS 5606, 1996)\n\n\
+                    1\tThe X Factor\u{2013}\tDesert Rain\t4:38\n\
+                    13\tGigi D'Agostino\u{2013}\tCreative Nature (Gallione Remix)\t5:31\n";
+        let probe = app
+            .probe_tags_from_text("%track%\\t%artist%\u{2013}\\t%title%\\t%skip%", text)
+            .unwrap();
+        assert_eq!((probe.tracks, probe.skipped), (2, 1));
+        let fields = &probe.first.fields;
+        assert!(fields.contains(&("track".to_string(), "1".to_string())));
+        assert!(fields.contains(&("artist".to_string(), "The X Factor".to_string())));
+        assert!(fields.contains(&("title".to_string(), "Desert Rain".to_string())));
+        assert_eq!(fields.len(), 3);
+    }
+
+    #[test]
+    fn tags_from_text_probe_without_a_track_shows_the_first_line() {
+        let dir = TempDir::new("fromtext-probe");
+        let app = open_app(&dir);
+        let probe = app
+            .probe_tags_from_text("%artist% - %title%", "\n  Nothing here \nNor here")
+            .unwrap();
+        assert_eq!((probe.tracks, probe.skipped), (0, 2));
+        assert!(!probe.first.matched);
+        assert_eq!(probe.first.subject, "Nothing here");
+    }
+
+    #[test]
+    fn read_text_list_decodes_utf8_and_utf16_and_refuses_binary() {
+        let dir = TempDir::new("fromtext-read");
+        let file = |name: &str, bytes: &[u8]| {
+            let path = dir.0.join(name);
+            std::fs::write(&path, bytes).unwrap();
+            path
+        };
+        let plain = file("plain.txt", "Артист - Трек\n".as_bytes());
+        assert_eq!(read_text_list(&plain).unwrap(), "Артист - Трек\n");
+        let bom = file("bom.txt", b"\xEF\xBB\xBFA - B");
+        assert_eq!(read_text_list(&bom).unwrap(), "A - B");
+        let mut utf16 = vec![0xFF, 0xFE];
+        utf16.extend("Ä - B".encode_utf16().flat_map(u16::to_le_bytes));
+        let le = file("le.txt", &utf16);
+        assert_eq!(read_text_list(&le).unwrap(), "Ä - B");
+        let binary = file("cover.txt", b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR");
+        assert!(matches!(
+            read_text_list(&binary),
+            Err(AppError::NotATextList(_))
+        ));
+        let big = file("big.txt", &vec![b'a'; TEXT_LIST_MAX_BYTES as usize + 1]);
+        assert!(matches!(
+            read_text_list(&big),
+            Err(AppError::NotATextList(_))
+        ));
     }
 
     // A pattern with separators reaches up into the folders, which is where the

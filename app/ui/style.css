@@ -4763,6 +4763,44 @@ td[data-field="year"],
   font-style: italic;
 }
 
+/* FROM TEXT (#61): the pasted list is data, like the probe's subject — mono,
+   and one track per line without wrapping, so a long line stays one line and
+   the line count on screen is the track count. The counts above it say how
+   lines and selected files pair up; a mismatch is stated, not tinted, for the
+   same reason a probe miss isn't. */
+.from-text-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.from-text-head .muted {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+.from-text-lines {
+  min-height: 160px;
+  resize: vertical;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+  line-height: var(--lh-normal);
+  white-space: pre;
+  tab-size: 4;
+  overflow: auto;
+}
+.from-text-lines:focus {
+  outline: none;
+}
+.from-text-lines:focus-visible {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+
 /* ONLINE: pinned head + independently scrolling results. */
 .online-head {
   flex: 0 0 auto;

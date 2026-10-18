@@ -157,7 +157,7 @@ el("from-name-mask").addEventListener("input", () => {
 // The pattern comes back from the last session (#141).
 loadFromNamePrefs();
 
-export { previewTagsFromName, refreshNameProbe, scheduleNameProbe };
+export { previewTagsFromName, refreshNameProbe, scheduleNameProbe, throughChain };
 
 // Changing the chain changes what this panel would produce, so it says so at
 // once (#248): the read-out always, and the staged plan too when the one on the

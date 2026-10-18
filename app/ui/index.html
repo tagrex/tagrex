@@ -325,6 +325,7 @@
             <button class="subtab active" data-subtab="online" type="button" data-i18n="tagger.online">ONLINE</button>
             <button class="subtab" data-subtab="editor" type="button" data-i18n="tagger.editor">EDITOR</button>
             <button class="subtab" data-subtab="filename" type="button" data-i18n="tagger.fromName">FROM NAME</button>
+            <button class="subtab" data-subtab="fromtext" type="button" data-i18n="tagger.fromText">FROM TEXT</button>
           </div>
 
           <!-- ONLINE: search a metadata source. The head is pinned; only the
@@ -487,6 +488,40 @@
             <div class="panel-actions from-name-actions">
               <div class="spacer"></div>
               <button id="from-name-preview" class="primary" data-i18n="fromName.preview">Preview tags</button>
+            </div>
+          </div>
+
+          <!-- FROM TEXT (#61): a tracklist that exists only as text — a forum
+               post, a CD insert — one line per selected file, read with a mask
+               the way FROM NAME reads a file name. -->
+          <div id="subtab-fromtext" class="subtab-panel from-name" hidden>
+            <div class="from-name-scroll"><div class="panel-block">
+              <h2 data-i18n="fromText.heading">Tags from a text list</h2>
+              <div class="mask-row">
+                <input id="from-text-mask" type="text" value="%track%. %artist% - %title%" spellcheck="false" placeholder="%track%. %artist% - %title%" />
+                <button class="icon ph-btn" type="button" data-ph-target="from-text-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+                <button class="icon preset-btn" type="button" data-preset-target="from-text-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+              </div>
+              <div class="from-text-head">
+                <span id="from-text-count" class="muted"></span>
+                <button id="from-text-load" type="button" data-i18n="fromText.load">Open text file…</button>
+              </div>
+              <textarea id="from-text-lines" class="from-text-lines" spellcheck="false" wrap="off" data-i18n-placeholder="fromText.placeholder" placeholder="Paste a tracklist here, one line per track"></textarea>
+              <div id="from-text-probe" class="probe"></div>
+              <p class="hint muted" data-i18n="fromText.hint" data-i18n-html>
+                Line by line, in table order: the first track goes to the first selected file, the
+                second to the second, and so on. A line the pattern doesn't fit — a heading, a side
+                label, a blank line — is not a track and is skipped; the count above says how many
+                were. The same placeholders RENAMER uses, read the other way — %skip% for a run of
+                text that maps to no tag, [brackets] for an optional part. Values come out as the
+                line spells them; the rules under the wand above tidy them up as part of the same
+                press. A table copied from a web page has its columns separated by tabs; write a tab
+                as <code>\t</code>: <code>%track%\t%artist%–\t%title%\t%skip%</code>.
+              </p>
+            </div></div>
+            <div class="panel-actions from-name-actions">
+              <div class="spacer"></div>
+              <button id="from-text-preview" class="primary" data-i18n="fromName.preview">Preview tags</button>
             </div>
           </div>
         </section>

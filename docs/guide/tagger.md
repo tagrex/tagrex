@@ -158,3 +158,32 @@ version arrives switched on too.
 Cover art is not in that list: embedding one is its own button on the release
 card, so it is already something you ask for rather than something an import
 does on its own.
+
+## FROM TEXT — a tracklist that exists only as text
+
+Sometimes the tracklist is all there is: a forum post, a CD insert, a release
+page no source carries. **FROM TEXT** reads it with a mask, the way FROM NAME
+reads a file name. Paste the list into the box, or **Open text file…** for one
+saved as text (UTF-8 or UTF-16).
+
+Pairing is by position. The lines the mask fits are the tracks, and the first
+track goes to the first selected file in table order, the second to the second,
+and so on. A line the mask doesn't fit — the release heading, "Side A", a blank
+line — is not a track and is skipped, so a heading never pushes every title onto
+the next file. The line above the box says how it pairs up before anything is
+staged: how many tracks, how many files are selected, and how many lines were
+skipped. Extra tracks or extra files are left out; a skipped line you expected to
+be a track is the sign of a typo in it.
+
+A table copied from a web page usually separates its columns with tabs, and Tab
+can't be typed into the mask box, so write it as `\t`. A release page's
+tracklist — number, artist followed by a dash, title, length — reads with:
+
+```
+%track%\t%artist%–\t%title%\t%skip%
+```
+
+Copy any dash from the list itself: a page's `–` is not the `-` on the keyboard.
+The values come out as the line spells them, and the presets ticked behind the
+wand run over them in the same press — *Discogs cleanup* drops an artist's
+`(2)`. The result is an ordinary plan: preview, Apply, undo.

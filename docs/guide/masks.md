@@ -175,8 +175,10 @@ Both are reachable. **Rendering** builds a name from tags: RENAMER's *Rename by
 mask* and *Reorganize into folders*, the EXPORTER's report, and a mask-defined
 [table column](file-table.md). **Extraction** reads tags out of a name, in
 TAGGER › [**Tags from the file name**](tagger.md) — the same placeholders, read
-the other way, plus `%skip%` for the junk in a filename that maps to no tag. It
-produces an ordinary plan, so the same in-table diff, Apply and undo apply.
+the other way, plus `%skip%` for the junk in a filename that maps to no tag — and
+in TAGGER › [**Tags from a text list**](tagger.md#from-text--a-tracklist-that-exists-only-as-text),
+where the subject is a line of a pasted tracklist instead of a file name. Both
+produce an ordinary plan, so the same in-table diff, Apply and undo apply.
 
 A few placeholders work in one direction only, and the reference marks which:
 

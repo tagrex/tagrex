@@ -16,7 +16,7 @@ takes only the rules aimed at what it produces:
 
 | Job | Takes the rules on |
 | --- | --- |
-| Importing a release, FROM NAME | tags |
+| Importing a release, FROM NAME, FROM TEXT | tags |
 | RENAMER | the file name and extension |
 | GENERATOR | everything |
 
