@@ -2663,8 +2663,8 @@ impl App {
     /// What a mask makes of a text list (#61), for the live probe: how many
     /// tracks it finds and how many lines it skips, and what it pulls out of
     /// the first track — the one the first selected file gets. With no track
-    /// at all, the first line is the subject, unmatched, so the probe shows what
-    /// the pattern failed on.
+    /// at all, a typical line is the subject, unmatched, so the probe shows what
+    /// the pattern failed on (see [`typical_text_list_line`]).
     pub fn probe_tags_from_text(
         &self,
         mask_pattern: &str,
@@ -2685,10 +2685,7 @@ impl App {
                 matched: true,
             },
             None => NameProbeDto {
-                subject: text_list_lines(text)
-                    .first()
-                    .map(|line| (*line).to_string())
-                    .unwrap_or_default(),
+                subject: typical_text_list_line(text).to_string(),
                 fields: Vec::new(),
                 matched: false,
             },
@@ -5064,6 +5061,29 @@ fn text_list_mask(pattern: &str) -> String {
     pattern.replace("\\t", "\t")
 }
 
+/// The line to show when a mask fits none of a text list (#521): the first of
+/// the lines with the most common number of tabs. The first line of a list is
+/// usually its heading, which shows nothing about why the tracks below it don't
+/// fit; in a table every track line has the same columns, so the commonest shape
+/// is a track's. A list with no tabs falls back to its first line.
+fn typical_text_list_line(text: &str) -> &str {
+    let lines = text_list_lines(text);
+    let tabs = |line: &&str| line.matches('\t').count();
+    let mut counts: BTreeMap<usize, usize> = BTreeMap::new();
+    for line in &lines {
+        *counts.entry(tabs(line)).or_default() += 1;
+    }
+    let commonest = counts
+        .iter()
+        .max_by_key(|(tab_count, lines)| (**lines, **tab_count))
+        .map(|(tab_count, _)| *tab_count);
+    lines
+        .iter()
+        .find(|line| Some(tabs(line)) == commonest)
+        .copied()
+        .unwrap_or_default()
+}
+
 /// One track of a text list: the line, and what the mask read from it.
 type TextTrack<'a> = (&'a str, TagMap);
 
@@ -7131,6 +7151,15 @@ mod tests {
         assert_eq!((probe.tracks, probe.skipped), (0, 2));
         assert!(!probe.first.matched);
         assert_eq!(probe.first.subject, "Nothing here");
+
+        // A table under a heading: the subject is a track line, tabs and all,
+        // not the heading that shows nothing about why the mask missed.
+        let table = "Compilation (1996)\n\n1\tA\u{2013}\tOne\t4:38\n2\tB\u{2013}\tTwo\t2:22";
+        let probe = app
+            .probe_tags_from_text("%track% %artist%– %title%", table)
+            .unwrap();
+        assert_eq!((probe.tracks, probe.skipped), (0, 3));
+        assert_eq!(probe.first.subject, "1\tA\u{2013}\tOne\t4:38");
     }
 
     #[test]

@@ -4801,6 +4801,23 @@ td[data-field="year"],
   box-shadow: var(--ring);
 }
 
+/* The characters a mask can trip over and the eye can't tell apart (#521), in
+   the probe's subject line: tinted, with their name in the tooltip. A tab is an
+   arrow and keeps a little room, as it does in the list; a zero-width
+   character gets a dot, since there is nothing else to tint. */
+.char-mark {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent-ink);
+  cursor: help;
+}
+.char-mark.tab {
+  display: inline-block;
+  min-width: 2ch;
+  padding: 0 2px;
+  text-align: center;
+}
+
 /* ONLINE: pinned head + independently scrolling results. */
 .online-head {
   flex: 0 0 auto;

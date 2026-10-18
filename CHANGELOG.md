@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   heading, a side label — are skipped rather than paired, the panel says how
   tracks, files and skipped lines add up before anything is staged, and `\t`
   in the mask matches the tabs of a table copied from a web page. (#61)
+- **FROM TEXT shows the characters a mask trips over.** Its read-out marks
+  tabs as ⇥ and tints dashes and spaces that only look like `-` and a space —
+  a page's en dash, a non-breaking space — naming each in a tooltip; the list
+  itself is left as it is. When no line fits, it shows a track line rather than
+  the heading, and says to write tabs as `\t` when the list has them. (#521)
 - **On Linux the preview player is an MPRIS media player.** It appears on the
   session bus as TagRex, so the media keys, the desktop's media widget and
   `playerctl` can play, pause, stop, skip and seek it, and they show the

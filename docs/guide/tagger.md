@@ -184,6 +184,9 @@ tracklist — number, artist followed by a dash, title, length — reads with:
 ```
 
 Copy any dash from the list itself: a page's `–` is not the `-` on the keyboard.
+The read-out under the box makes these visible in the line it is matching — a
+tab as ⇥, a dash or space that only looks like `-` or a space tinted, with its
+name on hover.
 The values come out as the line spells them, and the presets ticked behind the
 wand run over them in the same press — *Discogs cleanup* drops an artist's
 `(2)`. The result is an ordinary plan: preview, Apply, undo.

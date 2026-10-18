@@ -89,6 +89,48 @@ async function previewTagsFromText() {
   }
 }
 
+// The characters that decide whether a mask fits and can't be told apart on
+// screen (#521): a tab looks like spaces, a page's en dash like the keyboard's
+// hyphen, a non-breaking space like a space. Each maps to the name its marker's
+// tooltip gives; a tab is drawn as an arrow, the rest as themselves, marked.
+const MARKED_CHARS = new Map([
+  ["\t", "fromText.char.tab"],
+  ["\u2010", "fromText.char.hyphen"],
+  ["\u2011", "fromText.char.hyphen"],
+  ["\u2012", "fromText.char.figureDash"],
+  ["\u2013", "fromText.char.enDash"],
+  ["\u2014", "fromText.char.emDash"],
+  ["\u2015", "fromText.char.bar"],
+  ["\u2212", "fromText.char.minus"],
+  ["\u00a0", "fromText.char.nbsp"],
+  ["\u2007", "fromText.char.nbsp"],
+  ["\u202f", "fromText.char.nbsp"],
+  ["\u2009", "fromText.char.thinSpace"],
+  ["\u200a", "fromText.char.thinSpace"],
+  ["\u200b", "fromText.char.zeroWidth"],
+  ["\u2060", "fromText.char.zeroWidth"],
+  ["\ufeff", "fromText.char.zeroWidth"],
+]);
+
+// The probe's subject line with those characters made visible. Display only:
+// the list itself, and what the mask is matched against, stay as they are.
+function visibleSubject(text) {
+  let html = "";
+  for (const ch of text) {
+    const name = MARKED_CHARS.get(ch);
+    if (!name) {
+      html += escapeHtml(ch);
+      continue;
+    }
+    const code = `U+${ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`;
+    const title = escapeHtml(`${t(name)} · ${code}`);
+    if (ch === "\t") html += `<span class="char-mark tab" title="${title}">⇥</span>`;
+    else if (name === "fromText.char.zeroWidth") html += `<span class="char-mark empty" title="${title}">·</span>`;
+    else html += `<span class="char-mark" title="${title}">${escapeHtml(ch)}</span>`;
+  }
+  return html;
+}
+
 // The live read-out: how many tracks the pattern finds, and what it pulls out
 // of the first one — the track the first selected file gets.
 async function refreshTextProbe() {
@@ -107,9 +149,14 @@ async function refreshTextProbe() {
     });
     renderCount(result.tracks, paths.length, result.skipped);
     const probe = result.first;
-    const subject = `<div class="probe-subject">${escapeHtml(probe.subject)}</div>`;
+    const subject = `<div class="probe-subject">${visibleSubject(probe.subject)}</div>`;
     if (!probe.matched || probe.fields.length === 0) {
-      box.innerHTML = `${subject}<div class="probe-fields"><div class="probe-miss">${escapeHtml(t("fromText.probeNoMatch"))}</div></div>`;
+      // A list in columns that no line fits is almost always a mask written
+      // with spaces where the list has tabs; say what to write instead.
+      const mask = el("from-text-mask").value;
+      const tabs = !result.tracks && probe.subject.includes("\t") && !mask.includes("\\t");
+      const tip = tabs ? `<div class="probe-miss">${escapeHtml(t("fromText.tabHint"))}</div>` : "";
+      box.innerHTML = `${subject}<div class="probe-fields"><div class="probe-miss">${escapeHtml(t("fromText.probeNoMatch"))}</div>${tip}</div>`;
       return;
     }
     const fields = paths[0] ? await throughChain(paths[0], probe.fields) : probe.fields;

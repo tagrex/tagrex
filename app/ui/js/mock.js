@@ -160,6 +160,19 @@ function mockNameSubject(path, mask) {
 // The real bidirectional grammar is mask.rs, and this is not a second
 // implementation of it — anything subtle must be checked in the native app.
 const MOCK_INTEGER_FIELDS = ["track", "tracktotal", "disc", "disctotal"];
+// The first of the lines with the commonest tab count — the backend's
+// `typical_text_list_line` (#521).
+function mockTypicalLine(lines) {
+  const tabs = (line) => line.split("\t").length - 1;
+  const counts = new Map();
+  for (const line of lines) counts.set(tabs(line), (counts.get(tabs(line)) || 0) + 1);
+  let best = null;
+  for (const [count, n] of counts) {
+    if (best === null || n > counts.get(best) || (n === counts.get(best) && count > best)) best = count;
+  }
+  return lines.find((line) => tabs(line) === best) || "";
+}
+
 function mockExtractFromName(mask, subject) {
   const fields = [];
   let pattern = "^";
@@ -462,7 +475,7 @@ function mockInvoke(cmd, args) {
       const tracks = lines.map((line) => [line, mockExtractFromName(mask, line)]).filter(([, f]) => f);
       const first = tracks.length
         ? { subject: tracks[0][0], fields: tracks[0][1], matched: true }
-        : { subject: lines[0] || "", fields: [], matched: false };
+        : { subject: mockTypicalLine(lines), fields: [], matched: false };
       return Promise.resolve({ first, tracks: tracks.length, skipped: lines.length - tracks.length });
     }
     case "preview_tags_from_text": {
