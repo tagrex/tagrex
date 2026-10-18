@@ -5084,6 +5084,224 @@ fn typical_text_list_line(text: &str) -> &str {
         .unwrap_or_default()
 }
 
+/// Suggest a FROM TEXT mask for a tracklist (#522).
+///
+/// Two readings of the list's shape, each turned into a mask and then run over
+/// the list exactly as FROM TEXT would run it; the one that reads the most lines
+/// wins, and `None` means no reading fits a single line. Deterministic rules
+/// only — a table's columns ([`table_list_mask`]) and a plain line's number,
+/// dash and length ([`plain_list_mask`]) — so a suggestion is never a guess the
+/// probe can't explain.
+pub fn suggest_text_list_mask(text: &str) -> Option<String> {
+    let lines = text_list_lines(text);
+    let mut best: Option<(usize, String)> = None;
+    for mask in [table_list_mask(&lines), plain_list_mask(&lines)]
+        .into_iter()
+        .flatten()
+    {
+        let Ok(parsed) = Mask::parse(&text_list_mask(&mask)) else {
+            continue;
+        };
+        let Ok((tracks, _)) = text_list_tracks(&parsed, text) else {
+            continue;
+        };
+        if !tracks.is_empty() && best.as_ref().is_none_or(|(read, _)| tracks.len() > *read) {
+            best = Some((tracks.len(), mask));
+        }
+    }
+    best.map(|(_, mask)| mask)
+}
+
+/// The dashes a tracklist puts between an artist and a title.
+const LIST_DASHES: [char; 3] = ['-', '\u{2013}', '\u{2014}'];
+
+/// What one column of a tracklist table holds, read over every row.
+#[derive(Debug, Clone, PartialEq)]
+enum ListColumn {
+    /// `1`, `01` — the track number.
+    Position,
+    /// `1-05` — disc and track.
+    DiscTrack,
+    /// `A1`, `B` — a vinyl position, which no tag holds as written.
+    Vinyl,
+    /// `4:38` — the length, which no tag takes from text.
+    Length,
+    /// Nothing in any row.
+    Empty,
+    /// An artist with the dash that leads to the title, the way a release page
+    /// prints it: `The X Factor –`. Holds what follows the name.
+    ArtistDash(String),
+    /// Anything else.
+    Text,
+}
+
+fn list_column(cells: &[&str]) -> ListColumn {
+    let filled: Vec<&str> = cells
+        .iter()
+        .map(|cell| cell.trim())
+        .filter(|cell| !cell.is_empty())
+        .collect();
+    if filled.is_empty() {
+        return ListColumn::Empty;
+    }
+    let all = |pattern: &str| {
+        let re = regex::Regex::new(pattern).expect("a valid pattern");
+        filled.iter().all(|cell| re.is_match(cell))
+    };
+    if all(r"^\d{1,3}\.?$") {
+        return ListColumn::Position;
+    }
+    if all(r"^\d{1,2}-\d{1,3}$") {
+        return ListColumn::DiscTrack;
+    }
+    if all(r"^[A-Za-z]{1,2}\d{0,3}\.?$") {
+        return ListColumn::Vinyl;
+    }
+    if all(r"^\d{1,2}:\d{2}(:\d{2})?$") {
+        return ListColumn::Length;
+    }
+    // The text after the name: the dash and any space around it, as the cell
+    // writes it. Every row must end in a dash, and the commonest spelling wins.
+    let mut tails: BTreeMap<String, usize> = BTreeMap::new();
+    for cell in cells.iter().filter(|cell| !cell.trim().is_empty()) {
+        let body = cell.trim_end_matches(LIST_DASHES).trim_end();
+        if body.len() == cell.trim_end().len() || body.is_empty() {
+            return ListColumn::Text;
+        }
+        let tail = &cell[cell.find(body).map_or(0, |at| at + body.len())..];
+        *tails.entry(tail.to_string()).or_default() += 1;
+    }
+    tails
+        .into_iter()
+        .max_by_key(|(_, rows)| *rows)
+        .map_or(ListColumn::Text, |(tail, _)| ListColumn::ArtistDash(tail))
+}
+
+/// The mask for a tracklist that is a table — columns separated by tabs, the
+/// way one copied from a web page comes out. The rows are the lines with the
+/// commonest number of tabs; each column is read over all of them, and the
+/// columns are joined with `\t`. A length or an empty column at the end is
+/// optional, since a row without one loses its trailing tab with it.
+fn table_list_mask(lines: &[&str]) -> Option<String> {
+    let tabs = |line: &str| line.matches('\t').count();
+    let mut counts: BTreeMap<usize, usize> = BTreeMap::new();
+    for line in lines.iter().filter(|line| tabs(line) > 0) {
+        *counts.entry(tabs(line)).or_default() += 1;
+    }
+    let (&width, _) = counts
+        .iter()
+        .max_by_key(|(tab_count, rows)| (**rows, **tab_count))?;
+    let rows: Vec<Vec<&str>> = lines
+        .iter()
+        .filter(|line| tabs(line) == width)
+        .map(|line| line.split('\t').collect())
+        .collect();
+    let columns: Vec<ListColumn> = (0..=width)
+        .map(|at| list_column(&rows.iter().map(|row| row[at]).collect::<Vec<_>>()))
+        .collect();
+
+    let texts = columns.iter().filter(|c| **c == ListColumn::Text).count();
+    let has_artist = columns
+        .iter()
+        .any(|c| matches!(c, ListColumn::ArtistDash(_)));
+    let mut track = false;
+    let mut artist = false;
+    let mut title = false;
+    let mut parts: Vec<String> = Vec::new();
+    for column in &columns {
+        let part = match column {
+            ListColumn::Position if !track => {
+                track = true;
+                "%track%".to_string()
+            }
+            ListColumn::DiscTrack if !track => {
+                track = true;
+                "%disc%-%track%".to_string()
+            }
+            ListColumn::ArtistDash(tail) if !artist => {
+                artist = true;
+                format!("%artist%{tail}")
+            }
+            // Two text columns and no dashed one: artist, then title.
+            ListColumn::Text if !has_artist && texts >= 2 && !artist => {
+                artist = true;
+                "%artist%".to_string()
+            }
+            ListColumn::Text if !title => {
+                title = true;
+                "%title%".to_string()
+            }
+            ListColumn::Empty => String::new(),
+            _ => "%skip%".to_string(),
+        };
+        parts.push(part);
+    }
+    if !title {
+        return None;
+    }
+    let optional_tail = matches!(columns.last(), Some(ListColumn::Length | ListColumn::Empty));
+    let mut mask = parts[..parts.len() - 1].join("\\t");
+    let last = &parts[parts.len() - 1];
+    if optional_tail {
+        mask.push_str(&format!("[\\t{last}]"));
+    } else {
+        mask.push_str(&format!("\\t{last}"));
+    }
+    Some(mask)
+}
+
+/// The mask for a tracklist of plain lines — `1. Artist - Title (4:38)` and its
+/// relatives. Each line is read for a leading position, a trailing length and
+/// a dash between artist and title, as it spells them; the commonest result is
+/// the suggestion.
+fn plain_list_mask(lines: &[&str]) -> Option<String> {
+    let lead = regex::Regex::new(
+        r"^(?:(?P<disc>\d{1,2})-(?P<dtrack>\d{1,3})|(?P<track>\d{1,3})|(?P<vinyl>[A-Za-z]{1,2}\d{1,3}))(?P<punct>[.):]?)(?P<gap>\s+)",
+    )
+    .expect("a valid pattern");
+    let tail = regex::Regex::new(
+        r"(?P<gap>\s+)(?P<open>[(\[]?)\d{1,2}:\d{2}(?::\d{2})?(?P<close>[)\]]?)$",
+    )
+    .expect("a valid pattern");
+    let mut shapes: BTreeMap<String, usize> = BTreeMap::new();
+    for line in lines {
+        let mut body: &str = line;
+        let mut mask = String::new();
+        if let Some(caps) = lead.captures(body) {
+            let place = if caps.name("disc").is_some() {
+                "%disc%-%track%"
+            } else if caps.name("track").is_some() {
+                "%track%"
+            } else {
+                "%skip%"
+            };
+            mask.push_str(place);
+            mask.push_str(&caps["punct"]);
+            mask.push_str(&caps["gap"]);
+            body = &body[caps[0].len()..];
+        }
+        let mut end = String::new();
+        if let Some(caps) = tail.captures(body) {
+            end = format!("{}{}%skip%{}", &caps["gap"], &caps["open"], &caps["close"]);
+            body = &body[..body.len() - caps[0].len()];
+        }
+        let dash = LIST_DASHES
+            .iter()
+            .filter_map(|dash| body.find(&format!(" {dash} ")).map(|at| (at, *dash)))
+            .min_by_key(|(at, _)| *at);
+        match dash {
+            Some((_, dash)) => mask.push_str(&format!("%artist% {dash} %title%")),
+            None => mask.push_str("%title%"),
+        }
+        mask.push_str(&end);
+        *shapes.entry(mask).or_default() += 1;
+    }
+    shapes
+        .into_iter()
+        .max_by_key(|(_, lines)| *lines)
+        .map(|(mask, _)| mask)
+}
+
 /// One track of a text list: the line, and what the mask read from it.
 type TextTrack<'a> = (&'a str, TagMap);
 
@@ -7160,6 +7378,71 @@ mod tests {
             .unwrap();
         assert_eq!((probe.tracks, probe.skipped), (0, 3));
         assert_eq!(probe.first.subject, "1\tA\u{2013}\tOne\t4:38");
+    }
+
+    // Each suggestion is checked by reading the list with it, as FROM TEXT
+    // would: a mask that reads every track line is the point, not its spelling.
+    fn suggested_reads(text: &str) -> (String, usize, usize, NameProbeDto) {
+        let dir = TempDir::new("fromtext-suggest");
+        let app = open_app(&dir);
+        let mask = suggest_text_list_mask(text).expect("a suggestion");
+        let probe = app.probe_tags_from_text(&mask, text).unwrap();
+        (mask, probe.tracks, probe.skipped, probe.first)
+    }
+
+    fn field(probe: &NameProbeDto, name: &str) -> Option<String> {
+        probe
+            .fields
+            .iter()
+            .find(|(field, _)| field == name)
+            .map(|(_, value)| value.clone())
+    }
+
+    // A release page's tracklist, copied as it is: a heading, then a table of
+    // position, artist and dash, title and length. One row has no length.
+    #[test]
+    fn suggests_a_mask_for_a_release_page_table() {
+        let text = "La Bush - Music From The Temple Of House (AS 5606, 1996)\n\n\
+                    1\tThe X Factor\u{2013}\tDesert Rain\t4:38\n\
+                    2\tWish Mountain*\u{2013}\tRadio\t2:22\n\
+                    9\tOxygen (9)\u{2013}\tAbsent Minded\t4:07\n\
+                    13\tGigi D'Agostino\u{2013}\tCreative Nature (Gallione Remix)\t\n";
+        let (mask, tracks, skipped, first) = suggested_reads(text);
+        assert_eq!(mask, "%track%\\t%artist%\u{2013}\\t%title%[\\t%skip%]");
+        assert_eq!((tracks, skipped), (4, 1));
+        assert_eq!(field(&first, "artist").as_deref(), Some("The X Factor"));
+        assert_eq!(field(&first, "title").as_deref(), Some("Desert Rain"));
+    }
+
+    #[test]
+    fn suggests_a_mask_for_numbered_lines_with_lengths() {
+        let text =
+            "Side A\n01. The X Factor - Desert Rain (4:38)\n02. Wish Mountain - Radio (2:22)\n\
+                    03. U-Hi? - Feel It (4:19)";
+        let (mask, tracks, skipped, first) = suggested_reads(text);
+        assert_eq!(mask, "%track%. %artist% - %title% (%skip%)");
+        assert_eq!((tracks, skipped), (3, 1));
+        assert_eq!(field(&first, "track").as_deref(), Some("1"));
+        assert_eq!(field(&first, "title").as_deref(), Some("Desert Rain"));
+    }
+
+    #[test]
+    fn suggests_a_mask_for_vinyl_positions_and_bare_titles() {
+        let vinyl = "A1 The X Factor \u{2013} Desert Rain\nA2 Wish Mountain \u{2013} Radio\nB1 NBG \u{2013} Universal Love";
+        let (mask, tracks, _, first) = suggested_reads(vinyl);
+        assert_eq!(mask, "%skip% %artist% \u{2013} %title%");
+        assert_eq!(tracks, 3);
+        assert_eq!(field(&first, "artist").as_deref(), Some("The X Factor"));
+
+        let titles = "Desert Rain\nRadio\nUniversal Love";
+        let (mask, tracks, _, _) = suggested_reads(titles);
+        assert_eq!((mask.as_str(), tracks), ("%title%", 3));
+    }
+
+    #[test]
+    fn suggests_nothing_for_an_empty_list() {
+        assert_eq!(suggest_text_list_mask(""), None);
+        assert_eq!(suggest_text_list_mask("\n  \n"), None);
     }
 
     #[test]

@@ -4219,6 +4219,7 @@ name = "tagrex-commands"
 version = "0.23.0"
 dependencies = [
  "base64 0.23.1",
+ "regex",
  "serde",
  "serde_json",
  "tagrex-core",

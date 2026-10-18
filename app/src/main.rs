@@ -292,6 +292,13 @@ fn probe_tags_from_text(
     })
 }
 
+/// A FROM TEXT mask read off the list's own shape (#522), or none when no
+/// reading of it fits a line. Stateless: it only looks at the text.
+#[tauri::command]
+fn suggest_text_list_mask(text: String) -> Option<String> {
+    tagrex_commands::suggest_text_list_mask(&text)
+}
+
 /// Read a text list the user picked for the FROM TEXT panel (#61). Stateless,
 /// like [`read_cover_image`]: the file is the user's explicit choice.
 #[tauri::command]
@@ -1304,6 +1311,7 @@ fn main() {
             preview_tags_from_text,
             probe_tags_from_text,
             read_text_list,
+            suggest_text_list_mask,
             preview_move,
             preview_transform,
             preview_tag_edits,

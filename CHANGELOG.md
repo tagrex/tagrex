@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   a page's en dash, a non-breaking space — naming each in a tooltip; the list
   itself is left as it is. When no line fits, it shows a track line rather than
   the heading, and says to write tabs as `\t` when the list has them. (#521)
+- **FROM TEXT can suggest the mask.** **Suggest mask** reads one off the list's
+  own layout — a table's columns, or a plain line's number, dash and length,
+  with the dash the list itself uses — and keeps it only if it reads at least
+  one line. It fills the mask box when pressed, never on its own. (#522)
 - **On Linux the preview player is an MPRIS media player.** It appears on the
   session bus as TagRex, so the media keys, the desktop's media widget and
   `playerctl` can play, pause, stop, skip and seek it, and they show the

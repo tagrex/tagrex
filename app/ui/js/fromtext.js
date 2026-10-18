@@ -198,8 +198,30 @@ async function loadTextFile() {
   }
 }
 
+// A mask read off the list's own layout (#522): filled in only when asked,
+// since it replaces what is in the box — the probe then shows what it reads.
+async function suggestMask() {
+  if (!hasText()) {
+    toast(t("fromText.noLines"), true);
+    return;
+  }
+  try {
+    const mask = await invoke("suggest_text_list_mask", { text: el("from-text-lines").value });
+    if (!mask) {
+      toast(t("fromText.noSuggestion"), true);
+      return;
+    }
+    el("from-text-mask").value = mask;
+    saveFromTextPrefs();
+    refreshTextProbe();
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
 // ---- wire up ----
 el("from-text-preview").addEventListener("click", previewTagsFromText);
+el("from-text-suggest").addEventListener("click", suggestMask);
 el("from-text-load").addEventListener("click", loadTextFile);
 el("from-text-mask").addEventListener("input", () => {
   saveFromTextPrefs();

@@ -499,6 +499,10 @@ function mockInvoke(cmd, args) {
         plan(`Tags from text: ${args.mask}`, { code: "plan.tagsFromText", args: { mask: args.mask } }, changes)
       );
     }
+    // #522: the browser has no backend to read the list's shape; a fixed
+    // suggestion keeps the button's path exercisable.
+    case "suggest_text_list_mask":
+      return Promise.resolve(args.text.includes("\t") ? "%track%\\t%artist%\u2013\\t%title%[\\t%skip%]" : "%track%. %artist% - %title%");
     case "read_text_list":
       return Promise.resolve("01. Mock Artist - Mock Title\n02. Mock Artist - Second Title\n");
     case "preview_tags_from_name": {

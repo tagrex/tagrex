@@ -187,6 +187,13 @@ Copy any dash from the list itself: a page's `–` is not the `-` on the keyboar
 The read-out under the box makes these visible in the line it is matching — a
 tab as ⇥, a dash or space that only looks like `-` or a space tinted, with its
 name on hover.
+
+**Suggest mask** writes one for you from the list's own layout: a table's
+columns (a position, an artist with its dash, a title, a length) or a plain
+line's number, dash and length, spelled with the characters the list uses. It
+fills the mask box only when pressed, and suggests nothing when no reading fits
+a line — the read-out then shows what the suggestion actually reads, and you can
+adjust it from there.
 The values come out as the line spells them, and the presets ticked behind the
 wand run over them in the same press — *Discogs cleanup* drops an artist's
 `(2)`. The result is an ordinary plan: preview, Apply, undo.
