@@ -2,3 +2,6 @@
 .DS_Store
 # Tauri-generated ACL schemas (regenerated from tauri.conf.json + capabilities)
 /app/gen
+# Flatpak builds: the cargo sources are generated from Cargo.lock per build (#503)
+/packaging/flatpak/cargo-sources.json
+.flatpak-builder/

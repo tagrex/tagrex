@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=TagRex
+GenericName=Tag Editor
+Comment=Edit music tags and file names in a table
+Exec=tagrex %F
+Icon=com.tagrex.desktop
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=tag;tagger;metadata;id3;rename;music;
+MimeType=inode/directory;audio/mpeg;audio/flac;audio/ogg;audio/x-vorbis+ogg;audio/x-opus+ogg;audio/x-speex+ogg;audio/mp4;audio/x-m4a;audio/x-m4b;audio/aac;audio/x-aiff;audio/x-aifc;audio/vnd.wave;audio/x-wav;audio/x-ape;audio/x-musepack;audio/x-wavpack;
+StartupWMClass=tagrex

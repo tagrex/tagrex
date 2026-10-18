@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   media player instead of capturing the keys, so it needs no Accessibility
   permission and does not take the keys from another player while that one is
   playing. (#218)
+- **Draft Linux packaging for Flatpak and the AUR.** The repository now holds
+  AppStream metadata and a desktop entry for software centres, a Flatpak
+  manifest that builds the app from source offline, and a PKGBUILD for a
+  `tagrex-bin` package made from the published `.deb`. They are drafts: no
+  Flatpak or AUR package is published yet. (#503)
 
 ### Changed
 

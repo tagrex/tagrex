@@ -1,0 +1,83 @@
+# Flatpak manifest for TagRex (#503). A draft: nothing is published from here.
+#
+# Builds the app from source, offline, the way Flathub requires. Cargo crates
+# come from cargo-sources.json, which is generated from Cargo.lock and is not
+# kept in this repository (it would go stale on every dependency bump):
+#
+#   python3 flatpak-cargo-generator.py Cargo.lock \
+#     -o packaging/flatpak/cargo-sources.json
+#
+# (flatpak-cargo-generator.py is in github.com/flatpak/flatpak-builder-tools.)
+# Then, from the repository root:
+#
+#   flatpak-builder --user --install --force-clean build-dir \
+#     packaging/flatpak/com.tagrex.desktop.yml
+#   flatpak run com.tagrex.desktop
+#
+# The `dir` source below builds the checkout this file sits in. A Flathub copy
+# replaces it with a `git` source pinned to a release tag and its commit, and
+# keeps its own cargo-sources.json generated from that tag's Cargo.lock.
+id: com.tagrex.desktop
+runtime: org.gnome.Platform
+# GNOME 51 ships WebKitGTK 4.1 (the API Tauri 2 links against) on top of the
+# freedesktop 26.08 base; the rust-stable extension branch has to match that.
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: tagrex
+
+finish-args:
+  # Wayland first, X11 only where there is no Wayland compositor.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # WebKitGTK renders on the GPU.
+  - --device=dri
+  # The preview player (rodio, ALSA routed to PulseAudio or PipeWire).
+  - --socket=pulseaudio
+  # Discogs, MusicBrainz, Cover Art Archive, Beatport, Bandcamp and Soundeo
+  # lookups, and the check for a newer release.
+  - --share=network
+  # A tag editor reads, rewrites and renames files in place, and moves them
+  # into new folders, so it needs real read-write access where music lives:
+  # the Music folder, the Downloads folder new purchases land in, and
+  # removable drives, where large libraries usually are. Any other folder can
+  # still be opened through the folder chooser, which goes through the file
+  # chooser portal.
+  - --filesystem=xdg-music
+  - --filesystem=xdg-download
+  - --filesystem=/media
+  - --filesystem=/run/media
+
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+
+modules:
+  - name: tagrex
+    buildsystem: simple
+    build-options:
+      env:
+        CARGO_HOME: /run/build/tagrex/cargo
+        CARGO_NET_OFFLINE: 'true'
+    build-commands:
+      # `cargo tauri build` adds `tauri/custom-protocol`, which embeds the
+      # frontend and turns off dev mode; a plain cargo build has to ask for it.
+      - cargo --offline build --release --locked -p tagrex --features tauri/custom-protocol
+      - install -Dm755 target/release/tagrex -t /app/bin/
+      - install -Dm644 packaging/linux/com.tagrex.desktop.desktop -t /app/share/applications/
+      - install -Dm644 packaging/linux/com.tagrex.desktop.metainfo.xml -t /app/share/metainfo/
+      - install -Dm644 assets/icon.svg /app/share/icons/hicolor/scalable/apps/com.tagrex.desktop.svg
+      - install -Dm644 app/icons/32x32.png /app/share/icons/hicolor/32x32/apps/com.tagrex.desktop.png
+      - install -Dm644 app/icons/64x64.png /app/share/icons/hicolor/64x64/apps/com.tagrex.desktop.png
+      - install -Dm644 app/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.tagrex.desktop.png
+      - install -Dm644 app/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/com.tagrex.desktop.png
+      - install -Dm644 app/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.tagrex.desktop.png
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - .flatpak-builder
+          - build-dir
+      - cargo-sources.json

@@ -1,0 +1,44 @@
+# Maintainer: TagRex contributors <https://github.com/tagrex/tagrex>
+#
+# Repackages the .deb published on the GitHub Releases page (#503). A draft:
+# nothing is pushed to the AUR from here. Per release, bump pkgver, reset
+# pkgrel, refresh the sums with `updpkgsums` and regenerate .SRCINFO with
+# `makepkg --printsrcinfo > .SRCINFO`.
+
+pkgname=tagrex-bin
+_pkgname=tagrex
+pkgver=0.23.0
+pkgrel=1
+pkgdesc='Tag editor for music libraries: edit tags and file names in a table, preview every change, undo any batch'
+arch=('x86_64' 'aarch64')
+url='https://github.com/tagrex/tagrex'
+license=('GPL-3.0-only')
+# The libraries the binary links against, as namcap reports them.
+depends=(
+  'alsa-lib'
+  'cairo'
+  'dbus'
+  'gdk-pixbuf2'
+  'glib2'
+  'glibc'
+  'gtk3'
+  'hicolor-icon-theme'
+  'libgcc'
+  'libsoup3'
+  'webkit2gtk-4.1'
+)
+provides=("${_pkgname}")
+conflicts=("${_pkgname}")
+# No -debug split package: the release build carries no debug info worth one.
+options=('!debug')
+source_x86_64=("TagRex_${pkgver}_amd64.deb::${url}/releases/download/v${pkgver}/TagRex_${pkgver}_amd64.deb")
+source_aarch64=("TagRex_${pkgver}_arm64.deb::${url}/releases/download/v${pkgver}/TagRex_${pkgver}_arm64.deb")
+sha256sums_x86_64=('c4170755220cbca7e667343b7966a670eb4eb2278061d6d90a4b887351f3593e')
+sha256sums_aarch64=('1b551ac2940010155d72e827b8bb1f2433ca99f28f3b05ddff57b1976b0d318c')
+
+package() {
+  # makepkg has already unpacked the .deb's ar archive; data.tar.gz holds
+  # /usr/bin/tagrex, the desktop entry and the icons.
+  bsdtar -xf data.tar.gz -C "${pkgdir}"
+  chmod 755 "${pkgdir}/usr/bin/${_pkgname}"
+}

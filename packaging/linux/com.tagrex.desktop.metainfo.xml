@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  AppStream metadata for Linux software centres and Flathub (#503).
+  Validate with: appstreamcli validate packaging/linux/com.tagrex.desktop.metainfo.xml
+  Every release needs a <release> entry at the top of <releases>.
+-->
+<component type="desktop-application">
+  <id>com.tagrex.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+
+  <name>TagRex</name>
+  <summary>Edit music tags and file names in a table</summary>
+  <developer id="com.tagrex">
+    <name>TagRex contributors</name>
+  </developer>
+
+  <description>
+    <p>
+      A free tag editor for your music library. Edit tags and file names in a
+      table, see exactly what will change before anything is written, and roll
+      any batch back, even after a restart. Fill tags from Discogs,
+      MusicBrainz, Beatport, Bandcamp and Soundeo.
+    </p>
+    <p>
+      A folder is the library: point TagRex at one and it recurses. Files load
+      into a spreadsheet-style table with configurable tag columns, grouping,
+      filtering and saved presets, and tag cells edit in place.
+    </p>
+    <p>
+      Nothing is written until you look at it. Every operation that changes
+      files in bulk produces a change plan, rendered as a diff in the table
+      itself, and applying it goes through a persistent undo journal.
+    </p>
+    <ul>
+      <li>Tagger: edit tags by hand or pull them from online sources, with release cards, cover browser and track matching</li>
+      <li>Renamer: rename files and sort them into folders from one mask</li>
+      <li>Generator: text transforms such as case conversion, find and replace, transliteration and key notation</li>
+      <li>Deduplicator: a read-only scan for likely duplicates</li>
+      <li>Exporter: playlists, CUE sheets, CSV, HTML, XML and mask-based reports</li>
+      <li>Library health checks, field locks, tag block conversion and a preview player</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.tagrex.desktop.desktop</launchable>
+
+  <url type="homepage">https://github.com/tagrex/tagrex</url>
+  <url type="bugtracker">https://github.com/tagrex/tagrex/issues</url>
+  <url type="vcs-browser">https://github.com/tagrex/tagrex</url>
+  <url type="help">https://github.com/tagrex/tagrex/blob/main/docs/guide/README.md</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>A library grouped by folder, with the online lookup panel</caption>
+      <image type="source" width="1800" height="1048">https://raw.githubusercontent.com/tagrex/tagrex/v0.23.0/docs/img/tagger-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>A rename previewed as a diff inside the table</caption>
+      <image type="source" width="1800" height="1048">https://raw.githubusercontent.com/tagrex/tagrex/v0.23.0/docs/img/renamer-diff-light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The dark theme</caption>
+      <image type="source" width="1800" height="1048">https://raw.githubusercontent.com/tagrex/tagrex/v0.23.0/docs/img/tagger-dark.png</image>
+    </screenshot>
+  </screenshots>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#e1f5ee</color>
+    <color type="primary" scheme_preference="dark">#085041</color>
+  </branding>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+  </categories>
+
+  <keywords>
+    <keyword>tag</keyword>
+    <keyword>tagger</keyword>
+    <keyword>metadata</keyword>
+    <keyword>ID3</keyword>
+    <keyword>rename</keyword>
+    <keyword>music</keyword>
+    <keyword>Discogs</keyword>
+    <keyword>MusicBrainz</keyword>
+  </keywords>
+
+  <provides>
+    <binary>tagrex</binary>
+  </provides>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">800</display_length>
+  </requires>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.23.0" date="2026-10-17">
+      <url type="details">https://github.com/tagrex/tagrex/releases/tag/v0.23.0</url>
+      <description>
+        <p>
+          This release is mostly about keeping your files safe. Writing tags no
+          longer damages WAV files, and a WAV already damaged that way is
+          repaired by its next edit. MP3s with padding before their audio, which
+          refused every write, can be tagged again. A cell you edit in the table
+          is written when you press Enter, and undo takes it back.
+        </p>
+      </description>
+    </release>
+    <release version="0.22.2" date="2026-10-12">
+      <url type="details">https://github.com/tagrex/tagrex/releases/tag/v0.22.2</url>
+    </release>
+    <release version="0.22.1" date="2026-10-12">
+      <url type="details">https://github.com/tagrex/tagrex/releases/tag/v0.22.1</url>
+    </release>
+    <release version="0.22.0" date="2026-10-11">
+      <url type="details">https://github.com/tagrex/tagrex/releases/tag/v0.22.0</url>
+    </release>
+  </releases>
+</component>
