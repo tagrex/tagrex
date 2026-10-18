@@ -10,9 +10,14 @@ picking rows; what the modes then *do* with them is on their own pages.
 | --- | --- |
 | Click a row | Select just that row |
 | ⌘/Ctrl-click | Add or remove one row, keeping the rest |
-| Shift-click | Select the range from the last-clicked row |
+| Shift-click | Select the range from the last-clicked row, keeping what a ⌘/Ctrl-click left selected |
 | ↑ / ↓ | Move to the previous/next row |
 | Space | Toggle the focused row in or out of the selection |
+
+Two blocks with a gap between them take four clicks: click the first row of
+the first block and Shift-click its last, then ⌘/Ctrl-click the first row of the
+second block and Shift-click its last. The first block stays — a Shift-range is
+added to what the last ⌘/Ctrl-click left, the way a file manager does it.
 
 To select everything, click the first row and Shift-click the last. There is no
 ⌘/Ctrl-A: turn on the checkbox column below if you want a select-all control.

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Shift-click adds a range instead of replacing the selection.** Select rows
+  1–25, ⌘/Ctrl-click row 27 and Shift-click row 51, and both blocks are
+  selected — the range is added to what the ⌘/Ctrl-click left, as in a file
+  manager, where it used to wipe the first block and leave a row-by-row
+  ⌘-click as the only way to skip one. A plain click followed by Shift-click
+  works as before. (#523)
+
 ## [0.24.0] - 2026-10-18
 
 This release reads tags out of a tracklist and lets the system drive the

@@ -2541,6 +2541,31 @@ tracksBody.addEventListener("change", (e) => {
 // toggles that whole group. Editing a cell is a deliberate double-click, so the
 // single click is free for selection.
 let selAnchor = null; // path of the last row clicked, for Shift-range
+// What a Shift-range is added to: the selection as a ⌘/Ctrl click left it,
+// without the anchor. A file list keeps an earlier block when a second one is
+// started with ⌘ and extended with Shift — select 1–25, ⌘-click 27, Shift-click
+// 51 and both blocks stay; only the range from the anchor moves as Shift-clicks
+// repeat. A plain click starts over with nothing under it.
+let selBase = new Set();
+
+// Select `base` plus the rows from the anchor through index `to`. Only what is
+// still selected of the base counts, so a selection changed some other way since
+// (Select all, a folder opened) is not brought back by a stale base.
+function selectRangeFromAnchor(from, to) {
+  const keep = [...selBase].filter((p) => selection.has(p));
+  selection.clear();
+  for (const p of keep) selection.add(p);
+  const [lo, hi] = from <= to ? [from, to] : [to, from];
+  for (let i = lo; i <= hi; i++) selection.add(viewPaths[i]);
+}
+
+// Make `path` the anchor of the next Shift-range, with the rest of the current
+// selection as what that range is added to.
+function anchorSelection(path) {
+  selAnchor = path;
+  selBase = new Set(selection);
+  selBase.delete(path);
+}
 
 function rowCheckbox(tr) {
   return tr.querySelector(".sel input[type=checkbox]");
@@ -2606,20 +2631,17 @@ function selectRow(tr, e) {
   if (e.shiftKey && selAnchor) {
     // The range runs over the model's order, so it spans files whose rows are
     // off screen or inside a collapsed folder (#189).
-    let a = viewPathIndex.has(selAnchor) ? viewPathIndex.get(selAnchor) : -1;
-    let b = viewPathIndex.get(path);
-    if (a < 0) a = b;
-    if (a > b) [a, b] = [b, a];
-    selection.clear();
-    for (let i = a; i <= b; i++) selection.add(viewPaths[i]);
+    const b = viewPathIndex.get(path);
+    const a = viewPathIndex.has(selAnchor) ? viewPathIndex.get(selAnchor) : b;
+    selectRangeFromAnchor(a, b);
   } else if (e.metaKey || e.ctrlKey) {
     if (selection.has(path)) selection.delete(path);
     else selection.add(path);
-    selAnchor = path;
+    anchorSelection(path);
   } else {
     selection.clear();
     selection.add(path);
-    selAnchor = path;
+    anchorSelection(path);
   }
   syncSelectionUI();
   setActiveRow(tr, true); // clicking a row also makes it the keyboard-nav anchor
@@ -2650,21 +2672,20 @@ function selectGroup(key, mode) {
   if (mode === "range") {
     let a = selAnchor && viewPathIndex.has(selAnchor) ? viewPathIndex.get(selAnchor) : -1;
     if (a < 0) a = gStart;
-    const lo = Math.min(a, gStart);
-    const hi = Math.max(a, gEnd);
-    selection.clear();
-    for (let i = lo; i <= hi; i++) selection.add(viewPaths[i]);
+    // From the anchor through the whole folder, whichever side of it — or
+    // around it — the folder is.
+    selectRangeFromAnchor(Math.min(a, gStart), Math.max(a, gEnd));
   } else if (mode === "add") {
     const allSelected = paths.every((p) => selection.has(p));
     for (const p of paths) {
       if (allSelected) selection.delete(p);
       else selection.add(p);
     }
-    selAnchor = paths[0];
+    anchorSelection(paths[0]);
   } else {
     selection.clear();
     for (const p of paths) selection.add(p);
-    selAnchor = paths[0];
+    anchorSelection(paths[0]);
   }
   syncSelectionUI();
 }
@@ -2911,7 +2932,7 @@ tracksBody.addEventListener("keydown", (e) => {
     }
     if (selection.has(path)) selection.delete(path);
     else selection.add(path);
-    selAnchor = path;
+    anchorSelection(path);
     syncSelectionUI();
   }
 });
