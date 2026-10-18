@@ -5524,6 +5524,15 @@ pub fn builtin_action_groups() -> Vec<ActionGroupDto> {
             note: note.into(),
         };
     let re = |from: &str, to: &str| preset_rule("replace", from, to, true, "");
+    // A replacement aimed at one field rather than the group's whole scope.
+    let re_on = |field: &str, from: &str, to: &str| TransformRuleDto {
+        scope: Some(field.into()),
+        ..re(from, to)
+    };
+    // The asterisk a release page puts after a name it credits under a
+    // variation (#520): at the end of the name, or before whatever joins it to
+    // the next one in a credit. Elsewhere — `*NSYNC`, `Sh*t` — it is the name.
+    let variation_star = r"\*(\s*(?:$|[,;/&]|feat\b|featuring\b|ft\b|vs\b|presents\b|x\s))";
     let case = |style: &str| preset_rule("case", "", "", false, style);
     let step = |kind: &str| preset_rule(kind, "", "", false, "");
 
@@ -5537,8 +5546,13 @@ pub fn builtin_action_groups() -> Vec<ActionGroupDto> {
         group(
             "Discogs cleanup",
             "tags",
-            "Drop the numeric disambiguator on artist names — \"Sunbeam (2)\" becomes \"Sunbeam\".",
-            vec![re(r"\s*\(\d+\)$", "")],
+            "Drop the numeric disambiguator on artist names — \"Sunbeam (2)\" becomes \"Sunbeam\" — \
+             and the asterisk a release page puts after a name variation: \"NBG*\" becomes \"NBG\".",
+            vec![
+                re(r"\s*\(\d+\)$", ""),
+                re_on("artist", variation_star, "$1"),
+                re_on("albumartist", variation_star, "$1"),
+            ],
         ),
         group(
             "Normalize english",
@@ -9615,6 +9629,25 @@ mod tests {
 
         assert_eq!(run("Standard values", "  Desert   Rain "), "Desert Rain");
         assert_eq!(run("Discogs cleanup", "Sunbeam (2)"), "Sunbeam");
+        // #520: the name-variation asterisk, alone and inside a credit; an
+        // asterisk that is part of a name stays.
+        assert_eq!(run("Discogs cleanup", "NBG*"), "NBG");
+        assert_eq!(
+            run("Discogs cleanup", "Wish Mountain* & Oxygen (9)"),
+            "Wish Mountain & Oxygen"
+        );
+        assert_eq!(
+            run("Discogs cleanup", "Al Faris* feat. Zolex*"),
+            "Al Faris feat. Zolex"
+        );
+        assert_eq!(run("Discogs cleanup", "*NSYNC"), "*NSYNC");
+        assert_eq!(run("Discogs cleanup", "Sh*t Happens"), "Sh*t Happens");
+        let discogs = builtin_action_groups()
+            .into_iter()
+            .find(|g| g.name == "Discogs cleanup")
+            .unwrap();
+        let targets: Vec<Option<&str>> = discogs.rules.iter().map(|r| r.scope.as_deref()).collect();
+        assert_eq!(targets, [None, Some("artist"), Some("albumartist")]);
         assert_eq!(
             run("No dash", "The X Factor - Desert Rain"),
             "The X Factor Desert Rain"

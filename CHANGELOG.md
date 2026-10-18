@@ -47,6 +47,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The minimum Rust version is 1.90.** Tauri already required it, so the
   1.89 the project declared could not build the app; the whole workspace is now
   built and tested on 1.90 to back the number. (#512)
+- **Discogs cleanup also drops the name-variation asterisk.** A release page
+  marks an artist credited under a variation of their name with `*` — `NBG*`,
+  `Wish Mountain* & Oxygen` — and a tracklist copied from it into FROM TEXT
+  kept it. The preset now removes it from the artist and album artist, at the
+  end of a name or before what joins it to the next; an asterisk that is part of
+  a name (`*NSYNC`) stays, and titles are not touched. This changes the preset
+  for everyone who has it ticked. (#520)
 - **The preview player moves to rodio 0.23.** It brings a newer audio output
   layer (cpal 0.18) underneath playback; nothing changes in how the player
   behaves. (#511)

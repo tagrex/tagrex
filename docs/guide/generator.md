@@ -92,7 +92,7 @@ compose into one rename instead of the second discarding the first.
 | Preset | Scope | What it does |
 | --- | --- | --- |
 | Standard values | all tags | Collapse runs of whitespace and trim the ends |
-| Discogs cleanup | all tags | Drop the numeric disambiguator: `Sunbeam (2)` → `Sunbeam` |
+| Discogs cleanup | all tags; artists | Drop the numeric disambiguator: `Sunbeam (2)` → `Sunbeam`; on the artist and album artist, also the name-variation asterisk a release page shows: `NBG*` → `NBG` |
 | Normalize english | all tags | Title-case, keeping known acronyms and roman numerals |
 | General Latin | all tags | Romanize non-Latin scripts, then strip leftover accents |
 | No dash | all tags | Dashes to spaces, then collapse the gaps that leaves |

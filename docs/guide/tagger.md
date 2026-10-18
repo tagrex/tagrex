@@ -196,4 +196,4 @@ a line — the read-out then shows what the suggestion actually reads, and you c
 adjust it from there.
 The values come out as the line spells them, and the presets ticked behind the
 wand run over them in the same press — *Discogs cleanup* drops an artist's
-`(2)`. The result is an ordinary plan: preview, Apply, undo.
+`(2)` and the `*` a release page puts after a name variation. The result is an ordinary plan: preview, Apply, undo.
