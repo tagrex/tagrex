@@ -11,6 +11,8 @@ picking rows; what the modes then *do* with them is on their own pages.
 | Click a row | Select just that row |
 | ⌘/Ctrl-click | Add or remove one row, keeping the rest |
 | Shift-click | Select the range from the last-clicked row, keeping what a ⌘/Ctrl-click left selected |
+| ⌘/Ctrl-A | Select every row the table lists |
+| Click below the rows | Clear the selection |
 | ↑ / ↓ | Move to the previous/next row |
 | Space | Toggle the focused row in or out of the selection |
 
@@ -19,8 +21,10 @@ the first block and Shift-click its last, then ⌘/Ctrl-click the first row of t
 second block and Shift-click its last. The first block stays — a Shift-range is
 added to what the last ⌘/Ctrl-click left, the way a file manager does it.
 
-To select everything, click the first row and Shift-click the last. There is no
-⌘/Ctrl-A: turn on the checkbox column below if you want a select-all control.
+⌘/Ctrl-A selects every row the table lists — inside a text field it selects the
+field's text instead, as usual. While a staged plan is under review it ticks
+every changed file for Apply rather than selecting rows. The combination can be
+changed in **Settings › Shortcuts**.
 
 When a library is opened, only the first file is selected — not the whole
 library, so an operation aimed at "the selection" can't run away with the lot

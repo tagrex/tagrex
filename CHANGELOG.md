@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   manager, where it used to wipe the first block and leave a row-by-row
   ⌘-click as the only way to skip one. A plain click followed by Shift-click
   works as before. (#523)
+- **The file table guide lists ⌘/Ctrl-A and click-to-deselect.** It still said
+  there was no ⌘/Ctrl-A, months after the shortcut arrived. (#524)
 
 ## [0.24.0] - 2026-10-18
 
