@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   signature, under a generated name, so macOS showed that name and a blank icon
   for it — in the Now Playing widget once playback stops, for one. The whole
   app is now signed under its bundle identifier. (#514)
+- **The Linux and Windows builds pass their lint check again.** The media
+  session from #218 left its shared types unused on those platforms, which
+  failed the build's warnings check there. (#517)
 
 ## [0.23.0] - 2026-10-17
 

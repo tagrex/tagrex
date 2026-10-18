@@ -20,6 +20,9 @@ use tauri::{AppHandle, Manager};
 
 use tagrex_player::Player;
 
+// Only the macOS session reads these so far; the other platforms (#515, #516)
+// compile the no-op versions below.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 /// The event a remote command arrives as.
 pub const EVENT: &str = "tagrex://media-control";
 
@@ -33,6 +36,7 @@ pub enum PlaybackState {
 }
 
 /// The track the system should show, and where playback is in it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Deserialize)]
 pub struct NowPlaying {
     pub state: PlaybackState,
@@ -45,6 +49,7 @@ pub struct NowPlaying {
 }
 
 /// A remote command, as the frontend receives it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 #[derive(Clone, Serialize)]
 pub struct MediaControl {
     /// `toggle`, `play`, `pause`, `stop`, `next`, `previous` or `seek`.
