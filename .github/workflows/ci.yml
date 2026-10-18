@@ -26,7 +26,8 @@ jobs:
       # The `app` crate is a Tauri 2 desktop shell; on Linux it links against
       # GTK/WebKit/glib system libraries, which the runner doesn't ship.
       # `libasound2-dev` (ALSA) is needed by the rodio audio backend used for
-      # the preview player.
+      # the preview player. `dbus` brings `dbus-run-session` for the media
+      # session's D-Bus tests below.
       - name: Install Tauri Linux system dependencies
         run: |
           sudo apt-get update
@@ -38,7 +39,8 @@ jobs:
             libxdo-dev \
             libssl-dev \
             libasound2-dev \
-            patchelf
+            patchelf \
+            dbus
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -51,6 +53,12 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+      # The Linux media session (#516) exports MPRIS on the session bus; its
+      # tests are ignored by default because a plain `cargo test` has no bus.
+      # dbus-run-session gives this step a private one.
+      - name: Test the media session on a private D-Bus
+        run: dbus-run-session -- cargo test -p tagrex mpris -- --ignored
 
   # A second job that only compiles, on Windows (#223). A dependency can be
   # wrong for that platform alone — a feature flag it needs, a `cfg(windows)`

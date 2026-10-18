@@ -93,6 +93,13 @@ objc2-media-player = { version = "0.3.2", default-features = false, features = [
     "MPRemoteCommandEvent",
 ] }
 
+# The system media session on Linux (#516): MPRIS on the session D-Bus, which
+# the desktop's media widget, media keys and `playerctl` talk to. The same
+# zbus 5 the single-instance plugin already builds, pure Rust, rather than a
+# crate that links libdbus or brings an older zbus.
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus = "5"
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 # GUI shell: main.rs is the Tauri entry point (commands forward to the App

@@ -217,3 +217,10 @@ widget in Control Center, which shows the track's title, artist, album and
 cover and lets you drag its position. No permission is needed. macOS sends
 these keys to whichever app is playing, so while another player is the one
 playing, they stay with it.
+
+On Linux the player is an MPRIS media player on the session bus, so the
+desktop's media widget (the media controls in the notification panel or the
+system tray), the media keys and `playerctl` drive it the same way: play/pause,
+stop, next, previous and seeking, with the track's title, artist, album, length
+and cover on show. Without a session bus the player works as before, just
+without these controls.

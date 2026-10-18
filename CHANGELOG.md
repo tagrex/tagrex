@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   media player instead of capturing the keys, so it needs no Accessibility
   permission and does not take the keys from another player while that one is
   playing. (#218)
+- **On Linux the preview player is an MPRIS media player.** It appears on the
+  session bus as TagRex, so the media keys, the desktop's media widget and
+  `playerctl` can play, pause, stop, skip and seek it, and they show the
+  playing track's title, artist, album, length and cover. Without a session bus
+  the app runs as before and only says so once on the console. (#516)
 
 ### Changed
 
