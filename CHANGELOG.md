@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   one side only no longer keeps the titles apart, spacing (`Oh No` / `Ohno`)
   and a listing's one-letter typo don't either, and the length decides between
   two mixes of one title. (#527)
+- **Seeking into the last seconds of a track goes on to the next one.** A click
+  on the waveform's last slice could end the track before the player had asked
+  for the next, and playback stopped; a seek that close to the end now queues
+  the next track first. (#528)
 
 ### Changed
 

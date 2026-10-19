@@ -569,7 +569,7 @@ function onMediaControl(control) {
       break;
     case "seek":
       if (playingPath && Number.isFinite(control.position_secs)) {
-        invoke("player_seek", { secs: control.position_secs });
+        seekTo(control.position_secs);
       }
       break;
   }
@@ -693,9 +693,26 @@ el("pl-mute").addEventListener("click", () => {
 });
 plSeek.addEventListener("change", () => {
   const secs = (Number(plSeek.value) / 1000) * plDuration;
-  invoke("player_seek", { secs });
+  seekTo(secs);
   plSeeking = false;
 });
+
+// How close to the end the backend starts asking for the next track
+// (`PRIME_LEAD_SECS` in crates/player).
+const PRIME_LEAD_SECS = 5;
+
+// Seek within the current track (#528). The next track is queued when a status
+// poll sees the end coming, and a seek into the last fraction of a second — the
+// waveform's last slice — can end the track before that poll comes round, which
+// left nothing to play and stopped. So a seek that close to the end queues the
+// next track itself first; the backend ignores it when one is already queued.
+async function seekTo(secs) {
+  if (playingPath && plDuration && plDuration - secs <= PRIME_LEAD_SECS) {
+    const next = queuedAfter(playingPath);
+    if (next) await invoke("player_set_next", { path: next });
+  }
+  invoke("player_seek", { secs });
+}
 
 // Whether `path` is the track the backend reports as playing. The file table
 // tints that row as it renders, and the transport state is this module's.
