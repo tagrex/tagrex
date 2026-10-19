@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   now orders numbers as numbers and letters regardless of case, the way a file
   manager does. Opening or re-reading a folder also no longer skips a column
   sort the header shows. (#526)
+- **Auto-match recognises untagged files by name against credited titles.** A
+  file named `10 Throw` met a release track `Throw (Massimino L. Remix)` as two
+  different titles, so a folder of such files matched nothing by name and fell
+  back to lining up lengths in file order, which dropped every file out of that
+  order. The track number in front of a name no longer counts, a mix credit on
+  one side only no longer keeps the titles apart, spacing (`Oh No` / `Ohno`)
+  and a listing's one-letter typo don't either, and the length decides between
+  two mixes of one title. (#527)
 
 ### Changed
 

@@ -335,6 +335,12 @@ pub fn text_similarity(a: &str, b: &str) -> f32 {
     title_score(a, b).0
 }
 
+/// The score of two titles that agree except for a credit only one of them
+/// carries (#527) — `Throw` against `Throw (Massimino L. Remix)`. Below an
+/// exact match, so an identical title still wins, and far enough below 1.0
+/// that the length still decides between two mixes of the same title.
+const CREDIT_ONLY_SCORE: f32 = 0.9;
+
 /// Compare two titles, trying each normalization level for an exact hit before
 /// falling back to similarity on the most-normalized forms.
 fn title_score(a: &str, b: &str) -> (f32, MatchReason) {
@@ -350,7 +356,62 @@ fn title_score(a: &str, b: &str) -> (f32, MatchReason) {
         .zip(b_variants.iter())
         .map(|(left, right)| similarity(left, right))
         .fold(0.0_f32, f32::max);
+    if let Some(credit_only) = credit_only_score(a, b) {
+        if credit_only > best {
+            return (credit_only, MatchReason::Fuzzy);
+        }
+    }
     (best, MatchReason::Fuzzy)
+}
+
+/// How near two titles hold the same title once their bracketed credits are
+/// dropped, when only one of them carries any (#527) — `None` otherwise. An
+/// untagged file is matched by its name, and a name rarely spells out the mix a
+/// release lists: `10 Throw` against `Throw (Massimino L. Remix)`. Spaces don't
+/// count (`Oh No` / `Ohno`), and a near miss of the kind a listing's typo makes
+/// (`Feel My Body` / `Feel Me Body`) still counts, scaled down by how near it
+/// is, so a length that agrees can outweigh it. Two different credits on both
+/// sides (`(Original Mix)` against `(Massimino L. Remix)`) are two recordings,
+/// and stay apart.
+fn credit_only_score(a: &str, b: &str) -> Option<f32> {
+    let (a_bare, a_credited) = without_brackets(a);
+    let (b_bare, b_credited) = without_brackets(b);
+    if a_credited == b_credited {
+        return None;
+    }
+    let bare = |value: &str| {
+        strip_leading_article(&strip_leading_number(&strip_punctuation(value))).replace(' ', "")
+    };
+    let (a_bare, b_bare) = (bare(&a_bare), bare(&b_bare));
+    if a_bare.is_empty() || b_bare.is_empty() {
+        return None;
+    }
+    let near = similarity(&a_bare, &b_bare);
+    (near >= CREDIT_ONLY_NEAREST).then_some(CREDIT_ONLY_SCORE * near)
+}
+
+/// How alike two credit-free titles must be to count as the same title: one
+/// letter in ten.
+const CREDIT_ONLY_NEAREST: f32 = 0.85;
+
+/// `value` with every `(...)` and `[...]` group taken out, and whether it had
+/// any.
+fn without_brackets(value: &str) -> (String, bool) {
+    let mut out = String::with_capacity(value.len());
+    let mut depth = 0usize;
+    let mut had = false;
+    for c in value.chars() {
+        match c {
+            '(' | '[' => {
+                depth += 1;
+                had = true;
+            }
+            ')' | ']' if depth > 0 => depth -= 1,
+            _ if depth == 0 => out.push(c),
+            _ => {}
+        }
+    }
+    (normalized(&out), had)
 }
 
 /// Do two artist strings corroborate each other? Deliberately lenient: credits
@@ -374,7 +435,26 @@ fn variants(value: &str) -> Vec<String> {
     let no_noise = strip_noise(&basic);
     let no_punctuation = strip_punctuation(&no_noise);
     let no_article = strip_leading_article(&no_punctuation);
-    vec![basic, no_noise, no_punctuation, no_article]
+    // A file's name usually starts with its track number (#527): `10 Throw` is
+    // the title `Throw`. Dropped on both sides, so a title that really begins
+    // with a number still meets itself.
+    let no_number = strip_leading_article(&strip_leading_number(&no_punctuation));
+    vec![basic, no_noise, no_punctuation, no_article, no_number]
+}
+
+/// Drop a leading track number — `10 `, `01 `, or a disc and track `1 05 ` once
+/// punctuation is gone — when something is left after it.
+fn strip_leading_number(value: &str) -> String {
+    let mut words: Vec<&str> = value.split_whitespace().collect();
+    for _ in 0..2 {
+        let numeric = words
+            .first()
+            .is_some_and(|w| w.len() <= 3 && w.chars().all(|c| c.is_ascii_digit()));
+        if numeric && words.len() > 1 {
+            words.remove(0);
+        }
+    }
+    words.join(" ")
 }
 
 /// Lowercase, collapse whitespace, trim.
@@ -530,6 +610,106 @@ mod tests {
         assert!(
             remix.is_none_or(|m| m.reason != MatchReason::Exact),
             "a remix must never count as an exact match"
+        );
+    }
+
+    // #527: a file's name carries its track number and not the mix a release
+    // lists. The number is not part of the title, and a credit on one side only
+    // still lets the titles meet — below an exact match, and never when both
+    // sides name different mixes.
+    #[test]
+    fn a_track_number_and_a_one_sided_credit_do_not_block_a_match() {
+        let options = MatchOptions::default();
+        let numbered = match_track(&track("10 Throw", None), &track("Throw", None), &options)
+            .expect("a leading number is not part of the title");
+        assert_eq!(numbered.reason, MatchReason::Exact);
+        assert!(
+            match_track(&track("1-05 Throw", None), &track("Throw", None), &options)
+                .is_some_and(|m| m.reason == MatchReason::Exact)
+        );
+
+        let credited = match_track(
+            &track("10 Throw", None),
+            &track("Throw (Massimino L. Remix)", None),
+            &options,
+        )
+        .expect("a credit on one side only");
+        assert_eq!(credited.reason, MatchReason::Fuzzy);
+        assert!(credited.score < 1.0);
+
+        let other_mix = match_track(
+            &track("Throw (Paperclip Mix)", None),
+            &track("Throw (Massimino L. Remix)", None),
+            &options,
+        );
+        assert!(other_mix.is_none_or(|m| m.score < CREDIT_ONLY_SCORE));
+
+        // A title that really starts with a number still meets itself.
+        assert!(match_track(
+            &track("2 Your Right", None),
+            &track("2 Your Right (Club Mix)", None),
+            &options
+        )
+        .is_some());
+    }
+
+    // Spaces don't count, and a listing's typo is a near miss whose agreeing
+    // length outweighs an exact title the length rules out.
+    #[test]
+    fn a_spacing_or_one_letter_difference_still_meets_its_credited_title() {
+        let options = MatchOptions::default();
+        assert!(match_track(
+            &track("7 Oh No", None),
+            &track("Ohno (Danny's Twisted Realness Mix)", None),
+            &options
+        )
+        .is_some());
+        let file = TrackRef {
+            title: "6 Feel My Body",
+            artist: None,
+            duration_secs: Some(176),
+            isrc: None,
+        };
+        let listed = |title, secs| TrackRef {
+            title,
+            artist: None,
+            duration_secs: Some(secs),
+            isrc: None,
+        };
+        let candidates = [
+            listed("Feel Me Body (Rollo's Deeper Mix)", 177),
+            listed("Feel My Body (Rollo's Deeper Mix) (Eat Me Edit)", 205),
+        ];
+        assert_eq!(
+            best_match(&file, &candidates, &options).map(|(i, _)| i),
+            Some(0)
+        );
+    }
+
+    // Two mixes of one title on a double CD: the credit alone can't choose, the
+    // length does.
+    #[test]
+    fn the_length_chooses_between_two_mixes_of_one_title() {
+        let options = MatchOptions::default();
+        let file = TrackRef {
+            title: "11 Jus' Come",
+            artist: None,
+            duration_secs: Some(352),
+            isrc: None,
+        };
+        let listed = |title, secs| TrackRef {
+            title,
+            artist: None,
+            duration_secs: Some(secs),
+            isrc: None,
+        };
+        let candidates = [
+            listed("Jus' Come (Sharp Blaster Dub)", 465),
+            listed("Jus' Come (Sharp Blaster Dub)", 353),
+        ];
+        assert_eq!(
+            best_match(&file, &candidates, &options).map(|(i, _)| i),
+            Some(1)
         );
     }
 

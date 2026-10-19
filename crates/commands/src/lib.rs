@@ -10352,6 +10352,44 @@ mod tests {
         assert!(aligned.iter().flatten().all(|m| !m.by_isrc));
     }
 
+    // #527: untagged files go by their names, and a name has a track number in
+    // front and no mix credit; a release lists the credit and no number. In
+    // the scanner's text order (1, 10, 2) each still finds its own track.
+    #[test]
+    fn auto_align_matches_numbered_file_names_to_credited_titles() {
+        let dir = TempDir::new("align-names");
+        let file = |name: &str| {
+            let path = dir.0.join(name);
+            std::fs::write(&path, MINIMAL_FLAC).unwrap();
+            path
+        };
+        let paths = [
+            file("1 Five Moments.flac"),
+            file("10 Throw.flac"),
+            file("2 Fired Up!.flac"),
+        ];
+        let app = open_app(&dir);
+        let listed = |position: &str, title: &str| ImportTrackDto {
+            disc: None,
+            position: position.into(),
+            artist: String::new(),
+            title: title.into(),
+            duration_secs: None,
+            isrc: None,
+            bpm: None,
+            key: None,
+        };
+        let tracks = vec![
+            listed("1-01", "Five Moments (Torticolis Mix)"),
+            listed("1-02", "Fired Up! (Twilo Anthem Edit)"),
+            listed("1-10", "Throw (Massimino L. Remix)"),
+            listed("2-01", "Fired Up! (7\" Edit)"),
+        ];
+        let aligned = app.auto_align(&paths, &tracks).unwrap();
+        let matched: Vec<Option<usize>> = aligned.iter().map(|m| m.map(|m| m.track)).collect();
+        assert_eq!(matched, [Some(0), Some(2), Some(1)]);
+    }
+
     #[test]
     fn auto_align_uses_isrc_as_an_exact_key() {
         let dir = TempDir::new("align-isrc");
