@@ -4462,7 +4462,8 @@ impl App {
                 .collect()
         };
 
-        let by_content = matching::align(&local_refs, &candidate_refs, &MatchOptions::default());
+        let mut by_content =
+            matching::align(&local_refs, &candidate_refs, &MatchOptions::default());
         let content_hits = by_content.iter().flatten().count();
 
         // If titles only carried us part of the way, the folder probably has
@@ -4480,6 +4481,7 @@ impl App {
                 return Ok(annotate(by_duration));
             }
         }
+        fill_by_length(&mut by_content, &local_refs, &candidate_refs);
         Ok(annotate(by_content))
     }
 
@@ -5300,6 +5302,47 @@ fn plain_list_mask(lines: &[&str]) -> Option<String> {
         .into_iter()
         .max_by_key(|(_, lines)| *lines)
         .map(|(mask, _)| mask)
+}
+
+/// How far apart a file and a track may be to be paired by length once the
+/// names have had their say (#529).
+const FILL_BY_LENGTH_SECS: u64 = 2;
+
+/// Give each file the names left unmatched the one free track its length points
+/// to (#529) — a file named after its artist, say, on a release whose other
+/// tracks the names already placed. Only an unambiguous pair: the track is the
+/// only free one within [`FILL_BY_LENGTH_SECS`] of the file, and the file the
+/// only unmatched one that near to the track. Nothing the names placed moves.
+fn fill_by_length(aligned: &mut [Option<usize>], locals: &[TrackRef], candidates: &[TrackRef]) {
+    let mut taken = vec![false; candidates.len()];
+    for track in aligned.iter().flatten() {
+        taken[*track] = true;
+    }
+    let near = |file: usize, track: usize| match (
+        locals[file].duration_secs,
+        candidates[track].duration_secs,
+    ) {
+        (Some(a), Some(b)) => a.abs_diff(b) <= FILL_BY_LENGTH_SECS,
+        _ => false,
+    };
+    let open: Vec<usize> = (0..aligned.len())
+        .filter(|&i| aligned[i].is_none())
+        .collect();
+    let mut pairs = Vec::new();
+    for &file in &open {
+        let tracks: Vec<usize> = (0..candidates.len())
+            .filter(|&track| !taken[track] && near(file, track))
+            .collect();
+        let [track] = tracks[..] else {
+            continue;
+        };
+        if open.iter().filter(|&&other| near(other, track)).count() == 1 {
+            pairs.push((file, track));
+        }
+    }
+    for (file, track) in pairs {
+        aligned[file] = Some(track);
+    }
 }
 
 /// Order two paths the way a file manager lists them (#526): runs of digits as
@@ -10388,6 +10431,33 @@ mod tests {
         let aligned = app.auto_align(&paths, &tracks).unwrap();
         let matched: Vec<Option<usize>> = aligned.iter().map(|m| m.map(|m| m.track)).collect();
         assert_eq!(matched, [Some(0), Some(2), Some(1)]);
+    }
+
+    // #529: a file the names can't place takes the one free track its length
+    // points to; a length two free tracks share places nothing.
+    #[test]
+    fn auto_align_places_what_the_names_left_by_length() {
+        let local = |title, secs| TrackRef {
+            title,
+            artist: None,
+            duration_secs: Some(secs),
+            isrc: None,
+        };
+        let locals = [
+            local("3 Release Yourself", 325),
+            local("4 Ninety Nine Allstars", 324),
+            local("Untitled", 244),
+        ];
+        let candidates = [
+            local("Release Yourself (Liquid Dub)", 325),
+            local("Luv Is All U Need (Original Dillon & Dickins Mix)", 325),
+            local("Stay Out All Night", 244),
+            local("Human Nature (Epic Mix)", 244),
+        ];
+        let mut aligned = matching::align(&locals, &candidates, &MatchOptions::default());
+        assert_eq!(aligned, [Some(0), None, None]);
+        fill_by_length(&mut aligned, &locals, &candidates);
+        assert_eq!(aligned, [Some(0), Some(1), None]);
     }
 
     #[test]

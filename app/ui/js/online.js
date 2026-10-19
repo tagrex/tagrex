@@ -1135,7 +1135,7 @@ function lengthVerdict(release, matchedPairs) {
 // names cannot express: two tracks whose names are swapped against their
 // lengths. The core's duration alignment preserves order and would refuse to
 // cross, so it is deliberately not what this uses.
-function matchByLength(card) {
+async function matchByLength(card) {
   const release = releaseCache.get(card.dataset.id);
   const paths = selectedPaths();
   if (!release || paths.length === 0) {
@@ -1161,6 +1161,15 @@ function matchByLength(card) {
   const matchedPairs = claimed
     .filter(([i]) => !ambiguous.has(i))
     .map(([track, pair]) => ({ path: pair.path, track }));
+  // Where two tracks are too alike in length to choose, the names choose (#529).
+  if (ambiguous.size) {
+    try {
+      const byName = await invoke("auto_align", { paths, tracks: releaseTrackRefs(release) });
+      resolveSameLengths(release, paths, ambiguous, matchedPairs, byName);
+    } catch (e) {
+      /* the names are a help here, not a requirement */
+    }
+  }
   if (matchedPairs.length === 0) {
     toast(
       ambiguous.size
@@ -1177,9 +1186,11 @@ function matchByLength(card) {
   // (#199). A press that changed nothing returned above with the offer intact.
   disarmCard(card);
   const dropped = release.tracks.length - matchedPairs.length;
+  const placed = new Set(matchedPairs.map((p) => p.track));
+  const stillAmbiguous = [...ambiguous].filter((track) => !placed.has(track)).length;
   const notes = [];
-  if (ambiguous.size)
-    notes.push(t("match.sameLength", { tracks: tn("unit.track", ambiguous.size) }));
+  if (stillAmbiguous)
+    notes.push(t("match.sameLength", { tracks: tn("unit.track", stillAmbiguous) }));
   if (dropped > 0) notes.push(t("match.leftOut", { tracks: tn("unit.releaseTrack", dropped) }));
   toast(
     t("toast.match.byLength", {
@@ -1189,6 +1200,51 @@ function matchByLength(card) {
   );
 }
 
+// Settle the tracks the lengths could not tell apart (#529), adding to
+// `matchedPairs` in place. First the names: a file whose name points at such a
+// track, and whose length is near it, takes it. Then whatever that left: a
+// track none of whose same-length rivals is still free is no longer ambiguous,
+// and takes the one free file near its length.
+function resolveSameLengths(release, paths, ambiguous, matchedPairs, byName) {
+  const taken = new Set(matchedPairs.map((p) => p.path));
+  const placed = new Set(matchedPairs.map((p) => p.track));
+  const secsOf = (path) => trackAt(path)?.duration_secs;
+  const listed = (track) => release.tracks[track]?.duration_secs;
+  const near = (path, track) =>
+    secsOf(path) && listed(track) && Math.abs(secsOf(path) - listed(track)) <= NEAR_SECS;
+  const place = (path, track) => {
+    matchedPairs.push({ path, track });
+    taken.add(path);
+    placed.add(track);
+  };
+  paths.forEach((path, i) => {
+    const track = byName[i] ? byName[i].track : null;
+    if (track === null || !ambiguous.has(track) || placed.has(track) || taken.has(path)) return;
+    if (near(path, track)) place(path, track);
+  });
+  for (const track of ambiguous) {
+    if (placed.has(track)) continue;
+    const mine = listed(track);
+    const rivalFree = release.tracks.some(
+      (t, k) => k !== track && !placed.has(k) && t.duration_secs && Math.abs(t.duration_secs - mine) <= AMBIGUOUS_SECS,
+    );
+    if (rivalFree) continue;
+    const free = paths.filter((path) => !taken.has(path) && near(path, track));
+    if (free.length === 1) place(free[0], track);
+  }
+}
+
+// The release's tracks as the backend's alignment takes them.
+function releaseTrackRefs(release) {
+  return release.tracks.map((t) => ({
+    position: t.position,
+    artist: t.artist || release.artist,
+    title: t.title,
+    duration_secs: t.duration_secs ?? null,
+    isrc: t.isrc ?? null,
+  }));
+}
+
 async function autoMatchToRelease(card) {
   const paths = selectedPaths();
   const release = releaseCache.get(card.dataset.id);
@@ -1196,13 +1252,7 @@ async function autoMatchToRelease(card) {
     toast(t("online.selectTracksFirst"), true);
     return;
   }
-  const releaseTracks = release.tracks.map((t) => ({
-    position: t.position,
-    artist: t.artist || release.artist,
-    title: t.title,
-    duration_secs: t.duration_secs ?? null,
-    isrc: t.isrc ?? null,
-  }));
+  const releaseTracks = releaseTrackRefs(release);
   try {
     // Each entry is { track, by_isrc } or null (#54).
     const aligned = await invoke("auto_align", { paths, tracks: releaseTracks });

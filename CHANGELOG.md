@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   one side only no longer keeps the titles apart, spacing (`Oh No` / `Ohno`)
   and a listing's one-letter typo don't either, and the length decides between
   two mixes of one title. (#527)
+- **Auto-match and Match by length use what the other one knows.** Auto-match
+  places what the names left by length — a file named after its artist takes
+  the one free track its length points to — and Match by length lets the names
+  choose between tracks too alike in length to tell apart. On a two-disc
+  compilation with three such pairs each now lines up all fourteen files of the
+  first disc, where they placed thirteen and eight. (#529)
 - **Seeking into the last seconds of a track goes on to the next one.** A click
   on the waveform's last slice could end the track before the player had asked
   for the next, and playback stopped; a seek that close to the end now queues
