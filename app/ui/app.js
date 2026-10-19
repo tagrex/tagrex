@@ -1720,6 +1720,7 @@ async function refreshLibrary() {
     for (const path of goneFromEdits) edits.delete(path);
     const before = tracks.length;
     setTracks(fresh);
+    sortTracks(); // the sort stays, as everything else does (#526)
     // Nothing left selected but files to select: the same rule the open path
     // follows, so an operation is never aimed at nothing without saying so.
     if (selection.size === 0) {
@@ -1822,6 +1823,9 @@ async function afterOpen(label) {
   // so they are handed to it again (#48).
   await pushFieldLocks();
   setTracks(await invoke("list_tracks", {}));
+  // The scanner lists names as text (`1, 10, 2`); the header's sort is what the
+  // table shows, here as after an apply (#196, #526).
+  sortTracks();
   // Only the first readable track is selected on open (#128), so an operation
   // never silently hits the whole library — the user picks what to work on
   // (a row, a range, a whole folder via its group header, or the select-all

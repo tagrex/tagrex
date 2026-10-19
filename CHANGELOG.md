@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   refused every such file, so the player skipped it and the seek bar stayed
   empty; whole rips come out of some tools that way. The player now reads them
   as if the padding weren't there — the file itself is not changed. (#525)
+- **Files are listed `1, 2, …, 10`, not `1, 10, 11, …, 2`.** With no column
+  sort the table shows the folder's order, and that compared names as text; it
+  now orders numbers as numbers and letters regardless of case, the way a file
+  manager does. Opening or re-reading a folder also no longer skips a column
+  sort the header shows. (#526)
 
 ### Changed
 

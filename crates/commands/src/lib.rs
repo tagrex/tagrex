@@ -2094,7 +2094,7 @@ impl App {
                 Err(_) => TrackDto::unreadable(&path),
             })
             .collect();
-        tracks.sort_by(|a, b| a.path.cmp(&b.path));
+        tracks.sort_by(|a, b| natural_cmp(&a.path, &b.path));
         tracks
     }
 
@@ -5302,6 +5302,51 @@ fn plain_list_mask(lines: &[&str]) -> Option<String> {
         .map(|(mask, _)| mask)
 }
 
+/// Order two paths the way a file manager lists them (#526): runs of digits as
+/// numbers, so `2 Fired Up` comes before `10 Throw`, and letters without regard
+/// to case. This is the folder order the table shows with no column sort, and
+/// the order an operation on "the selection" works in; byte order put `10`
+/// between `1` and `2`. Paths equal under that rule fall back to byte order, so
+/// the order is total and stable.
+pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let (mut left, mut right) = (a.chars().peekable(), b.chars().peekable());
+    loop {
+        match (left.peek().copied(), right.peek().copied()) {
+            (None, None) => return a.cmp(b),
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(l), Some(r)) if l.is_ascii_digit() && r.is_ascii_digit() => {
+                let take = |chars: &mut std::iter::Peekable<std::str::Chars>| {
+                    let mut digits = String::new();
+                    while let Some(c) = chars.peek().copied().filter(char::is_ascii_digit) {
+                        digits.push(c);
+                        chars.next();
+                    }
+                    digits
+                };
+                let (l, r) = (take(&mut left), take(&mut right));
+                let (l_value, r_value) = (l.trim_start_matches('0'), r.trim_start_matches('0'));
+                let by_value = l_value
+                    .len()
+                    .cmp(&r_value.len())
+                    .then_with(|| l_value.cmp(r_value));
+                if by_value != Ordering::Equal {
+                    return by_value;
+                }
+            }
+            (Some(l), Some(r)) => {
+                let by_letter = l.to_lowercase().cmp(r.to_lowercase());
+                if by_letter != Ordering::Equal {
+                    return by_letter;
+                }
+                left.next();
+                right.next();
+            }
+        }
+    }
+}
+
 /// One track of a text list: the line, and what the mask read from it.
 type TextTrack<'a> = (&'a str, TagMap);
 
@@ -7457,6 +7502,33 @@ mod tests {
     fn suggests_nothing_for_an_empty_list() {
         assert_eq!(suggest_text_list_mask(""), None);
         assert_eq!(suggest_text_list_mask("\n  \n"), None);
+    }
+
+    #[test]
+    fn natural_cmp_orders_numbers_as_numbers() {
+        let mut paths = vec![
+            "/m/CD2/1 Audio Track.aiff",
+            "/m/CD1/10 Throw.aiff",
+            "/m/CD1/2 Fired Up!.aiff",
+            "/m/CD1/1 Five Moments.aiff",
+            "/m/CD1/01 Intro.aiff",
+            "/m/cd1/3 lower.aiff",
+            "/m/CD10/1 x.aiff",
+        ];
+        paths.sort_by(|a, b| natural_cmp(a, b));
+        assert_eq!(
+            paths,
+            [
+                // Equal numbers, so what follows them decides.
+                "/m/CD1/1 Five Moments.aiff",
+                "/m/CD1/01 Intro.aiff",
+                "/m/CD1/2 Fired Up!.aiff",
+                "/m/cd1/3 lower.aiff",
+                "/m/CD1/10 Throw.aiff",
+                "/m/CD2/1 Audio Track.aiff",
+                "/m/CD10/1 x.aiff",
+            ]
+        );
     }
 
     #[test]
