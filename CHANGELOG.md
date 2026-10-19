@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-10-19
+
+A fix-up release from running the app on a real untagged CD rip. AIFF files
+with padding before their audio now play and draw their waveform, files are
+listed `1, 2, …, 10` instead of `1, 10, 11, …, 2`, and Auto-match lines up such
+a folder by its file names — using the lengths for what the names leave open —
+where it used to drop most of it. Seeking into the last seconds of a track no
+longer stops playback, and Shift-click adds a range to the selection.
+
 ### Fixed
 
 - **AIFF files with padding before their audio play and draw a waveform.**
