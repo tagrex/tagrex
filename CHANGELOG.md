@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **AIFF files with padding before their audio play and draw a waveform.**
+  An AIFF may start its samples some way into the sound chunk, and the decoder
+  refused every such file, so the player skipped it and the seek bar stayed
+  empty; whole rips come out of some tools that way. The player now reads them
+  as if the padding weren't there — the file itself is not changed. (#525)
+
 ### Changed
 
 - **Shift-click adds a range instead of replacing the selection.** Select rows

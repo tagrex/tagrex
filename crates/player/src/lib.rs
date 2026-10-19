@@ -14,8 +14,10 @@
 //! Every format we handle decodes through rodio/Symphonia, including OGG, which
 //! the previous WebView `<audio>` player couldn't play.
 
+mod aiff;
+
 use std::collections::VecDeque;
-use std::fs::File;
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
@@ -145,8 +147,7 @@ const WAVEFORM_FLOOR: f32 = 0.05;
 /// Blocking and slow — seconds for an hour-long mix. The caller must keep it off
 /// the main thread.
 pub fn waveform(path: &std::path::Path) -> Result<Vec<u8>, String> {
-    let file = File::open(path).map_err(|err| err.to_string())?;
-    let decoder = Decoder::try_from(file).map_err(|err| err.to_string())?;
+    let decoder = open_decoder(path)?;
 
     let mut coarse: Vec<f32> = Vec::new();
     let mut sum_squares = 0.0f64;
@@ -355,20 +356,10 @@ fn new_sink(device: &MixerDeviceSink) -> Sink {
 /// Decode `path` and append it to the sink, recording it in `queue`. Returns
 /// false (and leaves the queue untouched) if the file can't be opened/decoded.
 fn enqueue(sink: &Sink, queue: &mut VecDeque<Track>, path: PathBuf) -> bool {
-    let file = match File::open(&path) {
-        Ok(file) => file,
-        Err(err) => {
-            eprintln!("audio: can't open {}: {err}", path.display());
-            return false;
-        }
-    };
-    // From the `File`, not a plain reader: that is what tells the decoder how
-    // long the file is, and without the length Symphonia calls a FLAC
-    // unseekable (#190).
-    let decoder = match Decoder::try_from(file) {
+    let decoder = match open_decoder(&path) {
         Ok(decoder) => decoder,
         Err(err) => {
-            eprintln!("audio: can't decode {}: {err}", path.display());
+            eprintln!("audio: can't play {}: {err}", path.display());
             return false;
         }
     };
@@ -376,6 +367,23 @@ fn enqueue(sink: &Sink, queue: &mut VecDeque<Track>, path: PathBuf) -> bool {
     sink.append(decoder);
     queue.push_back(Track { path, duration });
     true
+}
+
+/// Open `path` for decoding — the one way playback and the waveform both do it.
+///
+/// Through [`aiff::AudioFile`], which reads every file as it is except an AIFF
+/// with padding before its samples, which Symphonia would refuse (#525). The
+/// length goes to the decoder as `TryFrom<File>` would pass it: without it
+/// Symphonia calls a FLAC unseekable (#190).
+fn open_decoder(path: &std::path::Path) -> Result<Decoder<BufReader<aiff::AudioFile>>, String> {
+    let file = aiff::AudioFile::open(path).map_err(|err| err.to_string())?;
+    let len = file.len();
+    Decoder::builder()
+        .with_data(BufReader::new(file))
+        .with_byte_len(len)
+        .with_seekable(true)
+        .build()
+        .map_err(|err| err.to_string())
 }
 
 /// How close to the end of the current track the queue gets primed with the
@@ -511,6 +519,45 @@ impl PlayClock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // #525: an AIFF with padding before its samples decodes — and to the same
+    // audio as the file without it, so playback and the waveform see the same
+    // thing either way. Symphonia alone refuses the padded one.
+    #[test]
+    fn a_padded_aiff_decodes_like_the_same_file_without_padding() {
+        let dir = std::env::temp_dir().join(format!("tagrex-player-aiff-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let padded = dir.join("padded.aiff");
+        let plain = dir.join("plain.aiff");
+        std::fs::write(&padded, aiff::tests::aiff(44_100, 2280)).unwrap();
+        std::fs::write(&plain, aiff::tests::aiff(44_100, 0)).unwrap();
+
+        let refused = Decoder::try_from(std::fs::File::open(&padded).unwrap());
+        assert!(refused.is_err(), "the decoder alone now reads padded AIFF");
+
+        let samples = |path: &std::path::Path| -> Vec<i16> {
+            open_decoder(path)
+                .unwrap()
+                .map(|s| (s * 32768.0) as i16)
+                .collect()
+        };
+        // Symphonia 0.5 counts the SSND chunk's offset and blockSize fields as
+        // sample data and reads two frames past the end of every AIFF, padded
+        // or not — so the comparison is with the plain file, not a frame count.
+        let read = samples(&padded);
+        assert!(read.len() >= 44_100 * 2);
+        assert_eq!(read, samples(&plain));
+        assert_eq!(waveform(&padded).unwrap(), waveform(&plain).unwrap());
+
+        // Seeking into the middle lands on the frame the plain file has there.
+        use rodio::Source;
+        let mut decoder = open_decoder(&padded).unwrap();
+        decoder.try_seek(Duration::from_millis(500)).unwrap();
+        let at = (decoder.next().unwrap() * 32768.0) as i16;
+        let mut reference = open_decoder(&plain).unwrap();
+        reference.try_seek(Duration::from_millis(500)).unwrap();
+        assert_eq!(at, (reference.next().unwrap() * 32768.0) as i16);
+    }
 
     #[test]
     fn clock_tracks_elapsed_pause_and_seek() {
