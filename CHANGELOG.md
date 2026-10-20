@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **On Linux, TagRex is filed under Audio and opens the folder it is given.**
+  The .deb and .rpm installed a menu entry with no category, so desktops put it
+  under Other, and "Open With → TagRex" on a folder started it without the
+  folder. The entry now carries the Audio and Music categories and passes what
+  it is opened with on to the app. (#530)
+
 ## [0.24.1] - 2026-10-19
 
 A fix-up release from running the app on a real untagged CD rip. AIFF files
