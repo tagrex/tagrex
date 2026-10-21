@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The table toolbar lines up under the path field.** Its first button sat
+  2 px left of the library path above it; both rows now share one left edge.
+  (#531)
 - **On Linux, TagRex is filed under Audio and opens the folder it is given.**
   The .deb and .rpm installed a menu entry with no category, so desktops put it
   under Other, and "Open With → TagRex" on a folder started it without the

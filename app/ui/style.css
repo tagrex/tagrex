@@ -1027,7 +1027,9 @@ body.panel-collapsed .col-splitter {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px 10px;
-  padding: 6px 12px;
+  /* The top bar's 14 px inset, so the first button lines up under the path
+     field (#531). */
+  padding: 6px 14px;
   border-bottom: 1px solid var(--border);
 }
 
