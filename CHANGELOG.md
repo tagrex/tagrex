@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-21
+
+The media keys now work on all three platforms: on Windows the preview player
+joins the system media controls, so the keyboard's media keys, headphone buttons
+and the media panel above Quick Settings drive it and show the playing track and
+its cover, as macOS and Linux already did. On Linux the .deb and .rpm now file
+TagRex under Audio and hand it the folder it is opened with. Everywhere, the
+file table's toolbar now lines up under the path field.
+
 ### Added
 
 - **On Windows the media keys drive the preview player.** TagRex joins the
