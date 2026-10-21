@@ -4211,6 +4211,8 @@ dependencies = [
  "thiserror 2.0.21",
  "trash",
  "ureq",
+ "windows",
+ "windows-future",
  "zbus",
 ]
 

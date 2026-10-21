@@ -233,3 +233,8 @@ system tray), the media keys and `playerctl` drive it the same way: play/pause,
 stop, next, previous and seeking, with the track's title, artist, album, length
 and cover on show. Without a session bus the player works as before, just
 without these controls.
+
+On Windows the player is in the system media controls: the media keys,
+headphone buttons and the media panel above Quick Settings play, pause and skip
+it, and the panel shows the track with its cover. Where the Windows version
+gives that panel a position bar, it seeks too.

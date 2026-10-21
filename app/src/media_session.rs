@@ -10,9 +10,12 @@
 //! what it is playing, which is why the frontend reports every change of
 //! track and state through [`update`].
 //!
+//! On Windows it is the System Media Transport Controls (#515): media keys,
+//! headphone buttons and the media flyout by the volume overlay.
+//!
 //! A remote command reaches the frontend as the [`EVENT`] event and presses
-//! the same transport buttons a click would. Windows compiles the no-op
-//! versions below.
+//! the same transport buttons a click would. Any other platform compiles the
+//! no-op versions below.
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -22,9 +25,12 @@ use tauri::{AppHandle, Manager};
 
 use tagrex_player::Player;
 
-// Only the macOS and Linux sessions read these so far; Windows (#515)
-// compiles the no-op versions below.
-#[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
+// Only a platform with a session of its own reads these; any other compiles
+// the no-op versions below.
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux", windows)),
+    allow(dead_code)
+)]
 /// The event a remote command arrives as.
 pub const EVENT: &str = "tagrex://media-control";
 
@@ -38,7 +44,10 @@ pub enum PlaybackState {
 }
 
 /// The track the system should show, and where playback is in it.
-#[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux", windows)),
+    allow(dead_code)
+)]
 #[derive(Deserialize)]
 pub struct NowPlaying {
     pub state: PlaybackState,
@@ -51,7 +60,10 @@ pub struct NowPlaying {
 }
 
 /// A remote command, as the frontend receives it.
-#[cfg_attr(not(any(target_os = "macos", target_os = "linux")), allow(dead_code))]
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "linux", windows)),
+    allow(dead_code)
+)]
 #[derive(Clone, Serialize)]
 pub struct MediaControl {
     /// `toggle`, `play`, `pause`, `stop`, `next`, `previous` or `seek`.
@@ -105,11 +117,14 @@ pub use mac::{install, publish};
 #[cfg(target_os = "linux")]
 pub use mpris::{install, publish};
 
+#[cfg(windows)]
+pub use smtc::{install, publish};
+
 /// No system media session on Windows yet.
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 pub fn install(_app: &AppHandle) {}
 
-#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", windows)))]
 pub fn publish(_app: &AppHandle, _now: NowPlaying, _cover: Option<Option<Vec<u8>>>) {}
 
 #[cfg(target_os = "macos")]
@@ -1062,5 +1077,179 @@ mod mpris {
             assert_eq!((event.action, event.position_secs), ("seek", Some(30.0)));
             assert!(fx.events.try_recv().is_err());
         }
+    }
+}
+
+#[cfg(windows)]
+mod smtc {
+    use std::sync::Mutex;
+
+    use tauri::{AppHandle, Emitter, Manager};
+    use windows::core::{factory, Interface, Ref, HSTRING};
+    use windows::Foundation::{TimeSpan, TypedEventHandler};
+    use windows::Media::{
+        MediaPlaybackStatus, MediaPlaybackType, PlaybackPositionChangeRequestedEventArgs,
+        SystemMediaTransportControls, SystemMediaTransportControlsButton,
+        SystemMediaTransportControlsButtonPressedEventArgs,
+        SystemMediaTransportControlsTimelineProperties,
+    };
+    use windows::Storage::Streams::{
+        DataWriter, InMemoryRandomAccessStream, RandomAccessStreamReference,
+    };
+    use windows::Win32::System::WinRT::ISystemMediaTransportControlsInterop;
+    use windows_future::IAsyncOperation;
+
+    use super::{MediaControl, NowPlaying, PlaybackState, EVENT};
+
+    /// The controls for the main window, once opened. `None` inside means they
+    /// could not be — reported once, and not tried again on every update.
+    static CONTROLS: Mutex<Option<Option<SystemMediaTransportControls>>> = Mutex::new(None);
+
+    /// Nothing to set up at start: the controls belong to a window, so they are
+    /// opened on the first update, when the window is certainly there.
+    pub fn install(_app: &AppHandle) {}
+
+    /// Hand `now` to the system media controls. `cover` is `None` to keep the
+    /// current artwork, `Some` for a new track's (or its lack of one).
+    pub fn publish(app: &AppHandle, now: NowPlaying, cover: Option<Option<Vec<u8>>>) {
+        let mut slot = CONTROLS.lock().unwrap();
+        let controls = slot.get_or_insert_with(|| match open(app) {
+            Ok(controls) => Some(controls),
+            Err(err) => {
+                eprintln!("media session: no system media controls, media keys off: {err}");
+                None
+            }
+        });
+        if let Some(controls) = controls {
+            if let Err(err) = apply(controls, now, cover) {
+                eprintln!("media session: system media controls not updated: {err}");
+            }
+        }
+    }
+
+    /// The main window's controls, with the buttons on and their presses sent
+    /// to the frontend.
+    fn open(app: &AppHandle) -> windows::core::Result<SystemMediaTransportControls> {
+        let window = app.get_webview_window("main").ok_or_else(|| {
+            windows::core::Error::from_hresult(windows::Win32::Foundation::E_FAIL)
+        })?;
+        let hwnd = window
+            .hwnd()
+            .map_err(|_| windows::core::Error::from_hresult(windows::Win32::Foundation::E_FAIL))?;
+        let interop =
+            factory::<SystemMediaTransportControls, ISystemMediaTransportControlsInterop>()?;
+        // SAFETY: a live window handle of this process, asked for the type the
+        // call is documented to return.
+        let controls: SystemMediaTransportControls = unsafe { interop.GetForWindow(hwnd)? };
+        controls.SetIsEnabled(true)?;
+        controls.SetIsPlayEnabled(true)?;
+        controls.SetIsPauseEnabled(true)?;
+        controls.SetIsStopEnabled(true)?;
+        controls.SetIsNextEnabled(true)?;
+        controls.SetIsPreviousEnabled(true)?;
+
+        let emitter = app.clone();
+        controls.ButtonPressed(&TypedEventHandler::new(
+            move |_, args: Ref<SystemMediaTransportControlsButtonPressedEventArgs>| {
+                let action = match args.ok()?.Button()? {
+                    SystemMediaTransportControlsButton::Play => "play",
+                    SystemMediaTransportControlsButton::Pause => "pause",
+                    SystemMediaTransportControlsButton::Stop => "stop",
+                    SystemMediaTransportControlsButton::Next => "next",
+                    SystemMediaTransportControlsButton::Previous => "previous",
+                    _ => return Ok(()),
+                };
+                let _ = emitter.emit(
+                    EVENT,
+                    MediaControl {
+                        action,
+                        position_secs: None,
+                    },
+                );
+                Ok(())
+            },
+        ))?;
+
+        // Dragging the position in the media flyout.
+        let emitter = app.clone();
+        controls.PlaybackPositionChangeRequested(&TypedEventHandler::new(
+            move |_, args: Ref<PlaybackPositionChangeRequestedEventArgs>| {
+                let position = args.ok()?.RequestedPlaybackPosition()?;
+                let _ = emitter.emit(
+                    EVENT,
+                    MediaControl {
+                        action: "seek",
+                        position_secs: Some(position.Duration as f64 / TICKS_PER_SEC),
+                    },
+                );
+                Ok(())
+            },
+        ))?;
+        Ok(controls)
+    }
+
+    /// A `TimeSpan` counts 100-nanosecond ticks.
+    const TICKS_PER_SEC: f64 = 10_000_000.0;
+
+    fn ticks(secs: f64) -> TimeSpan {
+        TimeSpan {
+            Duration: (secs.max(0.0) * TICKS_PER_SEC).round() as i64,
+        }
+    }
+
+    fn apply(
+        controls: &SystemMediaTransportControls,
+        now: NowPlaying,
+        cover: Option<Option<Vec<u8>>>,
+    ) -> windows::core::Result<()> {
+        let updater = controls.DisplayUpdater()?;
+        if now.state == PlaybackState::Stopped || now.path.is_none() {
+            updater.ClearAll()?;
+            updater.Update()?;
+            return controls.SetPlaybackStatus(MediaPlaybackStatus::Stopped);
+        }
+        // A new track starts from a clean slate, so the last one's cover never
+        // lingers on a track without one.
+        if cover.is_some() {
+            updater.ClearAll()?;
+        }
+        updater.SetType(MediaPlaybackType::Music)?;
+        let music = updater.MusicProperties()?;
+        music.SetTitle(&HSTRING::from(now.title.as_str()))?;
+        music.SetArtist(&HSTRING::from(now.artist.as_str()))?;
+        music.SetAlbumTitle(&HSTRING::from(now.album.as_str()))?;
+        if let Some(Some(bytes)) = &cover {
+            updater.SetThumbnail(&thumbnail(bytes)?)?;
+        }
+        updater.Update()?;
+        controls.SetPlaybackStatus(if now.state == PlaybackState::Playing {
+            MediaPlaybackStatus::Playing
+        } else {
+            MediaPlaybackStatus::Paused
+        })?;
+
+        // The flyout's own seek bar.
+        let timeline = SystemMediaTransportControlsTimelineProperties::new()?;
+        timeline.SetStartTime(ticks(0.0))?;
+        timeline.SetEndTime(ticks(now.duration_secs))?;
+        timeline.SetMinSeekTime(ticks(0.0))?;
+        timeline.SetMaxSeekTime(ticks(now.duration_secs))?;
+        timeline.SetPosition(ticks(now.position_secs))?;
+        controls.UpdateTimelineProperties(&timeline)
+    }
+
+    /// The cover as a stream the controls can read, held in memory. Waiting on
+    /// the store is a copy into memory, not I/O.
+    fn thumbnail(bytes: &[u8]) -> windows::core::Result<RandomAccessStreamReference> {
+        let stream = InMemoryRandomAccessStream::new()?;
+        let writer = DataWriter::CreateDataWriter(&stream)?;
+        writer.WriteBytes(bytes)?;
+        writer
+            .StoreAsync()?
+            .cast::<IAsyncOperation<u32>>()?
+            .join()?;
+        writer.DetachStream()?;
+        stream.Seek(0)?;
+        RandomAccessStreamReference::CreateFromStream(&stream)
     }
 }

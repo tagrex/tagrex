@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **On Windows the media keys drive the preview player.** TagRex joins the
+  system media controls, so the keyboard's media keys, headphone buttons and
+  the media panel above Quick Settings play, pause and skip it, and the panel
+  shows the playing track's title, artist and cover — seeking too, on Windows
+  versions whose panel has a position bar. This completes the set begun on
+  macOS and Linux. (#515)
+
 ### Fixed
 
 - **On Linux, TagRex is filed under Audio and opens the folder it is given.**
