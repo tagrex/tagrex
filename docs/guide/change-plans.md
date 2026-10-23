@@ -50,7 +50,9 @@ not a failure.
 recorded in the journal as a single batch, so it undoes as a unit: a
 reorganize that renamed four hundred files is one entry, not four hundred.
 
-**Discard** throws the plan away. If the plan came from staged EDITOR edits or a
+**Discard** throws the plan away; so do ⌘⌫ (Ctrl+Backspace) and Esc. Esc
+closes an open menu or popover first, and leaves the plan alone while you are
+typing in a field. If the plan came from staged EDITOR edits or a
 release import, Discard also drops those staged values — the plan owned them. Any other kind of plan just disappears, leaving what it was built from
 untouched.
 

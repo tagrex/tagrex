@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **⇧⌘X clears the selected files' tags.** Ctrl+Shift+X on Windows and Linux.
   It stages the same preview as the eraser on the table toolbar, so ⌘↩ applies
   it and undo takes it back; it can be rebound in Settings › Shortcuts. (#532)
+- **Esc discards a staged plan.** Like the Discard button and ⌘⌫, but only when
+  nothing else Esc closes is open: one press closes a menu or popover and leaves
+  the plan alone, and Esc in a text field stays the field's. (#533)
 
 ## [0.25.0] - 2026-10-21
 

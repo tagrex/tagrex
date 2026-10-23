@@ -2357,6 +2357,41 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Esc lets go of a staged plan, as Discard (⌘⌫) does (#533), when nothing else
+// Esc closes is open. Decided in the capture phase: the menus and popovers close
+// themselves on Esc in their own handlers, and checked after them one press
+// would close a menu and throw the plan away with it.
+const ESC_POPUPS = [
+  "file-ctx",
+  "edit-ctx",
+  "group-menu",
+  "columns-menu",
+  "pl-volume-pop",
+  "ph-menu",
+  "preset-menu",
+  "query-preset-menu",
+];
+window.addEventListener(
+  "keydown",
+  (e) => {
+    if (e.key !== "Escape" || !diffByPath || e.isComposing) return;
+    const active = document.activeElement;
+    const typing =
+      active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName));
+    const popupOpen =
+      ESC_POPUPS.some((id) => el(id) && !el(id).hidden) ||
+      !!document.querySelector(".sg-menu:not([hidden]), .modal-backdrop:not([hidden])") ||
+      !el("settings").hidden;
+    if (typing || popupOpen || searchBusy()) return;
+    const discard = el("diff-discard");
+    if (discard && !discard.disabled) {
+      e.preventDefault();
+      discard.click();
+    }
+  },
+  true,
+);
+
 // ⌘/Ctrl+A selects every row the table lists, not the whole page (#345). Without
 // this the browser's own select-all fires and text-highlights the entire UI.
 // The shortcut registry runs it (#432): it leaves a text field its own
