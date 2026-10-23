@@ -112,6 +112,34 @@ function appendSpellingDetails(menu, found) {
   menu.appendChild(box);
 }
 
+// The albums the incomplete check found, each with the track numbers it is
+// missing (#534), so a gap is something to go and find rather than a count.
+function appendIncompleteDetails(menu, found) {
+  if (!found.length) return;
+  const box = document.createElement("div");
+  box.className = "health-detail";
+  for (const item of found.slice(0, SPELLING_LINES)) {
+    const line = document.createElement("div");
+    const album = item.disc === null ? item.album : t("health.incompleteDisc", { album: item.album, disc: item.disc });
+    line.textContent =
+      item.missing === null
+        ? t("health.incompleteCount", { album, have: item.have, total: item.total })
+        : t("health.incompleteLine", {
+            album,
+            tracks: item.missing,
+            have: item.have,
+            total: item.total,
+          });
+    box.appendChild(line);
+  }
+  if (found.length > SPELLING_LINES) {
+    const more = document.createElement("div");
+    more.textContent = t("health.spellingMore", { n: found.length - SPELLING_LINES });
+    box.appendChild(more);
+  }
+  menu.appendChild(box);
+}
+
 function renderMenu() {
   const menu = el("health-menu");
   menu.innerHTML = "";
@@ -146,6 +174,7 @@ function renderMenu() {
     for (const check of checks) {
       menu.appendChild(row(checkLabel(check), counts[check.id], check.id));
       if (check.id === "spelling") appendSpellingDetails(menu, details.spelling);
+      if (check.id === "incomplete") appendIncompleteDetails(menu, details.incomplete);
     }
   }
 }

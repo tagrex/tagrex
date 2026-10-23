@@ -21,6 +21,7 @@ export const CHECKS = [
   { id: "whitespace", group: "suspect" },
   { id: "trackTotal", group: "albums" },
   { id: "dupTrack", group: "albums" },
+  { id: "incomplete", group: "albums" },
   { id: "albumDisagree", group: "albums" },
   { id: "spelling", group: "library" },
   { id: "unreadable", group: "files" },
@@ -64,8 +65,21 @@ function yearIsOdd(text, currentYear) {
   return year < 1900 || year > currentYear + 1;
 }
 
+// "3, 7-12": the missing numbers, runs folded, for the menu to show.
+function numberRuns(numbers) {
+  const runs = [];
+  for (const n of numbers) {
+    const last = runs[runs.length - 1];
+    if (last && n === last[1] + 1) last[1] = n;
+    else runs.push([n, n]);
+  }
+  return runs.map(([a, b]) => (a === b ? `${a}` : `${a}-${b}`)).join(", ");
+}
+
 // { sets: { id: Set<path> }, counts: { id: number }, flagged: Set<path>,
-//   details: { spelling: [{ field, forms: [{ value, count }] }] } }
+//   details: { spelling: [{ field, forms: [{ value, count }] }],
+//              incomplete: [{ album, disc, missing, have, total }] } }
+//   (`missing` is null for a release counted against its total as a whole)
 export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
   const sets = {};
   for (const check of CHECKS) sets[check.id] = new Set();
@@ -127,8 +141,10 @@ export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
     });
   }
 
+  const incomplete = [];
   for (const members of albums.values()) {
-    // A single track cannot disagree with anything.
+    // A single track cannot disagree with anything, and a lone "3/12" among
+    // unrelated files is not an album anyone is collecting.
     if (members.length < 2) continue;
     const totals = new Set();
     const years = new Set();
@@ -156,7 +172,62 @@ export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
     for (const paths of numbers.values()) {
       if (paths.length > 1) paths.forEach((path) => flag("dupTrack", path));
     }
+
+    // Tracks missing (#534), disc by disc: every number from 1 to the track
+    // total no file has, or with no total in the tags, the gaps between the
+    // numbers that are there. A disc's total is the largest any of its files
+    // states, so one file with the total left off doesn't shorten the album.
+    const discs = new Map();
+    for (const track of members) {
+      const tags = track.tags || {};
+      const number = leadingNumber(tags.track);
+      if (number === null) continue;
+      const disc = leadingNumber(tags.disc) || 1;
+      if (!discs.has(disc)) discs.set(disc, { numbers: new Set(), total: null });
+      const entry = discs.get(disc);
+      entry.numbers.add(number);
+      const total = leadingNumber(tags.tracktotal);
+      if (total !== null && (entry.total === null || total > entry.total)) entry.total = total;
+    }
+    let short = false;
+    const album = (members[0].tags.album || "").trim();
+    // A total can count the whole release rather than one disc: numbers start
+    // again at 1 on each disc while every file says "of 50" for 25 + 25. That
+    // is when every disc states the same total and it is more than any disc
+    // reaches. Then each disc can only be checked for gaps, and the release as
+    // a whole against its total, without saying which numbers are gone.
+    const entries = [...discs].sort((a, b) => a[0] - b[0]);
+    const stated = new Set(entries.map(([, d]) => d.total));
+    const releaseTotal =
+      entries.length > 1 && stated.size === 1 && !stated.has(null)
+        ? [...stated][0]
+        : null;
+    const wholeRelease =
+      releaseTotal !== null && entries.every(([, d]) => Math.max(...d.numbers) < releaseTotal);
+    for (const [disc, { numbers: present, total }] of entries) {
+      const end = wholeRelease ? Math.max(...present) : (total ?? Math.max(...present));
+      const missing = [];
+      for (let n = 1; n <= end; n++) if (!present.has(n)) missing.push(n);
+      if (!missing.length) continue;
+      short = true;
+      incomplete.push({
+        album,
+        disc: discs.size > 1 ? disc : null,
+        missing: numberRuns(missing),
+        have: [...present].filter((n) => n >= 1 && n <= end).length,
+        total: end,
+      });
+    }
+    if (wholeRelease) {
+      const have = entries.reduce((sum, [, d]) => sum + d.numbers.size, 0);
+      if (have < releaseTotal) {
+        short = true;
+        incomplete.push({ album, disc: null, missing: null, have, total: releaseTotal });
+      }
+    }
+    if (short) members.forEach((track) => flag("incomplete", track.path));
   }
+  incomplete.sort((a, b) => a.album.localeCompare(b.album) || (a.disc ?? 0) - (b.disc ?? 0));
 
   // Where one value is spelled several ways, every file holding any of the
   // spellings is flagged. No spelling is taken to be the right one: that is not
@@ -183,5 +254,5 @@ export function computeHealth(tracks, currentYear = new Date().getFullYear()) {
     counts[check.id] = sets[check.id].size;
     sets[check.id].forEach((path) => flagged.add(path));
   }
-  return { sets, counts, flagged, details: { spelling: details } };
+  return { sets, counts, flagged, details: { spelling: details, incomplete } };
 }

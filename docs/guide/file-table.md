@@ -104,7 +104,17 @@ re-read.
 - **Albums**: a track number above its total, tracks of one album that
   disagree on the total, the year or the album artist, and two files with the
   same track number. An album is the files in one folder that share an album
-  name; a disc is told apart by its disc number.
+  name; a disc is told apart by its disc number. **Album has tracks missing**
+  flags an album, disc by disc, that lacks a number from 1 to its track total,
+  or with no total in the tags, a number between the ones present (1, 2 and 5
+  mean 3 and 4 are missing). The menu lists those albums with the numbers they
+  are missing: "Album: no 3, 7-8 (5 of 8)". Some releases number each disc
+  from 1 but give every track the total for the whole release ("1/50" on both
+  discs of a 25 + 25 set); when every disc states the same total and none
+  reaches it, each disc is only checked for gaps and the release is counted
+  against that total ("Album: 44 of 50 tracks"). An album needs at least two of its
+  tracks in the folder to count, so a lone track tagged "3/12" among unrelated
+  files is left alone.
 - **Library**: the same artist, album artist, album or genre written in more
   than one way (case, accents, runs of spaces). The commonest spelling is taken
   to be the intended one and the files with any other are flagged.

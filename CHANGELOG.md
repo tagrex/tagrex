@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **⇧⌘X clears the selected files' tags.** Ctrl+Shift+X on Windows and Linux.
   It stages the same preview as the eraser on the table toolbar, so ⌘↩ applies
   it and undo takes it back; it can be rebound in Settings › Shortcuts. (#532)
+- **Library health finds albums with tracks missing.** For each album and
+  disc, the track numbers from 1 to the track total that no file has, or the
+  gaps between the numbers present when there is no total; the menu lists the
+  albums with what each is missing. A total that counts the whole release
+  while each disc is numbered from 1 is recognised, and a lone track from an
+  album, among unrelated files, doesn't count. (#534)
 - **Esc discards a staged plan.** Like the Discard button and ⌘⌫, but only when
   nothing else Esc closes is open: one press closes a menu or popover and leaves
   the plan alone, and Esc in a text field stays the field's. (#533)
