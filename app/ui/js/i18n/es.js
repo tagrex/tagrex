@@ -847,6 +847,7 @@ export const es = {
   "shortcuts.action.apply": "Aplicar los cambios preparados",
   "shortcuts.action.discard": "Descartar los cambios preparados",
   "shortcuts.action.undo": "Deshacer el último lote aplicado",
+  "shortcuts.action.clearTags": "Borrar las etiquetas de los archivos seleccionados",
   "shortcuts.action.open": "Abrir una carpeta",
   "shortcuts.action.reread": "Volver a leer la carpeta abierta",
   "shortcuts.action.filter": "Ir al filtro",

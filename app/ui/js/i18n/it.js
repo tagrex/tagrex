@@ -849,6 +849,7 @@ export const it = {
   "shortcuts.action.apply": "Applica le modifiche in staging",
   "shortcuts.action.discard": "Scarta le modifiche in staging",
   "shortcuts.action.undo": "Annulla l'ultimo batch applicato",
+  "shortcuts.action.clearTags": "Cancella i tag dei file selezionati",
   "shortcuts.action.open": "Apri una cartella",
   "shortcuts.action.reread": "Rileggi la cartella aperta",
   "shortcuts.action.filter": "Vai al filtro",

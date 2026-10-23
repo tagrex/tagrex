@@ -56,6 +56,12 @@ const ACTIONS = [
   { id: "apply", combo: "Mod+Enter", buttons: ["diff-apply"], run: () => press("diff-apply") },
   { id: "discard", combo: "Mod+Backspace", buttons: ["diff-discard"], run: () => press("diff-discard") },
   { id: "undo", combo: "Mod+KeyZ", buttons: ["undo"], run: () => press("undo") },
+  {
+    id: "clearTags",
+    combo: "Mod+Shift+KeyX",
+    buttons: ["clear-tags", "fields-clear"],
+    run: () => press("clear-tags", "fields-clear"),
+  },
   { id: "open", combo: "Mod+KeyO", typing: true, buttons: ["lib-action"], run: () => press("lib-action") },
   { id: "reread", combo: "Mod+KeyR", typing: true, buttons: ["lib-refresh"], run: () => press("lib-refresh") },
   {

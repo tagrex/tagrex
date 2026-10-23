@@ -845,6 +845,7 @@ export const de = {
   "shortcuts.action.apply": "Vorgemerkte Änderungen anwenden",
   "shortcuts.action.discard": "Vorgemerkte Änderungen verwerfen",
   "shortcuts.action.undo": "Zuletzt angewendeten Stapel rückgängig machen",
+  "shortcuts.action.clearTags": "Tags der gewählten Dateien löschen",
   "shortcuts.action.open": "Einen Ordner öffnen",
   "shortcuts.action.reread": "Geöffneten Ordner neu einlesen",
   "shortcuts.action.filter": "Zum Filter springen",

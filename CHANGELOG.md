@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **⇧⌘X clears the selected files' tags.** Ctrl+Shift+X on Windows and Linux.
+  It stages the same preview as the eraser on the table toolbar, so ⌘↩ applies
+  it and undo takes it back; it can be rebound in Settings › Shortcuts. (#532)
+
 ## [0.25.0] - 2026-10-21
 
 The media keys now work on all three platforms: on Windows the preview player

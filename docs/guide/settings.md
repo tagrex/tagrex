@@ -116,6 +116,7 @@ has a shortcut shows it after its own text.
 | Apply the staged changes | ⌘↩ | Ctrl+Enter |
 | Discard the staged changes | ⌘⌫ | Ctrl+Backspace |
 | Undo the last applied batch | ⌘Z | Ctrl+Z |
+| Clear the selected files' tags | ⇧⌘X | Ctrl+Shift+X |
 | Open a folder | ⌘O | Ctrl+O |
 | Re-read the open folder | ⌘R | Ctrl+R |
 | Go to the filter | ⌘F | Ctrl+F |

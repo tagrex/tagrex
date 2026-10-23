@@ -849,6 +849,7 @@ export const fr = {
   "shortcuts.action.apply": "Appliquer les changements en attente",
   "shortcuts.action.discard": "Abandonner les changements en attente",
   "shortcuts.action.undo": "Annuler le dernier lot appliqué",
+  "shortcuts.action.clearTags": "Effacer les tags des fichiers sélectionnés",
   "shortcuts.action.open": "Ouvrir un dossier",
   "shortcuts.action.reread": "Relire le dossier ouvert",
   "shortcuts.action.filter": "Aller au filtre",

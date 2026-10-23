@@ -849,6 +849,7 @@ export const uk = {
   "shortcuts.action.apply": "Застосувати підготовлені зміни",
   "shortcuts.action.discard": "Скасувати підготовлені зміни",
   "shortcuts.action.undo": "Скасувати останнє застосування",
+  "shortcuts.action.clearTags": "Очистити теги вибраних файлів",
   "shortcuts.action.open": "Відкрити папку",
   "shortcuts.action.reread": "Перечитати відкриту папку",
   "shortcuts.action.filter": "Перейти до фільтра",

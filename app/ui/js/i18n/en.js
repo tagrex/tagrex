@@ -851,6 +851,7 @@ export const en = {
   "shortcuts.action.apply": "Apply the staged changes",
   "shortcuts.action.discard": "Discard the staged changes",
   "shortcuts.action.undo": "Undo the last applied batch",
+  "shortcuts.action.clearTags": "Clear the selected files' tags",
   "shortcuts.action.open": "Open a folder",
   "shortcuts.action.reread": "Re-read the open folder",
   "shortcuts.action.filter": "Go to the filter",
