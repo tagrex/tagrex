@@ -13,8 +13,12 @@
 //!
 //! Every format we handle decodes through rodio/Symphonia, including OGG, which
 //! the previous WebView `<audio>` player couldn't play.
+//!
+//! The same decoder feeds the two analyses of the audio: the waveform drawn in
+//! the player bar, and the tempo detection in [`tempo`] (#536).
 
 mod aiff;
+pub mod tempo;
 
 use std::collections::VecDeque;
 use std::io::BufReader;
@@ -369,7 +373,8 @@ fn enqueue(sink: &Sink, queue: &mut VecDeque<Track>, path: PathBuf) -> bool {
     true
 }
 
-/// Open `path` for decoding — the one way playback and the waveform both do it.
+/// Open `path` for decoding — the one way playback, the waveform and the tempo
+/// detection all do it.
 ///
 /// Through [`aiff::AudioFile`], which reads every file as it is except an AIFF
 /// with padding before its samples, which Symphonia would refuse (#525). The

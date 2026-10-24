@@ -1,6 +1,6 @@
 [package]
 name = "tagrex-player"
-description = "The TagRex preview player: a rodio Sink on its own thread, plus the waveform decoder"
+description = "The TagRex preview player: a rodio Sink on its own thread, plus the waveform and tempo analysis of the decoded audio"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -24,3 +24,13 @@ rodio = { version = "0.23", default-features = false, features = [
   "playback",
   "symphonia-all",
 ] }
+# BPM detection (#536): a neural beat tracker on the pure-Rust `rten` ONNX
+# runtime, so no native library has to build on any of the release targets.
+# Without its default features, which are a CLI and a decoder of its own: the
+# audio comes through the same rodio/Symphonia path as playback. `rten` itself
+# only to load the embedded models from bytes, which the crate's own runtime
+# cannot do (it loads from a path), and `anyhow` because its model trait says so.
+beat-this = { version = "1.1", default-features = false }
+rten = "0.24"
+rten-tensor = "0.24"
+anyhow = "1"

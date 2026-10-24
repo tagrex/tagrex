@@ -63,6 +63,11 @@ APE), values are read from the highest one present. Drag to reorder; there is a
 Reset. Most files carry a single block, so this rarely matters — it exists for
 the files where it does.
 
+**Detected BPM range**: the range Detect BPM folds a measured tempo into, by
+halving or doubling it. **As measured** (the default) writes the tempo as the
+beats fall. Choose **70-140** if your library writes a 174 BPM track as 87;
+**90-180** keeps drum & bass at full tempo and doubles a slow one.
+
 ## Cover art
 
 **Max size** — pixels on the longest side. A larger fetched or chosen cover is
@@ -117,6 +122,7 @@ has a shortcut shows it after its own text.
 | Discard the staged changes | ⌘⌫ | Ctrl+Backspace |
 | Undo the last applied batch | ⌘Z | Ctrl+Z |
 | Clear the selected files' tags | ⇧⌘X | Ctrl+Shift+X |
+| Detect the selected files' BPM | ⇧⌘B | Ctrl+Shift+B |
 | Open a folder | ⌘O | Ctrl+O |
 | Re-read the open folder | ⌘R | Ctrl+R |
 | Go to the filter | ⌘F | Ctrl+F |

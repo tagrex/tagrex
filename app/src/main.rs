@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 mod media_session;
 mod update;
@@ -50,6 +50,9 @@ const APPLY_PROGRESS_EVENT: &str = "tagrex://apply-progress";
 /// The apply is reported at most this often; the files of a fast local apply go
 /// by faster than a window can repaint.
 const APPLY_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(60);
+/// Emitted while BPM detection runs (#536): `{ done, total, path }`, before each
+/// file and once at the end.
+const BPM_PROGRESS_EVENT: &str = "tagrex://bpm-progress";
 
 /// The paths in a command line. Windows and Linux hand a folder over as an
 /// argument; macOS does not, and passes `-psn_…` of its own when Finder starts
@@ -732,6 +735,95 @@ fn cancel_apply(control: State<ApplyControl>) {
     control.0.store(true, Ordering::SeqCst);
 }
 
+/// Asks a running BPM detection to stop (#536). Shared with the blocking thread
+/// the detection runs on, hence the `Arc`.
+#[derive(Default)]
+struct BpmControl(Arc<AtomicBool>);
+
+/// What a BPM detection found (#536): the plan for the tempos it measured, and
+/// what it could not measure, for the toast.
+#[derive(serde::Serialize)]
+struct BpmDetectionDto {
+    plan: PlanDto,
+    /// Files analysed, whether or not they had a tempo.
+    analysed: usize,
+    /// Files with no steady beat to measure.
+    no_tempo: usize,
+    /// Files that could not be decoded, by path.
+    failed: Vec<String>,
+    /// The run was cancelled; the plan holds the files measured before that.
+    cancelled: bool,
+}
+
+/// Measure the tempo of each file and stage the BPM field (#536).
+///
+/// The measuring runs on a blocking thread and outside the session lock: it
+/// takes seconds a file, and the window has to stay usable while it does. Only
+/// building the plan from the results takes the lock, for as long as reading
+/// the current values takes. A cancel stops at the current file and stages what
+/// was measured before it.
+#[tauri::command]
+async fn detect_bpm(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    control: State<'_, BpmControl>,
+    paths: Vec<String>,
+) -> Result<BpmDetectionDto, ErrorDto> {
+    control.0.store(false, Ordering::SeqCst);
+    let cancel = control.0.clone();
+    let measured = tauri::async_runtime::spawn_blocking(move || {
+        let mut detector = tagrex_player::tempo::TempoDetector::new().map_err(shell_error)?;
+        let total = paths.len();
+        let report = |done: usize, path: &str| {
+            let _ = tauri::Emitter::emit(
+                &app_handle,
+                BPM_PROGRESS_EVENT,
+                ApplyProgressDto {
+                    done,
+                    total,
+                    path: path.to_string(),
+                },
+            );
+        };
+        let (mut detected, mut no_tempo, mut failed) = (Vec::new(), 0, Vec::new());
+        let mut cancelled = false;
+        for (done, path) in paths.iter().enumerate() {
+            report(done, path);
+            let target = PathBuf::from(path);
+            match detector.detect(&target, &cancel) {
+                Ok(Some(bpm)) => detected.push((target, bpm)),
+                Ok(None) => no_tempo += 1,
+                Err(tagrex_player::tempo::TempoError::Failed(_)) => failed.push(path.clone()),
+                Err(tagrex_player::tempo::TempoError::Cancelled) => {
+                    cancelled = true;
+                    break;
+                }
+            }
+        }
+        let analysed = detected.len() + no_tempo + failed.len();
+        report(analysed, "");
+        Ok::<_, ErrorDto>((detected, analysed, no_tempo, failed, cancelled))
+    })
+    .await
+    .map_err(shell_error)??;
+    let (detected, analysed, no_tempo, failed, cancelled) = measured;
+    let plan = with_app(&state, |app| {
+        app.preview_bpm(&detected).map_err(ErrorDto::from)
+    })?;
+    Ok(BpmDetectionDto {
+        plan,
+        analysed,
+        no_tempo,
+        failed,
+        cancelled,
+    })
+}
+
+#[tauri::command]
+fn cancel_detect_bpm(control: State<BpmControl>) {
+    control.0.store(true, Ordering::SeqCst);
+}
+
 // `async` for the same reason as `apply_plan` (#448): a synchronous command runs
 // on the main thread, and rolling back a big batch took seconds with the window
 // frozen. Progress goes out as the same events; there is no cancel, because a
@@ -1278,6 +1370,7 @@ fn main() {
         .manage(AppState::default())
         .manage(ProviderState::default())
         .manage(ApplyControl::default())
+        .manage(BpmControl::default())
         // What the app was started with, waiting for the frontend to ask (#51).
         .manage(PendingOpen::new(paths_from_args(
             std::env::args_os().skip(1),
@@ -1335,6 +1428,8 @@ fn main() {
             export_xml,
             apply_plan,
             cancel_apply,
+            detect_bpm,
+            cancel_detect_bpm,
             undo,
             history,
             provider_search,

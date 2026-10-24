@@ -370,6 +370,7 @@ async function openSettings() {
     setImportCoverChoice(s.import_cover || "if-missing");
     el("set-cover-max").value = s.cover_max_px || 0;
     el("set-cover-quality").value = s.cover_quality || 85;
+    el("set-bpm-range").value = String(s.bpm_floor || 0);
     readPriority = normalizePriority(s.read_priority);
     // The separator is whitespace-significant ("; " is not ";"), so it goes
     // into the box verbatim and comes back verbatim — no trim anywhere (#46).
@@ -540,6 +541,7 @@ async function saveSettings() {
       sidecar_extensions: parseSidecarExts(el("set-sidecar-exts").value),
       import_skip_fields: importSkipFromForm(),
       import_cover: importCoverChoice,
+      bpm_floor: parseInt(el("set-bpm-range").value, 10) || 0,
     };
     setSavedSettings(settings);
     // Display prefs are local-only; apply + persist before the backend
@@ -664,13 +666,15 @@ initGroupResets([
       sameList(readPriority, PRIO_KEYS) &&
       el("set-multi-sep").value === "" &&
       (parseInt(el("set-cover-max").value, 10) || 0) === 0 &&
-      (parseInt(el("set-cover-quality").value, 10) || 85) === 85,
+      (parseInt(el("set-cover-quality").value, 10) || 85) === 85 &&
+      el("set-bpm-range").value === "0",
     reset: () => {
       setId3Choice("v24");
       resetPriority();
       el("set-multi-sep").value = "";
       el("set-cover-max").value = 0;
       el("set-cover-quality").value = 85;
+      el("set-bpm-range").value = "0";
     },
   },
   {

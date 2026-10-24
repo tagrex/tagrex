@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   albums with what each is missing. A total that counts the whole release
   while each disc is numbered from 1 is recognised, and a lone track from an
   album, among unrelated files, doesn't count. (#534)
+- **BPM detection from the audio.** The metronome on the table toolbar (⇧⌘B,
+  Ctrl+Shift+B on Windows and Linux) measures the tempo of the selected files
+  with a neural beat tracker that runs inside the app, with no download and no
+  native library, and stages it in the BPM field for the usual preview, Apply
+  and undo. The run goes in the background with a count in the status bar, and
+  the button turns into a Stop that keeps what was measured so far. A new
+  setting, Detected BPM range, halves or doubles the result into a range such
+  as 70-140 for libraries that write fast tracks at half tempo; on a sample of
+  real files tagged by a DJ application that made every measured tempo agree.
+  (#536)
 - **Esc discards a staged plan.** Like the Discard button and ⌘⌫, but only when
   nothing else Esc closes is open: one press closes a menu or popover and leaves
   the plan alone, and Esc in a text field stays the field's. (#533)

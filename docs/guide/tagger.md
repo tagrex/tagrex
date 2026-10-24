@@ -39,6 +39,27 @@ else, so it is both gated and undoable. The same action is on the table toolbar
 press it, then ⌘↩ to apply. Clearing first and then importing a release leaves
 nothing behind from whoever tagged the files before.
 
+### Detect BPM
+
+The metronome on the table toolbar, or ⇧⌘B (Ctrl+Shift+B on Windows and Linux),
+measures the tempo of the selected files from the audio and stages it in the
+BPM field. A beat tracker finds the beats and the tempo is fitted through them,
+then written as a whole number. It takes a few
+seconds a track and runs in the background: the status bar counts the files,
+and while it runs the button is a Stop that ends the run at the current file
+and stages what was measured before it.
+
+The preview shows the BPM column, adding it to the table if it was hidden, so
+each new value can be checked against the old one before Apply. A file that
+already holds the measured number is left out of the plan. A track with no
+steady beat (a beatless intro, spoken word) gets no value, and the toast says
+how many there were and how many files could not be decoded.
+
+Some libraries write fast tracks at half tempo, 87 for a 174 BPM drum & bass
+track. **Settings › Tags and covers › Detected BPM range** folds the measured
+tempo into the range you choose, so the detected value matches the rest of the
+collection.
+
 ## Cover art
 
 The cover well shows the artwork of the current selection and adapts to what it

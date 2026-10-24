@@ -446,6 +446,7 @@ pub enum PlanMessage {
         files: usize,
     },
     ClearTags,
+    DetectBpm,
     EmbedCover,
     SetCoverImages {
         images: usize,
@@ -488,6 +489,7 @@ impl PlanMessage {
             Self::EditTags => "plan.editTags",
             Self::EditTagsWithCover { .. } => "plan.editTagsWithCover",
             Self::ClearTags => "plan.clearTags",
+            Self::DetectBpm => "plan.detectBpm",
             Self::EmbedCover => "plan.embedCover",
             Self::SetCoverImages { .. } => "plan.setCoverImages",
             Self::RemoveCover => "plan.removeCover",
@@ -566,6 +568,7 @@ impl PlanMessage {
                 n => format!("Edit tags + cover on {n} files"),
             },
             Self::ClearTags => "Clear tags".to_string(),
+            Self::DetectBpm => "Detect BPM".to_string(),
             Self::EmbedCover => "Embed cover art".to_string(),
             Self::SetCoverImages { images } => format!("Set {images} cover image(s)"),
             Self::RemoveCover => "Remove cover art".to_string(),
@@ -1031,6 +1034,12 @@ pub struct SettingsDto {
     /// is also what an older settings.json deserializes to.
     #[serde(default = "default_check_updates")]
     pub check_updates: bool,
+    /// The range a detected tempo is folded into (#536), as its lower end: 70
+    /// means 70-140, so a 174 BPM track is written as 87. 0 (the default, and
+    /// what an older settings.json deserializes to) writes the tempo as the
+    /// beats fall. See [`bpm_in_range`].
+    #[serde(default)]
+    pub bpm_floor: u32,
 }
 
 fn default_carry_sidecars() -> bool {
@@ -1075,6 +1084,7 @@ impl Default for SettingsDto {
             import_skip_fields: Vec::new(),
             multi_value_separator: String::new(),
             check_updates: default_check_updates(),
+            bpm_floor: 0,
         }
     }
 }
@@ -1804,6 +1814,9 @@ pub struct App {
     /// Whether an import brings the release's cover with it (#207), from
     /// settings.
     import_cover: Cell<ImportCover>,
+    /// The lower end of the range a detected tempo is folded into (#536), from
+    /// settings; 0 = no folding.
+    bpm_floor: Cell<u32>,
     /// Storage keys locked against change for this session (#48). Every plan
     /// this backend builds drops changes to them — see [`App::plan`].
     ///
@@ -1851,6 +1864,7 @@ impl App {
             sidecar_extensions: RefCell::new(default_sidecar_extensions()),
             import_skip_fields: RefCell::new(HashSet::new()),
             import_cover: Cell::new(ImportCover::default()),
+            bpm_floor: Cell::new(0),
             locked_fields: RefCell::new(HashSet::new()),
             extra_roots: RefCell::new(Vec::new()),
         })
@@ -1937,6 +1951,7 @@ impl App {
             settings.import_skip_fields.iter().cloned().collect();
         self.import_cover
             .set(ImportCover::from_storage_key(&settings.import_cover));
+        self.bpm_floor.set(settings.bpm_floor);
     }
 
     /// What an online import should do about the release's cover (#207).
@@ -3421,6 +3436,49 @@ impl App {
             }
         }
         Ok(self.plan(PlanMessage::ClearTags, Vec::new(), changes, false))
+    }
+
+    /// Preview writing tempos measured from the audio (#536), without writing.
+    ///
+    /// The measuring happens before this, outside the session: it takes seconds
+    /// a file, and nothing else could get at the session while it ran. Each
+    /// tempo is folded into the BPM range from settings and rounded, the way
+    /// the field is written. A file that already holds that number (`128.0` is
+    /// 128) is left out, and so is a path that has gone since it was measured.
+    pub fn preview_bpm(&self, detected: &[(PathBuf, f64)]) -> Result<PlanDto, AppError> {
+        let floor = self.bpm_floor.get();
+        let mut changes = Vec::new();
+        for (path, raw) in detected {
+            let Ok(track) = TagEngine::read(path) else {
+                continue;
+            };
+            let bpm = bpm_in_range(*raw, floor);
+            let old = track.tags.get(&TagField::Bpm).cloned();
+            let same = old
+                .as_deref()
+                .and_then(|text| text.trim().replace(',', ".").parse::<f64>().ok())
+                .is_some_and(|held| held == f64::from(bpm));
+            if same {
+                continue;
+            }
+            changes.push(FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes: vec![FieldChangeDto::new(
+                    TagField::Bpm.to_storage_key(),
+                    old,
+                    Some(bpm.to_string()),
+                )],
+                cover_change: None,
+                sidecar_renames: Vec::new(),
+                block_changes: Vec::new(),
+                copy: false,
+                rename_root: None,
+                creates_folder: false,
+                folder_extras: Vec::new(),
+            });
+        }
+        Ok(self.plan(PlanMessage::DetectBpm, Vec::new(), changes, false))
     }
 
     /// Preview embedding `cover` as the front cover of each `paths` file,
@@ -5033,6 +5091,29 @@ fn mime_for_image_path(path: &Path) -> Option<&'static str> {
 /// cover well: the drag-drop event gives a path, not a browser `File`. The
 /// extension must be a recognized image format, or this errors rather than
 /// embedding arbitrary bytes.
+/// A measured tempo as the BPM field holds it (#536): a whole number, halved or
+/// doubled into `floor..2 * floor` when a range is set (`floor` 0 = as
+/// measured).
+///
+/// Some libraries write a 174 BPM track as 87, a convention rather than an
+/// error, and the range is how that is matched. The edges sit half a beat low
+/// so the rounding cannot push a tempo out of the range again: with 70-140,
+/// 139.8 is written as 70, not 140.
+pub fn bpm_in_range(raw: f64, floor: u32) -> u32 {
+    let mut bpm = raw;
+    if floor > 0 && bpm.is_finite() && bpm > 0.0 {
+        let low = f64::from(floor) - 0.5;
+        let high = 2.0 * f64::from(floor) - 0.5;
+        while bpm >= high {
+            bpm /= 2.0;
+        }
+        while bpm < low {
+            bpm *= 2.0;
+        }
+    }
+    bpm.round().max(0.0) as u32
+}
+
 pub fn read_cover_image(path: &Path) -> Result<CoverArtDto, AppError> {
     let mime = mime_for_image_path(path)
         .ok_or_else(|| AppError::NotAnImage(path.display().to_string()))?;
@@ -6890,9 +6971,11 @@ mod tests {
             import_skip_fields: Vec::new(),
             multi_value_separator: String::new(),
             check_updates: true,
+            bpm_floor: 70,
         });
         assert_eq!(app.cover_max_px.get(), 500);
         assert_eq!(app.cover_quality.get(), 90);
+        assert_eq!(app.bpm_floor.get(), 70);
     }
 
     #[test]
@@ -8351,6 +8434,96 @@ mod tests {
         let app = open_app(&dir);
         let plan = app.preview_clear_tags(&[path]).unwrap();
         assert!(plan.changes.is_empty());
+    }
+
+    // #536: a measured tempo is rounded, and folded into the range from settings
+    // with edges half a beat low, so rounding cannot carry it out again.
+    #[test]
+    fn a_measured_tempo_is_rounded_and_folded_into_the_range() {
+        assert_eq!(bpm_in_range(127.6, 0), 128);
+        assert_eq!(bpm_in_range(173.6, 0), 174);
+        assert_eq!(bpm_in_range(173.6, 70), 87);
+        assert_eq!(bpm_in_range(141.3, 70), 71);
+        assert_eq!(bpm_in_range(139.8, 70), 70);
+        assert_eq!(bpm_in_range(135.6, 70), 136);
+        assert_eq!(bpm_in_range(69.6, 70), 70);
+        assert_eq!(bpm_in_range(62.0, 70), 124);
+        assert_eq!(bpm_in_range(87.0, 88), 174);
+        assert_eq!(bpm_in_range(f64::NAN, 70), 0);
+    }
+
+    #[test]
+    fn detected_tempos_stage_the_bpm_field_and_skip_what_already_holds_it() {
+        let dir = TempDir::new("detect-bpm");
+        let fresh = dir.tagged_flac("a.flac", "Artist", "One");
+        let same = dir.tagged_flac("b.flac", "Artist", "Two");
+        let folded = dir.tagged_flac("c.flac", "Artist", "Three");
+        let mut app = open_app(&dir);
+        let seed = vec![TagEditDto {
+            path: same.to_string_lossy().into_owned(),
+            field: "bpm".into(),
+            value: Some("128.0".into()),
+        }];
+        app.apply(&app.preview_tag_edits(&seed).unwrap()).unwrap();
+        app.apply_settings(&SettingsDto {
+            bpm_floor: 70,
+            ..SettingsDto::default()
+        });
+
+        let gone = dir.0.join("gone.flac");
+        let plan = app
+            .preview_bpm(&[
+                (fresh.clone(), 124.2),
+                (same, 127.8),
+                (folded.clone(), 173.6),
+                (gone, 120.0),
+            ])
+            .unwrap();
+        assert_eq!(plan.message.as_ref().unwrap().code, "plan.detectBpm");
+        let staged: Vec<(String, Option<String>, Option<String>)> = plan
+            .changes
+            .iter()
+            .map(|change| {
+                assert_eq!(change.tag_changes.len(), 1);
+                let field = &change.tag_changes[0];
+                assert_eq!(field.field, "bpm");
+                (change.path.clone(), field.old.clone(), field.new.clone())
+            })
+            .collect();
+        assert_eq!(
+            staged,
+            vec![
+                (
+                    fresh.to_string_lossy().into_owned(),
+                    None,
+                    Some("124".into())
+                ),
+                (
+                    folded.to_string_lossy().into_owned(),
+                    None,
+                    Some("87".into())
+                ),
+            ]
+        );
+
+        app.apply(&plan).unwrap();
+        let written = TagEngine::read(&folded).unwrap();
+        assert_eq!(
+            written.tags.get(&TagField::Bpm).map(String::as_str),
+            Some("87")
+        );
+    }
+
+    // #536: the BPM field is locked like any other.
+    #[test]
+    fn a_locked_bpm_field_keeps_detection_out() {
+        let dir = TempDir::new("detect-bpm-locked");
+        let path = dir.tagged_flac("a.flac", "Artist", "One");
+        let app = open_app(&dir);
+        app.set_locked_fields(&["bpm".to_string()]);
+        let plan = app.preview_bpm(&[(path, 124.0)]).unwrap();
+        assert!(plan.changes.is_empty());
+        assert_eq!(plan.locked_skipped.len(), 1);
     }
 
     #[test]

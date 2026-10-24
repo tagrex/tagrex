@@ -203,6 +203,11 @@ keeps every frame rather than rebuilding it. All staged, all undoable.
 **Cover art** — fetch from a provider, embed, export, resize on embed, save
 `folder.jpg` next to the tracks, or drag an image onto the window.
 
+**BPM from the audio.** Select files and the metronome on the table toolbar
+measures their tempo with a neural beat tracker that runs inside the app, then
+stages it in the BPM field like any other change. A range setting halves or
+doubles the result for libraries that write a 174 BPM drum & bass track as 87.
+
 **A preview player** — gapless playback with prev/next, a three-state repeat and
 volume, for checking that a file is what its tags claim. The seek bar draws the
 track's loudness envelope, so an intro, a breakdown and a drop are three
@@ -287,6 +292,11 @@ heavy lifting:
 - [rodio](https://github.com/RustAudio/rodio) with
   [Symphonia](https://github.com/pdeljanov/Symphonia) — the preview player and
   the waveform.
+- ["Beat This!"](https://github.com/CPJKU/beat_this) through
+  [beat-this-rs](https://github.com/danigb/beat-this-rs) on the
+  [rten](https://github.com/robertknight/rten) runtime: BPM detection. The
+  embedded model weights are under the MIT License; the notice is in
+  [crates/player/models/LICENSE](crates/player/models/LICENSE).
 - [SQLite](https://www.sqlite.org/) through
   [rusqlite](https://github.com/rusqlite/rusqlite) — the undo journal that
   survives a restart.

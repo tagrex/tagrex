@@ -15,6 +15,7 @@ import { fileName, plural } from "./dom.js";
 // plus the code and values the interface renders from. The mock stands in for
 // the backend, so it has to hand over both or the browser path would exercise
 // only the fallback.
+let mockBpmCancel = false;
 function plan(description, message, changes, notes = []) {
   return { description, message: { args: {}, count: null, ...message }, notes, changes };
 }
@@ -755,6 +756,37 @@ function mockInvoke(cmd, args) {
       s.history.unshift({ id: s.history.length + 1, description: args.plan.description, applied_at: 0 });
       return Promise.resolve({ id: s.history.length, description: args.plan.description, applied_at: 0 });
     case "cancel_apply":
+      return Promise.resolve();
+    // BPM detection (#536): a tempo made up from the path, after a pause per
+    // file long enough to see the progress and the Stop button.
+    case "detect_bpm": {
+      mockBpmCancel = false;
+      return (async () => {
+        const changes = [];
+        let analysed = 0;
+        for (const p of args.paths) {
+          if (mockBpmCancel) break;
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          analysed += 1;
+          const t = findTrack(p);
+          if (!t) continue;
+          const hash = [...p].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+          const bpm = String(118 + (hash % 20));
+          if ((t.tags.bpm || "") !== bpm) {
+            changes.push({ path: p, rename_to: null, tag_changes: [{ field: "bpm", old: t.tags.bpm || null, new: bpm }], cover_change: null });
+          }
+        }
+        return {
+          plan: plan("Detect BPM", { code: "plan.detectBpm" }, changes),
+          analysed,
+          no_tempo: 0,
+          failed: [],
+          cancelled: mockBpmCancel,
+        };
+      })();
+    }
+    case "cancel_detect_bpm":
+      mockBpmCancel = true;
       return Promise.resolve();
     case "history":
       return Promise.resolve(s.history);

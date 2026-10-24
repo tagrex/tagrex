@@ -81,6 +81,7 @@ import { initPlaceholderReference } from "./js/placeholders.js";
 import { initMaskPresets } from "./js/maskpresets.js";
 import { initTooltips } from "./js/tooltip.js";
 import { initShortcuts } from "./js/shortcuts.js";
+import { retranslateBpm } from "./js/bpm.js";
 import { isFieldLocked, loadFieldLocks, pushFieldLocks } from "./js/locks.js";
 import {
   cellSuggestKey,
@@ -131,6 +132,7 @@ Object.assign(hooks, {
     updateStatus();
     retranslateOnline();
     retranslateHealth();
+    retranslateBpm();
     renderSettingsNav();
   },
 });

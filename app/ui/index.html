@@ -28,6 +28,7 @@
       <symbol id="i-prev" viewBox="0 0 16 16"><path d="M12.4 3.6 6.6 8l5.8 4.4Z" fill="currentColor" stroke="none"/><line x1="4.2" y1="3.6" x2="4.2" y2="12.4"/></symbol>
       <symbol id="i-next" viewBox="0 0 16 16"><path d="M3.6 3.6 9.4 8l-5.8 4.4Z" fill="currentColor" stroke="none"/><line x1="11.8" y1="3.6" x2="11.8" y2="12.4"/></symbol>
       <symbol id="i-repeat" viewBox="0 0 16 16"><path d="M3.2 8.6V7.4a2.2 2.2 0 0 1 2.2-2.2h7.4"/><path d="M10.9 3.2 12.8 5.2 10.9 7.2"/><path d="M12.8 7.4v1.2a2.2 2.2 0 0 1-2.2 2.2H3.2"/><path d="M5.1 8.8 3.2 10.8 5.1 12.8"/></symbol>
+      <symbol id="i-metronome" viewBox="0 0 16 16"><path d="M6.4 2.4h3.2l3 11.2H3.4Z"/><line x1="4.3" y1="10.4" x2="11.7" y2="10.4"/><line x1="8" y1="10.4" x2="11.4" y2="4.6"/></symbol>
       <symbol id="i-eraser" viewBox="0 0 16 16"><path d="M6.6 13.2 2.9 9.5a1.2 1.2 0 0 1 0-1.7l5.2-5.2a1.2 1.2 0 0 1 1.7 0l3.3 3.3a1.2 1.2 0 0 1 0 1.7l-5.6 5.6Z"/><line x1="5.6" y1="6.4" x2="10.4" y2="11.2"/><line x1="6.6" y1="13.2" x2="13.4" y2="13.2"/></symbol>
       <symbol id="i-group" viewBox="0 0 16 16"><line x1="6.4" y1="4" x2="13.6" y2="4"/><line x1="6.4" y1="8" x2="13.6" y2="8"/><line x1="6.4" y1="12" x2="13.6" y2="12"/><rect x="2.2" y="2.8" width="2.4" height="2.4" rx=".6"/><rect x="2.2" y="10.8" width="2.4" height="2.4" rx=".6"/></symbol>
       <symbol id="i-expand-all" viewBox="0 0 16 16"><path d="M5.4 6.2 8 3.6 10.6 6.2"/><path d="M5.4 9.8 8 12.4 10.6 9.8"/><line x1="2.6" y1="8" x2="13.4" y2="8"/></symbol>
@@ -191,6 +192,10 @@
                panel's own chain — the block is moved in and back out, so there is
                one chain and one implementation, not a copy (#149). -->
           <button id="transform-btn" class="icon" data-i18n-title="toolbar.transformTitle" title="Rules to run on what this panel produces" data-i18n-aria-label="toolbar.transform" aria-label="Transform tags"><svg class="ico"><use href="#i-wand"/></svg></button>
+          <!-- BPM detection (#536): acts on the selection and stages a preview,
+               like Clear tags next to it. One toggling slot, Stop while a run
+               goes; its title and label are painted by bpm.js. -->
+          <button id="detect-bpm" class="icon search-toggle" title="Detect BPM" aria-label="Detect BPM"><svg class="ico glyph-search"><use href="#i-metronome"/></svg><svg class="ico glyph-stop"><use href="#i-stop"/></svg></button>
           <button id="clear-tags" class="icon" data-i18n-title="toolbar.clearTagsTitle" title="Clear text tags on the selected files (cover and DJ cue points are kept) — previewed before anything is written" data-i18n-aria-label="toolbar.clearTags" aria-label="Clear text tags on the selected files"><svg class="ico"><use href="#i-eraser"/></svg></button>
         </div>
 
@@ -1080,6 +1085,18 @@
               <input id="set-multi-sep" type="text" class="mono" style="width: 80px" placeholder="; " spellcheck="false" />
             </div>
             <p class="settings-hint" data-i18n="settings.multiSepHint">A track can carry several artists or genres. They are shown and edited as one value joined by this text, and written back as separate values. Only Artist, Album Artist, Genre and Composer are treated this way — every other field keeps a separator as part of its value. Leave it blank for a semicolon and a space.</p>
+            <!-- The range a measured tempo is folded into (#536). -->
+            <div class="settings-row">
+              <label for="set-bpm-range" data-i18n="settings.bpmRange">Detected BPM range</label>
+              <select id="set-bpm-range">
+                <option value="0" data-i18n="settings.bpmRange.asMeasured">As measured</option>
+                <option value="60">60-120</option>
+                <option value="70">70-140</option>
+                <option value="80">80-160</option>
+                <option value="90">90-180</option>
+              </select>
+            </div>
+            <p class="settings-hint" data-i18n="settings.bpmRangeHint">Detect BPM writes a measured tempo halved or doubled into this range. Some libraries write a 174 BPM track as 87: with 70-140 the detected value matches them.</p>
             <h4 class="settings-sub" data-i18n="editor.coverArt">Cover art</h4>
             <div class="settings-row">
               <label for="set-cover-max" data-i18n="settings.coverMax">Max size</label>

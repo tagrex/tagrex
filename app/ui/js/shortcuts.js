@@ -62,6 +62,7 @@ const ACTIONS = [
     buttons: ["clear-tags", "fields-clear"],
     run: () => press("clear-tags", "fields-clear"),
   },
+  { id: "detectBpm", combo: "Mod+Shift+KeyB", buttons: ["detect-bpm"], run: () => press("detect-bpm") },
   { id: "open", combo: "Mod+KeyO", typing: true, buttons: ["lib-action"], run: () => press("lib-action") },
   { id: "reread", combo: "Mod+KeyR", typing: true, buttons: ["lib-refresh"], run: () => press("lib-refresh") },
   {
