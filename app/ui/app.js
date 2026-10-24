@@ -81,7 +81,7 @@ import { initPlaceholderReference } from "./js/placeholders.js";
 import { initMaskPresets } from "./js/maskpresets.js";
 import { initTooltips } from "./js/tooltip.js";
 import { initShortcuts } from "./js/shortcuts.js";
-import { retranslateBpm } from "./js/bpm.js";
+import { bpmRunning, retranslateBpm, stopBpm } from "./js/bpm.js";
 import { isFieldLocked, loadFieldLocks, pushFieldLocks } from "./js/locks.js";
 import {
   cellSuggestKey,
@@ -2363,6 +2363,10 @@ document.addEventListener("keydown", (e) => {
 // Esc closes is open. Decided in the capture phase: the menus and popovers close
 // themselves on Esc in their own handlers, and checked after them one press
 // would close a menu and throw the plan away with it.
+//
+// While BPM detection runs, Esc stops it instead, as its Stop does (#539), and
+// leaves alone any plan already staged: the run stages its own when it ends,
+// and the next Esc lets go of that.
 const ESC_POPUPS = [
   "file-ctx",
   "edit-ctx",
@@ -2376,7 +2380,9 @@ const ESC_POPUPS = [
 window.addEventListener(
   "keydown",
   (e) => {
-    if (e.key !== "Escape" || !diffByPath || e.isComposing) return;
+    if (e.key !== "Escape" || e.isComposing) return;
+    const detecting = bpmRunning();
+    if (!diffByPath && !detecting) return;
     const active = document.activeElement;
     const typing =
       active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName));
@@ -2385,6 +2391,11 @@ window.addEventListener(
       !!document.querySelector(".sg-menu:not([hidden]), .modal-backdrop:not([hidden])") ||
       !el("settings").hidden;
     if (typing || popupOpen || searchBusy()) return;
+    if (detecting) {
+      e.preventDefault();
+      stopBpm();
+      return;
+    }
     const discard = el("diff-discard");
     if (discard && !discard.disabled) {
       e.preventDefault();

@@ -59,12 +59,23 @@ function summary(result, total) {
   return parts.join(" · ");
 }
 
+// Stop the run at the current file, keeping what was measured. From the button
+// and from Escape (#539).
+export function stopBpm() {
+  if (!running || stopping) return;
+  stopping = true;
+  paintButton();
+  el("busy-text").textContent = t("bpm.stopping");
+  invoke("cancel_detect_bpm", {});
+}
+
+export function bpmRunning() {
+  return running;
+}
+
 async function detectBpm() {
   if (running) {
-    stopping = true;
-    paintButton();
-    el("busy-text").textContent = t("bpm.stopping");
-    invoke("cancel_detect_bpm", {});
+    stopBpm();
     return;
   }
   const paths = selectedPaths();

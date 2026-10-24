@@ -47,7 +47,9 @@ BPM field. A beat tracker finds the beats and the tempo is fitted through them,
 then written as a whole number. It takes a few
 seconds a track and runs in the background: the status bar counts the files,
 and while it runs the button is a Stop that ends the run at the current file
-and stages what was measured before it.
+and stages what was measured before it. Esc stops it the same way, unless a
+menu is open or a text field has the cursor; a second Esc discards the
+preview.
 
 The preview shows the BPM column, adding it to the table if it was hidden, so
 each new value can be checked against the old one before Apply. A file that

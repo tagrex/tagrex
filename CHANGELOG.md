@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   to 0 for none, and a Detect BPM switch hides the toolbar button and quiets
   its shortcut; both sit with the range under a BPM detection subheading in
   Settings › Tags and covers. (#538)
+- **Esc stops a running BPM detection**, as its Stop button does, keeping what
+  was measured; the next Esc discards that preview. A menu that is open or a
+  text field with the cursor keeps Esc for itself, as with the discard on Esc.
+  (#539)
 - **Esc discards a staged plan.** Like the Discard button and ⌘⌫, but only when
   nothing else Esc closes is open: one press closes a menu or popover and leaves
   the plan alone, and Esc in a text field stays the field's. (#533)
