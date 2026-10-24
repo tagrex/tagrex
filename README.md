@@ -31,10 +31,11 @@
 
 ---
 
-> **Status: 0.25.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.26.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
-> lookups, cover art, tag block conversion, duplicate detection, exports, a
-> preview player, a transactional undo journal, and an interface that speaks
+> lookups, BPM detection from the audio, cover art, tag block conversion,
+> duplicate detection, exports, a preview player, a transactional undo journal,
+> and an interface that speaks
 > English, German, Spanish, French, Italian, Ukrainian and Russian. Not 1.0,
 > so expect rough edges — bug reports and feedback are welcome. How to use it is in the
 > [user guide](docs/guide/README.md); the design is written up in

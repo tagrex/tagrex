@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-24
+
+TagRex now measures BPM from the audio: select files and the metronome on the
+table toolbar finds their tempo with a beat tracker built into the app, then
+stages it for the usual preview, Apply and undo. A range setting matches
+libraries that write fast tracks at half tempo, and DJ mixes are skipped.
+Library health also learns to find albums with tracks missing, and the keyboard
+gains ⇧⌘X to clear the selected files' tags and Esc to discard a staged plan or
+stop a running detection.
+
 ### Added
 
 - **⇧⌘X clears the selected files' tags.** Ctrl+Shift+X on Windows and Linux.
