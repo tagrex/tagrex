@@ -55,8 +55,13 @@ already holds the measured number is left out of the plan. A track with no
 steady beat (a beatless intro, spoken word) gets no value, and the toast says
 how many there were and how many files could not be decoded.
 
+A file longer than 20 minutes, a DJ mix in practice, is skipped and counted in
+the toast: it has no single tempo to measure. The limit, and a switch that
+turns the whole feature off, are under **Settings › Tags and covers › BPM
+detection**.
+
 Some libraries write fast tracks at half tempo, 87 for a 174 BPM drum & bass
-track. **Settings › Tags and covers › Detected BPM range** folds the measured
+track. **Detected BPM range**, in the same place, folds the measured
 tempo into the range you choose, so the detected value matches the rest of the
 collection.
 

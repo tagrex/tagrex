@@ -28,6 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   as 70-140 for libraries that write fast tracks at half tempo; on a sample of
   real files tagged by a DJ application that made every measured tempo agree.
   (#536)
+- **BPM detection skips long files and can be switched off.** A file longer
+  than 20 minutes, a DJ mix in practice, has no single tempo and took as long
+  as dozens of tracks, so it is passed over by the length its header states,
+  without decoding, and counted in the toast. The limit can be changed or set
+  to 0 for none, and a Detect BPM switch hides the toolbar button and quiets
+  its shortcut; both sit with the range under a BPM detection subheading in
+  Settings › Tags and covers. (#538)
 - **Esc discards a staged plan.** Like the Discard button and ⌘⌫, but only when
   nothing else Esc closes is open: one press closes a menu or popover and leaves
   the plan alone, and Esc in a text field stays the field's. (#533)

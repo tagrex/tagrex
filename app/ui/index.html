@@ -1085,18 +1085,6 @@
               <input id="set-multi-sep" type="text" class="mono" style="width: 80px" placeholder="; " spellcheck="false" />
             </div>
             <p class="settings-hint" data-i18n="settings.multiSepHint">A track can carry several artists or genres. They are shown and edited as one value joined by this text, and written back as separate values. Only Artist, Album Artist, Genre and Composer are treated this way — every other field keeps a separator as part of its value. Leave it blank for a semicolon and a space.</p>
-            <!-- The range a measured tempo is folded into (#536). -->
-            <div class="settings-row">
-              <label for="set-bpm-range" data-i18n="settings.bpmRange">Detected BPM range</label>
-              <select id="set-bpm-range">
-                <option value="0" data-i18n="settings.bpmRange.asMeasured">As measured</option>
-                <option value="60">60-120</option>
-                <option value="70">70-140</option>
-                <option value="80">80-160</option>
-                <option value="90">90-180</option>
-              </select>
-            </div>
-            <p class="settings-hint" data-i18n="settings.bpmRangeHint">Detect BPM writes a measured tempo halved or doubled into this range. Some libraries write a 174 BPM track as 87: with 70-140 the detected value matches them.</p>
             <h4 class="settings-sub" data-i18n="editor.coverArt">Cover art</h4>
             <div class="settings-row">
               <label for="set-cover-max" data-i18n="settings.coverMax">Max size</label>
@@ -1113,6 +1101,33 @@
               </div>
             </div>
             <p class="settings-hint" data-i18n="settings.coverHint">A larger fetched or chosen cover is downscaled and re-encoded as JPEG before embedding, so it doesn't bloat every file.</p>
+            <!-- BPM detection (#536, #538): whether it is offered, which files it
+                 passes over, and the range a measured tempo is folded into. -->
+            <h4 class="settings-sub" data-i18n="settings.bpmDetection">BPM detection</h4>
+            <div class="settings-row">
+              <label for="set-bpm-detection" data-i18n="settings.bpmDetectionToggle">Detect BPM</label>
+              <input id="set-bpm-detection" type="checkbox" checked />
+            </div>
+            <p class="settings-hint" data-i18n="settings.bpmDetectionHint">Shows the metronome on the table toolbar, which measures the tempo of the selected files from the audio. Off hides it, and its shortcut does nothing.</p>
+            <div class="settings-row">
+              <label for="set-bpm-max" data-i18n="settings.bpmMax">Skip files longer than</label>
+              <div class="settings-inline">
+                <input id="set-bpm-max" type="number" min="0" step="1" class="mono" style="width: 64px" />
+                <span class="settings-hint" data-i18n="settings.bpmMaxHint">min, 0 = no limit</span>
+              </div>
+            </div>
+            <p class="settings-hint" data-i18n="settings.bpmMaxLongHint">A DJ mix has no single tempo, and measuring one takes as long as dozens of tracks.</p>
+            <div class="settings-row">
+              <label for="set-bpm-range" data-i18n="settings.bpmRange">Detected BPM range</label>
+              <select id="set-bpm-range">
+                <option value="0" data-i18n="settings.bpmRange.asMeasured">As measured</option>
+                <option value="60">60-120</option>
+                <option value="70">70-140</option>
+                <option value="80">80-160</option>
+                <option value="90">90-180</option>
+              </select>
+            </div>
+            <p class="settings-hint" data-i18n="settings.bpmRangeHint">Detect BPM writes a measured tempo halved or doubled into this range. Some libraries write a 174 BPM track as 87: with 70-140 the detected value matches them.</p>
           
           </div>
 

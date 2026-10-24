@@ -1040,6 +1040,16 @@ pub struct SettingsDto {
     /// beats fall. See [`bpm_in_range`].
     #[serde(default)]
     pub bpm_floor: u32,
+    /// Whether BPM detection is offered at all (#538). On unless switched off,
+    /// which is also what an older settings.json deserializes to. Read by the
+    /// interface, which hides the button; the backend does not check it.
+    #[serde(default = "default_bpm_detection")]
+    pub bpm_detection: bool,
+    /// Files longer than this many minutes are skipped by BPM detection
+    /// (#538): a DJ mix has no one tempo, and measuring it costs as much as
+    /// dozens of tracks. 0 = no limit. See [`too_long_for_bpm`].
+    #[serde(default = "default_bpm_max_minutes")]
+    pub bpm_max_minutes: u32,
 }
 
 fn default_carry_sidecars() -> bool {
@@ -1054,6 +1064,14 @@ fn default_carry_folder_extras() -> bool {
 
 fn default_check_updates() -> bool {
     true
+}
+
+fn default_bpm_detection() -> bool {
+    true
+}
+
+fn default_bpm_max_minutes() -> u32 {
+    20
 }
 
 fn default_sidecar_extensions() -> Vec<String> {
@@ -1085,6 +1103,8 @@ impl Default for SettingsDto {
             multi_value_separator: String::new(),
             check_updates: default_check_updates(),
             bpm_floor: 0,
+            bpm_detection: default_bpm_detection(),
+            bpm_max_minutes: default_bpm_max_minutes(),
         }
     }
 }
@@ -1817,6 +1837,9 @@ pub struct App {
     /// The lower end of the range a detected tempo is folded into (#536), from
     /// settings; 0 = no folding.
     bpm_floor: Cell<u32>,
+    /// The longest file BPM detection measures (#538), from settings; `None`
+    /// = no limit.
+    bpm_max_length: Cell<Option<Duration>>,
     /// Storage keys locked against change for this session (#48). Every plan
     /// this backend builds drops changes to them — see [`App::plan`].
     ///
@@ -1865,6 +1888,7 @@ impl App {
             import_skip_fields: RefCell::new(HashSet::new()),
             import_cover: Cell::new(ImportCover::default()),
             bpm_floor: Cell::new(0),
+            bpm_max_length: Cell::new(bpm_max_length(default_bpm_max_minutes())),
             locked_fields: RefCell::new(HashSet::new()),
             extra_roots: RefCell::new(Vec::new()),
         })
@@ -1952,6 +1976,14 @@ impl App {
         self.import_cover
             .set(ImportCover::from_storage_key(&settings.import_cover));
         self.bpm_floor.set(settings.bpm_floor);
+        self.bpm_max_length
+            .set(bpm_max_length(settings.bpm_max_minutes));
+    }
+
+    /// The longest file BPM detection should measure (#538), or `None` for no
+    /// limit. The measuring runs outside the session, so it asks once up front.
+    pub fn bpm_max_length(&self) -> Option<Duration> {
+        self.bpm_max_length.get()
     }
 
     /// What an online import should do about the release's cover (#207).
@@ -5086,11 +5118,21 @@ fn mime_for_image_path(path: &Path) -> Option<&'static str> {
     }
 }
 
-/// Read an image file into a [`CoverArtDto`] (#133), ready to feed
-/// [`App::preview_cover_embed`]. Used when the user drops an image onto the
-/// cover well: the drag-drop event gives a path, not a browser `File`. The
-/// extension must be a recognized image format, or this errors rather than
-/// embedding arbitrary bytes.
+fn bpm_max_length(minutes: u32) -> Option<Duration> {
+    (minutes > 0).then(|| Duration::from_secs(u64::from(minutes) * 60))
+}
+
+/// Whether BPM detection should pass over `path` (#538): it plays for longer
+/// than `limit`, by its audio properties, so nothing is decoded to find out. A
+/// file whose length cannot be read is not skipped; the measuring reports it
+/// if it cannot be decoded either.
+pub fn too_long_for_bpm(path: &Path, limit: Option<Duration>) -> bool {
+    let Some(limit) = limit else {
+        return false;
+    };
+    TagEngine::read_duration(path).is_ok_and(|length| length > limit)
+}
+
 /// A measured tempo as the BPM field holds it (#536): a whole number, halved or
 /// doubled into `floor..2 * floor` when a range is set (`floor` 0 = as
 /// measured).
@@ -5114,6 +5156,11 @@ pub fn bpm_in_range(raw: f64, floor: u32) -> u32 {
     bpm.round().max(0.0) as u32
 }
 
+/// Read an image file into a [`CoverArtDto`] (#133), ready to feed
+/// [`App::preview_cover_embed`]. Used when the user drops an image onto the
+/// cover well: the drag-drop event gives a path, not a browser `File`. The
+/// extension must be a recognized image format, or this errors rather than
+/// embedding arbitrary bytes.
 pub fn read_cover_image(path: &Path) -> Result<CoverArtDto, AppError> {
     let mime = mime_for_image_path(path)
         .ok_or_else(|| AppError::NotAnImage(path.display().to_string()))?;
@@ -6972,10 +7019,13 @@ mod tests {
             multi_value_separator: String::new(),
             check_updates: true,
             bpm_floor: 70,
+            bpm_detection: true,
+            bpm_max_minutes: 15,
         });
         assert_eq!(app.cover_max_px.get(), 500);
         assert_eq!(app.cover_quality.get(), 90);
         assert_eq!(app.bpm_floor.get(), 70);
+        assert_eq!(app.bpm_max_length(), Some(Duration::from_secs(15 * 60)));
     }
 
     #[test]
@@ -8450,6 +8500,47 @@ mod tests {
         assert_eq!(bpm_in_range(62.0, 70), 124);
         assert_eq!(bpm_in_range(87.0, 88), 174);
         assert_eq!(bpm_in_range(f64::NAN, 70), 0);
+    }
+
+    // #538: a file longer than the limit is passed over, by its stated length;
+    // 0 minutes is no limit, and 20 is what a fresh install starts with.
+    #[test]
+    fn bpm_detection_passes_over_a_file_longer_than_the_limit() {
+        let dir = TempDir::new("bpm-too-long");
+        // Three seconds of 8 kHz mono silence, as a plain 16-bit WAV.
+        let (rate, secs) = (8_000u32, 3u32);
+        let data = rate * secs * 2;
+        let mut wav = Vec::new();
+        wav.extend_from_slice(b"RIFF");
+        wav.extend_from_slice(&(36 + data).to_le_bytes());
+        wav.extend_from_slice(b"WAVEfmt ");
+        wav.extend_from_slice(&16u32.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&1u16.to_le_bytes());
+        wav.extend_from_slice(&rate.to_le_bytes());
+        wav.extend_from_slice(&(rate * 2).to_le_bytes());
+        wav.extend_from_slice(&2u16.to_le_bytes());
+        wav.extend_from_slice(&16u16.to_le_bytes());
+        wav.extend_from_slice(b"data");
+        wav.extend_from_slice(&data.to_le_bytes());
+        wav.resize(wav.len() + data as usize, 0);
+        let path = dir.0.join("three-seconds.wav");
+        std::fs::write(&path, wav).unwrap();
+
+        assert!(too_long_for_bpm(&path, Some(Duration::from_secs(2))));
+        assert!(!too_long_for_bpm(&path, Some(Duration::from_secs(4))));
+        assert!(!too_long_for_bpm(&path, None));
+        assert!(!too_long_for_bpm(
+            &dir.0.join("missing.wav"),
+            Some(Duration::ZERO)
+        ));
+
+        assert_eq!(bpm_max_length(0), None);
+        let app = open_app(&dir);
+        assert_eq!(app.bpm_max_length(), Some(Duration::from_secs(20 * 60)));
+        let defaults = SettingsDto::default();
+        assert!(defaults.bpm_detection);
+        assert_eq!(defaults.bpm_max_minutes, 20);
     }
 
     #[test]

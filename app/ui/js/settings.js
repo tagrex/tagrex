@@ -52,6 +52,7 @@ import {
 } from "./prefs.js";
 import { MEDIA_GLYPH_SET_OPTIONS } from "./mediaglyphs.js";
 import { checkUpdateNow } from "./updatecheck.js";
+import { setBpmEnabled } from "./bpm.js";
 import {
   clearSettingsSearch,
   renderSettingsNav,
@@ -78,6 +79,14 @@ function setId3Choice(choice) {
   el("set-id3")
     .querySelectorAll(".seg-btn")
     .forEach((b) => b.classList.toggle("active", b.dataset.id3 === choice));
+}
+
+// BPM detection skips files longer than this many minutes (#538); 0 = no limit.
+const BPM_MAX_MINUTES_DEFAULT = 20;
+
+function bpmMaxFromForm() {
+  const minutes = parseInt(el("set-bpm-max").value, 10);
+  return Number.isNaN(minutes) ? BPM_MAX_MINUTES_DEFAULT : Math.max(0, minutes);
 }
 
 function setImportCoverChoice(choice) {
@@ -371,6 +380,8 @@ async function openSettings() {
     el("set-cover-max").value = s.cover_max_px || 0;
     el("set-cover-quality").value = s.cover_quality || 85;
     el("set-bpm-range").value = String(s.bpm_floor || 0);
+    el("set-bpm-detection").checked = s.bpm_detection !== false;
+    el("set-bpm-max").value = s.bpm_max_minutes ?? BPM_MAX_MINUTES_DEFAULT;
     readPriority = normalizePriority(s.read_priority);
     // The separator is whitespace-significant ("; " is not ";"), so it goes
     // into the box verbatim and comes back verbatim — no trim anywhere (#46).
@@ -542,6 +553,8 @@ async function saveSettings() {
       import_skip_fields: importSkipFromForm(),
       import_cover: importCoverChoice,
       bpm_floor: parseInt(el("set-bpm-range").value, 10) || 0,
+      bpm_detection: el("set-bpm-detection").checked,
+      bpm_max_minutes: bpmMaxFromForm(),
     };
     setSavedSettings(settings);
     // Display prefs are local-only; apply + persist before the backend
@@ -552,6 +565,7 @@ async function saveSettings() {
     applyTableFont(parseInt(el("set-table-font").value, 10));
     await invoke("save_discogs_token", { token });
     await invoke("save_settings", { settings });
+    setBpmEnabled(settings.bpm_detection);
     updateSettingsDot();
     closeSettings();
     toast(t("toast.settings.saved"));
@@ -667,7 +681,9 @@ initGroupResets([
       el("set-multi-sep").value === "" &&
       (parseInt(el("set-cover-max").value, 10) || 0) === 0 &&
       (parseInt(el("set-cover-quality").value, 10) || 85) === 85 &&
-      el("set-bpm-range").value === "0",
+      el("set-bpm-range").value === "0" &&
+      el("set-bpm-detection").checked &&
+      bpmMaxFromForm() === BPM_MAX_MINUTES_DEFAULT,
     reset: () => {
       setId3Choice("v24");
       resetPriority();
@@ -675,6 +691,8 @@ initGroupResets([
       el("set-cover-max").value = 0;
       el("set-cover-quality").value = 85;
       el("set-bpm-range").value = "0";
+      el("set-bpm-detection").checked = true;
+      el("set-bpm-max").value = BPM_MAX_MINUTES_DEFAULT;
     },
   },
   {

@@ -697,6 +697,11 @@ button.icon > svg {
 .search-toggle .glyph-stop {
   display: none;
 }
+/* BPM detection switched off in Settings (#538): `button.icon` sets a display
+   that would otherwise win over the hidden attribute. */
+#detect-bpm[hidden] {
+  display: none;
+}
 .search-toggle.busy .glyph-search {
   display: none;
 }

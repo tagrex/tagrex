@@ -6,6 +6,9 @@
 // (#111): it starts a run, and while one is going it is a Stop that ends it at
 // the current file, staging what was measured before. Progress goes in the
 // status bar's busy pill, the one undo uses.
+//
+// Settings can switch the whole thing off (#538), which hides the button; the
+// shortcut presses the button, so it goes quiet with it.
 import { el, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { t, tn } from "./i18n.js";
@@ -50,6 +53,7 @@ function summary(result, total) {
   parts.push(
     staged ? t("toast.bpm.staged", { files: tn("unit.file", staged) }) : t("toast.bpm.unchanged")
   );
+  if (result.too_long) parts.push(tn("toast.bpm.tooLong", result.too_long));
   if (result.no_tempo) parts.push(tn("toast.bpm.noTempo", result.no_tempo));
   if (result.failed.length) parts.push(tn("toast.bpm.failed", result.failed.length));
   return parts.join(" · ");
@@ -107,5 +111,12 @@ export function retranslateBpm() {
   paintButton();
 }
 
+export function setBpmEnabled(on) {
+  button.hidden = !on;
+}
+
 button.addEventListener("click", detectBpm);
 paintButton();
+invoke("load_settings", {})
+  .then((settings) => setBpmEnabled(!settings || settings.bpm_detection !== false))
+  .catch(() => {});

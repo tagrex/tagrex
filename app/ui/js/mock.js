@@ -764,12 +764,18 @@ function mockInvoke(cmd, args) {
       return (async () => {
         const changes = [];
         let analysed = 0;
+        let tooLong = 0;
+        const minutes = s.settings?.bpm_max_minutes ?? 20;
         for (const p of args.paths) {
           if (mockBpmCancel) break;
-          await new Promise((resolve) => setTimeout(resolve, 400));
           analysed += 1;
           const t = findTrack(p);
           if (!t) continue;
+          if (minutes > 0 && (t.duration_secs || 0) > minutes * 60) {
+            tooLong += 1;
+            continue;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 400));
           const hash = [...p].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
           const bpm = String(118 + (hash % 20));
           if ((t.tags.bpm || "") !== bpm) {
@@ -780,6 +786,7 @@ function mockInvoke(cmd, args) {
           plan: plan("Detect BPM", { code: "plan.detectBpm" }, changes),
           analysed,
           no_tempo: 0,
+          too_long: tooLong,
           failed: [],
           cancelled: mockBpmCancel,
         };

@@ -745,10 +745,12 @@ struct BpmControl(Arc<AtomicBool>);
 #[derive(serde::Serialize)]
 struct BpmDetectionDto {
     plan: PlanDto,
-    /// Files analysed, whether or not they had a tempo.
+    /// Files gone through, whether measured, skipped or failed.
     analysed: usize,
     /// Files with no steady beat to measure.
     no_tempo: usize,
+    /// Files passed over as longer than the limit in settings (#538).
+    too_long: usize,
     /// Files that could not be decoded, by path.
     failed: Vec<String>,
     /// The run was cancelled; the plan holds the files measured before that.
@@ -771,6 +773,7 @@ async fn detect_bpm(
 ) -> Result<BpmDetectionDto, ErrorDto> {
     control.0.store(false, Ordering::SeqCst);
     let cancel = control.0.clone();
+    let limit = with_app(&state, |app| Ok(app.bpm_max_length()))?;
     let measured = tauri::async_runtime::spawn_blocking(move || {
         let mut detector = tagrex_player::tempo::TempoDetector::new().map_err(shell_error)?;
         let total = paths.len();
@@ -786,10 +789,14 @@ async fn detect_bpm(
             );
         };
         let (mut detected, mut no_tempo, mut failed) = (Vec::new(), 0, Vec::new());
-        let mut cancelled = false;
+        let (mut too_long, mut cancelled) = (0, false);
         for (done, path) in paths.iter().enumerate() {
             report(done, path);
             let target = PathBuf::from(path);
+            if tagrex_commands::too_long_for_bpm(&target, limit) {
+                too_long += 1;
+                continue;
+            }
             match detector.detect(&target, &cancel) {
                 Ok(Some(bpm)) => detected.push((target, bpm)),
                 Ok(None) => no_tempo += 1,
@@ -800,13 +807,13 @@ async fn detect_bpm(
                 }
             }
         }
-        let analysed = detected.len() + no_tempo + failed.len();
+        let analysed = detected.len() + no_tempo + failed.len() + too_long;
         report(analysed, "");
-        Ok::<_, ErrorDto>((detected, analysed, no_tempo, failed, cancelled))
+        Ok::<_, ErrorDto>((detected, analysed, no_tempo, too_long, failed, cancelled))
     })
     .await
     .map_err(shell_error)??;
-    let (detected, analysed, no_tempo, failed, cancelled) = measured;
+    let (detected, analysed, no_tempo, too_long, failed, cancelled) = measured;
     let plan = with_app(&state, |app| {
         app.preview_bpm(&detected).map_err(ErrorDto::from)
     })?;
@@ -814,6 +821,7 @@ async fn detect_bpm(
         plan,
         analysed,
         no_tempo,
+        too_long,
         failed,
         cancelled,
     })

@@ -63,11 +63,6 @@ APE), values are read from the highest one present. Drag to reorder; there is a
 Reset. Most files carry a single block, so this rarely matters — it exists for
 the files where it does.
 
-**Detected BPM range**: the range Detect BPM folds a measured tempo into, by
-halving or doubling it. **As measured** (the default) writes the tempo as the
-beats fall. Choose **70-140** if your library writes a 174 BPM track as 87;
-**90-180** keeps drum & bass at full tempo and doubles a slow one.
-
 ## Cover art
 
 **Max size** — pixels on the longest side. A larger fetched or chosen cover is
@@ -75,6 +70,21 @@ downscaled before embedding, so a 3000px sleeve doesn't get baked into every
 track. `0` disables resizing.
 
 **JPEG quality** — 1–100, used when a cover is resized.
+
+## BPM detection
+
+**Detect BPM**: on by default. Off hides the metronome on the table toolbar,
+and its shortcut does nothing.
+
+**Skip files longer than**: 20 minutes by default, `0` for no limit. A DJ mix
+has no single tempo, and measuring one takes as long as dozens of tracks, so a
+file longer than this is passed over, judged by the length its header states
+before anything is decoded.
+
+**Detected BPM range**: the range Detect BPM folds a measured tempo into, by
+halving or doubling it. **As measured** (the default) writes the tempo as the
+beats fall. Choose **70-140** if your library writes a 174 BPM track as 87;
+**90-180** keeps drum & bass at full tempo and doubles a slow one.
 
 ## Files
 
