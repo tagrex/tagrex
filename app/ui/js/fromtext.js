@@ -238,4 +238,4 @@ onChainChanged("fromname", () => {
   if (previewSource === "fromtext" && previewPlan?.changes.length) previewTagsFromText();
 });
 
-export { refreshTextProbe, scheduleTextProbe };
+export { previewTagsFromText, refreshTextProbe, scheduleTextProbe, visibleSubject };

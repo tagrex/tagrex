@@ -20,6 +20,7 @@ import { invoke } from "./invoke.js";
 import { activeRuleCount, chainHasRules, onChainChanged, runChainOverPlan } from "./chains.js";
 import { columnLabel } from "./columns.js";
 import { previewTagsFromName } from "./fromname.js";
+import { previewTagsFromText, visibleSubject } from "./fromtext.js";
 import { openTransformModal } from "./generator.js";
 import { catalogue, insertAt, renderReference } from "./placeholders.js";
 import { maskPart, planForMask, preview } from "./renamer.js";
@@ -124,50 +125,60 @@ async function renderList(mask, shown, total) {
   return { html: rowsHtml(rows), summary: summary(rows, total) };
 }
 
-// Extract mode (FROM NAME, #548): what the mask reads out of each name, through
-// the FROM NAME presets as Preview tags runs them (#237), against the tags the
-// file carries now. A value is marked when it is the same as the tag already
-// there, when a rule changed what was read (the reading in its tooltip), and
-// when the field cannot hold it; a name the mask does not fit is one row.
-async function extractList(mask, shown, total) {
-  const probes = await invoke("probe_tags_from_names", { mask, paths: shown });
-  const readings = probes.files.map((probe) => new Map(probe.fields));
-  let tidied = readings;
-  if (chainHasRules("fromname")) {
+// Extract mode (FROM NAME #548, FROM TEXT #550): what the mask reads out of
+// each subject, a file name or a line of the list, through the FROM NAME
+// presets as Preview tags runs them (#237), against the tags the file carries
+// now. A value is marked when it is the same as the tag already there, when a
+// rule changed what was read (the reading in its tooltip), and when the field
+// cannot hold it; a subject the mask does not fit is one row.
+//
+// `rows` are { subject (markup), title, path (the file it goes to, or null),
+// matched, readings (Map), invalid }. `extraColumn` adds the File column FROM
+// TEXT needs, since there the subject is the line, not the file.
+async function readingsTable({ fields, rows, subjectHeader, extraColumn, missLabel }) {
+  let tidied = rows.map((row) => row.readings);
+  const toChain = rows.filter((row) => row.matched && row.path);
+  if (chainHasRules("fromname") && toChain.length) {
     const plan = {
       description: "",
-      changes: shown.map((path, index) => ({
-        path,
+      changes: toChain.map((row) => ({
+        path: row.path,
         rename_to: null,
-        tag_changes: [...readings[index]].map(([field, value]) => ({ field, old: null, new: value })),
+        tag_changes: [...row.readings].map(([field, value]) => ({ field, old: null, new: value })),
       })),
     };
     const out = await runChainOverPlan(plan, "fromname");
     const byPath = new Map((out?.changes || []).map((change) => [change.path, change]));
-    tidied = shown.map((path, index) => {
-      const change = byPath.get(path);
-      return change ? new Map(change.tag_changes.map((tc) => [tc.field, tc.new ?? ""])) : readings[index];
+    tidied = rows.map((row) => {
+      const change = row.path && byPath.get(row.path);
+      return change ? new Map(change.tag_changes.map((tc) => [tc.field, tc.new ?? ""])) : row.readings;
     });
   }
   const current = new Map(tracks.map((track) => [track.path, track.tags || {}]));
   const counts = { read: 0, noFit: 0, tidied: 0, bad: 0 };
-  const head = `<tr><th class="mb-old">${escapeHtml(t("maskBuilder.fileName"))}</th>${probes.fields
+  const extraHead = extraColumn ? `<th>${escapeHtml(t("maskBuilder.fileHeader"))}</th>` : "";
+  const head = `<tr><th class="mb-old">${escapeHtml(subjectHeader)}</th>${extraHead}${fields
     .map((field) => `<th>${escapeHtml(columnLabel(field))}</th>`)
     .join("")}</tr>`;
-  const body = probes.files
-    .map((probe, index) => {
-      const path = shown[index];
-      const name = `<td class="mb-old" title="${escapeHtml(path)}"><span>${escapeHtml(baseName(path))}</span><span class="mb-arrow" aria-hidden="true">→</span></td>`;
-      if (!probe.matched) {
+  const body = rows
+    .map((row, index) => {
+      const subject = `<td class="mb-old" title="${escapeHtml(row.title)}"><span>${row.subject}</span><span class="mb-arrow" aria-hidden="true">→</span></td>`;
+      if (!row.matched) {
         counts.noFit += 1;
-        return `<tr class="mb-nomatch">${name}<td class="mb-miss" colspan="${Math.max(1, probes.fields.length)}">${escapeHtml(t("maskBuilder.noFit"))}</td></tr>`;
+        const span = Math.max(1, fields.length + (extraColumn ? 1 : 0));
+        return `<tr class="mb-nomatch">${subject}<td class="mb-miss" colspan="${span}">${escapeHtml(missLabel)}</td></tr>`;
       }
       counts.read += 1;
-      const cells = probes.fields.map((field) => {
-        const raw = readings[index].get(field);
+      const extra = extraColumn
+        ? row.path
+          ? `<td class="mb-target" title="${escapeHtml(row.path)}">${escapeHtml(baseName(row.path))}</td>`
+          : `<td class="mb-target mb-nofile">${escapeHtml(t("maskBuilder.noFile"))}</td>`
+        : "";
+      const cells = fields.map((field) => {
+        const raw = row.readings.get(field);
         if (raw === undefined) return `<td class="mb-none">—</td>`;
         const value = tidied[index].get(field) ?? raw;
-        if (probe.invalid.includes(field)) {
+        if (row.invalid.includes(field)) {
           counts.bad += 1;
           return `<td class="mb-bad" title="${escapeHtml(t("maskBuilder.cantWrite"))}">${escapeHtml(value)}</td>`;
         }
@@ -175,23 +186,83 @@ async function extractList(mask, shown, total) {
           counts.tidied += 1;
           return `<td class="mb-tidied" title="${escapeHtml(t("maskBuilder.readAs", { raw }))}">${escapeHtml(value)}</td>`;
         }
-        const same = (current.get(path)?.[field] ?? "") === value;
+        const same = row.path && (current.get(row.path)?.[field] ?? "") === value;
         return `<td${same ? ' class="mb-same"' : ""}>${escapeHtml(value)}</td>`;
       });
-      return `<tr>${name}${cells.join("")}</tr>`;
+      return `<tr>${subject}${extra}${cells.join("")}</tr>`;
     })
     .join("");
+  return { html: `<table class="mb-table"><thead>${head}</thead><tbody>${body}</tbody></table>`, counts };
+}
+
+// The tail every extract summary shares: tidied and unwritable values, the
+// cap, and the rules that ran.
+function readingsSummaryTail(counts, shown, total) {
+  const parts = [];
+  if (counts.tidied) parts.push(`<span class="mb-sum-tidied">${escapeHtml(tn("maskBuilder.tidiedCount", counts.tidied))}</span>`);
+  if (counts.bad) parts.push(`<span class="mb-sum-clash">${escapeHtml(tn("maskBuilder.badCount", counts.bad))}</span>`);
+  if (total > shown) parts.push(escapeHtml(t("maskBuilder.limited", { shown, total })));
+  if (rulesNote()) parts.push(rulesNote());
+  return parts;
+}
+
+// FROM NAME (#548): one row per selected file.
+async function extractList(mask, shown, total) {
+  const probes = await invoke("probe_tags_from_names", { mask, paths: shown });
+  const rows = probes.files.map((probe, index) => ({
+    subject: escapeHtml(baseName(shown[index])),
+    title: shown[index],
+    path: shown[index],
+    matched: probe.matched,
+    readings: new Map(probe.fields),
+    invalid: probe.invalid || [],
+  }));
+  const { html, counts } = await readingsTable({
+    fields: probes.fields,
+    rows,
+    subjectHeader: t("maskBuilder.fileName"),
+    extraColumn: false,
+    missLabel: t("maskBuilder.noFit"),
+  });
   const parts = [escapeHtml(tn("unit.file", total))];
   if (counts.read) parts.push(escapeHtml(tn("maskBuilder.readCount", counts.read)));
   if (counts.noFit) parts.push(`<span class="mb-sum-missing">${escapeHtml(tn("maskBuilder.noFitCount", counts.noFit))}</span>`);
-  if (counts.tidied) parts.push(`<span class="mb-sum-tidied">${escapeHtml(tn("maskBuilder.tidiedCount", counts.tidied))}</span>`);
-  if (counts.bad) parts.push(`<span class="mb-sum-clash">${escapeHtml(tn("maskBuilder.badCount", counts.bad))}</span>`);
-  if (total > shown.length) parts.push(escapeHtml(t("maskBuilder.limited", { shown: shown.length, total })));
-  if (rulesNote()) parts.push(rulesNote());
-  return {
-    html: `<table class="mb-table"><thead>${head}</thead><tbody>${body}</tbody></table>`,
-    summary: parts.join(" · "),
-  };
+  parts.push(...readingsSummaryTail(counts, shown.length, total));
+  return { html, summary: parts.join(" · ") };
+}
+
+// FROM TEXT (#550): one row per line of the list, the nth track on the nth
+// selected file as Preview tags pairs them; a heading or a "Side A" is a line
+// the mask does not fit, skipped. Tracks left without a file and files left
+// without a track are counted, since that is a list and a selection that do
+// not match.
+async function textList(mask, shown, total) {
+  if (!el("from-text-lines").value.trim()) {
+    return { html: `<p class="mb-empty muted">${escapeHtml(t("fromText.noLines"))}</p>`, summary: "" };
+  }
+  const probe = await invoke("probe_text_lines", { mask, text: el("from-text-lines").value, paths: shown });
+  const rows = probe.lines.map((line) => ({
+    subject: visibleSubject(line.line),
+    title: line.line,
+    path: line.path,
+    matched: line.matched,
+    readings: new Map(line.fields),
+    invalid: line.invalid || [],
+  }));
+  const { html, counts } = await readingsTable({
+    fields: probe.fields,
+    rows,
+    subjectHeader: t("maskBuilder.lineHeader"),
+    extraColumn: true,
+    missLabel: t("maskBuilder.notTrack"),
+  });
+  const noFile = rows.filter((row) => row.matched && !row.path).length;
+  const parts = [escapeHtml(tn("maskBuilder.trackCount", counts.read))];
+  if (counts.noFit) parts.push(escapeHtml(tn("maskBuilder.skippedCount", counts.noFit)));
+  if (noFile) parts.push(`<span class="mb-sum-missing">${escapeHtml(tn("maskBuilder.noFileCount", noFile))}</span>`);
+  if (probe.spare_files) parts.push(`<span class="mb-sum-missing">${escapeHtml(tn("maskBuilder.spareFilesCount", probe.spare_files))}</span>`);
+  parts.push(...readingsSummaryTail(counts, shown.length, total));
+  return { html, summary: parts.join(" · ") };
 }
 
 const MODES = {
@@ -211,13 +282,24 @@ const MODES = {
     list: extractList,
     accept: () => previewTagsFromName(),
   },
+  // The FROM TEXT presets are FROM NAME's own (#237): both read values out of a
+  // string with a mask.
+  text: {
+    context: "fromname",
+    source: "from-text-mask",
+    opener: "from-text-builder-open",
+    title: "maskBuilder.titleText",
+    list: textList,
+    accept: () => previewTagsFromText(),
+  },
 };
 let mode = MODES.render;
 
 async function refresh() {
   const mine = ++generation;
   const paths = selectedPaths();
-  if (!paths.length) {
+  // FROM TEXT reads the list with or without files to pair it with (#550).
+  if (!paths.length && mode !== MODES.text) {
     el("mb-error").hidden = true;
     expr.parentElement.classList.remove("has-error");
     el("mb-summary").textContent = "";
@@ -308,12 +390,12 @@ function fitField() {
 // The reference offers what this direction can use: reading a name back cannot
 // run a function or fill a computed value (#548).
 function referenceEntries() {
-  return mode === MODES.extract ? entries.filter((entry) => entry.extract) : entries;
+  return mode === MODES.render ? entries : entries.filter((entry) => entry.extract);
 }
 
 async function open(which) {
   mode = which;
-  dialog.classList.toggle("is-extract", mode === MODES.extract);
+  dialog.classList.toggle("is-extract", mode !== MODES.render);
   el("mb-title").textContent = t(mode.title);
   restoreSize();
   paintTransformButton();
@@ -356,6 +438,7 @@ function accept() {
 
 el("mask-builder-open").addEventListener("click", () => open(MODES.render));
 el("from-name-builder-open").addEventListener("click", () => open(MODES.extract));
+el("from-text-builder-open").addEventListener("click", () => open(MODES.text));
 el("mb-close").addEventListener("click", close);
 el("mb-cancel").addEventListener("click", close);
 el("mb-ok").addEventListener("click", accept);

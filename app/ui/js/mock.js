@@ -486,6 +486,28 @@ function mockInvoke(cmd, args) {
     }
     // The mask builder's FROM NAME list (#548): every name at once, the mask's
     // tags as columns, and a track number that is not a number marked unwritable.
+    // The mask builder's FROM TEXT list (#550): every non-blank line, the nth
+    // line the mask fits on the nth path, and the paths left over.
+    case "probe_text_lines": {
+      const mask = args.mask.replace(/\\t/g, "\t");
+      const columns = [];
+      for (const [, name] of String(mask).matchAll(/%([a-z_0-9]+?)(?::\d+)?%/gi)) {
+        const key = name.toLowerCase();
+        if (key !== "skip" && !columns.includes(key)) columns.push(key);
+      }
+      let next = 0;
+      const lines = args.text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+        .map((line) => {
+          const fields = mockExtractFromName(mask, line);
+          if (!fields) return { line, matched: false, fields: [], invalid: [], path: null };
+          const invalid = fields.filter(([f, v]) => f === "track" && !/^\d+$/.test(v)).map(([f]) => f);
+          return { line, matched: true, fields, invalid, path: args.paths[next++] ?? null };
+        });
+      return Promise.resolve({ fields: columns, lines, spare_files: Math.max(0, args.paths.length - next) });
+    }
     case "probe_tags_from_names": {
       const columns = [];
       for (const [, name] of String(args.mask).matchAll(/%([a-z_0-9]+?)(?::\d+)?%/gi)) {

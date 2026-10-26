@@ -20,7 +20,7 @@ use tagrex_commands::{
     CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateGroupDto, ErrorDto,
     ImportFieldDto, ImportSelectionDto, ImportTrackDto, NameProbeDto, NameProbesDto,
     PlaceholderDto, PlanDto, ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto,
-    TagEditDto, TextProbeDto, TrackDto, TransformRuleDto,
+    TagEditDto, TextLinesDto, TextProbeDto, TrackDto, TransformRuleDto,
 };
 use tagrex_player::{Player, PlayerStatus};
 
@@ -264,6 +264,22 @@ fn probe_tags_from_name(
 ) -> Result<NameProbeDto, ErrorDto> {
     with_app(&state, |app| {
         app.probe_tags_from_name(&mask, &PathBuf::from(path))
+            .map_err(ErrorDto::from)
+    })
+}
+
+/// Every line of a text list under a FROM TEXT mask and the file each track
+/// lands on (#550), for the mask builder's list.
+#[tauri::command]
+fn probe_text_lines(
+    state: State<AppState>,
+    mask: String,
+    text: String,
+    paths: Vec<String>,
+) -> Result<TextLinesDto, ErrorDto> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.probe_text_lines(&mask, &text, &paths)
             .map_err(ErrorDto::from)
     })
 }
@@ -1425,6 +1441,7 @@ fn main() {
             preview_tags_from_name,
             probe_tags_from_name,
             probe_tags_from_names,
+            probe_text_lines,
             preview_tags_from_text,
             probe_tags_from_text,
             read_text_list,

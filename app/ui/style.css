@@ -6638,3 +6638,15 @@ body.drag-active #drop-overlay {
 .mb-summary .mb-sum-tidied {
   color: var(--accent-ink);
 }
+/* FROM TEXT (#550): the subject is the line, and the file it lands on is a
+   muted column of its own, so the table still reads subject → tags. A track
+   with no file left for it says so in that column. */
+.mb-table tbody td.mb-target {
+  color: var(--muted);
+  font-weight: 400;
+}
+.mb-table tbody td.mb-nofile {
+  font-family: var(--font-ui);
+  font-style: italic;
+  color: var(--del);
+}

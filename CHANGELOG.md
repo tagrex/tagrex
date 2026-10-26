@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The placeholder reference's filter has a clear button**, in the mask
   builder and in the ? popover alike: a × at the end of the box, shown while
   there is text in it. (#549)
+- **The mask builder reads text lists too.** Tags from a text list opens it from
+  its mask field: every line of the list, the file its track lands on (paired as
+  Preview tags pairs them), and a column for each tag the mask names, with the
+  same value states as for file names. A heading is "not a track · skipped", a
+  track left without a file says so, and the summary counts tracks, skipped
+  lines, tracks without a file and files without a track. (#550)
 
 ## [0.26.0] - 2026-10-24
 

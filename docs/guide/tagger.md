@@ -206,6 +206,14 @@ staged: how many tracks, how many files are selected, and how many lines were
 skipped. Extra tracks or extra files are left out; a skipped line you expected to
 be a track is the sign of a typo in it.
 
+The button at the end of the mask field opens the **mask builder** over the
+whole list: every line, the file its track lands on, and a column for each tag
+the mask names, recomputed as you type. A heading reads "not a track ·
+skipped", a track left without a file says so in the File column, and the line
+above the list counts the tracks, the skipped lines and whatever does not pair
+up. Values are marked as in FROM NAME's builder (see [Masks](masks.md)), and
+invisible characters such as tabs are drawn as in the probe.
+
 A table copied from a web page usually separates its columns with tabs, and Tab
 can't be typed into the mask box, so write it as `\t`. A release page's
 tracklist — number, artist followed by a dash, title, length — reads with:
