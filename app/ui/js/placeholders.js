@@ -135,6 +135,7 @@ async function openReference(button, input) {
   target = input;
   anchor = button;
   el("ph-filter").value = "";
+  el("ph-filter").parentElement.classList.add("is-empty");
   renderReference(entries, "");
   menu.hidden = false;
   place(menu, button);
@@ -190,7 +191,15 @@ export async function initPlaceholderReference() {
     if (!e.target.closest?.("#ph-menu")) closeReference();
   });
 
+  // The filter's × (#549): shown only while there is text to clear.
+  el("ph-filter-clear").addEventListener("click", () => {
+    const box = el("ph-filter");
+    box.value = "";
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    box.focus();
+  });
   el("ph-filter").addEventListener("input", (e) => {
+    e.target.parentElement.classList.toggle("is-empty", !e.target.value);
     if (cache) renderReference(cache, e.target.value);
   });
 

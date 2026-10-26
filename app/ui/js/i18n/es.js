@@ -342,6 +342,7 @@ export const es = {
   "colmask.right": "Derecha",
   "colmask.hint": "Solo lectura: el valor se calcula, así que la celda no se puede editar. Se ordena por el texto mostrado y refleja lo que hay en el disco — los cambios preparados se ven tras aplicarlos.",
   "ph.filter": "Filtrar marcadores…",
+  "ph.clearFilter": "Vaciar el filtro",
   "ph.foot": "Haz clic en uno para insertarlo en el cursor.",
   "preset.title": "Preajustes de máscara",
   "preset.namePlaceholder": "Ponle nombre a esta máscara…",

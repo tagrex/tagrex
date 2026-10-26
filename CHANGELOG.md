@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   hold (A1 as a track number) is red and not written, and a name the mask does
   not fit says so across its row. The reference leaves out what cannot be read
   back. (#548)
+- **The placeholder reference's filter has a clear button**, in the mask
+  builder and in the ? popover alike: a × at the end of the box, shown while
+  there is text in it. (#549)
 
 ## [0.26.0] - 2026-10-24
 

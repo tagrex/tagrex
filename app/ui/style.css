@@ -5659,11 +5659,6 @@ td[data-field="year"],
   flex: none;
   padding-bottom: var(--space-2);
 }
-.ph-head input {
-  width: 100%;
-  height: var(--ctl-h-sm);
-  font-size: var(--text-xs);
-}
 .ph-body {
   flex: 1;
   min-height: 0;
@@ -6417,13 +6412,11 @@ body.drag-active #drop-overlay {
 .mb-summary .mb-sum-missing {
   color: var(--del);
 }
-#mb-ref-filter {
+/* The reference's filter, a .field with its clear button (#549). */
+.mb-ref-search {
   grid-column: 2;
   grid-row: 1;
   align-self: start;
-  width: 100%;
-  height: var(--ctl-h);
-  box-sizing: border-box;
 }
 .mb-ref .ph-foot {
   grid-column: 2;

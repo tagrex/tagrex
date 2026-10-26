@@ -344,6 +344,7 @@ export const it = {
   "colmask.right": "Destra",
   "colmask.hint": "Sola lettura: il valore è calcolato, quindi la cella non può essere modificata. Ordina sul testo renderizzato e riflette ciò che è su disco — le modifiche in staging appaiono dopo l'applicazione.",
   "ph.filter": "Filtra segnaposto…",
+  "ph.clearFilter": "Svuota il filtro",
   "ph.foot": "Cliccane uno per inserirlo dove si trova il cursore.",
   "preset.title": "Preset di maschere",
   "preset.namePlaceholder": "Dai un nome a questa maschera…",

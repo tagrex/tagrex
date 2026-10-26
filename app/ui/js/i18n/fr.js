@@ -344,6 +344,7 @@ export const fr = {
   "colmask.right": "Droite",
   "colmask.hint": "Lecture seule : la valeur est calculée, la cellule ne peut donc pas être modifiée. Le tri se fait sur le texte affiché, qui reflète ce qui est sur le disque — les changements en attente apparaissent une fois appliqués.",
   "ph.filter": "Filtrer les variables…",
+  "ph.clearFilter": "Effacer le filtre",
   "ph.foot": "Cliquez sur l'une d'elles pour l'insérer au curseur.",
   "preset.title": "Préréglages de masque",
   "preset.namePlaceholder": "Nommer ce masque…",

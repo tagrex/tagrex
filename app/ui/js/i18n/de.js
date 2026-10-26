@@ -340,6 +340,7 @@ export const de = {
   "colmask.right": "Rechts",
   "colmask.hint": "Nur lesend: Der Wert wird berechnet, die Zelle lässt sich daher nicht bearbeiten. Sortiert wird nach dem dargestellten Text, und er zeigt, was auf der Festplatte steht — vorgemerkte Änderungen erscheinen nach dem Anwenden.",
   "ph.filter": "Platzhalter filtern…",
+  "ph.clearFilter": "Filter leeren",
   "ph.foot": "Klicke auf einen, um ihn an der Cursorposition einzufügen.",
   "preset.title": "Masken-Presets",
   "preset.namePlaceholder": "Diese Maske benennen…",

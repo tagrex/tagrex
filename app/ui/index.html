@@ -908,7 +908,12 @@
             <div id="mb-list" class="mb-list"></div>
           </div>
           <div class="mb-ref">
-            <input id="mb-ref-filter" type="search" data-i18n-placeholder="ph.filter" placeholder="Filter placeholders…" spellcheck="false" autocomplete="off" />
+            <div class="field is-empty mb-ref-search">
+              <input id="mb-ref-filter" type="search" data-i18n-placeholder="ph.filter" placeholder="Filter placeholders…" spellcheck="false" autocomplete="off" />
+              <div class="field-tools">
+                <button id="mb-ref-clear" class="icon field-clear" type="button" data-i18n-title="ph.clearFilter" title="Clear the filter" data-i18n-aria-label="ph.clearFilter" aria-label="Clear the filter"><svg class="ico"><use href="#i-close"/></svg></button>
+              </div>
+            </div>
             <div id="mb-ref-body" class="ph-body mb-ref-body"></div>
             <p class="ph-foot muted" data-i18n="ph.foot">Click one to insert it at the caret.</p>
           </div>
@@ -932,7 +937,12 @@
          scrolls and would clip it. Rows are built by placeholders.js. -->
     <div id="ph-menu" class="ph-menu" hidden role="dialog" data-i18n-aria-label="mask.placeholders" aria-label="Placeholders">
       <div class="ph-head">
-        <input id="ph-filter" type="search" data-i18n-placeholder="ph.filter" placeholder="Filter placeholders…" spellcheck="false" autocomplete="off" />
+        <div class="field sm is-empty">
+          <input id="ph-filter" type="search" data-i18n-placeholder="ph.filter" placeholder="Filter placeholders…" spellcheck="false" autocomplete="off" />
+          <div class="field-tools">
+            <button id="ph-filter-clear" class="icon field-clear" type="button" data-i18n-title="ph.clearFilter" title="Clear the filter" data-i18n-aria-label="ph.clearFilter" aria-label="Clear the filter"><svg class="ico"><use href="#i-close"/></svg></button>
+          </div>
+        </div>
       </div>
       <div id="ph-body" class="ph-body"></div>
       <p class="ph-foot muted" data-i18n="ph.foot">Click one to insert it at the caret.</p>

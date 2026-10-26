@@ -319,6 +319,7 @@ async function open(which) {
   paintTransformButton();
   expr.value = el(mode.source).value;
   el("mb-ref-filter").value = "";
+  el("mb-ref-filter").parentElement.classList.add("is-empty");
   el("mb-error").hidden = true;
   modal.hidden = false;
   fitField();
@@ -384,7 +385,15 @@ expr.addEventListener("keydown", (e) => {
     accept();
   }
 });
+// The filter's × (#549): shown only while there is text to clear.
+el("mb-ref-clear").addEventListener("click", () => {
+  const box = el("mb-ref-filter");
+  box.value = "";
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  box.focus();
+});
 el("mb-ref-filter").addEventListener("input", (e) => {
+  e.target.parentElement.classList.toggle("is-empty", !e.target.value);
   renderReference(referenceEntries(), e.target.value, el("mb-ref-body"));
 });
 el("mb-ref-body").addEventListener("click", (e) => {

@@ -346,6 +346,7 @@ export const en = {
   "colmask.right": "Right",
   "colmask.hint": "Read-only: the value is computed, so the cell can't be edited. It sorts on the rendered text, and it reflects what is on disk — staged edits show once applied.",
   "ph.filter": "Filter placeholders…",
+  "ph.clearFilter": "Clear the filter",
   "ph.foot": "Click one to insert it at the caret.",
   "preset.title": "Mask presets",
   "preset.namePlaceholder": "Name this mask…",
