@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   across two. (#541)
 - **A clear button in the mask builder** empties the mask to start over, with
   the caret left in the field; ⌘Z (Ctrl+Z) brings it back. (#542)
+- **The transform presets are in reach from the mask builder.** A wand beside
+  the field opens the Transform window over it, with the toolbar wand's dot
+  and tooltip; ticking or editing a preset recomputes the list at once, and
+  the summary says how many rules ran on the names. Escape closes the window on
+  top first. (#543)
 
 ## [0.26.0] - 2026-10-24
 

@@ -30,6 +30,12 @@ reference inserts at the caret, and a function arrives with the caret inside its
 parentheses. The × beside the field clears it to start over; ⌘Z brings the mask
 back.
 
+The ticked **Transform** presets run on every new name, so the builder keeps
+them in reach: the wand beside the field opens the same Transform window as the
+table toolbar, over the builder, with a dot while any rules run. Ticking or
+editing a preset there recomputes the list at once, and the line above the list
+says how many rules ran on the names.
+
 The list is built by the same call as Preview, with the same rules from
 **Transform**, and it says what Preview would: a row is marked when the name
 stays as it is, when a placeholder the mask requires is empty for that file, and

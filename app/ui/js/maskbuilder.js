@@ -10,6 +10,8 @@
 // from the window: OK puts the mask in the box and stages the preview.
 import { el, escapeHtml } from "./dom.js";
 import { t, tn } from "./i18n.js";
+import { activeRuleCount, onChainChanged } from "./chains.js";
+import { openTransformModal } from "./generator.js";
 import { catalogue, insertAt, renderReference } from "./placeholders.js";
 import { maskPart, planForMask, preview } from "./renamer.js";
 import { selectedPaths } from "./state.js";
@@ -44,6 +46,10 @@ function summary(rows, total) {
   if (count("unrendered")) parts.push(tn("maskBuilder.missingCount", count("unrendered")));
   if (count("clash")) parts.push(tn("maskBuilder.clashCount", count("clash")));
   if (total > rows.length) parts.push(t("maskBuilder.limited", { shown: rows.length, total }));
+  // The names are the mask's and the ticked presets' together (#543); say so,
+  // as the one-file example under the mask box does.
+  const rules = activeRuleCount("renamer");
+  if (rules) parts.push(t("renamer.exampleChain", { rules: tn("unit.rule", rules) }));
   return parts.join(" · ");
 }
 
@@ -152,8 +158,21 @@ function rememberSize() {
   }
 }
 
+// The wand's dot and tooltip, the way the toolbar's own wand shows them.
+function paintTransformButton() {
+  const button = el("mb-transform");
+  const count = activeRuleCount("renamer");
+  button.classList.toggle("has-rules", count > 0);
+  button.title = count
+    ? t("generator.chainBtn.some", { rules: tn("unit.rule", count) })
+    : t("generator.chainBtn.none");
+  button.setAttribute("aria-label", button.title);
+  if (button.dataset.tipText) button.dataset.tipText = button.title;
+}
+
 async function open() {
   restoreSize();
+  paintTransformButton();
   expr.value = el("mask").value;
   el("mb-ref-filter").value = "";
   el("mb-error").hidden = true;
@@ -225,9 +244,19 @@ el("mb-ref-body").addEventListener("click", (e) => {
   const row = e.target.closest(".ph-row[data-token]");
   if (row) insertAt(expr, row.dataset.token);
 });
+el("mb-transform").addEventListener("click", openTransformModal);
+// A preset ticked or edited in the Transform window changes every name here.
+onChainChanged("renamer", () => {
+  paintTransformButton();
+  if (!modal.hidden) schedule();
+});
 modal.addEventListener("keydown", (e) => {
-  // The presets menu opened from here closes itself on Escape first.
-  if (e.key === "Escape" && el("preset-menu").hidden) {
+  // Whatever is open on top of the builder (the presets menu, the Transform
+  // window, the preset editor) closes on Escape first.
+  const above =
+    !el("preset-menu").hidden ||
+    !!document.querySelector(".modal-backdrop:not([hidden]):not(#mask-builder)");
+  if (e.key === "Escape" && !above) {
     e.preventDefault();
     close();
   }

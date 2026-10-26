@@ -5747,7 +5747,8 @@ td[data-field="year"],
 /* A dot on the button while this job's chain has rules in it (#239). The chain
    runs on its own, so whether one is set has to be readable without opening
    anything. */
-#transform-btn.has-rules::after {
+#transform-btn.has-rules::after,
+#mb-transform.has-rules::after {
   content: "";
   position: absolute;
   top: 4px;
@@ -5757,7 +5758,8 @@ td[data-field="year"],
   border-radius: 50%;
   background: var(--accent);
 }
-#transform-btn {
+#transform-btn,
+#mb-transform {
   position: relative;
 }
 

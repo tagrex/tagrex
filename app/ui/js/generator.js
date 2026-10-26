@@ -420,6 +420,7 @@ el("vinyl-split").addEventListener("click", splitVinylSides);
 // (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 
 export {
+  openTransformModal,
   syncTransformPlacement,
   refreshTransformButton,
   numberTracks,
