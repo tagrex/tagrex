@@ -180,6 +180,18 @@ in TAGGER › [**Tags from a text list**](tagger.md#from-text--a-tracklist-that-
 where the subject is a line of a pasted tracklist instead of a file name. Both
 produce an ordinary plan, so the same in-table diff, Apply and undo apply.
 
+Both the RENAMER mask and the **Tags from the file name** mask open the **mask
+builder** from the button at the end of the field: the mask, the placeholder
+reference kept open beside it, and every selected file below, recomputed as you
+type. Renaming lists each file's current and new name (see
+[RENAMER](renamer.md#the-mask-builder)). Reading lists each file's name with a
+column for every tag the mask names: a value the file already holds is muted, a
+value a **Transform** rule changed is tinted (the raw reading is in its
+tooltip), a value the field cannot hold (`A1` as a track number) is red and not
+written, and a name the mask does not fit says so across the row. The reference
+there leaves out what cannot be read back, such as the functions. **Use this
+mask** puts the mask back in its box and stages the preview.
+
 A few placeholders work in one direction only, and the reference marks which:
 
 | | Direction | Why |

@@ -505,6 +505,8 @@
                   <div class="field-tools">
                     <button class="icon ph-btn" type="button" data-ph-target="from-name-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
                     <button class="icon preset-btn" type="button" data-preset-target="from-name-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                    <!-- The mask builder in the extract direction (#548). -->
+                    <button id="from-name-builder-open" class="icon" type="button" data-i18n-title="maskBuilder.open" title="Open the mask builder" data-i18n-aria-label="maskBuilder.open" aria-label="Open the mask builder"><svg class="ico"><use href="#i-builder"/></svg></button>
                   </div>
                 </div>
               </div>
@@ -879,7 +881,8 @@
     <div id="mask-builder" class="modal-backdrop" hidden>
       <div class="modal mask-builder" role="dialog" aria-modal="true" aria-labelledby="mb-title">
         <div class="modal-head">
-          <h2 id="mb-title" data-i18n="maskBuilder.title">Mask builder</h2>
+          <!-- Painted by maskbuilder.js: the title names the direction (#548). -->
+          <h2 id="mb-title">Mask builder</h2>
           <button id="mb-close" class="icon" type="button" data-i18n-title="action.cancel" title="Cancel" data-i18n-aria-label="action.cancel" aria-label="Cancel"><svg class="ico"><use href="#i-close"/></svg></button>
         </div>
         <div class="mb-body">

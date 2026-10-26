@@ -6532,3 +6532,116 @@ body.drag-active #drop-overlay {
   padding: var(--space-3) 10px;
   font-family: var(--font-ui);
 }
+
+/* ---- mask builder, extract mode (#548) -------------------------------------
+   The same window for FROM NAME: only the list changes, a table instead of
+   old → new rows, set on .mask-builder.is-extract. It reads left to right the
+   way the grammar runs: the file name, then a column for every tag the mask
+   names, in mask order. The file-name cell is sticky, so it stays put while the
+   tag columns scroll sideways. */
+.mask-builder.is-extract .mb-list {
+  padding: 0;
+}
+.mb-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+}
+.mb-table th,
+.mb-table td {
+  padding: 3px 10px;
+  text-align: left;
+  white-space: nowrap;
+  vertical-align: baseline;
+}
+.mb-table td {
+  color: var(--text);
+}
+.mb-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-top: 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+/* The last column takes the slack so the hover band runs to the list's edge. */
+.mb-table th:last-child,
+.mb-table td:last-child {
+  width: 100%;
+}
+.mb-table tbody tr:first-child > * {
+  padding-top: 5px;
+}
+.mb-table tbody tr:hover {
+  background: var(--row-hover);
+}
+/* File name + arrow: sticky on the left, opaque so values slide under it. */
+.mb-table .mb-old {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-right: 6px;
+  background: var(--panel);
+  color: var(--muted);
+}
+.mb-table thead .mb-old {
+  z-index: 2;
+}
+.mb-table tbody tr:hover > .mb-old {
+  background: var(--row-hover);
+}
+.mb-table .mb-old > span {
+  display: inline-block;
+  max-width: 38ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+.mb-table .mb-old > .mb-arrow {
+  margin-left: var(--space-3);
+}
+/* Value states, render mode's words per value: a value that will be written is
+   medium weight; one equal to the tag already there, or an optional part that
+   is absent, is muted; one a Transform rule changed has the dirty tint (the
+   reading is in its tooltip); one the field cannot hold is red on the error
+   tint and is not written. */
+.mb-table tbody td:not(.mb-old) {
+  font-weight: var(--fw-medium);
+}
+.mb-table tbody td.mb-same,
+.mb-table tbody td.mb-none {
+  font-weight: 400;
+  color: var(--muted);
+}
+.mb-table td.mb-tidied {
+  background: var(--dirty-tint);
+}
+.mb-table td.mb-bad {
+  background: var(--error-tint);
+  color: var(--del);
+}
+/* A name the pattern does not fit: one red italic line across the tag columns,
+   no fill, the file left alone, like render mode's empty placeholder. */
+.mb-table tbody td.mb-miss {
+  font-family: var(--font-ui);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--del);
+}
+.mb-nomatch > .mb-old {
+  color: var(--text);
+}
+.mb-summary .mb-sum-tidied {
+  color: var(--accent-ink);
+}

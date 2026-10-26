@@ -161,6 +161,15 @@ impl FieldChangeDto {
 /// mishandle: an invalid year (corrupts the file), a non-numeric track/disc/
 /// total or BPM (silently dropped). Free-text fields accept anything; an
 /// empty/absent value is always valid (it clears the field).
+/// The keys of the readings a field cannot hold (#548).
+fn invalid_readings(fields: &[(String, String)]) -> Vec<String> {
+    fields
+        .iter()
+        .filter(|(field, value)| field_value_invalid(field, Some(value)))
+        .map(|(field, _)| field.clone())
+        .collect()
+}
+
 fn field_value_invalid(field: &str, new: Option<&str>) -> bool {
     match new {
         Some(value) => !is_writable_value(&TagField::from_storage_key(field), value),
@@ -178,6 +187,19 @@ pub struct NameProbeDto {
     pub subject: String,
     pub fields: Vec<(String, String)>,
     pub matched: bool,
+    /// The fields whose value read out is one the field cannot hold, `A1` as a
+    /// track number (#548): the preview flags them and leaves them unwritten.
+    #[serde(default)]
+    pub invalid: Vec<String>,
+}
+
+/// What a FROM NAME mask makes of several files (#548), for the mask builder's
+/// extract list: the tags the mask names, in its order (the list's columns),
+/// and one reading per file, in the order the paths came.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NameProbesDto {
+    pub fields: Vec<String>,
+    pub files: Vec<NameProbeDto>,
 }
 
 /// What a mask makes of a text list (#61): the first track's read-out, and how
@@ -2628,7 +2650,7 @@ impl App {
         let mask = Mask::parse(&normalized)?;
         let depth = normalized.matches('/').count();
         let subject = name_subject(path, depth).unwrap_or_default();
-        let fields = match mask.extract(&subject) {
+        let fields: Vec<(String, String)> = match mask.extract(&subject) {
             Ok(tags) => tags
                 .iter()
                 .map(|(field, value)| (field.to_storage_key(), normalize_extracted(field, value)))
@@ -2639,15 +2661,37 @@ impl App {
                     subject,
                     fields: Vec::new(),
                     matched: false,
+                    invalid: Vec::new(),
                 })
             }
             Err(err) => return Err(err.into()),
         };
         Ok(NameProbeDto {
             subject,
+            invalid: invalid_readings(&fields),
             fields,
             matched: true,
         })
+    }
+
+    /// [`probe_tags_from_name`](Self::probe_tags_from_name) over several files
+    /// at once (#548): the mask builder lists what every selected name reads
+    /// as, recomputed per keystroke, so one round trip rather than one a file.
+    pub fn probe_tags_from_names(
+        &self,
+        mask_pattern: &str,
+        paths: &[PathBuf],
+    ) -> Result<NameProbesDto, AppError> {
+        let fields = Mask::parse(&mask_pattern.replace('\\', "/"))?
+            .fields()
+            .iter()
+            .map(TagField::to_storage_key)
+            .collect();
+        let files = paths
+            .iter()
+            .map(|path| self.probe_tags_from_name(mask_pattern, path))
+            .collect::<Result<_, _>>()?;
+        Ok(NameProbesDto { fields, files })
     }
 
     /// Preview tags read from a text list (#61): one line per track, parsed
@@ -2741,11 +2785,13 @@ impl App {
                     .filter(|(_, value)| !value.is_empty())
                     .collect(),
                 matched: true,
+                invalid: Vec::new(),
             },
             None => NameProbeDto {
                 subject: typical_text_list_line(text).to_string(),
                 fields: Vec::new(),
                 matched: false,
+                invalid: Vec::new(),
             },
         };
         Ok(TextProbeDto {
@@ -7880,6 +7926,35 @@ mod tests {
         // A broken pattern is still an error.
         assert!(app
             .probe_tags_from_name("%artist% - [%title%", &track)
+            .is_err());
+    }
+
+    // #548: the mask builder reads every selected name in one call, with the
+    // mask's tags as its columns and the readings a field cannot hold marked.
+    #[test]
+    fn names_probe_together_with_their_columns_and_unwritable_readings() {
+        let dir = TempDir::new("fromname-probes");
+        let fits = dir.tagged_flac("01 - Autechre - Gantz Graf.flac", "Autechre", "Gantz Graf");
+        let vinyl = dir.tagged_flac("A1 - Autechre - Cichli.flac", "Autechre", "Cichli");
+        let junk = dir.tagged_flac("track05.flac", "Autechre", "Pen Expers");
+        let app = open_app(&dir);
+
+        let probes = app
+            .probe_tags_from_names(
+                "%track% - %artist% - %title%[ (%comment%)]",
+                &[fits, vinyl, junk],
+            )
+            .unwrap();
+        assert_eq!(probes.fields, vec!["track", "artist", "title", "comment"]);
+        assert_eq!(probes.files.len(), 3);
+        assert!(probes.files[0].matched);
+        assert!(probes.files[0].invalid.is_empty());
+        assert_eq!(probes.files[1].invalid, vec!["track".to_string()]);
+        assert!(!probes.files[2].matched);
+        assert_eq!(probes.files[2].subject, "track05");
+
+        assert!(app
+            .probe_tags_from_names("%artist% - [%title%", &[])
             .is_err());
     }
 

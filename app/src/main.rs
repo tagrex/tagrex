@@ -18,9 +18,9 @@ use tauri::{Manager, State};
 use tagrex_commands::{
     ActionGroupDto, AlignMatchDto, App, AppError, BatchDto, BlockTargetsDto, CandidateDto,
     CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateGroupDto, ErrorDto,
-    ImportFieldDto, ImportSelectionDto, ImportTrackDto, NameProbeDto, PlaceholderDto, PlanDto,
-    ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto, TagEditDto, TextProbeDto,
-    TrackDto, TransformRuleDto,
+    ImportFieldDto, ImportSelectionDto, ImportTrackDto, NameProbeDto, NameProbesDto,
+    PlaceholderDto, PlanDto, ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto,
+    TagEditDto, TextProbeDto, TrackDto, TransformRuleDto,
 };
 use tagrex_player::{Player, PlayerStatus};
 
@@ -264,6 +264,21 @@ fn probe_tags_from_name(
 ) -> Result<NameProbeDto, ErrorDto> {
     with_app(&state, |app| {
         app.probe_tags_from_name(&mask, &PathBuf::from(path))
+            .map_err(ErrorDto::from)
+    })
+}
+
+/// What a FROM NAME mask reads from each of several files (#548), for the mask
+/// builder's list.
+#[tauri::command]
+fn probe_tags_from_names(
+    state: State<AppState>,
+    mask: String,
+    paths: Vec<String>,
+) -> Result<NameProbesDto, ErrorDto> {
+    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+    with_app(&state, |app| {
+        app.probe_tags_from_names(&mask, &paths)
             .map_err(ErrorDto::from)
     })
 }
@@ -1409,6 +1424,7 @@ fn main() {
             preview_rename,
             preview_tags_from_name,
             probe_tags_from_name,
+            probe_tags_from_names,
             preview_tags_from_text,
             probe_tags_from_text,
             read_text_list,

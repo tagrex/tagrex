@@ -484,6 +484,22 @@ function mockInvoke(cmd, args) {
       const fields = mockExtractFromName(args.mask, subject);
       return Promise.resolve({ subject, fields: fields || [], matched: !!fields });
     }
+    // The mask builder's FROM NAME list (#548): every name at once, the mask's
+    // tags as columns, and a track number that is not a number marked unwritable.
+    case "probe_tags_from_names": {
+      const columns = [];
+      for (const [, name] of String(args.mask).matchAll(/%([a-z_0-9]+?)(?::\d+)?%/gi)) {
+        const key = name.toLowerCase();
+        if (key !== "skip" && !columns.includes(key)) columns.push(key);
+      }
+      const files = args.paths.map((path) => {
+        const subject = mockNameSubject(path, args.mask);
+        const fields = mockExtractFromName(args.mask, subject);
+        const invalid = (fields || []).filter(([f, v]) => f === "track" && !/^\d+$/.test(v)).map(([f]) => f);
+        return { subject, fields: fields || [], matched: !!fields, invalid };
+      });
+      return Promise.resolve({ fields: columns, files });
+    }
     // FROM TEXT (#61): the lines the mask fits are the tracks, and the nth
     // track goes to the nth path — the backend's pairing.
     case "probe_tags_from_text": {

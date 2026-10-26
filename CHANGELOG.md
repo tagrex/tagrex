@@ -50,6 +50,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   does the same). The panel's own actions, Search, Re-read and the filter
   presets, stay outside with their border. A pressed flag or an open menu shows
   in the accent colour. (#547)
+- **The mask builder reads tags out of file names too.** Tags from the file
+  name opens it from its mask field: every selected file's name, then a column
+  for each tag the mask names, recomputed as you type through the same rules as
+  Preview tags. A value the file already holds is muted, one a Transform rule
+  changed is tinted with the raw reading in its tooltip, one the field cannot
+  hold (A1 as a track number) is red and not written, and a name the mask does
+  not fit says so across its row. The reference leaves out what cannot be read
+  back. (#548)
 
 ## [0.26.0] - 2026-10-24
 

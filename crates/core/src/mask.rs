@@ -325,6 +325,35 @@ impl Mask {
     pub fn pattern(&self) -> &str {
         &self.pattern
     }
+
+    /// The tags the pattern names, in the order it names them, each once
+    /// (#548): what the extract direction can fill, and so the columns a list of
+    /// readings has. `%skip%`, literal text and the render-only values name no
+    /// tag; a placeholder inside a `[...]` section does.
+    pub fn fields(&self) -> Vec<TagField> {
+        let mut fields = Vec::new();
+        collect_fields(&self.segments, &mut fields);
+        fields
+    }
+}
+
+fn collect_fields(segments: &[Segment], fields: &mut Vec<TagField>) {
+    for segment in segments {
+        match segment {
+            Segment::Placeholder(field, ..) => {
+                if !fields.contains(field) {
+                    fields.push(field.clone());
+                }
+            }
+            Segment::Section(inner) => collect_fields(inner, fields),
+            Segment::Call(_, arguments) => {
+                for argument in arguments {
+                    collect_fields(argument, fields);
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn parse_segments(pattern: &str) -> Result<Vec<Segment>, MaskError> {
@@ -1366,6 +1395,23 @@ mod tests {
             .iter()
             .map(|(field, value)| (field.clone(), value.to_string()))
             .collect()
+    }
+
+    // #548: the columns of the mask builder's extract list.
+    #[test]
+    fn a_mask_lists_the_tags_it_names_in_order_once() {
+        let mask =
+            Mask::parse("%track% - %artist% - %title%[ (%comment%)] %skip% %artist%").unwrap();
+        assert_eq!(
+            mask.fields(),
+            vec![
+                TagField::TrackNumber,
+                TagField::Artist,
+                TagField::Title,
+                TagField::Comment
+            ]
+        );
+        assert!(Mask::parse("just text").unwrap().fields().is_empty());
     }
 
     #[test]
