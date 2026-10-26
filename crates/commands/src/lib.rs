@@ -878,13 +878,24 @@ pub struct UnrenderedDto {
     /// The placeholder's name as written in a mask (`disc`, `albumartist`).
     pub field: String,
     pub files: usize,
+    /// Which files (#540): the mask builder marks each of them in its list.
+    #[serde(default)]
+    pub paths: Vec<String>,
 }
 
-/// Count one more file whose mask needed `field` and found it empty.
-fn tally_unrendered(list: &mut Vec<UnrenderedDto>, field: String) {
+/// Count one more file, `path`, whose mask needed `field` and found it empty.
+fn tally_unrendered(list: &mut Vec<UnrenderedDto>, field: String, path: &Path) {
+    let path = path.to_string_lossy().into_owned();
     match list.iter_mut().find(|entry| entry.field == field) {
-        Some(entry) => entry.files += 1,
-        None => list.push(UnrenderedDto { field, files: 1 }),
+        Some(entry) => {
+            entry.files += 1;
+            entry.paths.push(path);
+        }
+        None => list.push(UnrenderedDto {
+            field,
+            files: 1,
+            paths: vec![path],
+        }),
     }
 }
 
@@ -2473,7 +2484,7 @@ impl App {
             let target = match self.render_target_under(&mask, path, root) {
                 Ok(target) => target,
                 Err(Some(field)) => {
-                    tally_unrendered(&mut unrendered, field);
+                    tally_unrendered(&mut unrendered, field, path);
                     continue;
                 }
                 Err(None) => continue,
@@ -3259,7 +3270,7 @@ impl App {
             let target = match self.render_target_under(&mask, path, &root) {
                 Ok(target) => target,
                 Err(Some(field)) => {
-                    tally_unrendered(&mut unrendered, field);
+                    tally_unrendered(&mut unrendered, field, path);
                     continue;
                 }
                 Err(None) => continue,
@@ -7334,7 +7345,11 @@ mod tests {
             plan.unrendered,
             vec![UnrenderedDto {
                 field: "disc".into(),
-                files: 2
+                files: 2,
+                paths: vec![
+                    one.to_string_lossy().into_owned(),
+                    two.to_string_lossy().into_owned()
+                ],
             }]
         );
 
@@ -7349,6 +7364,10 @@ mod tests {
             .unwrap();
         assert!(moved.changes.is_empty());
         assert_eq!(moved.unrendered[0].field, "disc");
+        assert_eq!(
+            moved.unrendered[0].paths,
+            vec![one.to_string_lossy().into_owned()]
+        );
 
         // Optional, the same mask renders and nothing is reported.
         let fine = app.preview_rename("[%disc%]%title%", &[one, two]).unwrap();

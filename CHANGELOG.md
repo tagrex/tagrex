@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A mask builder for RENAMER.** The button at the end of the mask row opens a
+  window with the mask in a field of its own, the placeholder and function
+  reference kept open beside it, and every selected file below as its current
+  name and the one the mask gives it, recomputed as you type through the same
+  call and rules as Preview. Rows are marked when the name stays, when a
+  required placeholder is empty for that file, and when two files would get the
+  same name; an error in the expression is a line under the field. Use this
+  mask puts it in the box and stages the preview. (#540)
+
 ## [0.26.0] - 2026-10-24
 
 TagRex now measures BPM from the audio: select files and the metronome on the

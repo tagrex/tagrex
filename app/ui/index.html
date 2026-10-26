@@ -28,6 +28,7 @@
       <symbol id="i-prev" viewBox="0 0 16 16"><path d="M12.4 3.6 6.6 8l5.8 4.4Z" fill="currentColor" stroke="none"/><line x1="4.2" y1="3.6" x2="4.2" y2="12.4"/></symbol>
       <symbol id="i-next" viewBox="0 0 16 16"><path d="M3.6 3.6 9.4 8l-5.8 4.4Z" fill="currentColor" stroke="none"/><line x1="11.8" y1="3.6" x2="11.8" y2="12.4"/></symbol>
       <symbol id="i-repeat" viewBox="0 0 16 16"><path d="M3.2 8.6V7.4a2.2 2.2 0 0 1 2.2-2.2h7.4"/><path d="M10.9 3.2 12.8 5.2 10.9 7.2"/><path d="M12.8 7.4v1.2a2.2 2.2 0 0 1-2.2 2.2H3.2"/><path d="M5.1 8.8 3.2 10.8 5.1 12.8"/></symbol>
+      <symbol id="i-builder" viewBox="0 0 16 16"><path d="M2.6 6V2.6H6"/><path d="M10 2.6h3.4V6"/><path d="M13.4 10v3.4H10"/><path d="M6 13.4H2.6V10"/><line x1="5.6" y1="8" x2="10.4" y2="8"/></symbol>
       <symbol id="i-metronome" viewBox="0 0 16 16"><path d="M6.4 2.4h3.2l3 11.2H3.4Z"/><line x1="4.3" y1="10.4" x2="11.7" y2="10.4"/><line x1="8" y1="10.4" x2="11.4" y2="4.6"/></symbol>
       <symbol id="i-eraser" viewBox="0 0 16 16"><path d="M6.6 13.2 2.9 9.5a1.2 1.2 0 0 1 0-1.7l5.2-5.2a1.2 1.2 0 0 1 1.7 0l3.3 3.3a1.2 1.2 0 0 1 0 1.7l-5.6 5.6Z"/><line x1="5.6" y1="6.4" x2="10.4" y2="11.2"/><line x1="6.6" y1="13.2" x2="13.4" y2="13.2"/></symbol>
       <symbol id="i-group" viewBox="0 0 16 16"><line x1="6.4" y1="4" x2="13.6" y2="4"/><line x1="6.4" y1="8" x2="13.6" y2="8"/><line x1="6.4" y1="12" x2="13.6" y2="12"/><rect x="2.2" y="2.8" width="2.4" height="2.4" rx=".6"/><rect x="2.2" y="10.8" width="2.4" height="2.4" rx=".6"/></symbol>
@@ -259,6 +260,9 @@
               <input id="mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
               <button class="icon ph-btn" type="button" data-ph-target="mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
               <button class="icon preset-btn" type="button" data-preset-target="mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+              <!-- The mask builder (#540): the same mask in a window, with the
+                   reference open beside it and the whole selection below. -->
+              <button id="mask-builder-open" class="icon" type="button" data-i18n-title="maskBuilder.open" title="Open the mask builder" data-i18n-aria-label="maskBuilder.open" aria-label="Open the mask builder"><svg class="ico"><use href="#i-builder"/></svg></button>
             </div>
             <!-- Live, single-file example (#382): rendered from the current
                  selection's first track as the mask is typed, the same way
@@ -827,6 +831,39 @@
         <div class="modal-actions">
           <button id="colmask-cancel" data-i18n="action.cancel">Cancel</button>
           <button id="colmask-ok" class="primary">Add column</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- The mask builder (#540): the RENAMER mask with the placeholder
+         reference kept open beside it and, below, what it makes of every
+         selected file. Driven by maskbuilder.js; nothing is written from here,
+         OK puts the mask in the box and stages the preview. -->
+    <div id="mask-builder" class="modal-backdrop" hidden>
+      <div class="modal mask-builder" role="dialog" aria-modal="true" aria-labelledby="mb-title">
+        <div class="modal-head">
+          <h2 id="mb-title" data-i18n="maskBuilder.title">Mask builder</h2>
+          <button id="mb-close" class="icon" type="button" data-i18n-title="action.cancel" title="Cancel" data-i18n-aria-label="action.cancel" aria-label="Cancel"><svg class="ico"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="mb-body">
+          <div class="mb-main">
+            <div class="mb-expr-row">
+              <textarea id="mb-expr" class="mono" rows="3" spellcheck="false" autocomplete="off" data-i18n-aria-label="maskBuilder.expression" aria-label="Mask"></textarea>
+              <button class="icon preset-btn" type="button" data-preset-target="mb-expr" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+            </div>
+            <p id="mb-error" class="mb-error" role="alert" hidden></p>
+            <p id="mb-summary" class="mb-summary muted" aria-live="polite"></p>
+            <div id="mb-list" class="mb-list mono"></div>
+          </div>
+          <div class="mb-ref">
+            <input id="mb-ref-filter" type="search" data-i18n-placeholder="ph.filter" placeholder="Filter placeholders…" spellcheck="false" autocomplete="off" />
+            <div id="mb-ref-body" class="ph-body mb-ref-body"></div>
+            <p class="ph-foot muted" data-i18n="ph.foot">Click one to insert it at the caret.</p>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="mb-cancel" type="button" data-i18n="action.cancel">Cancel</button>
+          <button id="mb-ok" class="primary" type="button" data-i18n="maskBuilder.ok">Use this mask</button>
         </div>
       </div>
     </div>

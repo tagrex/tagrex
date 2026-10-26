@@ -37,13 +37,13 @@ const MASK_STORAGE_KEY = "tagrex.renameMask";
 let moveMode = "move";
 let reorganize = false;
 
-function renamePlan(paths) {
-  return invoke("preview_rename", { mask: el("mask").value, paths });
+function renamePlan(paths, mask = el("mask").value) {
+  return invoke("preview_rename", { mask, paths });
 }
 
-function movePlan(paths) {
+function movePlan(paths, mask = el("mask").value) {
   return invoke("preview_move", {
-    mask: el("mask").value,
+    mask,
     paths,
     destination: el("move-dest").value || null,
     copy: moveMode === "copy",
@@ -90,6 +90,15 @@ async function preview() {
   } catch (e) {
     toast(String(e), true);
   }
+}
+
+// What `mask` makes of `paths`, the way Preview builds it: rename or reorganize
+// as the panel is set, then the panel's ticked rules. The mask builder (#540)
+// shows this for a mask that is not in the box yet, so its list and the plan
+// it stages can never disagree.
+async function planForMask(mask, paths) {
+  const plan = await (reorganize ? movePlan(paths, mask) : renamePlan(paths, mask));
+  return runChainOverPlan(plan, "renamer");
 }
 
 // "%disc% empty on 2 files, %year% empty on 1 file" — or "" when the mask
@@ -309,4 +318,4 @@ onChainChanged("renamer", () => {
   if (previewSource === "rename" && previewPlan?.changes.length) preview();
 });
 
-export { scheduleMaskExample, syncCarryToggles };
+export { maskPart, planForMask, preview, scheduleMaskExample, syncCarryToggles };

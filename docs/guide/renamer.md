@@ -20,6 +20,28 @@ to something with a hole in it. If half your selection is missing from the
 preview, that is usually the reason: wrap the fragile part in `[...]` so those
 files still get a name.
 
+### The mask builder
+
+For a longer expression, the button at the end of the mask row opens the mask
+builder: the mask in a field of its own, the placeholder and function reference
+kept open beside it with a filter, and below, every selected file as its current
+name and the name the mask gives it, recomputed as you type. A click in the
+reference inserts at the caret, and a function arrives with the caret inside its
+parentheses.
+
+The list is built by the same call as Preview, with the same rules from
+**Transform**, and it says what Preview would: a row is marked when the name
+stays as it is, when a placeholder the mask requires is empty for that file, and
+when two files would end up with the same name. A mistake in the expression, an
+unknown placeholder or a missing `)`, shows as a line under the field while the
+list keeps the last result. A large selection lists its first 300 files and
+says how many there are.
+
+**Use this mask** (or Enter) puts the mask in the box and stages the preview;
+**Cancel** (or Esc) leaves the box as it was. Nothing is written from the
+builder. It follows **Reorganize** when that is on, so the new names include the
+folders.
+
 ## Reorganize into folders
 
 The same grammar, plus `/` (or `\`) to separate directories:

@@ -20,7 +20,7 @@ let cache = null;
 let target = null;
 let anchor = null;
 
-async function catalogue() {
+export async function catalogue() {
   if (!cache) cache = await invoke("mask_placeholders");
   return cache;
 }
@@ -55,7 +55,9 @@ function rows(entries) {
     .join("");
 }
 
-function render(entries, filter) {
+// Into the popover's body, or into `body` for the mask builder (#540), which
+// keeps the same reference open beside its expression.
+export function renderReference(entries, filter, body = el("ph-body")) {
   const needle = filter.trim().toLowerCase();
   const matching = needle
     ? entries.filter(
@@ -64,7 +66,6 @@ function render(entries, filter) {
           describe(entry).toLowerCase().includes(needle),
       )
     : entries;
-  const body = el("ph-body");
   if (!matching.length) {
     body.innerHTML = `<p class="ph-empty muted">${escapeHtml(t("ph.noMatch", { filter }))}</p>`;
     return;
@@ -134,7 +135,7 @@ async function openReference(button, input) {
   target = input;
   anchor = button;
   el("ph-filter").value = "";
-  render(entries, "");
+  renderReference(entries, "");
   menu.hidden = false;
   place(menu, button);
   el("ph-filter").focus();
@@ -146,6 +147,11 @@ async function openReference(button, input) {
 // NAME's read-out, the export name) listen for it.
 function insert(token) {
   if (!target) return;
+  insertAt(target, token);
+}
+
+// The same insertion into any input, for the mask builder's reference (#540).
+export function insertAt(target, token) {
   const start = target.selectionStart ?? target.value.length;
   const end = target.selectionEnd ?? start;
   target.value = target.value.slice(0, start) + token + target.value.slice(end);
@@ -173,7 +179,9 @@ export async function initPlaceholderReference() {
       else openReference(button, input);
       return;
     }
-    const row = e.target.closest?.(".ph-row[data-token]");
+    // Only the popover's rows: the mask builder lists the same rows and inserts
+    // them into its own field (#540).
+    const row = e.target.closest?.("#ph-menu .ph-row[data-token]");
     if (row) {
       insert(row.dataset.token);
       // Stays open: inserting several placeholders in a row is the common case.
@@ -183,7 +191,7 @@ export async function initPlaceholderReference() {
   });
 
   el("ph-filter").addEventListener("input", (e) => {
-    if (cache) render(cache, e.target.value);
+    if (cache) renderReference(cache, e.target.value);
   });
 
   document.addEventListener("keydown", (e) => {

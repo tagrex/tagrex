@@ -306,10 +306,28 @@ function mockInvoke(cmd, args) {
       const field = t && missingRequired(mask, t);
       if (!field) continue;
       const entry = out.find((u) => u.field === field);
-      if (entry) entry.files += 1;
-      else out.push({ field, files: 1 });
+      if (entry) {
+        entry.files += 1;
+        entry.paths.push(p);
+      } else out.push({ field, files: 1, paths: [p] });
     }
     return out;
+  };
+  // What the backend's parser refuses, in the shape it refuses with (#540): an
+  // unknown placeholder or an unclosed call, enough to exercise the mask
+  // builder's error line in a browser.
+  const maskError = (mask) => {
+    const known = /^(artist|albumartist|title|album|year|track|tracktotal|disc|disctotal|genre|bpm|key|comment|composer|label|catalognumber|filename|fileext|foldername|side)$/i;
+    for (const [, name] of String(mask).matchAll(/%([a-z_0-9]+?)(?::\d+)?%/gi)) {
+      if (!known.test(name)) {
+        return { message: { code: "error.mask.unknownPlaceholder", args: { name }, count: null }, text: `Unknown placeholder: %${name}%` };
+      }
+    }
+    const call = /\$([a-z]+)\(/i.exec(mask);
+    if (call && (mask.match(/\(/g) || []).length > (mask.match(/\)/g) || []).length) {
+      return { message: { code: "error.mask.unclosedCall", args: { name: call[1] }, count: null }, text: `Unclosed function call: $${call[1]}( is missing its )` };
+    }
+    return null;
   };
   // Whether a target's folder is new (#385): the mock's "disk" is its track
   // list, so a folder exists when some track already lives in it.
@@ -430,6 +448,7 @@ function mockInvoke(cmd, args) {
     case "list_tracks":
       return Promise.resolve(s.tracks);
     case "preview_rename": {
+      if (maskError(args.mask)) return Promise.reject(maskError(args.mask));
       // #382: a separator in the mask restructures folders too, same as
       // preview_move below — anchored at the file's own current folder
       // (`dir`) rather than a shared destination, so renaming in place still
@@ -663,6 +682,7 @@ function mockInvoke(cmd, args) {
       });
     }
     case "preview_move": {
+      if (maskError(args.mask)) return Promise.reject(maskError(args.mask));
       const changes = args.paths
         .map((p) => {
           const t = findTrack(p);

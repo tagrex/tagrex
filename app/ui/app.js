@@ -33,6 +33,7 @@ import {
 import { initUpdateCheck } from "./js/updatecheck.js";
 import "./js/tablegestures.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
+import "./js/maskbuilder.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";
 import { refreshTextProbe, scheduleTextProbe } from "./js/fromtext.js";
 import { refreshDeduplicator, runDuplicateScan } from "./js/dedup.js";

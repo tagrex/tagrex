@@ -6256,3 +6256,121 @@ body.drag-active #drop-overlay {
   background: var(--accent-ink);
   transition: width 0.12s linear;
 }
+
+/* ---- mask builder (#540) --------------------------------------------------
+   The expression and its result over the selection on the left, the
+   placeholder reference kept open on the right. */
+.mask-builder {
+  max-width: 1120px;
+  width: calc(100% - 48px);
+  height: min(88vh, 860px);
+  padding: var(--space-4) var(--space-6);
+  gap: var(--space-3);
+}
+.mb-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: var(--space-6);
+}
+.mb-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mb-expr-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.mb-expr-row textarea {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+.mb-error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--del);
+}
+.mb-error[hidden] {
+  display: none;
+}
+.mb-summary {
+  margin: 0;
+  min-height: 1.4em;
+  font-size: var(--text-xs);
+}
+.mb-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  padding: var(--space-1) 0;
+  font-size: var(--text-xs);
+}
+.mb-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: 3px 10px;
+}
+.mb-row:hover {
+  background: var(--row-hover);
+}
+.mb-old {
+  flex: 0 1 40%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.mb-arrow {
+  flex: none;
+  color: var(--muted);
+}
+.mb-new {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+.mb-unchanged .mb-new {
+  color: var(--muted);
+  font-style: italic;
+}
+.mb-unrendered .mb-new {
+  color: var(--del);
+  font-style: italic;
+}
+.mb-clash .mb-new,
+.mb-note {
+  color: var(--del);
+}
+.mb-note {
+  flex: none;
+  font-family: var(--font-ui, inherit);
+}
+.mb-empty {
+  margin: 0;
+  padding: var(--space-3) 10px;
+}
+.mb-ref {
+  flex: 0 0 340px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.mb-ref-body {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
