@@ -46,6 +46,7 @@ export const fr = {
   "maskBuilder.title": "Constructeur de masque",
   "maskBuilder.expression": "Masque",
   "maskBuilder.ok": "Utiliser ce masque",
+  "maskBuilder.clear": "Effacer le masque",
   "maskBuilder.noSelection": "Sélectionnez des fichiers dans le tableau pour voir ce que le masque en fait.",
   "maskBuilder.unchanged": "aucun changement",
   "maskBuilder.needs": "{field} est vide",

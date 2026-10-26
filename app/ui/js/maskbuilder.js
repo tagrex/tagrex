@@ -193,6 +193,15 @@ el("mask-builder-open").addEventListener("click", open);
 el("mb-close").addEventListener("click", close);
 el("mb-cancel").addEventListener("click", close);
 el("mb-ok").addEventListener("click", accept);
+// Cleared as an edit of the field (#542), so Cmd+Z brings the mask back; the
+// direct assignment is only for an engine without the editing command.
+el("mb-clear").addEventListener("click", () => {
+  expr.focus();
+  expr.select();
+  if (!expr.value || document.execCommand("delete")) return;
+  expr.value = "";
+  expr.dispatchEvent(new Event("input", { bubbles: true }));
+});
 expr.addEventListener("input", () => {
   // A mask is one line: a pasted line break would only ever be an error.
   if (/[\r\n]/.test(expr.value)) {

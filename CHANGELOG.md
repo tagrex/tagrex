@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   resized** from its corner, keeping the size for next time. Each file is one
   line: a name too long for the list scrolls it sideways instead of wrapping
   across two. (#541)
+- **A clear button in the mask builder** empties the mask to start over, with
+  the caret left in the field; ⌘Z (Ctrl+Z) brings it back. (#542)
 
 ## [0.26.0] - 2026-10-24
 

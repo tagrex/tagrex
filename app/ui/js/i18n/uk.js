@@ -47,6 +47,7 @@ export const uk = {
   "maskBuilder.title": "Конструктор маски",
   "maskBuilder.expression": "Маска",
   "maskBuilder.ok": "Використати маску",
+  "maskBuilder.clear": "Очистити маску",
   "maskBuilder.noSelection": "Виберіть файли в таблиці, щоб побачити, що з них зробить маска.",
   "maskBuilder.unchanged": "без змін",
   "maskBuilder.needs": "{field} порожнє",

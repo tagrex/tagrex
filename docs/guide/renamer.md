@@ -27,7 +27,8 @@ builder: the mask in a field of its own, the placeholder and function reference
 kept open beside it with a filter, and below, every selected file as its current
 name and the name the mask gives it, recomputed as you type. A click in the
 reference inserts at the caret, and a function arrives with the caret inside its
-parentheses.
+parentheses. The × beside the field clears it to start over; ⌘Z brings the mask
+back.
 
 The list is built by the same call as Preview, with the same rules from
 **Transform**, and it says what Preview would: a row is marked when the name

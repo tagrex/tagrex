@@ -46,6 +46,7 @@ export const it = {
   "maskBuilder.title": "Costruttore di maschere",
   "maskBuilder.expression": "Maschera",
   "maskBuilder.ok": "Usa questa maschera",
+  "maskBuilder.clear": "Svuota la maschera",
   "maskBuilder.noSelection": "Seleziona dei file nella tabella per vedere cosa ne fa la maschera.",
   "maskBuilder.unchanged": "nessuna modifica",
   "maskBuilder.needs": "{field} è vuoto",
