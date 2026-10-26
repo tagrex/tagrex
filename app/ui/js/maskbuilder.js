@@ -18,8 +18,11 @@ import { selectedPaths } from "./state.js";
 // what anyone reads; the count says how many more there are.
 const LIMIT = 300;
 const DEBOUNCE_MS = 200;
+// The size the window was last left at (#541), as "width,height" in pixels.
+const SIZE_STORAGE_KEY = "tagrex.maskBuilderSize";
 
 const modal = el("mask-builder");
+const dialog = modal.querySelector(".mask-builder");
 const expr = el("mb-expr");
 
 let entries = [];
@@ -120,11 +123,43 @@ function schedule() {
   timer = setTimeout(refresh, DEBOUNCE_MS);
 }
 
+// The window opens at the size it was left at, if that still fits; the
+// stylesheet's maximum keeps a size from a larger screen inside this one.
+function restoreSize() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(SIZE_STORAGE_KEY);
+  } catch (e) {
+    /* storage unavailable: the default size */
+  }
+  const [width, height] = String(stored || "").split(",").map(Number);
+  dialog.style.width = width > 0 ? `${width}px` : "";
+  dialog.style.height = height > 0 ? `${height}px` : "";
+}
+
+// Kept only when the corner was dragged: a default size written back on every
+// close would stop the window following the app window's own size.
+let openedSize = null;
+
+function rememberSize() {
+  if (modal.hidden || !openedSize) return;
+  const { width, height } = dialog.getBoundingClientRect();
+  if (Math.abs(width - openedSize.width) < 2 && Math.abs(height - openedSize.height) < 2) return;
+  try {
+    localStorage.setItem(SIZE_STORAGE_KEY, `${Math.round(width)},${Math.round(height)}`);
+  } catch (e) {
+    /* storage unavailable: the size just isn't kept */
+  }
+}
+
 async function open() {
+  restoreSize();
   expr.value = el("mask").value;
   el("mb-ref-filter").value = "";
   el("mb-error").hidden = true;
   modal.hidden = false;
+  const { width, height } = dialog.getBoundingClientRect();
+  openedSize = { width, height };
   expr.focus();
   expr.setSelectionRange(expr.value.length, expr.value.length);
   refresh();
@@ -137,6 +172,7 @@ async function open() {
 }
 
 function close() {
+  rememberSize();
   clearTimeout(timer);
   generation++;
   modal.hidden = true;

@@ -6259,13 +6259,21 @@ body.drag-active #drop-overlay {
 
 /* ---- mask builder (#540) --------------------------------------------------
    The expression and its result over the selection on the left, the
-   placeholder reference kept open on the right. */
+   placeholder reference kept open on the right. Nearly the whole window by
+   default and resizable from its corner (#541); maskbuilder.js remembers the
+   size the user leaves it at. */
 .mask-builder {
-  max-width: 1120px;
-  width: calc(100% - 48px);
-  height: min(88vh, 860px);
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  min-width: 720px;
+  min-height: 420px;
+  width: calc(100vw - 64px);
+  height: calc(100vh - 64px);
   padding: var(--space-4) var(--space-6);
   gap: var(--space-3);
+  resize: both;
+  overflow: hidden;
 }
 .mb-body {
   flex: 1;
@@ -6308,24 +6316,30 @@ body.drag-active #drop-overlay {
 .mb-list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--panel);
   padding: var(--space-1) 0;
   font-size: var(--text-xs);
 }
+/* One line per file (#541): rows as wide as their longest name, so a name too
+   long for the list scrolls it sideways instead of wrapping. */
 .mb-row {
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
   padding: 3px 10px;
+  width: max-content;
+  min-width: 100%;
+  box-sizing: border-box;
+  white-space: nowrap;
 }
 .mb-row:hover {
   background: var(--row-hover);
 }
 .mb-old {
-  flex: 0 1 40%;
+  flex: 0 0 38ch;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6337,9 +6351,7 @@ body.drag-active #drop-overlay {
   color: var(--muted);
 }
 .mb-new {
-  flex: 1;
-  min-width: 0;
-  overflow-wrap: anywhere;
+  flex: none;
   color: var(--text);
 }
 .mb-unchanged .mb-new {

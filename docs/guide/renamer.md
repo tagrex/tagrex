@@ -37,6 +37,11 @@ unknown placeholder or a missing `)`, shows as a line under the field while the
 list keeps the last result. A large selection lists its first 300 files and
 says how many there are.
 
+The window opens nearly as large as the app's and can be resized from its
+lower right corner; it opens at that size next time. Each file is one line, the
+current name cut to a column (the full path is on hover) and the new name
+whole: a name wider than the list scrolls it sideways rather than wrapping.
+
 **Use this mask** (or Enter) puts the mask in the box and stages the preview;
 **Cancel** (or Esc) leaves the box as it was. Nothing is written from the
 builder. It follows **Reorganize** when that is on, so the new names include the

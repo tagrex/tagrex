@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   required placeholder is empty for that file, and when two files would get the
   same name; an error in the expression is a line under the field. Use this
   mask puts it in the box and stages the preview. (#540)
+- **The mask builder opens nearly as large as the app window and can be
+  resized** from its corner, keeping the size for next time. Each file is one
+  line: a name too long for the list scrolls it sideways instead of wrapping
+  across two. (#541)
 
 ## [0.26.0] - 2026-10-24
 
