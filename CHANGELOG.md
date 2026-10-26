@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and tooltip; ticking or editing a preset recomputes the list at once, and
   the summary says how many rules ran on the names. Escape closes the window on
   top first. (#543)
+- **The mask field lines up with the list in the mask builder.** It spans the
+  column edge to edge with the list under it, and its buttons sit at the right
+  of the bar between the two, beside the summary. (#544)
 
 ## [0.26.0] - 2026-10-24
 
