@@ -47,6 +47,7 @@ export const ru = {
   "maskBuilder.expression": "Маска",
   "maskBuilder.ok": "Использовать маску",
   "maskBuilder.clear": "Очистить маску",
+  "maskBuilder.clearShort": "Очистить",
   "maskBuilder.noSelection": "Выберите файлы в таблице, чтобы увидеть, что из них сделает маска.",
   "maskBuilder.unchanged": "без изменений",
   "maskBuilder.needs": "{field} пусто",

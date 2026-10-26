@@ -5747,8 +5747,7 @@ td[data-field="year"],
 /* A dot on the button while this job's chain has rules in it (#239). The chain
    runs on its own, so whether one is set has to be readable without opening
    anything. */
-#transform-btn.has-rules::after,
-#mb-transform.has-rules::after {
+#transform-btn.has-rules::after {
   content: "";
   position: absolute;
   top: 4px;
@@ -5758,8 +5757,7 @@ td[data-field="year"],
   border-radius: 50%;
   background: var(--accent);
 }
-#transform-btn,
-#mb-transform {
+#transform-btn {
   position: relative;
 }
 
@@ -6290,12 +6288,28 @@ body.drag-active #drop-overlay {
   flex-direction: column;
   gap: var(--space-2);
 }
+/* As tall as the mask (#545): one line, growing as it wraps up to five, sized
+   by maskbuilder.js. Wrapped rather than scrolled sideways, so a long mask is
+   always readable whole. */
 #mb-expr {
   box-sizing: border-box;
   width: 100%;
-  resize: vertical;
+  resize: none;
+  overflow-y: hidden;
   font-size: var(--text-sm);
   line-height: 1.5;
+}
+.mb-tool {
+  gap: var(--space-2);
+  flex: none;
+}
+.mb-tool .ico {
+  width: 13px;
+  height: 13px;
+}
+.mb-tool.has-rules {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 /* The summary on the left and the field's buttons on the right (#544). */
 .mb-bar {

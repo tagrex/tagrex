@@ -158,16 +158,33 @@ function rememberSize() {
   }
 }
 
-// The wand's dot and tooltip, the way the toolbar's own wand shows them.
+// The Transform button says how many rules run (#545), in its label and, the
+// way the toolbar's own wand does, in its tooltip.
 function paintTransformButton() {
   const button = el("mb-transform");
   const count = activeRuleCount("renamer");
+  el("mb-transform-label").textContent = count
+    ? `${t("generator.transform")} · ${count}`
+    : t("generator.transform");
   button.classList.toggle("has-rules", count > 0);
   button.title = count
     ? t("generator.chainBtn.some", { rules: tn("unit.rule", count) })
     : t("generator.chainBtn.none");
   button.setAttribute("aria-label", button.title);
   if (button.dataset.tipText) button.dataset.tipText = button.title;
+}
+
+// One line, then as many as the mask wraps to, up to MAX_LINES (#545).
+const MAX_LINES = 5;
+function fitField() {
+  expr.style.height = "auto";
+  const line = parseFloat(getComputedStyle(expr).lineHeight) || 20;
+  const chrome = expr.offsetHeight - expr.clientHeight;
+  const padding = parseFloat(getComputedStyle(expr).paddingTop) + parseFloat(getComputedStyle(expr).paddingBottom);
+  const most = line * MAX_LINES + padding + chrome;
+  const wanted = expr.scrollHeight + chrome;
+  expr.style.height = `${Math.min(wanted, most)}px`;
+  expr.style.overflowY = wanted > most ? "auto" : "hidden";
 }
 
 async function open() {
@@ -177,6 +194,7 @@ async function open() {
   el("mb-ref-filter").value = "";
   el("mb-error").hidden = true;
   modal.hidden = false;
+  fitField();
   const { width, height } = dialog.getBoundingClientRect();
   openedSize = { width, height };
   expr.focus();
@@ -229,6 +247,7 @@ expr.addEventListener("input", () => {
     expr.value = before + expr.value.slice(caret).replace(/[\r\n]+/g, "");
     expr.setSelectionRange(before.length, before.length);
   }
+  fitField();
   schedule();
 });
 expr.addEventListener("keydown", (e) => {
@@ -245,6 +264,10 @@ el("mb-ref-body").addEventListener("click", (e) => {
   if (row) insertAt(expr, row.dataset.token);
 });
 el("mb-transform").addEventListener("click", openTransformModal);
+// A narrower or wider window wraps the mask differently.
+new ResizeObserver(() => {
+  if (!modal.hidden) fitField();
+}).observe(dialog);
 // A preset ticked or edited in the Transform window changes every name here.
 onChainChanged("renamer", () => {
   paintTransformButton();

@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The mask field lines up with the list in the mask builder.** It spans the
   column edge to edge with the list under it, and its buttons sit at the right
   of the bar between the two, beside the summary. (#544)
+- **The mask builder's field fits the mask and its buttons say what they do.**
+  The field starts at one line and grows as the mask wraps, up to five, instead
+  of an empty three-line box; the buttons under it are labelled Mask presets,
+  Transform (with the number of rules that run) and Clear. (#545)
 
 ## [0.26.0] - 2026-10-24
 

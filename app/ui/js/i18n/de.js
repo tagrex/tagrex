@@ -43,6 +43,7 @@ export const de = {
   "maskBuilder.expression": "Maske",
   "maskBuilder.ok": "Diese Maske verwenden",
   "maskBuilder.clear": "Maske leeren",
+  "maskBuilder.clearShort": "Leeren",
   "maskBuilder.noSelection": "Wählen Sie Dateien in der Tabelle, um zu sehen, was die Maske daraus macht.",
   "maskBuilder.unchanged": "keine Änderung",
   "maskBuilder.needs": "{field} ist leer",
