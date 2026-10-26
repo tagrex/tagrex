@@ -193,6 +193,28 @@ pub struct NameProbeDto {
     pub invalid: Vec<String>,
 }
 
+/// One line of a text list under a FROM TEXT mask (#550), for the mask
+/// builder's list: what it reads, and the file it lands on when it is a track
+/// and there is a file left for it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TextLineDto {
+    pub line: String,
+    pub matched: bool,
+    pub fields: Vec<(String, String)>,
+    pub invalid: Vec<String>,
+    pub path: Option<String>,
+}
+
+/// What a FROM TEXT mask makes of a whole list (#550): the tags the mask names
+/// (the list's columns), every non-blank line in order, and how many selected
+/// files are left without a track.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TextLinesDto {
+    pub fields: Vec<String>,
+    pub lines: Vec<TextLineDto>,
+    pub spare_files: usize,
+}
+
 /// What a FROM NAME mask makes of several files (#548), for the mask builder's
 /// extract list: the tags the mask names, in its order (the list's columns),
 /// and one reading per file, in the order the paths came.
@@ -2760,6 +2782,57 @@ impl App {
             changes,
             false,
         ))
+    }
+
+    /// Every line of a text list under a mask, paired with the files the way
+    /// [`preview_tags_from_text`](Self::preview_tags_from_text) pairs them
+    /// (#550): the mask builder's FROM TEXT list.
+    pub fn probe_text_lines(
+        &self,
+        mask_pattern: &str,
+        text: &str,
+        paths: &[PathBuf],
+    ) -> Result<TextLinesDto, AppError> {
+        let mask = Mask::parse(&text_list_mask(mask_pattern))?;
+        let fields = mask.fields().iter().map(TagField::to_storage_key).collect();
+        let mut files = paths.iter();
+        let mut lines = Vec::new();
+        for line in text_list_lines(text) {
+            // Paired the way preview_tags_from_text pairs them: the nth line the
+            // mask fits goes to the nth path.
+            let entry = match mask.extract(line) {
+                Ok(tags) => {
+                    let fields: Vec<(String, String)> = tags
+                        .iter()
+                        .map(|(field, value)| {
+                            (field.to_storage_key(), normalize_extracted(field, value))
+                        })
+                        .filter(|(_, value)| !value.is_empty())
+                        .collect();
+                    TextLineDto {
+                        line: line.to_string(),
+                        matched: true,
+                        invalid: invalid_readings(&fields),
+                        fields,
+                        path: files.next().map(|path| path.to_string_lossy().into_owned()),
+                    }
+                }
+                Err(MaskError::NoMatch) => TextLineDto {
+                    line: line.to_string(),
+                    matched: false,
+                    fields: Vec::new(),
+                    invalid: Vec::new(),
+                    path: None,
+                },
+                Err(err) => return Err(err.into()),
+            };
+            lines.push(entry);
+        }
+        Ok(TextLinesDto {
+            fields,
+            lines,
+            spare_files: files.count(),
+        })
     }
 
     /// What a mask makes of a text list (#61), for the live probe: how many
@@ -7956,6 +8029,54 @@ mod tests {
         assert!(app
             .probe_tags_from_names("%artist% - [%title%", &[])
             .is_err());
+    }
+
+    // #550: every line of the list, the file each track lands on (paired as
+    // Preview tags pairs them), headings left unmatched, and the files left over.
+    #[test]
+    fn text_lines_pair_tracks_with_files_and_keep_the_other_lines() {
+        let dir = TempDir::new("fromtext-lines");
+        let one = dir.tagged_flac("a.flac", "Old", "Old");
+        let two = dir.tagged_flac("b.flac", "Old", "Old");
+        let app = open_app(&dir);
+        let text =
+            "Side A\n1. Autechre - Cichli\n\nA2. Autechre - Pen Expers\n3. Autechre - Fold4\n";
+
+        let probe = app
+            .probe_text_lines(
+                "%track%. %artist% - %title%",
+                text,
+                &[one.clone(), two.clone()],
+            )
+            .unwrap();
+        assert_eq!(probe.fields, vec!["track", "artist", "title"]);
+        let lines: Vec<(&str, bool, Option<&str>)> = probe
+            .lines
+            .iter()
+            .map(|l| (l.line.as_str(), l.matched, l.path.as_deref()))
+            .collect();
+        let one = one.to_string_lossy().into_owned();
+        let two = two.to_string_lossy().into_owned();
+        assert_eq!(
+            lines,
+            vec![
+                ("Side A", false, None),
+                ("1. Autechre - Cichli", true, Some(one.as_str())),
+                ("A2. Autechre - Pen Expers", true, Some(two.as_str())),
+                ("3. Autechre - Fold4", true, None),
+            ]
+        );
+        assert_eq!(probe.lines[2].invalid, vec!["track".to_string()]);
+        assert_eq!(probe.spare_files, 0);
+
+        let short = app
+            .probe_text_lines(
+                "%track%. %artist% - %title%",
+                "1. A - B",
+                &[one.into(), two.into()],
+            )
+            .unwrap();
+        assert_eq!(short.spare_files, 1);
     }
 
     #[test]
