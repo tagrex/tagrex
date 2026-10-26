@@ -259,6 +259,7 @@ export const it = {
   "toolbar.filterPlaceholder": "Filtra… (prova artist:aphex)",
   "toolbar.regex": "Modalità espressione regolare",
   "toolbar.caseSensitive": "Maiuscole/minuscole",
+  "toolbar.clearFilter": "Svuota il filtro",
   "toolbar.presets": "Preset filtro e ordinamento",
   "toolbar.presetsTitle": "Salva e riapplica preset di filtro + ordinamento",
   "health.title": "Salute della libreria",

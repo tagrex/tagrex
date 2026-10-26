@@ -259,6 +259,7 @@ export const ru = {
   "toolbar.filterPlaceholder": "Фильтр… (например artist:aphex)",
   "toolbar.regex": "Режим регулярных выражений",
   "toolbar.caseSensitive": "С учётом регистра",
+  "toolbar.clearFilter": "Очистить фильтр",
   "toolbar.presets": "Наборы фильтра и сортировки",
   "toolbar.presetsTitle": "Сохранять и применять наборы фильтра и сортировки",
   "health.title": "Здоровье библиотеки",

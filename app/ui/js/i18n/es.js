@@ -257,6 +257,7 @@ export const es = {
   "toolbar.filterPlaceholder": "Filtrar… (prueba artist:aphex)",
   "toolbar.regex": "Modo de expresiones regulares",
   "toolbar.caseSensitive": "Distinguir mayúsculas",
+  "toolbar.clearFilter": "Vaciar el filtro",
   "toolbar.presets": "Preajustes de filtro y orden",
   "toolbar.presetsTitle": "Guardar y volver a aplicar preajustes de filtro + orden",
   "health.title": "Salud de la biblioteca",

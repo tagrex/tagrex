@@ -260,6 +260,7 @@ export const uk = {
   "toolbar.filterPlaceholder": "Фільтр… (наприклад artist:aphex)",
   "toolbar.regex": "Режим регулярних виразів",
   "toolbar.caseSensitive": "З урахуванням регістру",
+  "toolbar.clearFilter": "Очистити фільтр",
   "toolbar.presets": "Набори фільтра й сортування",
   "toolbar.presetsTitle": "Зберігати та застосовувати набори фільтра й сортування",
   "health.title": "Здоров'я бібліотеки",

@@ -261,6 +261,7 @@ export const en = {
   "toolbar.filterPlaceholder": "Filter… (try artist:aphex)",
   "toolbar.regex": "Regular-expression mode",
   "toolbar.caseSensitive": "Case-sensitive",
+  "toolbar.clearFilter": "Clear the filter",
   "toolbar.presets": "Filter and sort presets",
   "toolbar.presetsTitle": "Save and re-apply filter + sort presets",
   "health.title": "Library health",

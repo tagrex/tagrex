@@ -255,6 +255,7 @@ export const de = {
   "toolbar.filterPlaceholder": "Filtern… (z. B. artist:aphex)",
   "toolbar.regex": "Modus für reguläre Ausdrücke",
   "toolbar.caseSensitive": "Groß-/Kleinschreibung beachten",
+  "toolbar.clearFilter": "Filter leeren",
   "toolbar.presets": "Filter- und Sortier-Presets",
   "toolbar.presetsTitle": "Presets für Filter + Sortierung speichern und wieder anwenden",
   "health.title": "Bibliotheksgesundheit",

@@ -118,15 +118,24 @@
              input underneath, which is what a pasted path goes into. The button
              is one slot: Browse… normally, Open while the field says something
              other than what is already open. -->
-        <div id="root-box" class="path">
-          <button id="root-display" class="path-open" type="button" data-i18n-title="topbar.chooseFolder" title="Choose a folder to open">
-            <span class="path-parent"></span><span class="path-name">No folder open</span>
-          </button>
-          <button id="root-recent" class="path-recent" type="button" data-i18n-title="topbar.recent" title="Recently opened folders" data-i18n-aria-label="topbar.recent" aria-label="Recently opened folders" hidden><svg class="ico"><use href="#i-caret-down"/></svg></button>
+        <!-- One input group (#547): the indicator or the field it swaps for is
+             the value, the recent-folders caret and the folder button are its
+             tools. The re-read button stays outside: it acts on what is open,
+             not on the path. -->
+        <div id="root-field" class="field">
+          <div id="root-box" class="path">
+            <button id="root-display" class="path-open field-value" type="button" data-i18n-title="topbar.chooseFolder" title="Choose a folder to open">
+              <span class="path-parent"></span><span class="path-name">No folder open</span>
+            </button>
+          </div>
+          <input id="root" type="text" data-i18n-placeholder="topbar.pathPlaceholder" placeholder="/path/to/music/library" spellcheck="false" hidden />
+          <div class="field-tools">
+            <button id="root-recent" class="icon" type="button" data-i18n-title="topbar.recent" title="Recently opened folders" data-i18n-aria-label="topbar.recent" aria-label="Recently opened folders" aria-expanded="false" hidden><svg class="ico"><use href="#i-caret-down"/></svg></button>
+            <span class="field-sep" aria-hidden="true"></span>
+            <button id="lib-action" class="icon" data-i18n-title="topbar.chooseFolder" title="Choose a folder to open" data-i18n-aria-label="topbar.chooseFolder" aria-label="Choose a folder to open"><svg class="ico"><use id="lib-action-glyph" href="#i-folder"/></svg></button>
+          </div>
           <div id="root-recent-menu" class="col-menu" hidden></div>
         </div>
-        <input id="root" type="text" data-i18n-placeholder="topbar.pathPlaceholder" placeholder="/path/to/music/library" spellcheck="false" hidden />
-        <button id="lib-action" class="icon" data-i18n-title="topbar.chooseFolder" title="Choose a folder to open" data-i18n-aria-label="topbar.chooseFolder" aria-label="Choose a folder to open"><svg class="ico"><use id="lib-action-glyph" href="#i-folder"/></svg></button>
         <!-- Re-read what is open (#212): the folder changes under the app —
              something dropped in, a track edited elsewhere — and reopening it
              through the folder chooser is several clicks for one idea. -->
@@ -157,10 +166,14 @@
           <!-- Filter (#44): substring or regex, optionally case-sensitive, and
                field-scoped via a `field:query` prefix (e.g. artist:aphex). The
                two flag toggles sit inside the box; a bad regex reddens it. -->
-          <div class="filter-ctl">
+          <div class="filter-ctl field is-empty">
             <input id="filter" type="search" data-i18n-placeholder="toolbar.filterPlaceholder" placeholder="Filter… (try artist:aphex)" spellcheck="false" />
-            <button id="filter-regex" class="filter-flag flag-regex" type="button" data-i18n-title="toolbar.regex" title="Regular-expression mode" aria-pressed="false">.*</button>
-            <button id="filter-case" class="filter-flag flag-case" type="button" data-i18n-title="toolbar.caseSensitive" title="Case-sensitive" aria-pressed="false">Aa</button>
+            <div class="field-tools">
+              <button id="filter-clear" class="icon field-clear" type="button" data-i18n-title="toolbar.clearFilter" title="Clear the filter" data-i18n-aria-label="toolbar.clearFilter" aria-label="Clear the filter"><svg class="ico"><use href="#i-close"/></svg></button>
+              <span class="field-sep" aria-hidden="true"></span>
+              <button id="filter-regex" class="field-flag" type="button" data-i18n-title="toolbar.regex" title="Regular-expression mode" aria-pressed="false">.*</button>
+              <button id="filter-case" class="field-flag" type="button" data-i18n-title="toolbar.caseSensitive" title="Case-sensitive" aria-pressed="false">Aa</button>
+            </div>
           </div>
           <!-- Saved filter + sort presets (#44). Popover built by renderPresetsMenu. -->
           <div class="col-picker">
@@ -257,12 +270,16 @@
           <div class="panel-block">
             <h2 data-i18n="renamer.heading">Rename by mask</h2>
             <div class="mask-row">
-              <input id="mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
-              <button class="icon ph-btn" type="button" data-ph-target="mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
-              <button class="icon preset-btn" type="button" data-preset-target="mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
-              <!-- The mask builder (#540): the same mask in a window, with the
-                   reference open beside it and the whole selection below. -->
-              <button id="mask-builder-open" class="icon" type="button" data-i18n-title="maskBuilder.open" title="Open the mask builder" data-i18n-aria-label="maskBuilder.open" aria-label="Open the mask builder"><svg class="ico"><use href="#i-builder"/></svg></button>
+              <div class="field">
+                <input id="mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
+                <div class="field-tools">
+                  <button class="icon ph-btn" type="button" data-ph-target="mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+                  <button class="icon preset-btn" type="button" data-preset-target="mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                  <!-- The mask builder (#540): the same mask in a window, with the
+                       reference open beside it and the whole selection below. -->
+                  <button id="mask-builder-open" class="icon" type="button" data-i18n-title="maskBuilder.open" title="Open the mask builder" data-i18n-aria-label="maskBuilder.open" aria-label="Open the mask builder"><svg class="ico"><use href="#i-builder"/></svg></button>
+                </div>
+              </div>
             </div>
             <!-- Live, single-file example (#382): rendered from the current
                  selection's first track as the mask is typed, the same way
@@ -299,9 +316,17 @@
                    picking it here is what authorizes writing there. -->
               <label class="export-row"
                 ><span data-i18n="renamer.into">Into</span>
-                <input id="move-dest" type="text" spellcheck="false" data-i18n-placeholder="renamer.intoPlaceholder" placeholder="the opened library" readonly />
-                <button id="move-dest-pick" class="btn" type="button" data-i18n-title="renamer.chooseTitle" title="Choose a destination folder" data-i18n="renamer.choose">Choose…</button>
-                <button id="move-dest-clear" class="icon" type="button" data-i18n-title="renamer.backToLibrary" title="Back to the opened library" data-i18n-aria-label="renamer.backToLibrary" aria-label="Back to the opened library"><svg class="ico"><use href="#i-close"/></svg></button>
+                <!-- The destination field (#547): read-only, so clicking the path
+                     picks a folder the same as the folder button; × goes back to
+                     the opened library. -->
+                <span class="field is-path">
+                  <input id="move-dest" type="text" spellcheck="false" data-i18n-placeholder="renamer.intoPlaceholder" placeholder="the opened library" readonly data-i18n-title="renamer.chooseTitle" title="Choose a destination folder" />
+                  <span class="field-tools">
+                    <button id="move-dest-clear" class="icon field-clear" type="button" data-i18n-title="renamer.backToLibrary" title="Back to the opened library" data-i18n-aria-label="renamer.backToLibrary" aria-label="Back to the opened library"><svg class="ico"><use href="#i-close"/></svg></button>
+                    <span class="field-sep" aria-hidden="true"></span>
+                    <button id="move-dest-pick" class="icon" type="button" data-i18n-title="renamer.chooseTitle" title="Choose a destination folder" data-i18n-aria-label="renamer.chooseTitle" aria-label="Choose a destination folder"><svg class="ico"><use href="#i-folder"/></svg></button>
+                  </span>
+                </span>
               </label>
               <div class="export-row move-mode-row">
                 <span data-i18n="renamer.files">Files</span>
@@ -370,9 +395,11 @@
                      library box (#180): each row in the caret's menu shows the
                      text it would search for, so picking one is picking a
                      query, not a mode. -->
-                <div id="query-box" class="query">
+                <div id="query-box" class="query field">
                   <input id="discogs-query" type="text" data-i18n-placeholder="online.queryPlaceholder" placeholder="artist / album / catalog no." spellcheck="false" />
-                  <button id="query-presets" class="query-presets" type="button" data-i18n-title="online.presets" title="Queries this selection can build" data-i18n-aria-label="online.presets" aria-label="Queries this selection can build"><svg class="ico"><use href="#i-caret-down"/></svg></button>
+                  <div class="field-tools">
+                    <button id="query-presets" class="icon" type="button" data-i18n-title="online.presets" title="Queries this selection can build" data-i18n-aria-label="online.presets" aria-label="Queries this selection can build" aria-expanded="false"><svg class="ico"><use href="#i-caret-down"/></svg></button>
+                  </div>
                   <div id="query-preset-menu" class="col-menu" hidden></div>
                 </div>
                 <!-- One toggling button (#111): a magnifier that searches, and
@@ -473,9 +500,13 @@
             <div class="from-name-scroll"><div class="panel-block">
               <h2 data-i18n="fromName.heading">Tags from the file name</h2>
               <div class="mask-row">
-                <input id="from-name-mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
-                <button class="icon ph-btn" type="button" data-ph-target="from-name-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
-                <button class="icon preset-btn" type="button" data-preset-target="from-name-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                <div class="field">
+                  <input id="from-name-mask" type="text" value="%artist% - %title%" spellcheck="false" placeholder="%artist% - %title%" />
+                  <div class="field-tools">
+                    <button class="icon ph-btn" type="button" data-ph-target="from-name-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+                    <button class="icon preset-btn" type="button" data-preset-target="from-name-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                  </div>
+                </div>
               </div>
               <!-- Live read-out of what the pattern pulls out of the current
                    row, so the mask can be tuned without staging a plan. The
@@ -507,9 +538,13 @@
             <div class="from-name-scroll"><div class="panel-block">
               <h2 data-i18n="fromText.heading">Tags from a text list</h2>
               <div class="mask-row">
-                <input id="from-text-mask" type="text" value="%track%. %artist% - %title%" spellcheck="false" placeholder="%track%. %artist% - %title%" />
-                <button class="icon ph-btn" type="button" data-ph-target="from-text-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
-                <button class="icon preset-btn" type="button" data-preset-target="from-text-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                <div class="field">
+                  <input id="from-text-mask" type="text" value="%track%. %artist% - %title%" spellcheck="false" placeholder="%track%. %artist% - %title%" />
+                  <div class="field-tools">
+                    <button class="icon ph-btn" type="button" data-ph-target="from-text-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+                    <button class="icon preset-btn" type="button" data-preset-target="from-text-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                  </div>
+                </div>
               </div>
               <div class="from-text-head">
                 <span id="from-text-count" class="muted"></span>
@@ -813,9 +848,11 @@
           </label>
           <label class="colmask-row">
             <span data-i18n="colmask.pattern">Pattern</span>
-            <span class="colmask-pattern">
+            <span class="colmask-pattern field">
               <input id="colmask-pattern" type="text" class="mono" spellcheck="false" placeholder="%artist% — %title%" />
-              <button class="icon ph-btn" type="button" data-ph-target="colmask-pattern" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              <span class="field-tools">
+                <button class="icon ph-btn" type="button" data-ph-target="colmask-pattern" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+              </span>
             </span>
           </label>
           <div class="colmask-row">
@@ -852,13 +889,13 @@
                  end of the first line as the RENAMER mask row's own icons. The
                  transform button's count and title are painted by
                  maskbuilder.js. -->
-            <div class="mb-field">
+            <div class="field multi mb-field">
               <textarea id="mb-expr" rows="1" spellcheck="false" autocomplete="off" data-i18n-aria-label="maskBuilder.expression" aria-label="Mask"></textarea>
-              <div class="mb-field-tools">
-                <button id="mb-clear" class="icon" type="button" data-i18n-title="maskBuilder.clear" title="Clear the mask" data-i18n-aria-label="maskBuilder.clear" aria-label="Clear the mask"><svg class="ico"><use href="#i-close"/></svg></button>
-                <span class="mb-field-sep" aria-hidden="true"></span>
+              <div class="field-tools">
+                <button id="mb-clear" class="icon field-clear" type="button" data-i18n-title="maskBuilder.clear" title="Clear the mask" data-i18n-aria-label="maskBuilder.clear" aria-label="Clear the mask"><svg class="ico"><use href="#i-close"/></svg></button>
+                <span class="field-sep" aria-hidden="true"></span>
                 <button class="icon preset-btn" type="button" data-preset-target="mb-expr" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
-                <button id="mb-transform" class="icon" type="button" title="Transform" aria-label="Transform"><svg class="ico"><use href="#i-wand"/></svg><span id="mb-rules" class="mb-rules"></span></button>
+                <button id="mb-transform" class="icon" type="button" title="Transform" aria-label="Transform"><svg class="ico"><use href="#i-wand"/></svg><span id="mb-rules" class="field-count"></span></button>
               </div>
             </div>
             <div class="mb-status">

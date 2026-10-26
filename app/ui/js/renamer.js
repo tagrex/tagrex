@@ -186,8 +186,15 @@ async function pickDestination() {
 
 function setDestination(path) {
   el("move-dest").value = path || "";
+  syncDestinationField();
   writeStored(MOVE_DEST_STORAGE_KEY, path || "");
   scheduleMaskExample();
+}
+
+// The field's × only while a destination is set: with none, the library is
+// already where things go (#547).
+function syncDestinationField() {
+  el("move-dest").parentElement.classList.toggle("is-empty", !el("move-dest").value);
 }
 
 // ---- what travels with a track (#405) ----
@@ -289,6 +296,9 @@ el("mask").addEventListener("input", () => {
 });
 el("reorganize-toggle").addEventListener("change", (e) => setReorganize(e.target.checked));
 el("move-dest-pick").addEventListener("click", pickDestination);
+// The path is read-only: clicking it picks a folder, like the folder button
+// beside it (#547).
+el("move-dest").addEventListener("click", pickDestination);
 el("move-dest-clear").addEventListener("click", () => setDestination(""));
 el("move-mode").addEventListener("click", (e) => {
   const btn = e.target.closest(".seg-btn");
@@ -306,6 +316,7 @@ el("move-prune").addEventListener("change", () => {
 // better start than a blank field.
 el("mask").value = readStored(MASK_STORAGE_KEY) || el("mask").value;
 el("move-dest").value = readStored(MOVE_DEST_STORAGE_KEY) || "";
+syncDestinationField();
 el("move-prune").checked = !!readStored(MOVE_PRUNE_STORAGE_KEY);
 setMoveMode(readStored(MOVE_MODE_STORAGE_KEY) === "copy" ? "copy" : "move");
 setReorganize(!!readStored(REORGANIZE_STORAGE_KEY));

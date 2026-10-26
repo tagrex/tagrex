@@ -79,6 +79,9 @@ plain substring matching:
   rather than silently matching nothing.
 - **Case sensitivity.** The `Aa` toggle. Off by default.
 
+The × at the end of the box clears it; it shows only while there is text to
+clear.
+
 The filter sees the values the table shows, sorted the way the table is sorted,
 so a field-scoped query finds what your eye finds.
 

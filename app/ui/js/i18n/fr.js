@@ -259,6 +259,7 @@ export const fr = {
   "toolbar.filterPlaceholder": "Filtrer… (essayez artist:aphex)",
   "toolbar.regex": "Mode expressions régulières",
   "toolbar.caseSensitive": "Respecter la casse",
+  "toolbar.clearFilter": "Effacer le filtre",
   "toolbar.presets": "Préréglages de filtre et de tri",
   "toolbar.presetsTitle": "Enregistrer et réappliquer des préréglages de filtre + tri",
   "health.title": "Santé de la bibliothèque",

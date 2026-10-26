@@ -420,6 +420,8 @@ const QUERY_SOURCES = [
 
 function closeQueryPresets() {
   el("query-preset-menu").hidden = true;
+  // The caret shows its menu is open, the field tools' "on" state (#547).
+  el("query-presets").setAttribute("aria-expanded", "false");
 }
 
 // What the menu offers: every source with something to say, and one row per
@@ -467,6 +469,7 @@ function toggleQueryPresets() {
     menu.appendChild(row);
   }
   menu.hidden = false;
+  el("query-presets").setAttribute("aria-expanded", "true");
   // `floating` neutralizes .col-menu's own absolute placement so the inline
   // offsets from placeFloating are the ones that count (#160).
   menu.classList.add("floating");

@@ -473,41 +473,26 @@ body.mac-overlay-titlebar .brand {
 /* The indicator is a box holding two hit areas: the path itself, which opens the
    field, and a caret that drops the recently opened folders (#180). Two buttons
    rather than one with regions — a button inside a button is not a thing. */
+/* The border, the fill and the focus ring belong to the .field it sits in
+   (#547), which also holds the recent-folders caret and the folder button. */
+.lib .field {
+  flex: 1;
+}
 .lib .path {
-  position: relative;
   flex: 1;
   display: flex;
   align-items: stretch;
   min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  font-size: var(--text-sm);
-}
-/* The box is the control — the two buttons inside it are borderless halves —
-   so focus belongs to the box (#253), the same arrangement the search field
-   has. Left to the halves, the shared ring drew itself around whichever one had
-   focus, inside the outline that is already the field. */
-.lib .path:has(:focus-visible) {
-  border-color: var(--accent);
-  box-shadow: var(--ring);
-}
-.lib .path .path-open:focus-visible,
-.lib .path .path-recent:focus-visible {
-  box-shadow: none;
-}
-.lib .path:hover {
-  border-color: var(--border-strong, var(--border));
 }
 .lib .path-open {
   flex: 1;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   min-width: 0;
   /* Clip whatever is inside: without this a name too long for the button spills
      out of it and carries on underneath the caret beside it (#182). */
   overflow: hidden;
-  padding: 6px 9px;
+  padding: 0 9px;
   border: none;
   /* No border and no fill means the shared button shadow has nothing to sit
      under and paints a hairline along the bottom edge instead (#228). */
@@ -517,20 +502,6 @@ body.mac-overlay-titlebar .brand {
   font: inherit;
   text-align: left;
   cursor: text;
-}
-.lib .path-recent {
-  flex: none;
-  display: flex;
-  align-items: center;
-  padding: 0 6px;
-  border: none;
-  box-shadow: none;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-}
-.lib .path-recent:hover {
-  color: var(--text);
 }
 /* The menu hangs off the whole box, and its rows read like the indicator.
    Stretched to the box's own width (left: 0 alongside .col-menu's right: 0)
@@ -1717,22 +1688,13 @@ body:not(.show-checkbox) #tracks td.sel {
   display: none;
 }
 
-#filter {
-  width: 170px;
-  padding: 5px 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-}
-
 #filter:focus {
   outline: none;
 }
 
-/* Filter control (#44): the search box with the regex / case toggles overlaid on
-   its right edge, so it still reads as one field. */
+/* Filter control (#44): the search box with its clear button and the regex /
+   case flags inside one .field (#547), so it reads as one field. A bad regex
+   reddens the box through .has-error (the match is suppressed, never thrown). */
 .filter-ctl {
   position: relative;
   display: inline-flex;
@@ -1742,49 +1704,6 @@ body:not(.show-checkbox) #tracks td.sel {
      row wraps as it always did. */
   flex: 1 1 228px;
   min-width: 160px;
-}
-.filter-ctl #filter {
-  width: 100%;
-  padding-right: 52px; /* room for the two flag toggles */
-}
-/* A bad regex reddens the box (the match is suppressed, never thrown). */
-.filter-ctl #filter.filter-bad,
-.filter-ctl #filter.filter-bad:focus {
-  border-color: var(--del);
-  background: var(--error-tint);
-}
-.filter-flag {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  height: 20px;
-  min-width: 22px;
-  padding: 0 4px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: none;
-  box-shadow: none;
-  color: var(--muted);
-  font-family: var(--font-mono);
-  font-size: var(--text-2xs);
-  font-weight: var(--fw-medium);
-  line-height: 1;
-  cursor: pointer;
-}
-.filter-flag.flag-regex {
-  right: 27px;
-}
-.filter-flag.flag-case {
-  right: 4px;
-}
-.filter-flag:hover {
-  color: var(--text);
-  background: var(--row-hover);
-}
-.filter-flag.on {
-  color: var(--accent-ink);
-  background: var(--sel-tint);
-  border-color: var(--accent);
 }
 
 /* Presets popover (#44) reuses the .col-menu shell; these style its rows. */
@@ -1927,57 +1846,15 @@ body:not(.show-checkbox) #tracks td.sel {
   font-family: var(--font-ui);
 }
 
-/* Query field + the queries the selection can build, as ONE control (#193) —
-   the same shape as the library indicator and its recent-folders caret (#180).
-   The field keeps its own border and the caret closes the box on the right. */
+/* Query field + the queries the selection can build, as ONE control (#193): a
+   .field (#547) with the caret as its tool, the same shape as the library box
+   and its recent-folders caret (#180). */
 .query {
   position: relative;
   flex: 1;
   display: flex;
   align-items: stretch;
   min-width: 0;
-}
-.query input[type="text"] {
-  flex: 1;
-  min-width: 0;
-  border-right: 0;
-  border-top-right-radius: 0;
-  border-bottom-right-radius: 0;
-}
-.query-presets {
-  flex: none;
-  display: flex;
-  align-items: center;
-  padding: 0 6px;
-  border: 1px solid var(--border);
-  border-left: 0;
-  border-radius: 0 6px 6px 0;
-  background: var(--bg);
-  color: var(--muted);
-  cursor: pointer;
-}
-.query-presets:hover {
-  color: var(--text);
-}
-/* The focus ring goes round the whole box, not round the half that has focus
-   (#200). On the field alone it followed the field's contour — square at the
-   seam, two pixels of accent over the caret's edge — and split one control in
-   two; the caret's own button ring (#76) did the same from the other side. */
-/* The composite owns the whole focus indicator: the ring around the pair, and
-   the accent edge on BOTH halves rather than on whichever one has focus (#252).
-   Left to the focused child, that edge showed through as a green sliver one line
-   inside the ring — two indicators for one field, one of them a fragment. */
-.query:has(:focus-visible) {
-  border-radius: var(--radius-md);
-  box-shadow: var(--ring);
-}
-.query:has(:focus-visible) input[type="text"],
-.query:has(:focus-visible) .query-presets {
-  border-color: var(--accent);
-}
-.query input[type="text"]:focus-visible,
-.query .query-presets:focus-visible {
-  box-shadow: none;
 }
 /* The menu hangs off the whole box — as wide as it, set when it opens (#408);
    the floor is for a very narrow panel — and a row leads with the query
@@ -5235,7 +5112,6 @@ td[data-field="year"],
    <button> render at different intrinsic heights even with equal padding
    (28/26/24px here), so pin them all to one border-box height. */
 .view-tabs .group-ctl select,
-.view-tabs #filter,
 .view-tabs #columns-btn,
 .view-tabs #presets-btn,
 .view-tabs #expand-all,
@@ -5400,8 +5276,6 @@ td[data-field="year"],
   width: 100%;
 }
 .colmask-pattern {
-  display: flex;
-  gap: 6px;
   min-width: 0;
 }
 .colmask-pattern input {
@@ -6257,6 +6131,213 @@ body.drag-active #drop-overlay {
   transition: width 0.12s linear;
 }
 
+/* ---- input group: .field (#547) --------------------------------------------
+   One component for every field that carries its own actions, grown out of the
+   mask builder's field (#546). Inside one border, left to right: the value
+   (input, textarea, or a button standing for the value), then the slot about
+   the value itself (× clear or ▾ the values it can take), a hairline, and the
+   tools (? reference, presets, builder, folder, .* Aa). Outside the border and
+   bordered as usual stays the panel's own action (Search, Re-read, Preview):
+   no border means the field's, a border means the panel's.
+   Tiers: .field at --ctl-h (tools 22, glyph 14); .field.sm at --ctl-h-sm
+   (tools 18, glyph 12). */
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: var(--ctl-h);
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.field:hover {
+  border-color: var(--border-strong, var(--border));
+}
+/* The box owns focus (#200, #252, #253): one ring round the whole group, none
+   on the half that has it. */
+.field:has(:focus-visible) {
+  box-shadow: var(--ring);
+}
+.field :is(input[type], textarea, button):focus-visible {
+  box-shadow: none;
+}
+.field > :is(input[type], textarea, .field-value) {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 9px;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+/* A value shown rather than typed: the whole value is the hit area for its
+   pick action. */
+.field > .field-value {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+}
+.field > input[readonly] {
+  cursor: pointer;
+}
+/* Paths read as paths: mono, muted while empty. */
+.field.is-path > :is(input, .field-value) {
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-xs);
+}
+.field.is-path > input:placeholder-shown {
+  color: var(--muted);
+}
+/* Growing: the value wraps up to five lines (fitField() sets the height); the
+   tools stay at the end of the first line so they never move under the
+   pointer. */
+.field.multi {
+  align-items: flex-start;
+}
+.field.multi > textarea {
+  align-self: auto;
+  padding: 4px 9px;
+  line-height: 18px; /* 4 + 18 + 4 + 2 border = --ctl-h on one line */
+  resize: none;
+  overflow-y: hidden;
+}
+.field-tools {
+  flex: none;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: calc(var(--ctl-h) - 2px);
+  padding: 0 2px;
+  box-sizing: border-box;
+}
+/* button.icon one tier down, and the text flags (.* Aa) in the same box. */
+.field-tools :is(button.icon, .field-flag) {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+}
+.field-tools :is(button.icon, .field-flag):hover:not(:disabled),
+.field-tools :is(button.icon, .field-flag):focus-visible {
+  background: var(--row-hover);
+  color: var(--text);
+}
+.field-tools button.icon > svg {
+  width: 14px;
+  height: 14px;
+}
+.field-tools [hidden] {
+  display: none;
+}
+.field-flag {
+  width: auto;
+  padding: 0 4px;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+}
+/* On: a pressed flag, an open menu, the wand with rules ticked. Accent ink on
+   the dirty tint, the same "set" signal as an edited cell. Qualified with the
+   tool selector so it outranks the tools' own background. */
+.field-tools :is(button.icon, .field-flag):is([aria-pressed="true"], [aria-expanded="true"], .is-on),
+.field-tools :is(button.icon, .field-flag):is([aria-pressed="true"], [aria-expanded="true"], .is-on):hover:not(:disabled) {
+  background: var(--dirty-tint);
+  color: var(--accent-ink);
+}
+.field-tools .is-on:has(.field-count) {
+  width: auto;
+  padding: 0 5px;
+}
+.field-count {
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+.field-tools :not(.is-on) > .field-count {
+  display: none;
+}
+.field-sep {
+  flex: none;
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--border);
+}
+/* The hairline only between two groups: none after a hidden first group. */
+.field-tools > [hidden] + .field-sep {
+  display: none;
+}
+/* Clear only when there is something to clear; its slot stays so the tools
+   after it never shift. */
+.field.is-empty .field-clear {
+  visibility: hidden;
+}
+/* Error: a pattern that doesn't parse, a bad regex. The value stays editable;
+   the message, when there is one, goes in the line under the field. */
+.field.has-error {
+  border-color: var(--del);
+  background: var(--error-tint);
+}
+.field.has-error:has(:focus-visible) {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--del) 40%, transparent);
+}
+.field:has(> :is(input, textarea):disabled),
+.field[aria-disabled="true"] {
+  opacity: 0.55;
+  pointer-events: none;
+}
+.field.sm {
+  min-height: var(--ctl-h-sm);
+  font-size: var(--text-xs);
+}
+.field.sm .field-tools {
+  height: calc(var(--ctl-h-sm) - 2px);
+}
+.field.sm .field-tools :is(button.icon, .field-flag) {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+}
+.field.sm .field-flag {
+  width: auto;
+}
+.field.sm .field-tools button.icon > svg {
+  width: 12px;
+  height: 12px;
+}
+.field.sm.multi > textarea {
+  padding: 2px 8px;
+}
+/* A field and its outside action share one line; the field takes the room. */
+.mask-row > .field,
+.export-row > .field {
+  flex: 1;
+}
+
 /* ---- mask builder (#540, laid out in the house style in #546) -------------
    One grid, two columns, three rows, so every pair of cells in a row shares
    its top edge and field ↔ filter, status ↔ hint and list ↔ reference line up
@@ -6294,96 +6375,15 @@ body.drag-active #drop-overlay {
   display: contents;
 }
 
-/* 1 · The mask field: an input group. The border belongs to .mb-field, so the
-   field's outer edges are the list's edges whatever the tools take; the
-   textarea inside is borderless and grows from one line to five (#545). The
-   actions dock at the right end of the first line, as button.icon one tier
-   down, with the RENAMER mask row's own glyphs. */
+/* 1 · The mask field: a .field.multi (#547) placed in the grid, the mask in
+   the bundled mono; its tools are the field's own. */
 .mb-field {
   grid-column: 1;
   grid-row: 1;
-  display: flex;
-  align-items: flex-start;
-  min-width: 0;
-  min-height: var(--ctl-h);
-  box-sizing: border-box;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-}
-.mb-field:focus-within {
-  box-shadow: var(--ring);
-}
-.mb-field.has-error {
-  border-color: var(--del);
 }
 #mb-expr {
-  flex: 1;
-  min-width: 0;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 4px 9px;
-  border: 0;
-  background: none;
-  box-shadow: none;
-  color: var(--text);
   font-family: var(--font-mono-bundled);
   font-size: var(--text-sm);
-  line-height: 18px; /* 4 + 18 + 4 + 2px border = --ctl-h on one line */
-  resize: none;
-  overflow-y: hidden;
-  outline: none;
-}
-.mb-field-tools {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-}
-.mb-field-tools button.icon {
-  width: 22px;
-  height: 22px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--muted);
-}
-.mb-field-tools button.icon:hover:not(:disabled) {
-  background: var(--row-hover);
-  color: var(--text);
-}
-.mb-field-tools button.icon > svg {
-  width: 14px;
-  height: 14px;
-}
-.mb-field-sep {
-  width: 1px;
-  height: 14px;
-  margin: 0 3px;
-  background: var(--border);
-}
-/* Clear only when there is something to clear (#542); the slot is kept so the
-   other two never move under the pointer. */
-.mb-field.is-empty #mb-clear {
-  visibility: hidden;
-}
-/* Rules ticked: the wand goes accent and shows the count, the toolbar wand's
-   signal (#543); it grows from a square to fit. */
-#mb-transform.has-rules {
-  width: auto;
-  padding: 0 5px;
-  gap: 3px;
-  color: var(--accent-ink);
-}
-.mb-rules {
-  font-family: var(--font-ui);
-  font-size: var(--text-2xs);
-  font-weight: var(--fw-medium);
-  font-variant-numeric: tabular-nums;
-}
-#mb-transform:not(.has-rules) .mb-rules {
-  display: none;
 }
 
 /* 2 · Status line ↔ reference hint: one-line captions in the same row, the

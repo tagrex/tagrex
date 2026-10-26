@@ -174,7 +174,7 @@ function paintTransformButton() {
   const button = el("mb-transform");
   const count = activeRuleCount("renamer");
   el("mb-rules").textContent = count ? String(count) : "";
-  button.classList.toggle("has-rules", count > 0);
+  button.classList.toggle("is-on", count > 0);
   button.title = count
     ? t("generator.chainBtn.some", { rules: tn("unit.rule", count) })
     : t("generator.chainBtn.none");

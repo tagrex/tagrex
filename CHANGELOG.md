@@ -41,6 +41,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   RENAMER mask row's icons; the two columns share their edges in one grid; a
   clash is the only shaded row, and a parse error outlines the field in red.
   (#546)
+- **Fields carry their own buttons inside their border.** One input-group
+  component across the app: the library path holds its recent-folders caret and
+  folder button, the table filter its regex and case flags and a new clear
+  button, the ONLINE query its caret, every mask (RENAMER, FROM NAME, FROM TEXT,
+  the column pattern) its reference, presets and builder buttons, and the
+  RENAMER destination a folder button in place of Choose… (clicking the path
+  does the same). The panel's own actions, Search, Re-read and the filter
+  presets, stay outside with their border. A pressed flag or an open menu shows
+  in the accent colour. (#547)
 
 ## [0.26.0] - 2026-10-24
 

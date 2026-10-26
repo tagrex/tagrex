@@ -345,7 +345,10 @@ function syncFilterControls() {
   caseBtn.classList.toggle("on", filterCase);
   caseBtn.setAttribute("aria-pressed", String(filterCase));
   const box = el("filter");
-  box.classList.toggle("filter-bad", filterError);
+  // The error and the empty state belong to the field around the box (#547):
+  // the red border, and a clear button only when there is text to clear.
+  box.parentElement.classList.toggle("has-error", filterError);
+  box.parentElement.classList.toggle("is-empty", !box.value);
   box.title = filterError ? msg("app.invalidRegex") : "";
 }
 
@@ -1558,6 +1561,7 @@ function forgetRoot(path) {
 
 function closeRecentMenu() {
   el("root-recent-menu").hidden = true;
+  el("root-recent").setAttribute("aria-expanded", "false");
 }
 
 function toggleRecentMenu() {
@@ -1587,6 +1591,7 @@ function toggleRecentMenu() {
     menu.appendChild(row);
   }
   menu.hidden = false;
+  el("root-recent").setAttribute("aria-expanded", "true");
   // `floating` is what neutralizes .col-menu's own absolute placement so the
   // inline offsets from placeFloating are the ones that count (#160).
   menu.classList.add("floating");
@@ -1597,7 +1602,9 @@ function toggleRecentMenu() {
 // longest row: it belongs to that box, and a narrower one read as a separate
 // popup hanging off its left end.
 function placeRecentMenu() {
-  const box = el("root-box");
+  // The whole field (#547), which the caret is now part of, and which is still
+  // there while the path is being typed and the indicator is hidden.
+  const box = el("root-field");
   placeFloating(el("root-recent-menu"), box, {
     align: "left",
     width: box.getBoundingClientRect().width,
@@ -3125,6 +3132,13 @@ el("filter").addEventListener("input", (e) => {
   syncFilterControls();
   clearTimeout(filterTimer);
   filterTimer = setTimeout(renderTracks, 120);
+});
+// The field's clear button (#547): the same as deleting the text by hand.
+el("filter-clear").addEventListener("click", () => {
+  const box = el("filter");
+  box.value = "";
+  box.dispatchEvent(new Event("input", { bubbles: true }));
+  box.focus();
 });
 // Regex / case toggles (#44): flip the flag, persist, recompile, repaint.
 el("filter-regex").addEventListener("click", () => {
