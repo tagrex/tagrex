@@ -6257,11 +6257,16 @@ body.drag-active #drop-overlay {
   transition: width 0.12s linear;
 }
 
-/* ---- mask builder (#540) --------------------------------------------------
-   The expression and its result over the selection on the left, the
-   placeholder reference kept open on the right. Nearly the whole window by
-   default and resizable from its corner (#541); maskbuilder.js remembers the
-   size the user leaves it at. */
+/* ---- mask builder (#540, laid out in the house style in #546) -------------
+   One grid, two columns, three rows, so every pair of cells in a row shares
+   its top edge and field ↔ filter, status ↔ hint and list ↔ reference line up
+   without per-element offsets:
+     row 1  auto   .mb-field      | #mb-ref-filter
+     row 2  auto   .mb-status     | .ph-foot
+     row 3  1fr    .mb-list       | .mb-ref-body
+   .mb-main and .mb-ref stay in the markup (display: contents) so the ids and
+   the JS are untouched. Nearly the whole window by default and resizable from
+   its corner (#541); maskbuilder.js remembers a size the user drags it to. */
 .mask-builder {
   box-sizing: border-box;
   max-width: calc(100vw - 24px);
@@ -6270,79 +6275,193 @@ body.drag-active #drop-overlay {
   min-height: 420px;
   width: calc(100vw - 64px);
   height: calc(100vh - 64px);
-  padding: var(--space-4) var(--space-6);
-  gap: var(--space-3);
+  padding: var(--space-5);
+  gap: var(--space-4);
   resize: both;
   overflow: hidden;
 }
 .mb-body {
   flex: 1;
   min-height: 0;
-  display: flex;
-  gap: var(--space-6);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  column-gap: var(--space-6);
+  row-gap: var(--space-2);
 }
-.mb-main {
+.mb-main,
+.mb-ref {
+  display: contents;
+}
+
+/* 1 · The mask field: an input group. The border belongs to .mb-field, so the
+   field's outer edges are the list's edges whatever the tools take; the
+   textarea inside is borderless and grows from one line to five (#545). The
+   actions dock at the right end of the first line, as button.icon one tier
+   down, with the RENAMER mask row's own glyphs. */
+.mb-field {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  min-height: var(--ctl-h);
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.mb-field:focus-within {
+  box-shadow: var(--ring);
+}
+.mb-field.has-error {
+  border-color: var(--del);
+}
+#mb-expr {
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px 9px;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--text);
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-sm);
+  line-height: 18px; /* 4 + 18 + 4 + 2px border = --ctl-h on one line */
+  resize: none;
+  overflow-y: hidden;
+  outline: none;
+}
+.mb-field-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+}
+.mb-field-tools button.icon {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+}
+.mb-field-tools button.icon:hover:not(:disabled) {
+  background: var(--row-hover);
+  color: var(--text);
+}
+.mb-field-tools button.icon > svg {
+  width: 14px;
+  height: 14px;
+}
+.mb-field-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 3px;
+  background: var(--border);
+}
+/* Clear only when there is something to clear (#542); the slot is kept so the
+   other two never move under the pointer. */
+.mb-field.is-empty #mb-clear {
+  visibility: hidden;
+}
+/* Rules ticked: the wand goes accent and shows the count, the toolbar wand's
+   signal (#543); it grows from a square to fit. */
+#mb-transform.has-rules {
+  width: auto;
+  padding: 0 5px;
+  gap: 3px;
+  color: var(--accent-ink);
+}
+.mb-rules {
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+#mb-transform:not(.has-rules) .mb-rules {
+  display: none;
+}
+
+/* 2 · Status line ↔ reference hint: one-line captions in the same row, the
+   error (when the mask doesn't parse) above the summary on the left. */
+.mb-status {
+  grid-column: 1;
+  grid-row: 2;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-}
-/* As tall as the mask (#545): one line, growing as it wraps up to five, sized
-   by maskbuilder.js. Wrapped rather than scrolled sideways, so a long mask is
-   always readable whole. */
-#mb-expr {
-  box-sizing: border-box;
-  width: 100%;
-  resize: none;
-  overflow-y: hidden;
-  font-size: var(--text-sm);
-  line-height: 1.5;
-}
-.mb-tool {
-  gap: var(--space-2);
-  flex: none;
-}
-.mb-tool .ico {
-  width: 13px;
-  height: 13px;
-}
-.mb-tool.has-rules {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-/* The summary on the left and the field's buttons on the right (#544). */
-.mb-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  gap: 2px;
 }
 .mb-error {
   margin: 0;
   font-size: var(--text-xs);
+  line-height: var(--lh-snug);
   color: var(--del);
+  overflow-wrap: anywhere;
 }
 .mb-error[hidden] {
   display: none;
 }
 .mb-summary {
-  flex: 1;
-  min-width: 0;
+  margin: 0;
+  min-height: 1lh;
+  font-size: var(--text-xs);
+  line-height: var(--lh-snug);
+  color: var(--muted);
+}
+.mb-summary .mb-sum-clash,
+.mb-summary .mb-sum-missing {
+  color: var(--del);
+}
+#mb-ref-filter {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  width: 100%;
+  height: var(--ctl-h);
+  box-sizing: border-box;
+}
+.mb-ref .ph-foot {
+  grid-column: 2;
+  grid-row: 2;
   margin: 0;
   font-size: var(--text-xs);
+  line-height: var(--lh-snug);
 }
-.mb-list {
-  flex: 1;
+
+/* 3 · List ↔ reference body: one surface recipe for both, same top and
+   bottom; only the list scrolls sideways. */
+.mb-list,
+.mb-ref-body {
   min-height: 0;
-  overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--panel);
+}
+.mb-list {
+  grid-column: 1;
+  grid-row: 3;
+  overflow: auto;
   padding: var(--space-1) 0;
+  font-family: var(--font-mono-bundled);
   font-size: var(--text-xs);
 }
-/* One line per file (#541): rows as wide as their longest name, so a name too
-   long for the list scrolls it sideways instead of wrapping. */
+.mb-ref-body {
+  grid-column: 2;
+  grid-row: 3;
+  overflow-y: auto;
+  padding: var(--space-1);
+}
+
+/* Rows: one line per file, as wide as its longest name (#541), the old name a
+   fixed column so every arrow lines up. States follow the in-table diff: a
+   change reads like a dirty value (medium weight, no colour), a problem reads
+   in --del, and only a clash, the one state that would make two files one,
+   takes the --error-tint fill as .fe-row.error does. */
 .mb-row {
   display: flex;
   align-items: baseline;
@@ -6361,7 +6480,6 @@ body.drag-active #drop-overlay {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--muted);
 }
 .mb-arrow {
@@ -6372,35 +6490,45 @@ body.drag-active #drop-overlay {
   flex: none;
   color: var(--text);
 }
+.mb-changed .mb-new {
+  font-weight: var(--fw-medium);
+}
+.mb-unchanged .mb-old,
+.mb-unchanged .mb-arrow,
 .mb-unchanged .mb-new {
   color: var(--muted);
+}
+.mb-unchanged .mb-new {
+  font-family: var(--font-ui);
   font-style: italic;
 }
 .mb-unrendered .mb-new {
-  color: var(--del);
+  font-family: var(--font-ui);
   font-style: italic;
+  color: var(--del);
 }
-.mb-clash .mb-new,
-.mb-note {
+.mb-unrendered .mb-new code {
+  font-family: var(--font-mono-bundled);
+  font-style: normal;
+}
+.mb-clash {
+  background: var(--error-tint);
+}
+.mb-clash:hover {
+  background: color-mix(in srgb, var(--del) 18%, transparent);
+}
+.mb-clash .mb-new {
+  font-weight: var(--fw-medium);
   color: var(--del);
 }
 .mb-note {
   flex: none;
-  font-family: var(--font-ui, inherit);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  color: var(--del);
 }
 .mb-empty {
   margin: 0;
   padding: var(--space-3) 10px;
-}
-.mb-ref {
-  flex: 0 0 340px;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.mb-ref-body {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--panel);
+  font-family: var(--font-ui);
 }

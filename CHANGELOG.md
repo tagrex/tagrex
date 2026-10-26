@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   The field starts at one line and grows as the mask wraps, up to five, instead
   of an empty three-line box; the buttons under it are labelled Mask presets,
   Transform (with the number of rules that run) and Clear. (#545)
+- **The mask builder is laid out in the house style.** The field's actions
+  (clear, mask presets, Transform with its rule count) are the app's own icon
+  buttons docked inside the field at the end of its first line, with the
+  RENAMER mask row's icons; the two columns share their edges in one grid; a
+  clash is the only shaded row, and a parse error outlines the field in red.
+  (#546)
 
 ## [0.26.0] - 2026-10-24
 

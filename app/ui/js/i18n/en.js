@@ -47,7 +47,6 @@ export const en = {
   "maskBuilder.expression": "Mask",
   "maskBuilder.ok": "Use this mask",
   "maskBuilder.clear": "Clear the mask",
-  "maskBuilder.clearShort": "Clear",
   "maskBuilder.noSelection": "Select files in the table to see what the mask makes of them.",
   "maskBuilder.unchanged": "no change",
   "maskBuilder.needs": "{field} is empty",

@@ -27,21 +27,23 @@ builder: the mask in a field of its own that grows with it as it wraps, the
 placeholder and function reference kept open beside it with a filter, and
 below, every selected file as its current name and the name the mask gives it,
 recomputed as you type. A click in the reference inserts at the caret, and a
-function arrives with the caret inside its parentheses. **Clear** under the
-field empties it to start over; ⌘Z brings the mask back.
+function arrives with the caret inside its parentheses. The field's own buttons
+sit at the end of its first line: × empties it to start over (⌘Z brings the
+mask back), the bookmark opens the mask presets, and the wand opens Transform.
 
 The ticked **Transform** presets run on every new name, so the builder keeps
-them in reach: **Transform** under the field opens the same Transform window as
-the table toolbar, over the builder, and its label counts the rules that run. Ticking or
-editing a preset there recomputes the list at once, and the line above the list
-says how many rules ran on the names.
+them in reach: the wand opens the same Transform window as the table toolbar,
+over the builder, and shows the number of rules that run. Ticking or editing a
+preset there recomputes the list at once, and the line above the list says how
+many rules ran on the names.
 
 The list is built by the same call as Preview, with the same rules from
 **Transform**, and it says what Preview would: a row is marked when the name
 stays as it is, when a placeholder the mask requires is empty for that file, and
-when two files would end up with the same name. A mistake in the expression, an
-unknown placeholder or a missing `)`, shows as a line under the field while the
-list keeps the last result. A large selection lists its first 300 files and
+when two files would end up with the same name, the one case shaded red. A
+mistake in the expression, an unknown placeholder or a missing `)`, outlines
+the field in red and shows as a line under it while the list keeps the last
+result. A large selection lists its first 300 files and
 says how many there are.
 
 The window opens nearly as large as the app's and can be resized from its

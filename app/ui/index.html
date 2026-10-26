@@ -847,21 +847,25 @@
         </div>
         <div class="mb-body">
           <div class="mb-main">
-            <!-- The field spans the column, edge to edge with the list; its
-                 buttons share the bar below it with the summary (#544). -->
-            <textarea id="mb-expr" class="mono" rows="1" spellcheck="false" autocomplete="off" data-i18n-aria-label="maskBuilder.expression" aria-label="Mask"></textarea>
-            <p id="mb-error" class="mb-error" role="alert" hidden></p>
-            <div class="mb-bar">
-              <p id="mb-summary" class="mb-summary muted" aria-live="polite"></p>
-              <!-- Labelled rather than bare icons (#545): at the end of this bar an
-                   icon alone went unnoticed. The ticked transform presets shape
-                   every name here (#543); that button's label and title carry
-                   the rule count and are painted by maskbuilder.js. -->
-              <button class="btn-sm mb-tool preset-btn" type="button" data-preset-target="mb-expr"><svg class="ico"><use href="#i-presets"/></svg><span data-i18n="preset.title">Mask presets</span></button>
-              <button id="mb-transform" class="btn-sm mb-tool" type="button"><svg class="ico"><use href="#i-wand"/></svg><span id="mb-transform-label">Transform</span></button>
-              <button id="mb-clear" class="btn-sm mb-tool" type="button" data-i18n-title="maskBuilder.clear" title="Clear the mask"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="maskBuilder.clearShort">Clear</span></button>
+            <!-- An input group (#546): the border is .mb-field's, so the field
+                 keeps the list's edges, and its actions dock inside it at the
+                 end of the first line as the RENAMER mask row's own icons. The
+                 transform button's count and title are painted by
+                 maskbuilder.js. -->
+            <div class="mb-field">
+              <textarea id="mb-expr" rows="1" spellcheck="false" autocomplete="off" data-i18n-aria-label="maskBuilder.expression" aria-label="Mask"></textarea>
+              <div class="mb-field-tools">
+                <button id="mb-clear" class="icon" type="button" data-i18n-title="maskBuilder.clear" title="Clear the mask" data-i18n-aria-label="maskBuilder.clear" aria-label="Clear the mask"><svg class="ico"><use href="#i-close"/></svg></button>
+                <span class="mb-field-sep" aria-hidden="true"></span>
+                <button class="icon preset-btn" type="button" data-preset-target="mb-expr" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                <button id="mb-transform" class="icon" type="button" title="Transform" aria-label="Transform"><svg class="ico"><use href="#i-wand"/></svg><span id="mb-rules" class="mb-rules"></span></button>
+              </div>
             </div>
-            <div id="mb-list" class="mb-list mono"></div>
+            <div class="mb-status">
+              <p id="mb-error" class="mb-error" role="alert" hidden></p>
+              <p id="mb-summary" class="mb-summary" aria-live="polite"></p>
+            </div>
+            <div id="mb-list" class="mb-list"></div>
           </div>
           <div class="mb-ref">
             <input id="mb-ref-filter" type="search" data-i18n-placeholder="ph.filter" placeholder="Filter placeholders…" spellcheck="false" autocomplete="off" />

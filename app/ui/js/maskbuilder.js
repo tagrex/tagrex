@@ -37,19 +37,23 @@ function baseName(path) {
   return String(path).split(/[\\/]/).pop();
 }
 
+// As markup: the counts of the two problems are marked in red (#546), the way
+// their rows are.
 function summary(rows, total) {
   const count = (kind) => rows.filter((row) => row.kind === kind).length;
   const parts = [];
+  const plain = (text) => escapeHtml(text);
+  const marked = (text, kind) => `<span class="mb-sum-${kind}">${escapeHtml(text)}</span>`;
   const changed = rows.filter((row) => row.kind === "changed" || row.kind === "clash").length;
-  if (changed) parts.push(tn("maskBuilder.changed", changed));
-  if (count("unchanged")) parts.push(tn("maskBuilder.unchangedCount", count("unchanged")));
-  if (count("unrendered")) parts.push(tn("maskBuilder.missingCount", count("unrendered")));
-  if (count("clash")) parts.push(tn("maskBuilder.clashCount", count("clash")));
-  if (total > rows.length) parts.push(t("maskBuilder.limited", { shown: rows.length, total }));
+  if (changed) parts.push(plain(tn("maskBuilder.changed", changed)));
+  if (count("unchanged")) parts.push(plain(tn("maskBuilder.unchangedCount", count("unchanged"))));
+  if (count("unrendered")) parts.push(marked(tn("maskBuilder.missingCount", count("unrendered")), "missing"));
+  if (count("clash")) parts.push(marked(tn("maskBuilder.clashCount", count("clash")), "clash"));
+  if (total > rows.length) parts.push(plain(t("maskBuilder.limited", { shown: rows.length, total })));
   // The names are the mask's and the ticked presets' together (#543); say so,
   // as the one-file example under the mask box does.
   const rules = activeRuleCount("renamer");
-  if (rules) parts.push(t("renamer.exampleChain", { rules: tn("unit.rule", rules) }));
+  if (rules) parts.push(plain(t("renamer.exampleChain", { rules: tn("unit.rule", rules) })));
   return parts.join(" · ");
 }
 
@@ -82,17 +86,20 @@ function rowsFor(plan, paths) {
 function paintRows(rows) {
   el("mb-list").innerHTML = rows
     .map((row) => {
+      // The empty placeholder keeps its code face inside the sentence (#546).
+      const token = `%${row.field}%`;
       const after =
         row.kind === "unrendered"
-          ? t("maskBuilder.needs", { field: `%${row.field}%` })
-          : row.kind === "unchanged"
-            ? t("maskBuilder.unchanged")
-            : row.target;
+          ? escapeHtml(t("maskBuilder.needs", { field: token })).replace(
+              escapeHtml(token),
+              `<code>${escapeHtml(token)}</code>`
+            )
+          : escapeHtml(row.kind === "unchanged" ? t("maskBuilder.unchanged") : row.target);
       const note = row.kind === "clash" ? `<span class="mb-note">${escapeHtml(t("maskBuilder.clash"))}</span>` : "";
       return `<div class="mb-row mb-${row.kind}">
         <span class="mb-old" title="${escapeHtml(row.path)}">${escapeHtml(baseName(row.path))}</span>
         <span class="mb-arrow" aria-hidden="true">→</span>
-        <span class="mb-new">${escapeHtml(after)}</span>${note}
+        <span class="mb-new">${after}</span>${note}
       </div>`;
     })
     .join("");
@@ -103,6 +110,7 @@ async function refresh() {
   const paths = selectedPaths();
   if (!paths.length) {
     el("mb-error").hidden = true;
+    expr.parentElement.classList.remove("has-error");
     el("mb-summary").textContent = "";
     el("mb-list").innerHTML = `<p class="mb-empty muted">${escapeHtml(t("maskBuilder.noSelection"))}</p>`;
     return;
@@ -112,15 +120,17 @@ async function refresh() {
     const plan = await planForMask(expr.value, shown);
     if (mine !== generation) return;
     el("mb-error").hidden = true;
+    expr.parentElement.classList.remove("has-error");
     const rows = rowsFor(plan, shown);
     paintRows(rows);
-    el("mb-summary").textContent = summary(rows, paths.length);
+    el("mb-summary").innerHTML = summary(rows, paths.length);
   } catch (e) {
     if (mine !== generation) return;
     // The list stays as the last expression that parsed left it: half-typed
     // `$if(` is a moment, not a reason to blank the screen.
     el("mb-error").textContent = String(e);
     el("mb-error").hidden = false;
+    expr.parentElement.classList.add("has-error");
   }
 }
 
@@ -158,14 +168,12 @@ function rememberSize() {
   }
 }
 
-// The Transform button says how many rules run (#545), in its label and, the
-// way the toolbar's own wand does, in its tooltip.
+// The Transform button says how many rules run (#545): the count beside the
+// wand (#546) and, the way the toolbar's own wand does, its tooltip.
 function paintTransformButton() {
   const button = el("mb-transform");
   const count = activeRuleCount("renamer");
-  el("mb-transform-label").textContent = count
-    ? `${t("generator.transform")} · ${count}`
-    : t("generator.transform");
+  el("mb-rules").textContent = count ? String(count) : "";
   button.classList.toggle("has-rules", count > 0);
   button.title = count
     ? t("generator.chainBtn.some", { rules: tn("unit.rule", count) })
@@ -174,9 +182,11 @@ function paintTransformButton() {
   if (button.dataset.tipText) button.dataset.tipText = button.title;
 }
 
-// One line, then as many as the mask wraps to, up to MAX_LINES (#545).
+// One line, then as many as the mask wraps to, up to MAX_LINES (#545). Also
+// tells the field whether it is empty, which hides Clear (#546).
 const MAX_LINES = 5;
 function fitField() {
+  expr.parentElement.classList.toggle("is-empty", !expr.value);
   expr.style.height = "auto";
   const line = parseFloat(getComputedStyle(expr).lineHeight) || 20;
   const chrome = expr.offsetHeight - expr.clientHeight;
