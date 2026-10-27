@@ -1272,6 +1272,16 @@ fn open_releases_page() -> Result<(), ErrorDto> {
     open::that(update::RELEASES_PAGE).map_err(ErrorDto::from)
 }
 
+/// The mask guide, linked from the foot of the placeholder reference (#557).
+const MASK_GUIDE: &str = "https://github.com/tagrex/tagrex/blob/main/docs/guide/masks.md";
+
+/// Open the mask guide in the system browser (#557). Fixed address, like the
+/// releases page: nothing the frontend sends can make this open anything else.
+#[tauri::command]
+fn open_mask_guide() -> Result<(), ErrorDto> {
+    open::that(MASK_GUIDE).map_err(ErrorDto::from)
+}
+
 #[tauri::command]
 fn load_settings(app: tauri::AppHandle) -> Result<SettingsDto, ErrorDto> {
     Ok(read_settings(&app))
@@ -1437,6 +1447,7 @@ fn main() {
             locked_fields,
             find_duplicates,
             open_release_page,
+            open_mask_guide,
             preview_rename,
             preview_tags_from_name,
             probe_tags_from_name,

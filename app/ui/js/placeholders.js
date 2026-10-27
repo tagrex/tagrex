@@ -29,7 +29,53 @@ export async function catalogue() {
 // staring at a pattern box needs, and there is nowhere else to put it.
 // The grammar rows are the frontend's own — no backend sends them — so they
 // live in the catalogue like any other interface text.
-const GRAMMAR = ["width", "section", "call", "separator", "quote"];
+//
+// Since #557 the grammar is the first group, its rows insert a skeleton at the
+// caret, and it follows the direction the reference was opened for: naming has
+// %side% and the padding width, reading has the width that splits a run of
+// digits, and a text list adds the tab. A row without a skeleton (the call,
+// which the functions below insert whole) stays static.
+const GRAMMAR = {
+  render: ["section", "width", "separator", "side", "call", "quote"],
+  extract: ["section", "widthRead", "separator", "quote"],
+  text: ["section", "widthRead", "separator", "tab", "quote"],
+};
+const GRAMMAR_SKELETON = {
+  section: "[]",
+  width: "%track:3%",
+  widthRead: "%disc:1%%track:2%",
+  separator: "/",
+  side: "%side%",
+  tab: "\\t",
+  quote: "'%'",
+};
+const GRAMMAR_NOTE = { side: "ph.nameOnly", widthRead: "ph.readOnly", tab: "ph.textOnly" };
+
+// Which direction a mask input reads in (#557): FROM NAME and FROM TEXT read a
+// subject back into tags, everything else renders.
+export function directionOf(input) {
+  if (input?.id === "from-text-mask") return "text";
+  if (input?.id === "from-name-mask") return "extract";
+  return "render";
+}
+
+function grammarRows(direction) {
+  return GRAMMAR[direction]
+    .map((rule) => {
+      const token = escapeHtml(t(`ph.grammar.${rule}.token`));
+      const desc = escapeHtml(t(`ph.grammar.${rule}`));
+      const note = GRAMMAR_NOTE[rule] ? `<span class="ph-dir">${escapeHtml(t(GRAMMAR_NOTE[rule]))}</span>` : "";
+      const skeleton = GRAMMAR_SKELETON[rule];
+      return skeleton
+        ? `<button type="button" class="ph-row" data-token="${escapeHtml(skeleton)}">
+            <span class="ph-token">${token}</span><span class="ph-desc">${desc}</span>${note}
+          </button>`
+        : `<div class="ph-row ph-row-static">
+            <span class="ph-token">${token}</span><span class="ph-desc">${desc}</span>${note}
+          </div>`;
+    })
+    .join("");
+}
 
 function directionNote(entry) {
   if (entry.render && entry.extract) return "";
@@ -57,7 +103,7 @@ function rows(entries) {
 
 // Into the popover's body, or into `body` for the mask builder (#540), which
 // keeps the same reference open beside its expression.
-export function renderReference(entries, filter, body = el("ph-body")) {
+export function renderReference(entries, filter, body = el("ph-body"), direction = "render") {
   const needle = filter.trim().toLowerCase();
   const matching = needle
     ? entries.filter(
@@ -81,16 +127,12 @@ export function renderReference(entries, filter, body = el("ph-body")) {
   }
   const grammar = needle
     ? ""
-    : `<div class="ph-group">
+    : `<div class="ph-group ph-grammar">
         <div class="ph-group-name">${escapeHtml(t("ph.grammar"))}</div>
-        ${GRAMMAR.map(
-          (rule) => `<div class="ph-row ph-row-static">
-            <span class="ph-token">${escapeHtml(t(`ph.grammar.${rule}.token`))}</span>
-            <span class="ph-desc">${escapeHtml(t(`ph.grammar.${rule}`))}</span>
-          </div>`,
-        ).join("")}
+        ${grammarRows(direction)}
       </div>`;
   body.innerHTML =
+    grammar +
     groups
       .map(
         (group) => `<div class="ph-group">
@@ -98,7 +140,7 @@ export function renderReference(entries, filter, body = el("ph-body")) {
           ${rows(group.entries)}
         </div>`,
       )
-      .join("") + grammar;
+      .join("");
 }
 
 // Place the popover against its button. Fixed positioning rather than the
@@ -129,6 +171,12 @@ export function closeReference() {
   anchor = null;
 }
 
+// What the popover lists for its input (#557): reading a name back cannot run a
+// function or fill a computed value, so those are left out there.
+function popoverEntries(entries) {
+  return directionOf(target) === "render" ? entries : entries.filter((entry) => entry.extract);
+}
+
 async function openReference(button, input) {
   const entries = await catalogue();
   const menu = el("ph-menu");
@@ -136,7 +184,7 @@ async function openReference(button, input) {
   anchor = button;
   el("ph-filter").value = "";
   el("ph-filter").parentElement.classList.add("is-empty");
-  renderReference(entries, "");
+  renderReference(popoverEntries(entries), "", el("ph-body"), directionOf(input));
   menu.hidden = false;
   place(menu, button);
   el("ph-filter").focus();
@@ -160,8 +208,12 @@ export function insertAt(target, token) {
   // next thing to type is its first argument, so the caret lands inside the
   // parentheses rather than after them (#73). A placeholder has nothing to fill
   // in and keeps the caret at the end.
+  // An optional section arrives empty too, `[]`, with the caret between the
+  // brackets (#557).
   const opening = token.indexOf("(");
-  const caret = start + (opening >= 0 && token.endsWith(")") ? opening + 1 : token.length);
+  const caret =
+    start +
+    (token === "[]" ? 1 : opening >= 0 && token.endsWith(")") ? opening + 1 : token.length);
   target.focus();
   target.setSelectionRange(caret, caret);
   target.dispatchEvent(new Event("input", { bubbles: true }));
@@ -171,6 +223,12 @@ export async function initPlaceholderReference() {
   // One delegated listener for every trigger, so a new mask input needs only the
   // button markup and no wiring.
   document.addEventListener("click", (e) => {
+    // The guide link in either reference's foot (#557).
+    if (e.target.closest?.(".ph-guide")) {
+      e.preventDefault();
+      invoke("open_mask_guide", {}).catch(() => {});
+      return;
+    }
     const button = e.target.closest?.(".ph-btn");
     if (button) {
       e.preventDefault();
@@ -200,7 +258,7 @@ export async function initPlaceholderReference() {
   });
   el("ph-filter").addEventListener("input", (e) => {
     e.target.parentElement.classList.toggle("is-empty", !e.target.value);
-    if (cache) renderReference(cache, e.target.value);
+    if (cache) renderReference(popoverEntries(cache), e.target.value, el("ph-body"), directionOf(target));
   });
 
   document.addEventListener("keydown", (e) => {

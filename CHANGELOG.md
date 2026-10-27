@@ -86,6 +86,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   target and rule count (or "not for this job"), bolds what runs, says how many
   presets and rules run above the list, and opens a preset with ›. A window over
   another one dims the app less. (#556)
+- **The paragraphs of grammar under the masks are gone.** RENAMER, FROM NAME
+  and FROM TEXT keep the field, its live result and one line about what the job
+  itself does, with the ? and builder buttons drawn as they look. The grammar
+  now leads the placeholder reference, as rows that insert a skeleton at the
+  caret (an optional section arrives as `[]` with the caret inside), and it
+  follows the direction: naming adds `%side%`, reading adds the fixed width that
+  splits `101`, a text list adds `\t`. Opened for reading, the reference leaves
+  out the functions, and its foot links to the mask guide. (#557)
 
 ### Fixed
 

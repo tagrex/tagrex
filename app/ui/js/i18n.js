@@ -143,7 +143,14 @@ export function applyStaticText(root) {
   const scope = root || document;
   scope.querySelectorAll("[data-i18n]").forEach((node) => {
     const value = t(node.dataset.i18n);
-    if (node.hasAttribute("data-i18n-html")) node.innerHTML = value;
+    // A hint that names a tool draws it (#557): {builder} is the builder's own
+    // glyph, so the copy stays one string per language.
+    if (node.hasAttribute("data-i18n-html")) {
+      node.innerHTML = value.replace(
+        "{builder}",
+        '<span class="hint-tool"><svg class="ico"><use href="#i-builder"/></svg></span>',
+      );
+    }
     else node.textContent = value;
   });
   // A full walk, because CSS cannot select "has an attribute whose *name*

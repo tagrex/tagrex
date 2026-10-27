@@ -6877,3 +6877,71 @@ body.drag-active #drop-overlay {
   font-style: italic;
   color: var(--del);
 }
+
+/* ---- panel hints and the reference's grammar (#557) ------------------------
+   Under a mask the panel keeps the field, its live result and one line: the
+   job's own behaviour and where the grammar is, with the tool it points to
+   drawn as that tool. The grammar is the reference's first group, its rows
+   insert a skeleton at the caret, and the foot links to the mask guide. */
+.hint.mask-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--lh-snug);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.hint-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0 1px;
+  vertical-align: -4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+}
+.hint-tool > svg {
+  width: 11px;
+  height: 11px;
+}
+.hint.mask-hint code {
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-2xs);
+  color: var(--text);
+}
+/* The token column lines up as a table in the grammar group only. */
+.ph-group.ph-grammar .ph-token {
+  flex: 0 0 9ch;
+}
+.ph-group.ph-grammar + .ph-group {
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px solid var(--border);
+}
+.ph-dir {
+  flex: none;
+  font-size: var(--text-2xs);
+  color: var(--muted);
+  font-style: italic;
+}
+.ph-foot {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.ph-foot .ph-guide {
+  margin-left: auto;
+  flex: none;
+  color: var(--accent-ink);
+  text-decoration: none;
+}
+.ph-foot .ph-guide:hover {
+  color: var(--text);
+  text-decoration: underline;
+}

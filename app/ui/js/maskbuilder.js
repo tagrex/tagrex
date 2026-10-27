@@ -393,6 +393,11 @@ function referenceEntries() {
   return mode === MODES.render ? entries : entries.filter((entry) => entry.extract);
 }
 
+// The grammar the reference shows for this mode (#557).
+function referenceDirection() {
+  return mode === MODES.render ? "render" : mode === MODES.text ? "text" : "extract";
+}
+
 async function open(which) {
   mode = which;
   dialog.classList.toggle("is-extract", mode !== MODES.render);
@@ -412,7 +417,7 @@ async function open(which) {
   refresh();
   try {
     entries = await catalogue();
-    renderReference(referenceEntries(), "", el("mb-ref-body"));
+    renderReference(referenceEntries(), "", el("mb-ref-body"), referenceDirection());
   } catch (e) {
     el("mb-ref-body").textContent = String(e);
   }
@@ -477,7 +482,7 @@ el("mb-ref-clear").addEventListener("click", () => {
 });
 el("mb-ref-filter").addEventListener("input", (e) => {
   e.target.parentElement.classList.toggle("is-empty", !e.target.value);
-  renderReference(referenceEntries(), e.target.value, el("mb-ref-body"));
+  renderReference(referenceEntries(), e.target.value, el("mb-ref-body"), referenceDirection());
 });
 el("mb-ref-body").addEventListener("click", (e) => {
   const row = e.target.closest(".ph-row[data-token]");

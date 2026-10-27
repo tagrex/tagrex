@@ -287,16 +287,8 @@
                  the app, rather than only after Preview. Empty until there's
                  a selection to render against. -->
             <p id="mask-example" class="hint mono mask-example" aria-live="polite"></p>
-            <p class="hint muted" data-i18n="renamer.maskHint" data-i18n-html>
-              The <b>?</b> button lists every placeholder — tags, the file itself
-              (%filename%, %foldername%) and its technical properties (%_bitrate%, %_length%) —
-              and inserts one at the caret. Wrap optional parts in [brackets]: dropped whole when
-              empty, e.g. %album%[ (%year%)]. Track numbers pad to two digits; set another width
-              with %disc:2%. On vinyl/cassette %side% is the side letter (A/B…), so %side%%track:1%
-              gives A1; it's blank on other media. Add <code>/</code> (or <code>\</code>) to also
-              sort into folders — wherever the file already is, unless reorganizing below sends it
-              somewhere else.
-            </p>
+            <!-- One line: the job's own behaviour and where the grammar is (#557). -->
+            <p class="hint mask-hint" data-i18n="renamer.maskHint" data-i18n-html>The <span class="hint-tool">?</span> button lists the placeholders and the grammar; the builder tries the mask on every selected file. A <code>/</code> sorts into folders where the file already is.</p>
 
             <!-- What else travels with a renamed track (#405): same-named files,
                  for any rename. Here rather than in Settings because it changes
@@ -515,17 +507,8 @@
                    values are raw (#159): cleaning them up is a chain over the
                    staged plan, and there is no plan while a pattern is typed. -->
               <div id="from-name-probe" class="probe"></div>
-              <p class="hint muted" data-i18n="fromName.hint" data-i18n-html>
-                The same placeholders RENAMER uses, read the other way. Add <code>/</code> (or
-                <code>\</code>) to reach into the folders — <code>%albumartist%/%album%/%track% -
-                %title%</code> — and one folder level is matched per separator. Wrap optional parts
-                in [brackets], and use %skip% for a run of text that maps to no tag. Write a width
-                out to split values that run together: <code>%disc:1%%track:2%</code> reads 101 as
-                disc 1, track 01. A name that doesn't fit the pattern is left alone; %side% can't
-                be read back, and a value the field can't hold (a vinyl A1 as a track number) is
-                flagged in the preview instead of being written. Values come out as the name spells
-                them; the rules under the wand above tidy them up as part of the same press.
-              </p>
+              <!-- One line: the job's own behaviour and where the grammar is (#557). -->
+              <p class="hint mask-hint" data-i18n="fromName.hint" data-i18n-html>A name that doesn't fit the mask is left alone. <span class="hint-tool">?</span> lists the placeholders and the grammar, read the other way.</p>
             </div></div>
             <div class="panel-actions from-name-actions">
               <div class="spacer"></div>
@@ -557,16 +540,8 @@
               </div>
               <textarea id="from-text-lines" class="from-text-lines" spellcheck="false" wrap="off" data-i18n-placeholder="fromText.placeholder" placeholder="Paste a tracklist here, one line per track"></textarea>
               <div id="from-text-probe" class="probe"></div>
-              <p class="hint muted" data-i18n="fromText.hint" data-i18n-html>
-                Line by line, in table order: the first track goes to the first selected file, the
-                second to the second, and so on. A line the pattern doesn't fit — a heading, a side
-                label, a blank line — is not a track and is skipped; the count above says how many
-                were. The same placeholders RENAMER uses, read the other way — %skip% for a run of
-                text that maps to no tag, [brackets] for an optional part. Values come out as the
-                line spells them; the rules under the wand above tidy them up as part of the same
-                press. A table copied from a web page has its columns separated by tabs; write a tab
-                as <code>\t</code>: <code>%track%\t%artist%–\t%title%\t%skip%</code>.
-              </p>
+              <!-- One line: the job's own behaviour and where the grammar is (#557). -->
+              <p class="hint mask-hint" data-i18n="fromText.hint" data-i18n-html>One line per selected file, in table order; a line that doesn't fit is skipped. <span class="hint-tool">?</span> lists the grammar.</p>
             </div></div>
             <div class="panel-actions from-name-actions">
               <div class="spacer"></div>
@@ -917,7 +892,7 @@
               </div>
             </div>
             <div id="mb-ref-body" class="ph-body mb-ref-body"></div>
-            <p class="ph-foot muted" data-i18n="ph.foot">Click one to insert it at the caret.</p>
+            <p class="ph-foot muted"><span data-i18n="ph.foot">Click one to insert it at the caret.</span><a class="ph-guide" href="#" data-i18n="ph.guide">Mask guide</a></p>
           </div>
         </div>
         <div class="modal-actions">
@@ -947,7 +922,7 @@
         </div>
       </div>
       <div id="ph-body" class="ph-body"></div>
-      <p class="ph-foot muted" data-i18n="ph.foot">Click one to insert it at the caret.</p>
+      <p class="ph-foot muted"><span data-i18n="ph.foot">Click one to insert it at the caret.</span><a class="ph-guide" href="#" data-i18n="ph.guide">Mask guide</a></p>
     </div>
 
     <!-- Saved mask presets (#360): a shared pool dropped into any mask input.

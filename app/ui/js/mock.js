@@ -428,6 +428,8 @@ function mockInvoke(cmd, args) {
       s.tracks = all;
       return Promise.resolve({ mode: "files", root: "/dropped", folders: dirs });
     }
+    case "open_mask_guide":
+      return Promise.resolve();
     case "open_release_page":
       // No system browser in the dev mock; just echo so the click is testable.
       console.log(`[mock] open_release_page ${args.source} ${args.id}`);
