@@ -42,10 +42,7 @@
 > [docs/architecture.md](docs/architecture.md); user-visible changes are in
 > [CHANGELOG.md](CHANGELOG.md).
 
-<details>
-<summary><b>Install</b></summary>
-
-<br>
+## Install
 
 Builds are on the [Releases](https://github.com/tagrex/tagrex/releases) page.
 
@@ -74,12 +71,7 @@ sudo apt install ./TagRex_*_amd64.deb     # Debian, Ubuntu (arm64.deb on ARM)
 sudo dnf install ./TagRex-*.x86_64.rpm    # Fedora (aarch64.rpm on ARM)
 ```
 
-</details>
-
-<details open>
-<summary><b>What it does</b></summary>
-
-<br>
+## What it does
 
 **A folder is the library.** Point TagRex at one and it recurses: type or browse
 to the path, drop the folder on the window, or hand it over from the file
@@ -243,13 +235,7 @@ shortcuts for the main actions that you can rebind, a bundled IBM Plex type set
 so text renders identically on every OS, adjustable table density, and a
 Settings › LAB section for typography still being trialled.
 
-</details>
-
-<details>
-<summary><b>Motivation</b></summary>
-
-<br>
-
+## Motivation
 
 For years, [TagScanner](https://www.xdlab.ru/) and [Mp3tag](https://www.mp3tag.de/en/)
 have been the reference tools for putting large music collections in order.
@@ -262,8 +248,6 @@ memory in these tools is left with a fragile chain of workarounds: virtual
 machines, ARM Windows builds, x86 emulation. TagRex aims to remove that chain —
 one free, open-source editor with the same core workflow on Windows, macOS,
 and Linux.
-
-</details>
 
 <details>
 <summary><b>Non-goals</b></summary>
@@ -361,12 +345,7 @@ endorsed by Discogs. "Discogs" is a trademark of Zink Media, LLC.
 
 </details>
 
-<details>
-<summary><b>License</b></summary>
-
-<br>
+## License
 
 [GPL-3.0](LICENSE). Free software stays free: forks and derivatives must remain
 open source.
-
-</details>

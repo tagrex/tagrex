@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The README's open block has air under its title.** What it does no longer
   starts its first line right against the title, so the sections stop running
   into each other. (#586)
+- **The README keeps real headings for its main sections.** Install, What it
+  does, Motivation and License are headings again, so they show up in GitHub's
+  outline and can be linked to; only Non-goals, Build from source, Tech stack
+  and Attribution stay collapsed. (#587)
 
 ### Fixed
 
