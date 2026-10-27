@@ -592,7 +592,10 @@ select {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20fill='none'%20stroke='%236b7280'%20stroke-width='1.6'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M4%206.5%208%2010.5%2012%206.5'/%3E%3C/svg%3E");
+  /* The caret is a variable the themes set (#552), so a rule that changes the
+     background, such as the disabled stripes, can layer it back on. */
+  --select-caret: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20fill='none'%20stroke='%236b7280'%20stroke-width='1.6'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M4%206.5%208%2010.5%2012%206.5'/%3E%3C/svg%3E");
+  background-image: var(--select-caret);
   background-repeat: no-repeat;
   background-position: right 7px center;
   background-size: 13px 13px;
@@ -600,11 +603,11 @@ select {
 /* Dark-theme caret (lighter muted), matching the app's two theme signals. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) select {
-    background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20fill='none'%20stroke='%239aa1ac'%20stroke-width='1.6'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M4%206.5%208%2010.5%2012%206.5'/%3E%3C/svg%3E");
+    --select-caret: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20fill='none'%20stroke='%239aa1ac'%20stroke-width='1.6'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M4%206.5%208%2010.5%2012%206.5'/%3E%3C/svg%3E");
   }
 }
 :root[data-theme="dark"] select {
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20fill='none'%20stroke='%239aa1ac'%20stroke-width='1.6'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M4%206.5%208%2010.5%2012%206.5'/%3E%3C/svg%3E");
+  --select-caret: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='16'%20height='16'%20fill='none'%20stroke='%239aa1ac'%20stroke-width='1.6'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='M4%206.5%208%2010.5%2012%206.5'/%3E%3C/svg%3E");
 }
 
 button {
@@ -4383,6 +4386,15 @@ select:disabled {
   box-shadow: none;
   cursor: not-allowed;
   opacity: 1; /* drop the old 0.5 fade */
+}
+
+/* A disabled select keeps its caret, drawn once over the stripes (#552): the
+   shorthand above resets the repeat, and the caret on its own would tile. */
+select:disabled {
+  background-image: var(--select-caret), var(--inert-stripes-soft);
+  background-repeat: no-repeat, repeat;
+  background-position: right 7px center, 0 0;
+  background-size: 13px 13px, auto;
 }
 
 button.primary:disabled {

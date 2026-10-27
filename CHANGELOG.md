@@ -68,6 +68,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   track left without a file says so, and the summary counts tracks, skipped
   lines, tracks without a file and files without a track. (#550)
 
+### Fixed
+
+- **A disabled select no longer repeats its caret across the box.** The rules
+  of a built-in preset are read-only, and in the dark theme each rule's target
+  showed a row of carets over its text; the caret is now drawn once, over the
+  disabled stripes, in both themes. (#552)
+
 ## [0.26.0] - 2026-10-24
 
 TagRex now measures BPM from the audio: select files and the metronome on the
