@@ -125,6 +125,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **RENAMER's two checkboxes are back together and in order.** Carry
+  same-named files had moved onto the Preview rename line, below the move
+  option and apart from it; it is back above it, and the button has its line
+  to itself. (#574)
 - **Number tracks' Start at and Disc # fields are sized to their numbers**
   instead of sharing the row half and half; Disc # shows "none" when blank and
   explains itself in its tooltip. (#573)

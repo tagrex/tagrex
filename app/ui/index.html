@@ -298,6 +298,13 @@
             <!-- One line: the job's own behaviour and where the grammar is (#557). -->
             <p class="hint mask-hint" data-i18n="renamer.maskHint" data-i18n-html>The <span class="hint-tool">?</span> button lists the placeholders and the grammar; the builder tries the mask on every selected file. A <code>/</code> sorts into folders where the file already is.</p>
 
+            <!-- What else travels with a renamed track (#405): same-named files,
+                 for any rename. Here rather than in Settings because it changes
+                 the plan you are about to preview; the extensions it matches stay
+                 in Settings, set once. -->
+            <label class="rule-flag" data-i18n-title="settings.sidecarsHint" title="When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.">
+              <input id="carry-sidecars" type="checkbox" checked /><span data-i18n="renamer.carrySidecars">Carry same-named files (lyrics, cue sheets…)</span>
+            </label>
             <label class="rule-flag" data-i18n-title="renamer.reorganizeToggleTitle" title="Move or copy the results to a different folder instead of renaming them where they already are">
               <input id="reorganize-toggle" type="checkbox" /><span data-i18n="renamer.reorganizeToggle">Also move or copy into a different folder</span>
             </label>
@@ -338,18 +345,9 @@
               </label>
             </div>
 
-            <!-- Carry only changes the run, so it joins the closing line (#571);
-                 the reorganize toggle opens options and stays above. -->
+            <!-- Only the button (#574): Carry stays with the toggle under it, in its
+                 own order, rather than on this line. -->
             <div class="panel-actions">
-              <div class="panel-opts">
-                <!-- What else travels with a renamed track (#405): same-named files,
-                     for any rename. Here rather than in Settings because it changes
-                     the plan you are about to preview; the extensions it matches stay
-                     in Settings, set once. -->
-                <label class="rule-flag" data-i18n-title="settings.sidecarsHint" title="When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.">
-                  <input id="carry-sidecars" type="checkbox" checked /><span data-i18n="renamer.carrySidecars">Carry same-named files (lyrics, cue sheets…)</span>
-                </label>
-              </div>
               <button id="preview" class="primary" disabled data-i18n="renamer.previewRename">Preview rename</button>
             </div>
           </div>
