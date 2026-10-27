@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 0.26.x.** Usable day to day: table editing, rename masks with a
+> **Status: 0.27.x.** Usable day to day: table editing, rename masks with a
 > function language, tags read back out of file names, text transforms, online
 > lookups, BPM detection from the audio, cover art, tag block conversion,
 > duplicate detection, exports, a preview player, a transactional undo journal,
@@ -84,8 +84,8 @@ Selection is first-class: click, ⌘/Ctrl, Shift ranges, keyboard. Tag cells edi
 in place, offering the values the library already holds as you type, and a cell
 is written when you press Enter — a change of its own that undo takes back. A button
 beside the folder path re-reads what is open without losing your sort, filter or
-pending edits, and right-clicking a file offers to drop it from the list or move
-it to the system Trash.
+pending edits, and right-clicking a file offers Detect BPM and Clear tags for
+the selection, or to drop it from the list or move it to the system Trash.
 
 <p align="center">
   <img src="docs/img/tagger-dark.png#gh-dark-mode-only" width="800" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
@@ -167,7 +167,7 @@ with a count; choosing one narrows the table to the files it flags.
 **Cleanup is part of the job, not a second step.** Tick presets in the dialog
 behind the wand and they run as part of importing a release, reading tags out
 of a file name and renaming — inside that panel's own button: one press, one
-plan, one undo entry. The ticked set is shared, and each job takes only the
+plan, one undo entry. Each job keeps its own ticked set and takes only the
 rules aimed at what it produces: tag rules for imports and FROM NAME, file-name
 rules for RENAMER. So the underscore RENAMER wants never reaches the tags
 FROM NAME reads. The tag editor has none on purpose — a value typed by hand
@@ -191,7 +191,10 @@ characters rather than bytes and clamp instead of failing, so what stops a
 rename is a bad pattern, not an awkward title. A mask that calls a function is
 render-only: substitution is invertible in both directions and `$upper` is not.
 Every mask input carries a `?` that lists the whole library, argument by
-argument.
+argument, and the masks of RENAMER, FROM NAME and FROM TEXT open in a builder
+window: the mask in its own field, the reference beside it, and every selected
+file (or line of the list) below with what the mask makes of it, recomputed as
+you type.
 
 **Tag blocks are visible and changeable.** One file can carry several answers
 to the same question — an ID3v2 block and a stale ID3v1 one — which is why a

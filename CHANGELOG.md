@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-27
+
+This release is about writing masks and about how the app looks. RENAMER, FROM
+NAME and FROM TEXT get a mask builder: the mask in a window of its own, the
+placeholder reference open beside it and every selected file below with what
+the mask makes of it, recomputed as you type. Each job now keeps its own ticked
+transform presets, so a tidy-up meant for file names no longer runs on every
+import. And the interface had a design pass across its windows, menus and side
+panels: fields carry their buttons inside their border, long operations report
+their outcome in one place, the library health menu folds away what found
+nothing, in-app windows close on the side the platform closes, and every side
+panel ends its jobs the same way.
+
 ### Added
 
 - **A mask builder for RENAMER.** The button at the end of the mask row opens a
