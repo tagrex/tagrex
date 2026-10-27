@@ -997,13 +997,12 @@ body.panel-collapsed .col-splitter {
   min-height: var(--ctl-h);
 }
 /* Or the job's note: a job with no controls (Vinyl sides), or a closing remark
-   (EXPORTER's read-only line, DEDUPLICATOR's lock). The bottom padding centres
-   its last line on the button. */
+   (EXPORTER's read-only line, DEDUPLICATOR's lock). */
 .panel-actions > .panel-note {
   flex: 1 1 200px;
   min-width: 0;
   margin: 0;
-  padding: 0 0 calc((var(--ctl-h) - var(--lh-normal) * 1em) / 2);
+  padding: 0;
   font-size: var(--text-xs);
   line-height: var(--lh-normal);
   color: var(--muted);
@@ -1012,6 +1011,12 @@ body.panel-collapsed .col-splitter {
 .panel-actions > .panel-note b {
   color: var(--text);
   font-weight: var(--fw-medium);
+}
+/* Beside a paragraph the button centres on it (#575): lined up with the last
+   line of two or three, it read as dropped below the text. A row of flags keeps
+   the last-line alignment above. */
+.panel-actions:has(> .panel-note) {
+  align-items: center;
 }
 /* The lock line keeps its icon and takes the control height, so the icon and
    the button share a centre. */
@@ -3707,6 +3712,11 @@ td.unreadable-note {
 .exp-mask.show {
   max-height: 3em;
   opacity: 1;
+}
+/* Collapsed, the row still takes a gap of the column; give it back (#575), or
+   the rows around it sit twice as far apart as the rest. */
+.exp-mask:not(.show) {
+  margin-top: -8px;
 }
 .exp-mask > label {
   font-size: var(--text-xs);

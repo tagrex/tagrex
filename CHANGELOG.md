@@ -125,6 +125,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A run button beside a note is centred on it** (EXPORTER's read-only line,
+  Vinyl sides) instead of lined up with its last line, where it looked dropped
+  below the text. (#575)
+- **EXPORTER's rows are evenly spaced again**: the hidden Report mask row no
+  longer leaves a double gap between One per and File name. (#575)
 - **RENAMER's two checkboxes are back together and in order.** Carry
   same-named files had moved onto the Preview rename line, below the move
   option and apart from it; it is back above it, and the button has its line
