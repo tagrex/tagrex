@@ -1421,6 +1421,10 @@ pub struct TransformRuleDto {
     /// remember to run in order.
     #[serde(default)]
     pub scope: Option<String>,
+    /// For a title-case step: the small words kept lowercase unless they start
+    /// or end a part (#537). `None` is off, which every rule written before has.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub small_words: Option<Vec<String>>,
 }
 
 fn default_true() -> bool {
@@ -5729,6 +5733,7 @@ fn preset_rule(kind: &str, from: &str, to: &str, regex: bool, style: &str) -> Tr
         scope: None,
         style: style.into(),
         enabled: true,
+        small_words: None,
     }
 }
 
@@ -6038,7 +6043,11 @@ fn build_chain(rules: &[TransformRuleDto]) -> Result<TransformChain, AppError> {
                     "sentence" => CaseStyle::Sentence,
                     other => return Err(AppError::UnknownTransform(other.to_string())),
                 };
-                chain.push(Box::new(ChangeCase::new(style)));
+                let mut step = ChangeCase::new(style);
+                if let Some(words) = &rule.small_words {
+                    step = step.with_small_words(words.clone());
+                }
+                chain.push(Box::new(step));
             }
             "diacritics" => chain.push(Box::new(RemoveDiacritics)),
             "transliterate" => chain.push(Box::new(Transliterate)),
@@ -7265,6 +7274,7 @@ mod tests {
             style: style.into(),
             enabled,
             scope: None,
+            small_words: None,
         };
         // An enabled upper-case step plus a *disabled* title-case step: only the
         // enabled one runs, so the result is upper, not title.
@@ -7277,6 +7287,38 @@ mod tests {
     // catalogue number while title-casing everything else. Consecutive rules
     // that agree collapse into one segment, and a group whose rules name nothing
     // is the single segment it always was.
+    // #537: a title-case rule carries its small words as the UI sends them,
+    // and a rule without them saves without the key, so presets written before
+    // read and save back unchanged.
+    #[test]
+    fn title_case_rule_keeps_its_small_words_lowercase() {
+        let rule: TransformRuleDto = serde_json::from_value(serde_json::json!({
+            "kind": "case",
+            "style": "title",
+            "small_words": ["of", "the"],
+        }))
+        .unwrap();
+        let group: ActionGroupDto = serde_json::from_value(serde_json::json!({
+            "name": "Titles",
+            "scope": "tags",
+            "rules": [rule],
+        }))
+        .unwrap();
+        assert_eq!(
+            transform_sample(&group, "lord of the rings - the return of the king", "tags").unwrap(),
+            "Lord of the Rings - The Return of the King"
+        );
+        let plain = case_rule("title");
+        assert!(plain.small_words.is_none());
+        assert!(!serde_json::to_string(&plain)
+            .unwrap()
+            .contains("small_words"));
+        assert_eq!(
+            build_chain(&[plain]).unwrap().apply("lord of the rings"),
+            "Lord Of The Rings"
+        );
+    }
+
     #[test]
     fn transform_sample_runs_only_the_rules_aimed_at_the_target() {
         // #394: the FTP format preset over a file name, and a mixed preset
@@ -7337,6 +7379,7 @@ mod tests {
             style: style.into(),
             enabled: true,
             scope: scope.map(str::to_string),
+            small_words: None,
         };
         let group = |rules: Vec<TransformRuleDto>| ActionGroupDto {
             name: String::new(),
@@ -9833,6 +9876,7 @@ mod tests {
             style: String::new(),
             enabled: true,
             scope: None,
+            small_words: None,
         }
     }
 

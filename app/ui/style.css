@@ -3596,6 +3596,35 @@ td.unreadable-note {
     flex-wrap: wrap;
   }
 }
+/* Title case's small words (#537): a tick, then the list's language and the
+   words themselves, on one line under the case buttons. */
+.rule-small {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  width: 100%;
+}
+.rule-small[hidden],
+.rule-small > [hidden] {
+  display: none;
+}
+.rule-small > .rule-small-lang {
+  flex: none;
+  height: var(--ctl-h-sm);
+  font-size: var(--text-xs);
+}
+.rule-small > .rule-small-words {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.rule-small-words > input {
+  font-family: var(--font-mono-bundled);
+}
+/* Read-only (a built-in preset): only a list that is on is worth showing. */
+.pe-rules-set:disabled .rule-small:not(:has(input[type="checkbox"]:checked)) {
+  display: none;
+}
 .rule-note {
   flex: 1 1 200px;
   min-width: 0;

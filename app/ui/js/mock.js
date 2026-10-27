@@ -220,7 +220,12 @@ function mockApplyRules(value, rules) {
         ? out.replace(new RegExp(rule.from, rule.case_sensitive ? "g" : "gi"), rule.to)
         : out.split(rule.from).join(rule.to);
     } else if (rule.kind === "case" && rule.style === "title") {
-      out = out.replace(/[\p{L}\p{N}']+/gu, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+      const small = new Set(rule.small_words || []);
+      const words = [...out.matchAll(/[\p{L}\p{N}']+/gu)];
+      out = out.replace(/[\p{L}\p{N}']+/gu, (w, at) => {
+        const inner = at !== words[0].index && at !== words[words.length - 1].index;
+        return inner && small.has(w.toLowerCase()) ? w.toLowerCase() : w[0].toUpperCase() + w.slice(1).toLowerCase();
+      });
     } else if (rule.kind === "case" && rule.style === "lower") {
       out = out.toLowerCase();
     } else if (rule.kind === "case" && rule.style === "upper") {
@@ -430,6 +435,9 @@ function mockInvoke(cmd, args) {
     }
     case "open_mask_guide":
       return Promise.resolve();
+    // The core's SMALL_WORDS (#537), copied for the dev mock only.
+    case "small_word_lists":
+      return Promise.resolve([["en", ["a", "an", "the", "and", "but", "or", "nor", "for", "so", "yet", "as", "at", "by", "in", "of", "off", "on", "per", "to", "up", "via", "from", "into", "onto", "with"]], ["de", ["der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer", "eines", "und", "oder", "aber", "im", "in", "am", "an", "auf", "aus", "bei", "mit", "nach", "von", "vom", "zu", "zum", "zur", "für"]], ["es", ["el", "la", "los", "las", "un", "una", "unos", "unas", "y", "e", "o", "u", "de", "del", "a", "al", "en", "con", "por", "para", "sin"]], ["fr", ["le", "la", "les", "un", "une", "des", "du", "de", "et", "ou", "à", "au", "aux", "en", "dans", "par", "pour", "sur", "avec", "sans"]], ["it", ["il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "e", "ed", "o", "di", "del", "dello", "della", "dei", "degli", "delle", "da", "dal", "a", "al", "allo", "alla", "in", "nel", "nella", "con", "su", "per", "tra", "fra"]]]);
     case "open_release_page":
       // No system browser in the dev mock; just echo so the click is testable.
       console.log(`[mock] open_release_page ${args.source} ${args.id}`);

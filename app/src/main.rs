@@ -1283,6 +1283,22 @@ fn open_mask_guide() -> Result<(), ErrorDto> {
     open::that(MASK_GUIDE).map_err(ErrorDto::from)
 }
 
+/// The small-word lists a title-case rule can keep lowercase (#537), as
+/// `[language, words]` pairs in the core's order, so the rule card offers the
+/// same lists the transform applies.
+#[tauri::command]
+fn small_word_lists() -> Vec<(String, Vec<String>)> {
+    tagrex_core::transform::SMALL_WORDS
+        .iter()
+        .map(|(lang, words)| {
+            (
+                (*lang).to_string(),
+                words.iter().map(|word| (*word).to_string()).collect(),
+            )
+        })
+        .collect()
+}
+
 /// Which end of an in-app window's head the close button goes at on this
 /// desktop (#565): "start" or "end".
 #[tauri::command]
@@ -1457,6 +1473,7 @@ fn main() {
             open_release_page,
             open_mask_guide,
             close_button_side,
+            small_word_lists,
             preview_rename,
             preview_tags_from_name,
             probe_tags_from_name,

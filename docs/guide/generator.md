@@ -57,7 +57,13 @@ no extension rather than giving it one.
   Whole word is what stops a `Dj` → `DJ` rule from mangling `Djibouti`.
 - **Change case** — Title, lower, UPPER or Sentence. Title case keeps known
   acronyms and roman numerals intact, so `DJ` doesn't become `Dj` and
-  `Symphony III` doesn't become `Symphony Iii`.
+  `Symphony III` doesn't become `Symphony Iii`. **Keep small words lowercase**
+  leaves articles, short prepositions and conjunctions in lower case inside a
+  title, `Lord of the Rings` rather than `Lord Of The Rings`, unless one starts
+  or ends the title or a part of it (after a spaced dash, a colon or a slash,
+  or inside brackets): `Lord of the Rings - The Return of the King`. Pick the
+  list by language (English, German, Spanish, French or Italian) and edit the
+  words as text; nothing guesses the language of a value. Off by default.
 - **Remove diacritics** — strips accents off Latin letters: `Björk` → `Bjork`.
 - **Transliterate to Latin** — maps a whole non-Latin script onto Latin:
   `Пётр` → `Pyotr`, `Ελλάδα` → `Ellada`. Cyrillic and Greek. This is a different

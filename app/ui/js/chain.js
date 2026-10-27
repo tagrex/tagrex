@@ -89,7 +89,95 @@ function ruleForGroup(r) {
     // chain says (#250). Absent means "whatever the chain says", which is every
     // rule saved before this existed.
     scope: r.scope || null,
+    // Title case's small words (#537); absent means off.
+    small_words: Array.isArray(r.small_words) ? [...r.small_words] : null,
   };
+}
+
+// The small-word lists a title-case rule can keep lowercase (#537), from the
+// backend so the card offers what the transform applies. Named in their own
+// language, like the language setting.
+const SMALL_LIST_NAMES = { en: "English", de: "Deutsch", es: "Español", fr: "Français", it: "Italiano" };
+let smallWordLists = [];
+invoke("small_word_lists")
+  .then((lists) => (smallWordLists = lists || []))
+  .catch(() => {});
+
+function smallListMatching(words) {
+  const key = (list) => [...list].sort().join(" ");
+  const found = smallWordLists.find(([, list]) => key(list) === key(words || []));
+  return found ? found[0] : "custom";
+}
+
+// The title-case option (#537): a tick, then the list it keeps lowercase, picked
+// by language and editable as text. Off is no list at all.
+function smallWordsControl(rule) {
+  const box = document.createElement("div");
+  box.className = "rule-small";
+  const tick = document.createElement("label");
+  tick.className = "rule-flag";
+  const check = document.createElement("input");
+  check.type = "checkbox";
+  check.checked = Array.isArray(rule.small_words);
+  const text = document.createElement("span");
+  text.textContent = t("chain.smallWords");
+  tick.title = t("chain.smallWordsTitle");
+  tick.append(check, text);
+
+  const pick = document.createElement("select");
+  pick.className = "rule-small-lang";
+  for (const [lang] of smallWordLists) {
+    const option = document.createElement("option");
+    option.value = lang;
+    option.textContent = SMALL_LIST_NAMES[lang] || lang;
+    pick.appendChild(option);
+  }
+  const custom = document.createElement("option");
+  custom.value = "custom";
+  custom.textContent = t("chain.smallCustom");
+  pick.appendChild(custom);
+
+  const field = document.createElement("div");
+  field.className = "field sm rule-small-words";
+  const words = document.createElement("input");
+  words.type = "text";
+  words.spellcheck = false;
+  words.setAttribute("aria-label", t("chain.smallWords"));
+  field.appendChild(words);
+
+  const paint = () => {
+    const on = Array.isArray(rule.small_words);
+    pick.hidden = field.hidden = !on;
+    if (!on) return;
+    pick.value = smallListMatching(rule.small_words);
+    if (document.activeElement !== words) words.value = rule.small_words.join(", ");
+  };
+  check.addEventListener("change", () => {
+    if (check.checked) {
+      // The interface language's list when there is one, else English.
+      const lang = document.documentElement.lang;
+      const list = (smallWordLists.find(([code]) => code === lang) || smallWordLists[0] || ["", []])[1];
+      rule.small_words = [...list];
+    } else {
+      rule.small_words = null;
+    }
+    paint();
+  });
+  pick.addEventListener("change", () => {
+    const found = smallWordLists.find(([code]) => code === pick.value);
+    if (found) rule.small_words = [...found[1]];
+    paint();
+  });
+  words.addEventListener("input", () => {
+    rule.small_words = words.value
+      .split(/[\s,]+/)
+      .map((word) => word.trim().toLowerCase())
+      .filter(Boolean);
+    pick.value = smallListMatching(rule.small_words);
+  });
+  box.append(tick, pick, field);
+  paint();
+  return box;
 }
 
 // Readable names for the scopes whose stored key isn't already a field label.
@@ -372,13 +460,17 @@ function createRuleChain({ ids }) {
           btn.addEventListener("click", () => {
             rule.style = value;
             seg.querySelectorAll(".seg-btn").forEach((s) => s.classList.toggle("active", s === btn));
+            small.hidden = value !== "title";
           });
           seg.appendChild(btn);
         }
         const note = document.createElement("span");
         note.className = "rule-note";
         note.textContent = t("chain.caseNote");
-        b.append(seg, note);
+        // Small words are title case's alone (#537).
+        const small = smallWordsControl(rule);
+        small.hidden = rule.style !== "title";
+        b.append(seg, note, small);
         card.append(b);
       } else if (rule.kind === "key") {
         const b = document.createElement("div");

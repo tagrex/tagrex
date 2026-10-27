@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **Title case can keep small words lowercase.** A title-case rule has a tick
+  that keeps articles, short prepositions and conjunctions lowercase unless
+  they start or end the title or a part of it, so `lord of the rings - the
+  return of the king` becomes `Lord of the Rings - The Return of the King`.
+  The list is picked by language (English, German, Spanish, French, Italian)
+  and editable as text. Off by default, so existing presets behave as before.
+  (#537)
+
 ## [0.27.0] - 2026-10-27
 
 This release is about writing masks and about how the app looks. RENAMER, FROM

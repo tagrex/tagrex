@@ -133,9 +133,56 @@ pub const DEFAULT_CASE_EXCEPTIONS: &[&str] = &[
     "XIV", "XV", "XVI", "XX",
 ];
 
+/// Short words title case can leave lowercase (#537), one list per language:
+/// articles, short prepositions and conjunctions. Per language rather than one
+/// merged list, because the languages disagree: Italian's article `i` is the
+/// English `I`, German's `die` an English verb. The user picks a list for a
+/// rule; nothing detects the language of a value.
+pub const SMALL_WORDS: &[(&str, &[&str])] = &[
+    (
+        "en",
+        &[
+            "a", "an", "the", "and", "but", "or", "nor", "for", "so", "yet", "as", "at", "by",
+            "in", "of", "off", "on", "per", "to", "up", "via", "from", "into", "onto", "with",
+        ],
+    ),
+    (
+        "de",
+        &[
+            "der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer",
+            "eines", "und", "oder", "aber", "im", "in", "am", "an", "auf", "aus", "bei", "mit",
+            "nach", "von", "vom", "zu", "zum", "zur", "für",
+        ],
+    ),
+    (
+        "es",
+        &[
+            "el", "la", "los", "las", "un", "una", "unos", "unas", "y", "e", "o", "u", "de", "del",
+            "a", "al", "en", "con", "por", "para", "sin",
+        ],
+    ),
+    (
+        "fr",
+        &[
+            "le", "la", "les", "un", "une", "des", "du", "de", "et", "ou", "à", "au", "aux", "en",
+            "dans", "par", "pour", "sur", "avec", "sans",
+        ],
+    ),
+    (
+        "it",
+        &[
+            "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "e", "ed", "o", "di", "del",
+            "dello", "della", "dei", "degli", "delle", "da", "dal", "a", "al", "allo", "alla",
+            "in", "nel", "nella", "con", "su", "per", "tra", "fra",
+        ],
+    ),
+];
+
 pub struct ChangeCase {
     style: CaseStyle,
     exceptions: Vec<String>,
+    /// Kept lowercase by title case unless first or last (#537); empty = off.
+    small_words: Vec<String>,
 }
 
 impl ChangeCase {
@@ -150,7 +197,65 @@ impl ChangeCase {
     }
 
     pub fn with_exceptions(style: CaseStyle, exceptions: Vec<String>) -> Self {
-        Self { style, exceptions }
+        Self {
+            style,
+            exceptions,
+            small_words: Vec::new(),
+        }
+    }
+
+    /// Title case keeps these lowercase unless a word starts or ends the value
+    /// or a part of it (#537). Only title case uses them.
+    pub fn with_small_words(mut self, words: Vec<String>) -> Self {
+        self.small_words = words.into_iter().map(|word| word.to_lowercase()).collect();
+        self
+    }
+
+    /// Title case with the small words kept lowercase. A word that starts or
+    /// ends a part is capitalised all the same: the value's own ends, and the
+    /// ends of a bracket, a part after a colon or slash, or one either side of a
+    /// spaced dash, so `the return of the king - the end` keeps both `The`s.
+    fn title_with_small_words(&self, input: &str) -> String {
+        // Words and the separators between them, in order.
+        let mut words: Vec<String> = Vec::new();
+        let mut seps: Vec<String> = vec![String::new()];
+        for ch in input.chars() {
+            if ch.is_alphanumeric() || ch == '\'' {
+                if seps.len() == words.len() + 1 {
+                    words.push(String::new());
+                }
+                words.last_mut().expect("pushed above").push(ch);
+            } else {
+                if seps.len() == words.len() {
+                    seps.push(String::new());
+                }
+                seps.last_mut().expect("seeded").push(ch);
+            }
+        }
+        if seps.len() == words.len() {
+            seps.push(String::new());
+        }
+        let breaks = |sep: &str| {
+            sep.contains(['(', ')', '[', ']', ':', '/'])
+                || (sep.contains(['-', '\u{2013}', '\u{2014}'])
+                    && sep.contains(char::is_whitespace))
+        };
+        let mut out = String::with_capacity(input.len());
+        for (index, word) in words.iter().enumerate() {
+            out.push_str(&seps[index]);
+            let first = index == 0 || breaks(&seps[index]);
+            let last = index + 1 == words.len() || breaks(&seps[index + 1]);
+            let cased = match self.canonical(word) {
+                Some(canonical) => canonical.to_string(),
+                None if !first && !last && self.small_words.contains(&word.to_lowercase()) => {
+                    word.to_lowercase()
+                }
+                None => capitalize(word),
+            };
+            out.push_str(&cased);
+        }
+        out.push_str(&seps[words.len()]);
+        out
     }
 
     fn canonical(&self, word: &str) -> Option<&str> {
@@ -177,6 +282,7 @@ impl TransformStep for ChangeCase {
             // everything ends up in one case.
             CaseStyle::Lower => input.to_lowercase(),
             CaseStyle::Upper => input.to_uppercase(),
+            CaseStyle::Title if !self.small_words.is_empty() => self.title_with_small_words(input),
             CaseStyle::Title => map_words(input, |word| {
                 self.canonical(word)
                     .map(str::to_string)
@@ -939,6 +1045,67 @@ mod tests {
         assert_eq!(step.apply("a vs b"), "A vs B");
         // Separators and punctuation survive untouched.
         assert_eq!(step.apply("a-b (live)"), "A-B (Live)");
+    }
+
+    fn small(lang: &str) -> Vec<String> {
+        SMALL_WORDS
+            .iter()
+            .find(|(code, _)| *code == lang)
+            .map(|(_, words)| words.iter().map(|w| (*w).to_string()).collect())
+            .unwrap()
+    }
+
+    #[test]
+    fn title_case_keeps_small_words_lowercase_inside_a_part() {
+        let step = ChangeCase::new(CaseStyle::Title).with_small_words(small("en"));
+        assert_eq!(step.apply("lord of the rings"), "Lord of the Rings");
+        // First and last words are capitalised all the same.
+        assert_eq!(step.apply("the end of the world"), "The End of the World");
+        assert_eq!(
+            step.apply("what you are looking at"),
+            "What You Are Looking At"
+        );
+        // A spaced dash, a bracket or a colon starts and ends a part.
+        assert_eq!(
+            step.apply("lord of the rings - the return of the king"),
+            "Lord of the Rings - The Return of the King"
+        );
+        assert_eq!(
+            step.apply("song (live at the roxy)"),
+            "Song (Live at the Roxy)"
+        );
+        assert_eq!(
+            step.apply("album: the remix of a hit"),
+            "Album: The Remix of a Hit"
+        );
+        // A hyphen inside a word is not a part break.
+        assert_eq!(
+            step.apply("rock-and-roll in a box"),
+            "Rock-and-Roll in a Box"
+        );
+        // The exceptions still win, and the separators survive untouched.
+        assert_eq!(step.apply("dj shadow vs dj food"), "DJ Shadow vs DJ Food");
+        assert_eq!(step.apply("  a song  "), "  A Song  ");
+    }
+
+    #[test]
+    fn small_words_follow_the_chosen_language() {
+        let german = ChangeCase::new(CaseStyle::Title).with_small_words(small("de"));
+        assert_eq!(german.apply("der herr der ringe"), "Der Herr der Ringe");
+        // English small words are not German ones.
+        assert_eq!(german.apply("lord of the rings"), "Lord Of The Rings");
+        let english = ChangeCase::new(CaseStyle::Title).with_small_words(small("en"));
+        // `I` is not an English small word.
+        assert_eq!(english.apply("what i did for love"), "What I Did for Love");
+    }
+
+    #[test]
+    fn small_words_change_nothing_unless_given() {
+        let step = ChangeCase::new(CaseStyle::Title);
+        assert_eq!(step.apply("lord of the rings"), "Lord Of The Rings");
+        // Sentence case ignores them.
+        let sentence = ChangeCase::new(CaseStyle::Sentence).with_small_words(small("en"));
+        assert_eq!(sentence.apply("LORD OF THE RINGS"), "Lord of the rings");
     }
 
     #[test]
