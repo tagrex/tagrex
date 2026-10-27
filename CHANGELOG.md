@@ -125,6 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **DEDUPLICATOR says "read-only" once**, beside Scan library, instead of
+  again in the hint above; and RENAMER's "Carry the rest of the folder" and
+  "Tidy up empty folders" start with a capital. (#572)
 - **GENERATOR's Number tracks checkboxes start with a capital**, and with no
   presets of your own the Transform list says so as a muted note instead of in
   the small capitals of the headings around it. (#569)
