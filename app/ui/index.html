@@ -599,28 +599,28 @@
             <p class="hint muted" style="padding: 0" data-i18n="generator.numberHint">Numbers the selected files in table order.</p>
             <!-- The run button closes the last line (#571): the flags start it,
                  the button ends it, and the free space sits between them. -->
-            <div class="panel-actions">
-              <!-- The fields and the flags are one block of settings; the button
-                   sits beside it, centred on it (#576). -->
-              <div class="panel-controls">
-                <div class="export-row">
-                  <label for="autonum-start" data-i18n="generator.startAt">Start at</label>
-                  <input id="autonum-start" type="number" min="0" step="1" value="1" />
-                  <label for="autonum-disc" data-i18n="generator.discNo">Disc #</label>
-                  <input id="autonum-disc" type="text" data-i18n-placeholder="generator.discPlaceholder" placeholder="none" data-i18n-title="generator.discTitle" title="Write this disc number to every numbered file; leave it blank to keep their disc numbers as they are" spellcheck="false" />
-                </div>
-                <div class="panel-opts autonum-flags">
-                  <label class="rule-flag" data-i18n-title="generator.trackTotalTitle" title="Also write the track total (the count of numbered files) to every file">
-                    <input id="autonum-total" type="checkbox" /><span data-i18n="generator.trackTotal">Track total</span>
-                  </label>
-                  <label class="rule-flag" data-i18n-title="generator.perGroupTitle" title="Restart at the start value for each group when a grouping is active">
-                    <input id="autonum-per-group" type="checkbox" /><span data-i18n="generator.perGroup">Restart per group</span>
-                  </label>
-                  <label class="rule-flag" data-i18n-title="generator.keepSidesTitle" title="Leave non-numeric positions like vinyl sides (A1, B2) untouched instead of renumbering them">
-                    <input id="autonum-keep-sides" type="checkbox" checked /><span data-i18n="generator.keepSides">Keep vinyl sides</span>
-                  </label>
-                </div>
+            <!-- The fields one under the other, the flags in a column beside
+                 them, the button on its own line under both (#577). -->
+            <div class="autonum-settings">
+              <div class="export-row autonum-fields">
+                <label for="autonum-start" data-i18n="generator.startAt">Start at</label>
+                <input id="autonum-start" type="number" min="0" step="1" value="1" />
+                <label for="autonum-disc" data-i18n="generator.discNo">Disc #</label>
+                <input id="autonum-disc" type="text" data-i18n-placeholder="generator.discPlaceholder" placeholder="none" data-i18n-title="generator.discTitle" title="Write this disc number to every numbered file; leave it blank to keep their disc numbers as they are" spellcheck="false" />
               </div>
+              <div class="panel-opts autonum-flags">
+                <label class="rule-flag" data-i18n-title="generator.trackTotalTitle" title="Also write the track total (the count of numbered files) to every file">
+                  <input id="autonum-total" type="checkbox" /><span data-i18n="generator.trackTotal">Track total</span>
+                </label>
+                <label class="rule-flag" data-i18n-title="generator.perGroupTitle" title="Restart at the start value for each group when a grouping is active">
+                  <input id="autonum-per-group" type="checkbox" /><span data-i18n="generator.perGroup">Restart per group</span>
+                </label>
+                <label class="rule-flag" data-i18n-title="generator.keepSidesTitle" title="Leave non-numeric positions like vinyl sides (A1, B2) untouched instead of renumbering them">
+                  <input id="autonum-keep-sides" type="checkbox" checked /><span data-i18n="generator.keepSides">Keep vinyl sides</span>
+                </label>
+              </div>
+            </div>
+            <div class="panel-actions">
               <button id="autonum-run" class="primary" data-i18n="generator.numberRun">Number tracks</button>
             </div>
           </div>

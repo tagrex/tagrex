@@ -998,18 +998,30 @@ body.panel-collapsed .col-splitter {
 .panel-opts > .rule-flag {
   min-height: var(--ctl-h);
 }
-/* A job's settings as one block (#576): its fields above its flags, the
-   button beside the whole of it. */
-.panel-actions > .panel-controls {
-  flex: 1 1 200px;
-  min-width: 0;
+/* Number tracks (#577): Start at and Disc # one under the other at one width,
+   the three flags in a column beside them at about the same height, and the
+   button on its own line under both. */
+.autonum-settings {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: var(--space-3) var(--space-6);
 }
-/* In the block the flags are one more row, not a flexible column. */
-.panel-controls > .panel-opts {
+.export-row.autonum-fields {
+  display: grid;
+  grid-template-columns: max-content auto;
+  gap: var(--space-2) var(--space-3);
+}
+.autonum-settings > .autonum-flags {
   flex: none;
+  flex-direction: column;
+  align-items: flex-start;
+  /* spread over the fields' height, so the column and the fields end together */
+  justify-content: space-between;
+  row-gap: var(--space-1);
+}
+.autonum-flags > .rule-flag {
+  min-height: 0;
 }
 /* Or the job's note: a job with no controls (Vinyl sides), or a closing remark
    (EXPORTER's read-only line, DEDUPLICATOR's lock). */
@@ -2647,7 +2659,7 @@ body.show-checkbox tr.playing td.sel {
    digits, so the fields are sized to that instead of sharing the row. */
 #autonum-start,
 #autonum-disc {
-  flex: 0 0 8ch;
+  width: 8ch;
   box-sizing: content-box;
 }
 .export-row select {

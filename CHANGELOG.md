@@ -125,6 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Number tracks lays out as two columns and a button.** Start at and Disc #
+  sit one under the other at one width, the three checkboxes in a column beside
+  them at the same height, and Number tracks on its own line under both. (#577)
 - **Number tracks reads as one block of settings beside its button.** The
   Start at and Disc # fields and the checkboxes under them sit together, and
   Number tracks is centred beside them instead of on the checkboxes' line with
