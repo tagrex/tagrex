@@ -3646,14 +3646,11 @@ td.unreadable-note {
   font-size: var(--text-xs);
 }
 
-.exp-mask input {
-  width: 100%;
+/* The mask is an input group (#566): the frame is the .field's. */
+.exp-mask > .field {
   min-width: 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-  color: var(--text);
+}
+.exp-mask .field > input {
   font-family: var(--font-ui); /* a pattern/name field, not a path (#351) */
   font-size: var(--text-xs);
 }
