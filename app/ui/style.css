@@ -966,67 +966,47 @@ body.panel-collapsed .col-splitter {
   padding-bottom: 0;
 }
 
-/* The run button closes the block (#571): it sits at the end of the last line,
-   beside the job's flags or note, which start it. Free space has one place,
-   between the two; when the start side would get less than 200px, the button
-   wraps under it and stays at the end. */
+/* A job's closing row (#579): a grid of at most three equal columns. Three from
+   the 480px default up, two below about 440px, one at the 240px clamp; the
+   max() keeps it at three on a wide column, where the columns widen instead.
+   The run button always takes the last cell and fills it, so a panel's run
+   buttons stand in one rail on the right. Every row is full, so no corner is
+   left empty. */
 .panel-actions {
-  display: flex;
-  flex-wrap: wrap;
-  /* Centred on what starts the line (#576): a note of several lines, or a
-     block of fields and flags, reads with the button at its middle. */
+  display: grid;
+  /* --panel-cell-min is the longest run button in the current language, set by
+     app.js; 132px is the floor that "Preview changes" needs in English. */
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(max(var(--panel-cell-min, 132px), 132px, (100% - 2 * var(--space-5)) / 3), 1fr)
+  );
   align-items: center;
   gap: var(--space-3) var(--space-5);
 }
-/* Does the .spacer's job, so the button stays at the end on its own line too.
-   Transform keeps its .spacer between Edit presets… and Preview changes. */
+/* The .spacer's job is the grid's now. */
+.panel-actions > .spacer {
+  display: none;
+}
 .panel-actions > .primary {
-  flex: none;
-  margin-inline-start: auto;
+  grid-column: -2 / -1;
+  justify-self: stretch;
 }
-/* The start side: flags that only change the run, as a row that wraps. Each is
-   a full control height, so their last line shares a centre with the button. */
-.panel-opts {
-  flex: 1 1 200px;
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  column-gap: var(--space-5);
-  row-gap: 0;
+/* Alone, it takes the row (RENAMER, the FROM NAME / FROM TEXT footers): a lone
+   button at the right is the empty corner by another name. */
+.panel-actions > .primary:only-child {
+  grid-column: 1 / -1;
 }
-.panel-opts > .rule-flag {
-  min-height: var(--ctl-h);
+/* What leads into the button takes the cells before it: a note (Vinyl sides,
+   EXPORTER, DEDUPLICATOR) or a secondary button (Edit presets…, Clear tags),
+   which keeps its own width at the start. */
+.panel-actions > .panel-note,
+.panel-actions > button:not(.primary) {
+  grid-column: 1 / -2;
 }
-/* Number tracks (#577): Start at and Disc # one under the other at one width,
-   the three flags in a column beside them at about the same height, and the
-   button on its own line under both. */
-.autonum-settings {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: var(--space-3) var(--space-6);
+.panel-actions > button:not(.primary) {
+  justify-self: start;
 }
-.export-row.autonum-fields {
-  display: grid;
-  grid-template-columns: max-content auto;
-  gap: var(--space-2) var(--space-3);
-}
-.autonum-settings > .autonum-flags {
-  flex: none;
-  flex-direction: column;
-  align-items: flex-start;
-  /* spread over the fields' height, so the column and the fields end together */
-  justify-content: space-between;
-  row-gap: var(--space-1);
-}
-.autonum-flags > .rule-flag {
-  min-height: 0;
-}
-/* Or the job's note: a job with no controls (Vinyl sides), or a closing remark
-   (EXPORTER's read-only line, DEDUPLICATOR's lock). */
 .panel-actions > .panel-note {
-  flex: 1 1 200px;
   min-width: 0;
   margin: 0;
   padding: 0;
@@ -1039,13 +1019,34 @@ body.panel-collapsed .col-splitter {
   color: var(--text);
   font-weight: var(--fw-medium);
 }
-/* The lock line keeps its icon and takes the control height, so the icon and
-   the button share a centre. */
 .panel-actions > .ro-note.panel-note {
   display: flex;
   align-items: center;
+  gap: var(--space-2);
   min-height: var(--ctl-h);
-  padding: 0;
+}
+/* Cells: a field is a label and its input on one line; a flag is a control
+   height tall, so every cell in a row shares a centre with the button. Number
+   tracks is six cells, which fill 3 x 2, 2 x 3 or 1 x 6 alike. */
+.panel-field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.panel-actions > .rule-flag {
+  min-height: var(--ctl-h);
+}
+.panel-field input {
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background-color: var(--bg);
+  color: var(--text);
+  font: inherit;
 }
 
 /* A scrolling list embedded in a panel block (candidates, tracklist, fields). */
@@ -1784,22 +1785,15 @@ body:not(.show-checkbox) #tracks td.sel {
   border-radius: var(--radius-md);
   background: var(--panel);
 }
-/* In the GENERATOR panel (#568) the list takes the height the panel has spare:
-   the panel fills the side column, Transform grows, and Number tracks and Vinyl
-   sides, which never change size, end up at the bottom. The 150px above stays
-   the floor, so the smallest window lays out as before and the column scrolls.
-   Scoped to the panel: the Transform window borrows this block and sizes it
-   itself. */
-#panel-generator:not([hidden]) {
-  flex: 1 0 auto;
-}
-#panel-generator > #transform-block {
-  flex: 1 0 auto;
-}
+/* GENERATOR's checklist (#579) is as tall as its rows. It grows with the
+   window only once it has more rows than fit, up to 40% of the window, then
+   scrolls, so a short list never shows an empty frame. The jobs are packed at
+   the top and the free height is plain ground below the last one. The
+   Transform window borrows this block and sizes the list itself. */
 #panel-generator #groups-menu {
-  flex: 1 1 0;
-  min-height: 150px;
-  max-height: none;
+  flex: none;
+  min-height: 0;
+  max-height: clamp(150px, 40vh, 420px);
 }
 /* No presets of your own yet: a note under the heading, not one more heading. */
 .groups-list .preset-none {
@@ -2656,10 +2650,11 @@ body.show-checkbox tr.playing td.sel {
   font: inherit;
 }
 /* Number tracks (#573): a start number and a disc number are one to three
-   digits, so the fields are sized to that instead of sharing the row. */
+   digits, so the fields are sized to that; 6ch lets "Start at" and its field
+   fit one grid cell (#579). */
 #autonum-start,
 #autonum-disc {
-  width: 8ch;
+  width: 6ch;
   box-sizing: content-box;
 }
 .export-row select {

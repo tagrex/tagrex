@@ -174,6 +174,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The side panels are laid out by two rules.** Jobs sit at the top at their
+  own height, with the free height left below the last one, and GENERATOR's
+  preset list is as tall as its rows, growing with the window only when it has
+  more rows than fit. Each job ends in a grid of up to three equal cells with
+  its run button in the last one, so a panel's run buttons line up on the
+  right and a lone button spans the row; the cell is as wide as the longest run
+  button in the interface language. Number tracks' fields and checkboxes fill
+  that grid. This replaces the stretched list and the button rules of the last
+  few changes. (#579)
 - **Every side panel ends its job the same way.** The run button sits at the
   end of the block's last line, beside the options that only change the run
   (Number tracks' checkboxes, now a row that wraps; RENAMER's Carry same-named

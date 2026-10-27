@@ -1452,6 +1452,26 @@ function exitDiffState() {
 // follow the interface language like everything else (#475).
 function syncCssLabels() {
   document.documentElement.style.setProperty("--cleared-label", JSON.stringify(msg("app.cleared")));
+  syncPanelCellMin();
+}
+
+// The side panels' closing grid (#579) is three equal cells with the run button
+// in the last; a cell must hold the longest run button in this language, or
+// "Preview changes" in Russian wraps onto two lines. Measured off the labels,
+// since most panels are hidden; a button alone takes the row and is left out.
+function syncPanelCellMin() {
+  const buttons = [...document.querySelectorAll(".panel-actions > .primary:not(:only-child)")];
+  if (!buttons.length) return;
+  const style = getComputedStyle(buttons[0]);
+  const ctx = document.createElement("canvas").getContext("2d");
+  ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+  const chrome =
+    parseFloat(style.paddingLeft) +
+    parseFloat(style.paddingRight) +
+    parseFloat(style.borderLeftWidth) +
+    parseFloat(style.borderRightWidth);
+  const widest = Math.max(...buttons.map((b) => ctx.measureText(b.textContent.trim()).width));
+  document.documentElement.style.setProperty("--panel-cell-min", `${Math.ceil(widest + chrome + 2)}px`);
 }
 
 // Sync the floating action bar (apply count + enabled) and the header select-all
