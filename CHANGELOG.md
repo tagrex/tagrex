@@ -77,6 +77,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   longer runs on every import. A preset with nothing for a job can't be ticked
   there. On first start every job's set is the old shared one, cut to the
   presets that apply to it, so nothing changes until you change it. (#555)
+- **The preset editor and the Transform window are laid out in the house
+  style.** A built-in preset reads as what it does instead of a striped form,
+  with a Duplicate to change button beside its name. A rule's head holds an
+  on/off checkbox, its kind and target, and the reorder and remove buttons; find
+  and replace are two small input groups with the regex, match-case and
+  whole-word flags inside the find field. The checklist shows each preset's
+  target and rule count (or "not for this job"), bolds what runs, says how many
+  presets and rules run above the list, and opens a preset with ›. A window over
+  another one dims the app less. (#556)
 
 ### Fixed
 

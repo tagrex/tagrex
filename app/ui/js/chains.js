@@ -153,6 +153,12 @@ function activeRuleCount(context) {
   return presetsFor(context).reduce((n, g) => n + g.rules.length, 0);
 }
 
+// How many of a preset's rules `context` would run, ticked or not: the count
+// the checklist shows beside it (#556).
+function presetRuleCount(group, context) {
+  return rulesFor(group, context).length;
+}
+
 // Whether a preset has anything for `context`, ticked or not — the checklist
 // dims the ones that don't.
 function presetAppliesTo(group, context) {
@@ -277,6 +283,7 @@ export {
   notifyChainChanged,
   onChainChanged,
   presetAppliesTo,
+  presetRuleCount,
   presetsFor,
   renameActivePreset,
   runChainOverPlan,

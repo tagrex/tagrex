@@ -53,8 +53,8 @@ no extension rather than giving it one.
 ### Rule kinds
 
 - **Find and replace** — literal or regular-expression, with *whole word* and
-  *match case* flags. Whole word is what stops a `Dj` → `DJ` rule from mangling
-  `Djibouti`.
+  *match case* flags, the `.*`, `Aa` and `ab` buttons inside the find field.
+  Whole word is what stops a `Dj` → `DJ` rule from mangling `Djibouti`.
 - **Change case** — Title, lower, UPPER or Sentence. Title case keeps known
   acronyms and roman numerals intact, so `DJ` doesn't become `Dj` and
   `Symphony III` doesn't become `Symphony Iii`.
@@ -74,16 +74,19 @@ no extension rather than giving it one.
 
 ### The preset editor
 
-**Edit presets…** opens it. Your presets are listed first, the shipped ones
-below them.
+**Edit presets…** opens it, and the › at the end of a preset's row in the
+checklist opens it on that preset. Your presets are listed first, the shipped
+ones below them.
 
 - **New** starts an empty preset, **Duplicate** copies the open one, **Delete**
   removes one of yours (after asking). Rename a preset in its name field.
 - Rules can be dragged into a different order by their grip, and each has an
-  on/off tick: a disabled step stays in the preset and contributes nothing, which
-  is how you test what one rule is responsible for without deleting it.
-- Built-in presets open read-only and stay as shipped. **Duplicate** one to get
-  a copy you can change.
+  on/off checkbox in its head: a disabled step stays in the preset, drawn with a
+  dashed edge, and contributes nothing, which is how you test what one rule is
+  responsible for without deleting it.
+- Built-in presets open read-only and stay as shipped, shown as what they do
+  rather than as a form. **Duplicate to change**, beside the name, gives a copy
+  you can edit.
 - Changes save as you go — when you switch presets, close the editor or quit.
 
 Presets run in list order as a single plan, each seeing what the previous one

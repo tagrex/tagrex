@@ -997,8 +997,13 @@
             </div>
           </div>
           <div id="pe-edit-col" class="pe-edit-col">
-            <input id="pe-name" type="text" spellcheck="false" data-i18n-aria-label="presets.name" aria-label="Preset name" />
-            <p id="pe-builtin-note" class="hint muted" hidden data-i18n="presets.builtinNote">Built-in presets stay as shipped — Duplicate one to make a copy you can change.</p>
+            <!-- The name as a heading; a built-in says it is read-only once, and
+                 offers the way to change it right there (#556). -->
+            <div class="pe-name-row">
+              <input id="pe-name" type="text" spellcheck="false" data-i18n-aria-label="presets.name" aria-label="Preset name" />
+              <span id="pe-builtin-note" hidden data-i18n="presets.builtinBadge">Built-in, read only</span>
+              <button id="pe-duplicate-here" class="btn" type="button" hidden data-i18n="presets.duplicateToChange">Duplicate to change</button>
+            </div>
             <fieldset id="pe-rules-set" class="pe-rules-set">
               <div id="pe-rules" class="rule-chain"></div>
               <p id="pe-empty" class="empty inert-panel rule-chain-empty" hidden data-i18n="generator.noRules" data-i18n-html>

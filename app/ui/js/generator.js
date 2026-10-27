@@ -10,7 +10,7 @@
 // chain reads the files. With a plan staged it reads THE PLAN — the values it
 // proposes — and gives back a revised plan, so producing values and cleaning
 // them up stay one Apply and one undo entry instead of two.
-import { el, toast } from "./dom.js";
+import { el, escapeHtml, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
@@ -34,6 +34,7 @@ import {
   isPresetActive,
   notifyChainChanged,
   presetAppliesTo,
+  presetRuleCount,
   presetsFor,
   renameActivePreset,
   setPresetActive,
@@ -323,7 +324,7 @@ function openTransformModal() {
   const context = chainContext();
   if (!context || context === "generator") return;
   el("transform-modal-title").textContent = t(CONTEXT_TITLES[context]);
-  el("transform-context-note").textContent = t(CONTEXT_NOTES[context]);
+  paintContextNote(context);
   el("transform-context-note").hidden = false;
   // No run button here: the context's own action runs the chain (#237).
   el("transform-preview").hidden = true;
@@ -331,6 +332,17 @@ function openTransformModal() {
   el("transform-modal-body").append(el("transform-block"));
   el("transform-modal").hidden = false;
   refreshGenerator();
+}
+
+// The job's note, then what runs for it (#556): how many ticked presets and
+// rules, the same count the wand shows.
+function paintContextNote(context) {
+  const presets = presetsFor(context).length;
+  const rules = activeRuleCount(context);
+  const runs = escapeHtml(t("generator.note.runs", { presets: "\u0001", rules: "\u0002" }))
+    .replace("\u0001", `<b>${escapeHtml(tn("unit.preset", presets))}</b>`)
+    .replace("\u0002", `<b>${escapeHtml(tn("unit.rule", rules))}</b>`);
+  el("transform-context-note").innerHTML = `${escapeHtml(t(CONTEXT_NOTES[context]))} ${runs}`;
 }
 
 function closeTransformModal() {
@@ -391,8 +403,13 @@ const presetChecklist = createPresetChecklist({
   setActive: (group, on) => {
     setPresetActive(group, on, shownContext || "generator");
     refreshTransformButton();
+    if (transformModalOpen()) paintContextNote(shownContext);
+    presetChecklist.render();
   },
   appliesTo: presetAppliesTo,
+  ruleCount: presetRuleCount,
+  // › on a row opens that preset in the editor, over this window (#556).
+  onOpen: (group) => openPresetEditor(group.name),
 });
 // A preset changed in the editor: keep a renamed one ticked, then let every job
 // see the new rules.

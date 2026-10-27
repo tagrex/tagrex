@@ -187,7 +187,7 @@ function createRuleChain({ ids }) {
       card.dataset.index = index;
       card.dataset.key = rule.id; // identity key for pointer reorder (#88)
 
-      // ---- header: grip · n · kind · ↑ ↓ ✕ ----
+      // ---- header: grip · on/off · n · kind · target ……… ↑ ↓ | ✕ (#556) ----
       const head = document.createElement("div");
       head.className = "rule-head";
 
@@ -233,25 +233,30 @@ function createRuleChain({ ids }) {
 
       const acts = document.createElement("span");
       acts.className = "rule-acts";
-      // Enable/disable this step (#57): kept in the chain either way, skipped when off.
-      const toggle = mkRuleIcon(
-        "check",
-        rule.enabled === false ? t("chain.stepOff") : t("chain.stepOn"),
-        false,
-        () => {
-          rule.enabled = rule.enabled === false;
-          render();
-        }
-      );
-      toggle.classList.add("rule-toggle");
-      if (rule.enabled === false) toggle.classList.add("off");
-      acts.append(toggle);
-      // ↑/↓ stay as the keyboard / no-pointer fallback for reordering.
+      // Enable/disable this step (#57): kept in the chain either way, skipped
+      // when off. A checkbox (#556): it answers yes or no about the step, where
+      // the tick button it replaces read as one more action beside ↑ ↓ ✕.
+      const toggle = document.createElement("input");
+      toggle.type = "checkbox";
+      toggle.className = "rule-toggle";
+      toggle.checked = rule.enabled !== false;
+      toggle.title = rule.enabled === false ? t("chain.stepOff") : t("chain.stepOn");
+      toggle.setAttribute("aria-label", toggle.title);
+      toggle.addEventListener("change", () => {
+        rule.enabled = toggle.checked;
+        render();
+      });
+      // ↑/↓ stay as the keyboard / no-pointer fallback for reordering; a
+      // hairline keeps ✕ apart from them.
+      const sep = document.createElement("span");
+      sep.className = "field-sep";
+      sep.setAttribute("aria-hidden", "true");
       acts.append(
         mkRuleIcon("caret-up", t("chain.moveUp"), index === 0, () => moveRule(index, index - 1)),
         mkRuleIcon("caret-down", t("chain.moveDown"), index === rules.length - 1, () =>
           moveRule(index, index + 1)
-        )
+        ),
+        sep
       );
       const remove = mkRuleIcon("close", t("chain.removeRule"), false, () => {
         rules.splice(index, 1);
@@ -287,7 +292,7 @@ function createRuleChain({ ids }) {
         rule.scope = scope.value;
       });
 
-      head.append(grip, n, kind, spacer, scope, acts);
+      head.append(grip, toggle, n, kind, scope, spacer, acts);
       card.append(head);
 
       // ---- body (per-kind); diacritics is header-only ----
@@ -304,30 +309,50 @@ function createRuleChain({ ids }) {
         from.addEventListener("input", () => (rule.from = from.value));
         const to = document.createElement("input");
         to.type = "text";
-        to.placeholder = t("chain.replaceWith");
+        // A read-only built-in says what an empty replacement does (#556).
+        to.placeholder = el(ids.set)?.disabled ? t("chain.replaceNothing") : t("chain.replaceWith");
         to.value = rule.to;
         to.spellcheck = false;
         to.addEventListener("input", () => (rule.to = to.value));
-        fields.append(from, to);
 
-        const flags = document.createElement("div");
-        flags.className = "rule-flags";
-        for (const [key, text, hint] of [
-          ["regex", "regex", t("chain.flagRegexTitle")],
-          ["whole_word", t("chain.flagWholeWord"), t("chain.flagWholeWordTitle")],
-          ["case_sensitive", t("chain.flagMatchCase"), t("chain.flagMatchCaseTitle")],
-        ]) {
-          const label = document.createElement("label");
-          label.className = "rule-flag";
-          label.title = hint;
-          const box = document.createElement("input");
-          box.type = "checkbox";
-          box.checked = rule[key];
-          box.addEventListener("change", () => (rule[key] = box.checked));
-          label.append(box, document.createTextNode(text));
-          flags.appendChild(label);
-        }
-        b.append(fields, flags);
+        // find → replace as two input groups (#556); the flags change how the
+        // find text is read, so they sit inside its field.
+        const group = (input, tools) => {
+          const box = document.createElement("div");
+          box.className = "field sm";
+          box.append(input);
+          if (tools.length) {
+            const holder = document.createElement("div");
+            holder.className = "field-tools";
+            holder.append(...tools);
+            box.append(holder);
+          }
+          return box;
+        };
+        const flags = [
+          ["regex", ".*", t("chain.flagRegexTitle"), ""],
+          ["case_sensitive", "Aa", t("chain.flagMatchCaseTitle"), ""],
+          ["whole_word", "ab", t("chain.flagWholeWordTitle"), "flag-word"],
+        ].map(([key, text, hint, extra]) => {
+          const flag = document.createElement("button");
+          flag.type = "button";
+          flag.className = `field-flag ${extra}`.trim();
+          flag.textContent = text;
+          flag.title = hint;
+          flag.setAttribute("aria-label", hint);
+          flag.setAttribute("aria-pressed", String(!!rule[key]));
+          flag.addEventListener("click", () => {
+            rule[key] = !rule[key];
+            flag.setAttribute("aria-pressed", String(rule[key]));
+          });
+          return flag;
+        });
+        const arrow = document.createElement("span");
+        arrow.className = "rule-arrow";
+        arrow.setAttribute("aria-hidden", "true");
+        arrow.textContent = "→";
+        fields.append(group(from, flags), arrow, group(to, []));
+        b.append(fields);
         card.append(b);
       } else if (rule.kind === "case") {
         const b = document.createElement("div");
@@ -456,7 +481,7 @@ function createRuleChain({ ids }) {
 //
 // Presets are not edited here; Edit presets… opens the window where they are
 // (#391). The callbacks keep this component free of the set's storage.
-function createPresetChecklist({ menu, context, isActive, setActive, appliesTo }) {
+function createPresetChecklist({ menu, context, isActive, setActive, appliesTo, ruleCount, onOpen }) {
   // What a preset acts on, from its rules: tags, the file name, or both.
   function targetLabel(group) {
     const scopes = (group.rules || []).map((r) => r.scope || group.scope || "tags");
@@ -481,16 +506,31 @@ function createPresetChecklist({ menu, context, isActive, setActive, appliesTo }
     tick.disabled = !applies && !tick.checked;
     tick.addEventListener("change", () => setActive(group, tick.checked));
 
+    // tick · name ……… target · rules for this job (or "not for this job") · ›
+    // (#556): what runs is the set of bold names, and › opens the preset.
     const name = document.createElement("span");
     name.className = "preset-apply";
+    name.textContent = group.name;
     const scope = document.createElement("span");
     scope.className = "group-scope";
     scope.textContent = targetLabel(group);
-    name.append(document.createTextNode(group.name), scope);
+    const count = document.createElement("span");
+    count.className = "group-rules";
+    count.textContent = applies ? tn("unit.rule", ruleCount(group, context())) : t("presets.notForJob");
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "icon preset-open";
+    open.innerHTML = ico("chevron-right");
+    open.title = t("presets.openOne");
+    open.setAttribute("aria-label", open.title);
+    open.addEventListener("click", (e) => {
+      e.preventDefault();
+      onOpen(group);
+    });
 
     const summary = group.note ? `${group.note}\n${groupSummary(group)}` : groupSummary(group);
     label.title = applies ? summary : `${summary}\n${t("presets.notHere")}`;
-    label.append(tick, name);
+    label.append(tick, name, scope, count, open);
     return label;
   }
 
