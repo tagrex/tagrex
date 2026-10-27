@@ -149,6 +149,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **GENERATOR's preset list uses the panel's free height.** Number tracks and
+  Vinyl sides sit at the bottom of the panel and the Transform list grows into
+  the space above them; at the smallest window it keeps its old height and the
+  panel scrolls. (#568)
 - **The in-app windows close where the platform closes.** On macOS the × of
   Settings, the mask builder, Transform, the preset editor and Add column sits
   at the start of the window's head, on the same side as the traffic lights; on

@@ -1708,6 +1708,23 @@ body:not(.show-checkbox) #tracks td.sel {
   border-radius: var(--radius-md);
   background: var(--panel);
 }
+/* In the GENERATOR panel (#568) the list takes the height the panel has spare:
+   the panel fills the side column, Transform grows, and Number tracks and Vinyl
+   sides, which never change size, end up at the bottom. The 150px above stays
+   the floor, so the smallest window lays out as before and the column scrolls.
+   Scoped to the panel: the Transform window borrows this block and sizes it
+   itself. */
+#panel-generator:not([hidden]) {
+  flex: 1 0 auto;
+}
+#panel-generator > #transform-block {
+  flex: 1 0 auto;
+}
+#panel-generator #groups-menu {
+  flex: 1 1 0;
+  min-height: 150px;
+  max-height: none;
+}
 /* The name is the row's action now, so it takes the width and shows it is one. */
 .groups-list .preset-apply {
   flex: 1;
