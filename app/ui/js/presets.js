@@ -115,6 +115,8 @@ function select(name, builtin) {
   chain.load(group || { rules: [] });
   renderList();
   // A sample the user typed stays; the default follows the preset (#394).
+  // An emptied line shows it as the placeholder and is tried on it (#583).
+  el("pe-sample-input").placeholder = defaultSample();
   if (!sampleTyped) el("pe-sample-input").value = defaultSample();
   scheduleSample();
 }
@@ -155,7 +157,8 @@ function scheduleSample() {
 
 async function renderSample() {
   const out = el("pe-sample-out");
-  const text = el("pe-sample-input").value;
+  const input = el("pe-sample-input");
+  const text = input.value || input.placeholder;
   const targets = sampleTargets();
   const seq = ++sampleSeq;
   if (!targets.length) {
@@ -308,8 +311,10 @@ el("pe-duplicate").addEventListener("click", duplicatePreset);
 el("pe-delete").addEventListener("click", deletePreset);
 el("pe-editor-close").addEventListener("click", closePresetEditor);
 el("pe-name").addEventListener("change", commitName);
-el("pe-sample-input").addEventListener("input", () => {
-  sampleTyped = true;
+el("pe-sample-input").addEventListener("input", (e) => {
+  // Emptied by hand it is no longer the user's own sample (#583): the selected
+  // track's value comes back as the placeholder, and with the next preset.
+  sampleTyped = e.target.value !== "";
   scheduleSample();
 });
 // Every edit to the rules — typing a pattern, a flag, a case style, a target,

@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and editable as text. Off by default, so existing presets behave as before.
   (#537)
 
+### Fixed
+
+- **Clearing the preset editor's Try it on line goes back to the selected
+  track.** An emptied line showed nothing; it now shows the track's value as a
+  placeholder and tries the preset on it, until you type a sample of your
+  own. (#583)
+
 ## [0.27.0] - 2026-10-27
 
 This release is about writing masks and about how the app looks. RENAMER, FROM
