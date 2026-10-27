@@ -94,6 +94,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   follows the direction: naming adds `%side%`, reading adds the fixed width that
   splits `101`, a text list adds `\t`. Opened for reading, the reference leaves
   out the functions, and its foot links to the mask guide. (#557)
+- **Long operations read the same way, and so does their outcome.** BPM
+  detection puts a Stop square in the status bar beside its count, and stopping
+  freezes the count and greys the bar until the run ends; cancelling an Apply
+  greys the diff bar the same way. The result is a report instead of a line of
+  clauses: what was staged as its title, then a line for each other count, in
+  red when it needs a look (no steady beat, could not be decoded). A report with
+  a red line stays until its × is clicked; an error toast has a × too and stays
+  six seconds. (#558)
 
 ### Fixed
 

@@ -40,6 +40,8 @@ let undoUnlisten = null;
 let undoTimer = null;
 
 export async function beginUndoProgress() {
+  // A rollback can't be stopped, so the pill shows no Stop (#558).
+  el("busy-stop").hidden = true;
   el("busy-fill").style.width = "0%";
   el("busy-text").textContent = t("undo.running");
   undoTimer = setTimeout(() => (el("busy-pill").hidden = false), SHOW_AFTER_MS);
@@ -67,13 +69,15 @@ export function endApplyProgress() {
   showTimer = null;
   if (unlisten) unlisten();
   unlisten = null;
-  el("diff-actionbar").classList.remove("applying");
+  el("diff-actionbar").classList.remove("applying", "cancelling");
 }
 
 // The backend stops at the next file and rolls back; until it answers, the
 // button is spent and the bar says so.
 el("diff-cancel-apply").addEventListener("click", () => {
   el("diff-cancel-apply").disabled = true;
+  // Cancelling reads as stopping does (#558): the bar goes muted.
+  el("diff-actionbar").classList.add("cancelling");
   el("ab-file").textContent = t("apply.cancelling");
   invoke("cancel_apply", {});
 });

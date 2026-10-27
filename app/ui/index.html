@@ -772,12 +772,14 @@
       <div class="sb-right">
         <!-- A rollback in progress (#448): undo has no bar of its own to borrow,
              since the diff bar belongs to a staged plan. Driven by applyprogress.js. -->
-        <span id="busy-pill" class="busy-pill" hidden><span class="ab-bar"><span class="ab-bar-fill" id="busy-fill"></span></span><span id="busy-text" class="muted"></span></span>
+        <span id="busy-pill" class="busy-pill" hidden role="status"><span class="ab-bar"><span class="ab-bar-fill" id="busy-fill"></span></span><span id="busy-text"></span><button id="busy-stop" class="icon busy-stop" type="button" hidden data-i18n-title="action.stop" title="Stop" data-i18n-aria-label="action.stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button></span>
         <span id="status-sel" class="muted"></span>
       </div>
     </footer>
 
-    <div id="toast" class="toast" hidden></div>
+    <!-- One line, or a report: a headline and a line per further clause, fine
+         ones muted and problems in red (#558). -->
+    <div id="toast" class="toast" hidden role="status"><div class="toast-body"><p id="toast-title" class="toast-title"></p><ul id="toast-parts" class="toast-parts" hidden></ul></div><button id="toast-close" class="icon toast-close" type="button" hidden data-i18n-title="action.close" title="Close" data-i18n-aria-label="action.close" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button></div>
 
     <!-- The app's own tooltip (#230): one box, moved and filled by tooltip.js
          from the `title` of whatever control the pointer is on. -->

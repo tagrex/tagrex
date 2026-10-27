@@ -9,7 +9,7 @@
 //
 // Settings can switch the whole thing off (#538), which hides the button; the
 // shortcut presses the button, so it goes quiet with it.
-import { el, toast } from "./dom.js";
+import { el, report, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { t, tn } from "./i18n.js";
 import { hooks } from "./hooks.js";
@@ -45,18 +45,17 @@ function paintProgress(done, total) {
     : t("bpm.progress", { done: Math.min(done + 1, total), total });
 }
 
-// The toast after a run: what was staged, then what could not be measured.
-function summary(result, total) {
+// The report after a run (#558): what was staged as the headline, then a line
+// for each other thing worth knowing. Stopping and skipped mixes are fine;
+// no steady beat and files that would not decode need a look.
+function reportRun(result, total) {
   const staged = result.plan.changes.length;
-  const parts = [];
-  if (result.cancelled) parts.push(t("toast.bpm.stopped", { done: result.analysed, total }));
-  parts.push(
-    staged ? t("toast.bpm.staged", { files: tn("unit.file", staged) }) : t("toast.bpm.unchanged")
-  );
-  if (result.too_long) parts.push(tn("toast.bpm.tooLong", result.too_long));
-  if (result.no_tempo) parts.push(tn("toast.bpm.noTempo", result.no_tempo));
-  if (result.failed.length) parts.push(tn("toast.bpm.failed", result.failed.length));
-  return parts.join(" · ");
+  report(staged ? t("toast.bpm.staged", { files: tn("unit.file", staged) }) : t("toast.bpm.unchanged"), [
+    result.cancelled && { text: t("toast.bpm.stopped", { done: result.analysed, total }) },
+    result.too_long && { text: tn("toast.bpm.tooLong", result.too_long) },
+    result.no_tempo && { text: tn("toast.bpm.noTempo", result.no_tempo), problem: true },
+    result.failed.length && { text: tn("toast.bpm.failed", result.failed.length), problem: true },
+  ]);
 }
 
 // Stop the run at the current file, keeping what was measured. From the button
@@ -65,6 +64,9 @@ export function stopBpm() {
   if (!running || stopping) return;
   stopping = true;
   paintButton();
+  // Stopping (#558): the count freezes, the bar goes muted, Stop is spent.
+  el("busy-pill").classList.add("stopping");
+  el("busy-stop").disabled = true;
   el("busy-text").textContent = t("bpm.stopping");
   invoke("cancel_detect_bpm", {});
 }
@@ -87,6 +89,10 @@ async function detectBpm() {
   stopping = false;
   paintButton();
   paintProgress(0, paths.length);
+  // Stop at the end of the run, where it is watched (#558), as well as on the
+  // toolbar button that started it.
+  el("busy-stop").hidden = false;
+  el("busy-stop").disabled = false;
   el("busy-pill").hidden = false;
   const events = window.__TAURI__ && window.__TAURI__.event;
   const unlisten = events
@@ -106,7 +112,7 @@ async function detectBpm() {
       setPreviewSource("bpm");
       hooks.renderPreview(previewPlan);
     }
-    toast(summary(result, paths.length), result.failed.length > 0 && !result.plan.changes.length);
+    reportRun(result, paths.length);
   } catch (e) {
     toast(String(e), true);
   } finally {
@@ -114,6 +120,8 @@ async function detectBpm() {
     running = false;
     stopping = false;
     el("busy-pill").hidden = true;
+    el("busy-pill").classList.remove("stopping");
+    el("busy-stop").hidden = true;
     paintButton();
   }
 }
@@ -127,6 +135,7 @@ export function setBpmEnabled(on) {
 }
 
 button.addEventListener("click", detectBpm);
+el("busy-stop").addEventListener("click", stopBpm);
 paintButton();
 invoke("load_settings", {})
   .then((settings) => setBpmEnabled(!settings || settings.bpm_detection !== false))

@@ -1935,36 +1935,103 @@ tr.drop-below td {
   box-shadow: inset 0 -3px 0 0 var(--accent);
 }
 
+/* The outcome of an action (#558): a surface like the diff bar it floats above
+   (page fill, border, the same shadow) rather than an inverted slab, on which
+   --del had no colour that passed in both themes. One result is one line;
+   several are a report, the headline what was staged or done and each other
+   clause on its own line, fine ones muted and the ones that need a look in
+   --del. A report with a problem stays until dismissed with ×. Lifted clear of
+   the staged-change bar while one floats over the table (#195). */
 .toast {
   position: fixed;
-  /* Lifted clear of the staged-change bar while one is floating over the table
-     (#195): both anchor to the same edge, and the message must not cover the
-     buttons it is a message about. */
   bottom: var(--toast-bottom, 44px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--text);
-  color: var(--bg);
-  padding: 9px 16px;
-  border-radius: 8px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
-  /* A message that has stopped naming a path is one short line, so the cap is
-     a bound rather than a target — 80% alone let a transient message claim
-     nearly the whole window (#267). */
-  max-width: min(560px, 80%);
-  /* The chrome around it runs at --text-xs; the most short-lived thing on
-     screen should not carry the largest type in the interface. */
-  font-size: var(--text-xs);
   z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-width: min(520px, 80%);
+  box-sizing: border-box;
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.28);
+  font-size: var(--text-xs);
+  line-height: var(--lh-snug);
+}
+.toast[hidden] {
+  display: none;
+}
+.toast-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toast-title {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.toast:has(.toast-parts:not([hidden])) .toast-title {
+  font-weight: var(--fw-medium);
+}
+.toast-parts {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.toast-parts[hidden] {
+  display: none;
+}
+.toast-part.problem {
+  color: var(--del);
+}
+.toast-close.icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: -2px calc(-1 * var(--space-2)) 0 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+}
+.toast-close.icon > svg {
+  width: 14px;
+  height: 14px;
+}
+.toast-close.icon:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+.toast-close[hidden] {
+  display: none;
 }
 
 body.diffing {
   --toast-bottom: 104px;
 }
 
+/* An error: a red edge and a red headline on the error tint, the field's own
+   error recipe. */
 .toast.error {
-  background: var(--del);
-  color: #fff;
+  border-color: var(--del);
+  background: linear-gradient(var(--error-tint), var(--error-tint)), var(--bg);
+  color: var(--text);
+}
+.toast.error .toast-title {
+  color: var(--del);
 }
 
 /* Confirm dialog (#102): a centred modal over a dimming backdrop. */
@@ -6327,7 +6394,11 @@ body.drag-active #drop-overlay {
   display: none;
 }
 
-/* ---- an undo in progress (#448) ---- */
+/* ---- a run in progress (#448, one pattern since #558) ----------------------
+   Wherever a run is shown: [ bar ] [ what, n of N ] [ stop ]. A staged plan's
+   apply runs in the diff bar; every other run (BPM detection, undo) in this
+   busy pill, never both. While stopping the count freezes, the bar goes muted
+   and Stop is spent; a run that can't be stopped (undo) has no Stop. */
 .busy-pill {
   display: inline-flex;
   align-items: center;
@@ -6339,7 +6410,7 @@ body.drag-active #drop-overlay {
 }
 .busy-pill .ab-bar {
   flex: 0 0 auto;
-  width: 120px;
+  width: 96px;
   height: 4px;
   border-radius: 999px;
   background: var(--border);
@@ -6351,6 +6422,51 @@ body.drag-active #drop-overlay {
   width: 0;
   background: var(--accent-ink);
   transition: width 0.12s linear;
+}
+#busy-text {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Stop: the field-tools tier, a filled square, --del on hover because it ends
+   something. */
+.busy-stop.icon {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+}
+.busy-stop.icon > svg {
+  width: 12px;
+  height: 12px;
+}
+.busy-stop.icon:hover:not(:disabled) {
+  background: var(--error-tint);
+  color: var(--del);
+}
+.busy-stop[hidden] {
+  display: none;
+}
+.busy-pill.stopping .ab-bar-fill,
+.diff-actionbar.cancelling .ab-bar-fill {
+  background: var(--muted);
+}
+.busy-pill.stopping #busy-text,
+.diff-actionbar.cancelling .ab-file {
+  color: var(--muted);
+}
+.busy-pill.stopping .busy-stop.icon:disabled {
+  background: none;
+  color: var(--border);
+  cursor: default;
+}
+.diff-actionbar .ab-file {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 
 /* ---- input group: .field (#547) --------------------------------------------

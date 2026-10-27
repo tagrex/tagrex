@@ -7,13 +7,43 @@ export const el = (id) => document.getElementById(id);
 
 /// A transient status message at the bottom of the window; `isError` tints it.
 export function toast(message, isError) {
-  const t = el("toast");
-  t.textContent = message;
-  t.classList.toggle("error", !!isError);
-  t.hidden = false;
-  clearTimeout(toast._timer);
-  toast._timer = setTimeout(() => (t.hidden = true), 3200);
+  showToast(String(message), [], !!isError);
 }
+
+/// The outcome of a run with several results (#558): `title` is what was
+/// staged or done, and each part ({ text, problem }) gets its own line, muted
+/// when it is fine and red when it needs a look. A report with a problem in it
+/// stays until it is dismissed; one that is all fine times out like a toast.
+export function report(title, parts) {
+  showToast(String(title), parts.filter(Boolean), false);
+}
+
+function showToast(title, parts, isError) {
+  const box = el("toast");
+  el("toast-title").textContent = title;
+  const list = el("toast-parts");
+  list.innerHTML = "";
+  for (const part of parts) {
+    const item = document.createElement("li");
+    item.className = part.problem ? "toast-part problem" : "toast-part";
+    item.textContent = part.text;
+    list.appendChild(item);
+  }
+  list.hidden = parts.length === 0;
+  // A report with a problem waits to be read. An error is often only "select
+  // something first", so it times out too, given longer and a × to close it.
+  const stays = parts.some((part) => part.problem);
+  el("toast-close").hidden = !stays && !isError;
+  box.classList.toggle("error", isError);
+  box.hidden = false;
+  clearTimeout(toast._timer);
+  if (!stays) toast._timer = setTimeout(() => (box.hidden = true), isError ? 6000 : 3200);
+}
+
+el("toast-close").addEventListener("click", () => {
+  clearTimeout(toast._timer);
+  el("toast").hidden = true;
+});
 
 // "1 track" / "2 tracks" (#167). A count and its noun, agreeing — writing the
 // noun inline is what produced "1 tracks" on every single-track release.

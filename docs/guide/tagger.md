@@ -45,20 +45,24 @@ The metronome on the table toolbar, or ⇧⌘B (Ctrl+Shift+B on Windows and Linu
 measures the tempo of the selected files from the audio and stages it in the
 BPM field. A beat tracker finds the beats and the tempo is fitted through them,
 then written as a whole number. It takes a few
-seconds a track and runs in the background: the status bar counts the files,
-and while it runs the button is a Stop that ends the run at the current file
-and stages what was measured before it. Esc stops it the same way, unless a
-menu is open or a text field has the cursor; a second Esc discards the
-preview.
+seconds a track and runs in the background: the status bar counts the files
+beside a Stop square, and while it runs the toolbar button is a Stop too.
+Either ends the run at the current file and stages what was measured before
+it; the count freezes and the bar goes grey until it has. Esc stops it the
+same way, unless a menu is open or a text field has the cursor; a second Esc
+discards the preview.
 
 The preview shows the BPM column, adding it to the table if it was hidden, so
 each new value can be checked against the old one before Apply. A file that
 already holds the measured number is left out of the plan. A track with no
-steady beat (a beatless intro, spoken word) gets no value, and the toast says
-how many there were and how many files could not be decoded.
+steady beat (a beatless intro, spoken word) gets no value. A report at the
+foot of the window says what was staged, with a line under it for each thing
+worth knowing: where a stopped run stopped, how many long files were skipped,
+and, in red, how many files had no steady beat or could not be decoded. A
+report with a red line stays until its × is clicked.
 
 A file longer than 20 minutes, a DJ mix in practice, is skipped and counted in
-the toast: it has no single tempo to measure. The limit, and a switch that
+the report: it has no single tempo to measure. The limit, and a switch that
 turns the whole feature off, are under **Settings › Tags and covers › BPM
 detection**.
 
