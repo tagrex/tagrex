@@ -102,6 +102,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   red when it needs a look (no steady beat, could not be decoded). A report with
   a red line stays until its × is clicked; an error toast has a × too and stays
   six seconds. (#558)
+- **The library health menu is laid out in the house style.** Its head says how
+  many files need a look and stays put while the list scrolls. A check that
+  finds nothing no longer takes a row: a group's empty checks share one muted
+  line. Albums with gaps and values spelled several ways unfold by their own ›,
+  so the details can be read without filtering, as the album or field and then
+  the gap. The check that is on shows its file count on the button and sits in
+  the filter box as a chip whose × clears it; the status line no longer repeats
+  its name. (#559)
 
 ### Fixed
 

@@ -167,6 +167,8 @@
                field-scoped via a `field:query` prefix (e.g. artist:aphex). The
                two flag toggles sit inside the box; a bad regex reddens it. -->
           <div class="filter-ctl field is-empty">
+            <!-- The library health check that is on (#559): a filter, so it sits in the filter field. -->
+            <span id="filter-check" class="field-chip" hidden><span id="filter-check-name"></span><button id="filter-check-clear" class="icon" type="button" data-i18n-title="health.clear" title="Show all files" data-i18n-aria-label="health.clear" aria-label="Show all files"><svg class="ico"><use href="#i-close"/></svg></button></span>
             <input id="filter" type="search" data-i18n-placeholder="toolbar.filterPlaceholder" placeholder="Filter… (try artist:aphex)" spellcheck="false" />
             <div class="field-tools">
               <button id="filter-clear" class="icon field-clear" type="button" data-i18n-title="toolbar.clearFilter" title="Clear the filter" data-i18n-aria-label="toolbar.clearFilter" aria-label="Clear the filter"><svg class="ico"><use href="#i-close"/></svg></button>
@@ -183,7 +185,7 @@
           <!-- Library health (#436): ready-made checks that narrow the table to
                the files that need fixing. Popover built by health.js. -->
           <div class="col-picker">
-            <button id="health-btn" class="icon" data-i18n-title="health.title" title="Library health" data-i18n-aria-label="health.title" aria-label="Library health"><svg class="ico"><use href="#i-health"/></svg></button>
+            <button id="health-btn" class="icon" data-i18n-title="health.title" title="Library health" data-i18n-aria-label="health.title" aria-label="Library health"><svg class="ico"><use href="#i-health"/></svg><span id="health-n" class="field-count"></span></button>
             <div id="health-menu" class="col-menu" hidden></div>
           </div>
           <!-- Configurable columns (#43): pick which tag fields show, and their

@@ -6244,58 +6244,205 @@ body.drag-active #drop-overlay {
   margin-left: var(--space-2);
 }
 
-/* ---- library health menu (#436) ---- */
+/* ---- library health menu (#436, house style in #559) ------------------------
+   Inside the usual .col-menu shell, top to bottom:
+     head    "23 of 412 files need a look"            [Show all files]
+     groups  MISSING · SUSPICIOUS · ALBUMS · LIBRARY · FILES
+             row     [›] name ………………………… count
+             detail  under its row, unfolded by its ›
+             zero    one muted line per group: "Nothing found: No genre · No year"
+   The head stays put while the groups scroll. */
 #health-menu {
-  min-width: 300px;
+  width: 360px;
+  min-width: 0;
+  max-height: min(70vh, 640px);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
-#health-btn.on {
-  color: var(--accent-ink);
-  background: var(--sel-tint);
-  border-color: var(--accent);
+#health-menu[hidden] {
+  display: none;
+}
+.health-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 36px;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+}
+.health-sum {
+  flex: 1;
+  min-width: 0;
+  color: var(--muted);
+}
+.health-sum b {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+/* Show all files: a quiet button in the head, only while a check is on. */
+.col-menu .health-clear {
+  flex: none;
+  height: var(--ctl-h-sm);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  box-shadow: none;
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+.health-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+/* One grid per check: an 18px disclosure slot (empty for a check without
+   details, so every name starts in one column), then the row button. */
+.health-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 2px;
+}
+.health-more.icon {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: var(--muted);
+}
+.health-more.icon > svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.12s ease;
+}
+.health-more.icon:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+.health-more[aria-expanded="true"] > svg {
+  transform: rotate(90deg);
 }
 /* Rows are buttons, so the stock button box (border, shadow, padding) has to go
    for them to read as menu rows like the ones in the other popovers. */
 .col-menu .health-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
   width: 100%;
-  justify-content: space-between;
   padding: var(--space-1) var(--space-2);
   border: 0;
+  border-radius: var(--radius-sm);
   background: none;
   box-shadow: none;
   color: var(--text);
+  font-size: var(--text-xs);
   text-align: left;
   cursor: pointer;
 }
-.col-menu .health-row:hover:not([aria-disabled="true"]) {
+.col-menu .health-row:hover {
   background: var(--row-hover);
 }
-.col-menu .health-row[aria-disabled="true"] {
-  color: var(--muted);
-  cursor: default;
-}
-.col-menu .health-row[aria-disabled="true"]:hover {
-  background: none;
-}
-.col-menu .health-row.on {
-  color: var(--accent-ink);
-}
-.col-menu .health-detail {
-  padding: 0 var(--space-4) var(--space-2) var(--space-5);
-  font-size: var(--text-2xs);
-  line-height: 1.45;
-  color: var(--muted);
-  overflow-wrap: anywhere;
+.health-name {
+  flex: 1;
+  min-width: 0;
 }
 .health-count {
-  color: var(--muted);
+  flex: none;
+  min-width: 3ch;
+  text-align: right;
+  color: var(--text);
+  font-weight: var(--fw-medium);
   font-variant-numeric: tabular-nums;
+}
+/* The check that is on: the same "set" signal as a pressed field tool. */
+.col-menu .health-row.on,
+.col-menu .health-row.on:hover {
+  background: var(--dirty-tint);
+  color: var(--accent-ink);
 }
 .col-menu .health-row.on .health-count {
   color: var(--accent-ink);
 }
-.col-menu .health-clear {
-  justify-content: flex-start;
+/* A check that is on but has nothing left (you fixed them) stays as a row so it
+   can be seen and cleared; its 0 reads muted. */
+.col-menu .health-row.zero .health-count {
+  color: var(--muted);
+  font-weight: normal;
+}
+/* Checks with nothing to show fold into one line under their group. */
+.health-zero {
+  margin: 0;
+  padding: 2px var(--space-2) var(--space-1) calc(20px + var(--space-2));
+  font-size: var(--text-2xs);
+  line-height: var(--lh-snug);
+  color: var(--muted);
+}
+/* Details: one line per item, what then the gap, the gap in tabular figures so
+   the columns hold. Four lines, then "+n more". */
+.col-menu .health-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 0 var(--space-2);
+  padding: 2px var(--space-2) 0 calc(20px + var(--space-2));
+  font-size: var(--text-2xs);
+  line-height: 1.45;
+  color: var(--muted);
+}
+.col-menu .health-detail[hidden] {
+  display: none;
+}
+.health-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.health-what {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.health-gap {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.health-gap b {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+.health-line.more {
+  font-style: italic;
+}
+/* On the button: the "set" signal and the file count, as the wand shows its
+   rule count. */
+#health-btn.on {
+  width: auto;
+  min-width: var(--ctl-h);
+  gap: 4px;
+  padding: 0 7px;
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: var(--dirty-tint);
   color: var(--accent-ink);
+}
+#health-btn .field-count {
+  display: none;
+}
+#health-btn.on .field-count {
+  display: inline;
 }
 
 /* ---- a newer release exists (#435) ---- */
@@ -6674,6 +6821,57 @@ body.drag-active #drop-overlay {
 .mask-row > .field,
 .export-row > .field {
   flex: 1;
+}
+
+/* A chip inside a field (#559): the library health check that is on, before
+   the typed text, with its own ×. Text typed after it narrows further. */
+.field-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 50%;
+  height: 20px;
+  margin-left: 3px;
+  padding: 0 1px 0 7px;
+  border-radius: var(--radius-sm);
+  background: var(--dirty-tint);
+  color: var(--accent-ink);
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.field-chip[hidden] {
+  display: none;
+}
+.field-chip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.field-chip .icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  color: inherit;
+}
+.field-chip .icon > svg {
+  width: 11px;
+  height: 11px;
+}
+.field-chip .icon:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.field:has(> .field-chip:not([hidden])) > input {
+  padding-left: var(--space-2);
+}
+.field:has(> .field-chip:not([hidden])) > input::placeholder {
+  color: transparent;
 }
 
 /* ---- mask builder (#540, laid out in the house style in #546) -------------

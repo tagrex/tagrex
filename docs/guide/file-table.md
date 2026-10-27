@@ -93,11 +93,21 @@ so a field-scoped query finds what your eye finds.
 ## Library health
 
 The heart button next to the presets button lists ready-made checks, each with
-the number of files it flags. Choosing one narrows the table to those files; the
-button lights up, the status line names the check, and choosing it again (or
-"Show all files") brings everything back. A check is a view, not an edit: fix
-what it shows the usual way and the file drops out of the list as it is
-re-read.
+the number of files it flags. The head of the menu says how many files need a
+look, and stays put while the list scrolls. A check that finds nothing takes no
+row of its own: a group's empty checks are named on one muted line under it
+("Nothing found: No genre · No year").
+
+Choosing a check narrows the table to those files. The button lights up and
+shows how many files the check flags, and the filter box carries the check as
+a chip before any typed text. The chip's ×, choosing the check again, or
+**Show all files** in the menu's head brings everything back. The check that is
+on keeps its row even when you have fixed every file it found. A check is a
+view, not an edit: fix what it shows the usual way and the file drops out of
+the list as it is re-read.
+
+A check with details has a › in front of it, which unfolds them without
+choosing the check; the check that is on opens unfolded.
 
 - **Missing**: no title, artist, album, album artist, track number, year or
   genre.
@@ -110,17 +120,18 @@ re-read.
   name; a disc is told apart by its disc number. **Album has tracks missing**
   flags an album, disc by disc, that lacks a number from 1 to its track total,
   or with no total in the tags, a number between the ones present (1, 2 and 5
-  mean 3 and 4 are missing). The menu lists those albums with the numbers they
-  are missing: "Album: no 3, 7-8 (5 of 8)". Some releases number each disc
+  mean 3 and 4 are missing). Its details list those albums with the numbers
+  they are missing: "Album · no 3, 7-8 · 5/8". Some releases number each disc
   from 1 but give every track the total for the whole release ("1/50" on both
   discs of a 25 + 25 set); when every disc states the same total and none
   reaches it, each disc is only checked for gaps and the release is counted
-  against that total ("Album: 44 of 50 tracks"). An album needs at least two of its
+  against that total ("Album · 44/50"). An album needs at least two of its
   tracks in the folder to count, so a lone track tagged "3/12" among unrelated
   files is left alone.
 - **Library**: the same artist, album artist, album or genre written in more
   than one way (case, accents, runs of spaces). The commonest spelling is taken
-  to be the intended one and the files with any other are flagged.
+  to be the intended one and the files with any other are flagged. Its details
+  show each field with its spellings and how many files hold each.
 - **Files**: tags that can't be read, and files carrying more than one tag
   block.
 

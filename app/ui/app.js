@@ -1163,8 +1163,8 @@ function updateStatus() {
     filterText || activeHealthLabel()
       ? `${tracks.filter(matchesFilter).length}/${tn("unit.file", total)}`
       : tn("unit.file", total);
-  const check = activeHealthLabel();
-  statusSel.textContent = `${files}${check ? ` (${check})` : ""} · ${tn("count.selected", selected)}`;
+  // The active check names itself in the filter field's chip (#559).
+  statusSel.textContent = `${files} · ${tn("count.selected", selected)}`;
 }
 
 function resetEdits() {
