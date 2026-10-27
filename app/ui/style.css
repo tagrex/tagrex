@@ -7303,7 +7303,8 @@ body.drag-active #drop-overlay {
 .hint.mask-hint {
   margin: 0;
   font-size: var(--text-xs);
-  line-height: var(--lh-snug);
+  /* Room for the inline tool chips without their pushing the lines apart (#567). */
+  line-height: 1.6;
   color: var(--muted);
   text-wrap: pretty;
 }
@@ -7311,10 +7312,15 @@ body.drag-active #drop-overlay {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  box-sizing: border-box;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 2px;
   margin: 0 1px;
-  vertical-align: -4px;
+  /* Centred on the line, not hung below the baseline (#567). */
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--panel);

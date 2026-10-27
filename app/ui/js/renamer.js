@@ -230,8 +230,9 @@ async function refreshMaskExample() {
   if (!box) return;
   const path = selectedPaths()[0];
   if (!path) {
-    box.textContent = "";
-    box.classList.remove("muted");
+    // Said, not left blank (#567): an empty reserved line read as a stray gap.
+    box.textContent = t("renamer.exampleSelect");
+    box.classList.add("muted");
     return;
   }
   try {

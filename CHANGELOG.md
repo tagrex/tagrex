@@ -128,6 +128,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **EXPORTER's Report mask keeps its buttons in the field.** The placeholder
   and preset buttons had fallen onto a line of their own under the mask and
   were cut off; they now sit inside the field, as on every other mask. (#566)
+- **The ? and builder marks in the panel hints sit on the line** instead of
+  hanging below it and pushing the lines apart; RENAMER says "Select a file to
+  see the name the mask gives it." where its example line was blank with
+  nothing selected; and its "Carry same-named files" label starts with a
+  capital like the one under it. (#567)
 - **A run report no longer outlives the preview it describes.** Esc closes a
   report waiting to be read before it discards the preview, a report goes away
   when its preview is applied or discarded, and while a preview is staged the
