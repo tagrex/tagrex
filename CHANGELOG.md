@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The README opens short.** Install, Tech stack and License are collapsed
   blocks now, and What it does stays expanded. (#584)
+- **Every README section is a collapsed block, without the anchor icon.**
+  Motivation, Non-goals, Build from source and Attribution join the other
+  four, and the block titles are bold text instead of headings, so GitHub no
+  longer draws its link icon over the expand triangle. (#585)
 
 ### Fixed
 

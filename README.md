@@ -43,7 +43,7 @@
 > [CHANGELOG.md](CHANGELOG.md).
 
 <details>
-<summary><h2>Install</h2></summary>
+<summary><b>Install</b></summary>
 
 Builds are on the [Releases](https://github.com/tagrex/tagrex/releases) page.
 
@@ -75,7 +75,7 @@ sudo dnf install ./TagRex-*.x86_64.rpm    # Fedora (aarch64.rpm on ARM)
 </details>
 
 <details open>
-<summary><h2>What it does</h2></summary>
+<summary><b>What it does</b></summary>
 
 **A folder is the library.** Point TagRex at one and it recurses: type or browse
 to the path, drop the folder on the window, or hand it over from the file
@@ -241,7 +241,9 @@ Settings › LAB section for typography still being trialled.
 
 </details>
 
-## Motivation
+<details>
+<summary><b>Motivation</b></summary>
+
 
 For years, [TagScanner](https://www.xdlab.ru/) and [Mp3tag](https://www.mp3tag.de/en/)
 have been the reference tools for putting large music collections in order.
@@ -255,7 +257,11 @@ machines, ARM Windows builds, x86 emulation. TagRex aims to remove that chain �
 one free, open-source editor with the same core workflow on Windows, macOS,
 and Linux.
 
-## Non-goals
+</details>
+
+<details>
+<summary><b>Non-goals</b></summary>
+
 
 - **Not an auto-tagger.** TagRex is a precision tool for people who want to see
   and control every change. For fully automatic DJ-library tagging, see the
@@ -272,7 +278,11 @@ and Linux.
   mix it describes is cut into tracks, which is an audio operation rather than a
   metadata one. Writing a CUE *out* of a file list is a different matter.
 
-## Build from source
+</details>
+
+<details>
+<summary><b>Build from source</b></summary>
+
 
 Needs a Rust toolchain and the Tauri CLI. **Node is not required** — the
 frontend is static HTML/CSS/JS with no build step.
@@ -291,8 +301,10 @@ cargo tauri build --debug --bundles app
 Linux additionally needs the usual WebKitGTK development packages; see the
 [Tauri prerequisites](https://tauri.app/start/prerequisites/).
 
+</details>
+
 <details>
-<summary><h2>Tech stack</h2></summary>
+<summary><b>Tech stack</b></summary>
 
 A Rust core with a [Tauri](https://tauri.app/) shell and a plain HTML/CSS/JS
 interface — no frontend framework and no Node toolchain. The libraries doing the
@@ -323,7 +335,9 @@ reasoning behind it.
 
 </details>
 
-## Attribution
+<details>
+<summary><b>Attribution</b></summary>
+
 
 TagRex reads metadata from the third-party sources you choose. Their data belongs
 to them and to the people who contribute it.
@@ -331,8 +345,10 @@ to them and to the people who contribute it.
 This application uses Discogs' API but is not affiliated with, sponsored or
 endorsed by Discogs. "Discogs" is a trademark of Zink Media, LLC.
 
+</details>
+
 <details>
-<summary><h2>License</h2></summary>
+<summary><b>License</b></summary>
 
 [GPL-3.0](LICENSE). Free software stays free: forks and derivatives must remain
 open source.
