@@ -985,12 +985,12 @@
             </div>
           </div>
           <div id="pe-edit-col" class="pe-edit-col">
-            <!-- The name as a heading; a built-in says it is read-only once, and
-                 offers the way to change it right there (#556). -->
+            <!-- The name as a heading; a built-in says it is read-only once (#556).
+                 That it is built-in is the list's heading, and copying it is the
+                 list's Duplicate, so neither is said again here (#581). -->
             <div class="pe-name-row">
               <input id="pe-name" type="text" spellcheck="false" data-i18n-aria-label="presets.name" aria-label="Preset name" />
-              <span id="pe-builtin-note" hidden data-i18n="presets.builtinBadge">Built-in, read only</span>
-              <button id="pe-duplicate-here" class="btn" type="button" hidden data-i18n="presets.duplicateToChange">Duplicate to change</button>
+              <span id="pe-builtin-note" hidden data-i18n="presets.builtinBadge">Read only</span>
             </div>
             <fieldset id="pe-rules-set" class="pe-rules-set">
               <div id="pe-rules" class="rule-chain"></div>

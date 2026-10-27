@@ -85,8 +85,8 @@ ones below them.
   dashed edge, and contributes nothing, which is how you test what one rule is
   responsible for without deleting it.
 - Built-in presets open read-only and stay as shipped, shown as what they do
-  rather than as a form. **Duplicate to change**, beside the name, gives a copy
-  you can edit.
+  rather than as a form. **Duplicate** under the list gives a copy you can
+  edit.
 - Changes save as you go — when you switch presets, close the editor or quit.
 
 Presets run in list order as a single plan, each seeing what the previous one

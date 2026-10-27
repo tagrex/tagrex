@@ -5940,12 +5940,8 @@ td[data-field="year"],
   font-size: var(--text-2xs);
   white-space: nowrap;
 }
-#pe-builtin-note[hidden],
-#pe-duplicate-here[hidden] {
+#pe-builtin-note[hidden] {
   display: none;
-}
-#pe-duplicate-here {
-  flex: none;
 }
 .pe-rules-set:disabled :is(.rule-grip, .rule-toggle, .rule-acts, .gen-add) {
   display: none;

@@ -125,6 +125,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A built-in preset says only that it is read-only.** The pill beside its
+  name no longer repeats "Built-in", which the list's heading already says, and
+  the "Duplicate to change" button beside it is gone: Duplicate under the list
+  does the same. (#581)
 - **The side panels keep their right margin** when the window starts in the
   background: a startup measurement that ran after a mode switch could find
   nothing to measure and set the margin to zero. (#580)

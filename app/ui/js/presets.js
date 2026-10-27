@@ -106,7 +106,6 @@ function select(name, builtin) {
   input.value = group ? group.name : "";
   input.readOnly = !group || builtin;
   el("pe-builtin-note").hidden = !builtin;
-  el("pe-duplicate-here").hidden = !group || !builtin;
   // A fieldset is the native way to make every control in the chain inert at
   // once — inputs, the scope pickers, the ↑/↓/✕ buttons, Add rule.
   el("pe-rules-set").disabled = !group || builtin;
@@ -306,7 +305,6 @@ function closePresetEditor() {
 // ---- wire up ----
 el("pe-new").addEventListener("click", newPreset);
 el("pe-duplicate").addEventListener("click", duplicatePreset);
-el("pe-duplicate-here").addEventListener("click", duplicatePreset);
 el("pe-delete").addEventListener("click", deletePreset);
 el("pe-editor-close").addEventListener("click", closePresetEditor);
 el("pe-name").addEventListener("change", commitName);
