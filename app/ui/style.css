@@ -1725,6 +1725,13 @@ body:not(.show-checkbox) #tracks td.sel {
   min-height: 150px;
   max-height: none;
 }
+/* No presets of your own yet: a note under the heading, not one more heading. */
+.groups-list .preset-none {
+  margin: 0 var(--space-2) var(--space-1);
+  font-size: var(--text-xs);
+  font-style: italic;
+  color: var(--muted);
+}
 /* The name is the row's action now, so it takes the width and shows it is one. */
 .groups-list .preset-apply {
   flex: 1;

@@ -126,7 +126,7 @@ export const de = {
   "generator.discPlaceholder": "leer lassen zum Überspringen",
   "generator.trackTotal": "Track-Gesamtzahl",
   "generator.trackTotalTitle": "Zusätzlich die Track-Gesamtzahl (Anzahl der nummerierten Dateien) in jede Datei schreiben",
-  "generator.perGroup": "je Gruppe neu beginnen",
+  "generator.perGroup": "Je Gruppe neu beginnen",
   "generator.perGroupTitle": "Bei aktiver Gruppierung in jeder Gruppe wieder beim Startwert beginnen",
   "generator.keepSides": "Vinyl-Seiten behalten",
   "generator.keepSidesTitle": "Nicht-numerische Positionen wie Vinyl-Seiten (A1, B2) unverändert lassen, statt sie neu zu nummerieren",

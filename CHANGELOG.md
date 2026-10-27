@@ -125,6 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **GENERATOR's Number tracks checkboxes start with a capital**, and with no
+  presets of your own the Transform list says so as a muted note instead of in
+  the small capitals of the headings around it. (#569)
 - **EXPORTER's Report mask keeps its buttons in the field.** The placeholder
   and preset buttons had fallen onto a line of their own under the mask and
   were cut off; they now sit inside the field, as on every other mask. (#566)

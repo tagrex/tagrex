@@ -546,7 +546,8 @@ function createPresetChecklist({ menu, context, isActive, setActive, appliesTo, 
     head("presets.yours");
     if (!actionGroups.length) {
       const empty = document.createElement("div");
-      empty.className = "col-menu-sep preset-none";
+      // A note, not one more heading (#569): muted text, no small caps.
+      empty.className = "preset-none";
       empty.textContent = t("presets.noneHere");
       box.appendChild(empty);
     }
