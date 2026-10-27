@@ -125,6 +125,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Number tracks reads as one block of settings beside its button.** The
+  Start at and Disc # fields and the checkboxes under them sit together, and
+  Number tracks is centred beside them instead of on the checkboxes' line with
+  an empty corner above it. (#576)
 - **A run button beside a note is centred on it** (EXPORTER's read-only line,
   Vinyl sides) instead of lined up with its last line, where it looked dropped
   below the text. (#575)

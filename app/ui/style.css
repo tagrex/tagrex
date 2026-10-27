@@ -973,7 +973,9 @@ body.panel-collapsed .col-splitter {
 .panel-actions {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  /* Centred on what starts the line (#576): a note of several lines, or a
+     block of fields and flags, reads with the button at its middle. */
+  align-items: center;
   gap: var(--space-3) var(--space-5);
 }
 /* Does the .spacer's job, so the button stays at the end on its own line too.
@@ -996,6 +998,19 @@ body.panel-collapsed .col-splitter {
 .panel-opts > .rule-flag {
   min-height: var(--ctl-h);
 }
+/* A job's settings as one block (#576): its fields above its flags, the
+   button beside the whole of it. */
+.panel-actions > .panel-controls {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+/* In the block the flags are one more row, not a flexible column. */
+.panel-controls > .panel-opts {
+  flex: none;
+}
 /* Or the job's note: a job with no controls (Vinyl sides), or a closing remark
    (EXPORTER's read-only line, DEDUPLICATOR's lock). */
 .panel-actions > .panel-note {
@@ -1011,12 +1026,6 @@ body.panel-collapsed .col-splitter {
 .panel-actions > .panel-note b {
   color: var(--text);
   font-weight: var(--fw-medium);
-}
-/* Beside a paragraph the button centres on it (#575): lined up with the last
-   line of two or three, it read as dropped below the text. A row of flags keeps
-   the last-line alignment above. */
-.panel-actions:has(> .panel-note) {
-  align-items: center;
 }
 /* The lock line keeps its icon and takes the control height, so the icon and
    the button share a centre. */
