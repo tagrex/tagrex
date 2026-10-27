@@ -110,7 +110,7 @@ A check with details has a › in front of it, which unfolds them without
 choosing the check; the check that is on opens unfolded.
 
 - **Missing**: no title, artist, album, album artist, track number, year or
-  genre.
+  genre, and no cover art.
 - **Suspicious**: the title is the file name (with or without a leading track
   number), a year that is not a year (not `YYYY`, `YYYY-MM` or `YYYY-MM-DD`, or
   before 1900 or after next year), a value with stray spaces around it.
@@ -135,8 +135,11 @@ choosing the check; the check that is on opens unfolded.
 - **Files**: tags that can't be read, and files carrying more than one tag
   block.
 
-The checks work on what is already loaded, so there is no cover check: whether
-a file has a picture is not read until it is selected.
+The checks work on what is already loaded. **No cover art** looks at whether
+any of a file's tag blocks carries a picture, which is noted in the same pass
+that reads the tags when the folder opens, so it costs nothing extra. A folder
+image next to the files does not count as a cover, and a file whose tags could
+not be read is never flagged for a missing cover.
 
 The health filter works together with the filter box and is dropped when another
 folder is opened.

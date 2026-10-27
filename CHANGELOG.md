@@ -125,6 +125,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   of a built-in preset are read-only, and in the dark theme each rule's target
   showed a row of carets over its text; the caret is now drawn once, over the
   disabled stripes, in both themes. (#552)
+- **The guide no longer says Library health has no cover check.** The Library
+  health section of the file table guide lists No cover art under Missing and
+  explains how it works, in place of a sentence left over from before the
+  check existed. (#561)
 
 ### Changed
 
