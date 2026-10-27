@@ -79,6 +79,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   showed a row of carets over its text; the caret is now drawn once, over the
   disabled stripes, in both themes. (#552)
 
+### Changed
+
+- **The tag library moves to lofty 0.25.5.** The release fixes corruption when
+  writing OGG files whose packets do not end on a page boundary, panics and
+  deleted atoms on some MP4 writes, 64-bit MP4 atoms, AIFF comment chunks with
+  padding, and write errors for a few ID3v2 keys. A WAV, AIFF, MP3, FLAC and
+  M4A copy each survived six alternating long and short writes with the audio
+  untouched. (#553)
+
 ## [0.26.0] - 2026-10-24
 
 TagRex now measures BPM from the audio: select files and the metronome on the

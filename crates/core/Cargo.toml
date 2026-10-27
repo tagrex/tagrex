@@ -12,11 +12,11 @@ publish = false
 # Cover art resize/recompress (#41). Only the two cover formats we handle, to
 # keep the dependency and build lean.
 image = { version = "0.25.5", default-features = false, features = ["jpeg", "png"] }
-# 0.25.4's FileLike::splice cuts a file to the wrong length when a shrinking
-# edit ends at EOF (lofty-rs#731). Only a file with no audio after its tags can
+# FileLike::splice (0.25.4, still so in 0.25.5) cuts a file to the wrong length
+# when a shrinking edit ends at EOF (lofty-rs#731). Only a file with no audio after its tags can
 # hit that, and model.rs refuses to write such a file before lofty sees it
 # (`ensure_audio_after_tags`, #416).
-lofty = "0.25.4"
+lofty = "0.25.5"
 regex = "1.13.1"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 thiserror.workspace = true
