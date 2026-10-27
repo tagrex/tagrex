@@ -966,10 +966,60 @@ body.panel-collapsed .col-splitter {
   padding-bottom: 0;
 }
 
+/* The run button closes the block (#571): it sits at the end of the last line,
+   beside the job's flags or note, which start it. Free space has one place,
+   between the two; when the start side would get less than 200px, the button
+   wraps under it and stays at the end. */
 .panel-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3) var(--space-5);
+}
+/* Does the .spacer's job, so the button stays at the end on its own line too.
+   Transform keeps its .spacer between Edit presets… and Preview changes. */
+.panel-actions > .primary {
+  flex: none;
+  margin-inline-start: auto;
+}
+/* The start side: flags that only change the run, as a row that wraps. Each is
+   a full control height, so their last line shares a centre with the button. */
+.panel-opts {
+  flex: 1 1 200px;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  column-gap: var(--space-5);
+  row-gap: 0;
+}
+.panel-opts > .rule-flag {
+  min-height: var(--ctl-h);
+}
+/* Or the job's note: a job with no controls (Vinyl sides), or a closing remark
+   (EXPORTER's read-only line, DEDUPLICATOR's lock). The bottom padding centres
+   its last line on the button. */
+.panel-actions > .panel-note {
+  flex: 1 1 200px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 0 calc((var(--ctl-h) - var(--lh-normal) * 1em) / 2);
+  font-size: var(--text-xs);
+  line-height: var(--lh-normal);
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.panel-actions > .panel-note b {
+  color: var(--text);
+  font-weight: var(--fw-medium);
+}
+/* The lock line keeps its icon and takes the control height, so the icon and
+   the button share a centre. */
+.panel-actions > .ro-note.panel-note {
+  display: flex;
+  align-items: center;
+  min-height: var(--ctl-h);
+  padding: 0;
 }
 
 /* A scrolling list embedded in a panel block (candidates, tracklist, fields). */
@@ -3563,11 +3613,6 @@ td.unreadable-note {
 }
 .rule-flag input {
   margin: 0;
-}
-/* Auto-number (#39) flag row sits between the export-style inputs and the
-   action button; give it a little vertical breathing room. */
-.autonum-flags {
-  margin: var(--space-2) 0;
 }
 
 /* Position column (#106) is derived and read-only — muted so it reads as

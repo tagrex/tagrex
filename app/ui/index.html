@@ -298,13 +298,6 @@
             <!-- One line: the job's own behaviour and where the grammar is (#557). -->
             <p class="hint mask-hint" data-i18n="renamer.maskHint" data-i18n-html>The <span class="hint-tool">?</span> button lists the placeholders and the grammar; the builder tries the mask on every selected file. A <code>/</code> sorts into folders where the file already is.</p>
 
-            <!-- What else travels with a renamed track (#405): same-named files,
-                 for any rename. Here rather than in Settings because it changes
-                 the plan you are about to preview; the extensions it matches stay
-                 in Settings, set once. -->
-            <label class="rule-flag" data-i18n-title="settings.sidecarsHint" title="When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.">
-              <input id="carry-sidecars" type="checkbox" checked /><span data-i18n="renamer.carrySidecars">Carry same-named files (lyrics, cue sheets…)</span>
-            </label>
             <label class="rule-flag" data-i18n-title="renamer.reorganizeToggleTitle" title="Move or copy the results to a different folder instead of renaming them where they already are">
               <input id="reorganize-toggle" type="checkbox" /><span data-i18n="renamer.reorganizeToggle">Also move or copy into a different folder</span>
             </label>
@@ -345,8 +338,18 @@
               </label>
             </div>
 
+            <!-- Carry only changes the run, so it joins the closing line (#571);
+                 the reorganize toggle opens options and stays above. -->
             <div class="panel-actions">
-              <div class="spacer"></div>
+              <div class="panel-opts">
+                <!-- What else travels with a renamed track (#405): same-named files,
+                     for any rename. Here rather than in Settings because it changes
+                     the plan you are about to preview; the extensions it matches stay
+                     in Settings, set once. -->
+                <label class="rule-flag" data-i18n-title="settings.sidecarsHint" title="When a rename or move relocates a track, same-named files (lyrics, cue sheets, per-track covers…) move with it and undo restores them together. A file already at the destination is never overwritten.">
+                  <input id="carry-sidecars" type="checkbox" checked /><span data-i18n="renamer.carrySidecars">Carry same-named files (lyrics, cue sheets…)</span>
+                </label>
+              </div>
               <button id="preview" class="primary" disabled data-i18n="renamer.previewRename">Preview rename</button>
             </div>
           </div>
@@ -519,7 +522,6 @@
               <p class="hint mask-hint" data-i18n="fromName.hint" data-i18n-html>A name that doesn't fit the mask is left alone. <span class="hint-tool">?</span> lists the placeholders and the grammar, read the other way.</p>
             </div></div>
             <div class="panel-actions from-name-actions">
-              <div class="spacer"></div>
               <button id="from-name-preview" class="primary" data-i18n="fromName.preview">Preview tags</button>
             </div>
           </div>
@@ -552,7 +554,6 @@
               <p class="hint mask-hint" data-i18n="fromText.hint" data-i18n-html>One line per selected file, in table order; a line that doesn't fit is skipped. <span class="hint-tool">?</span> lists the grammar.</p>
             </div></div>
             <div class="panel-actions from-name-actions">
-              <div class="spacer"></div>
               <button id="from-text-preview" class="primary" data-i18n="fromName.preview">Preview tags</button>
             </div>
           </div>
@@ -597,28 +598,27 @@
                mapping order, staged through the pending-edits preview/apply/undo. -->
           <div class="panel-block">
             <h2><span data-i18n="generator.numberTracks">Number tracks</span> <span id="autonum-count" class="muted"></span></h2>
-            <p class="hint muted" style="padding: 0" data-i18n="generator.numberHint">
-              Fill track numbers across the selected files in table order. Staged to the preview — nothing is written until you Apply.
-            </p>
+            <p class="hint muted" style="padding: 0" data-i18n="generator.numberHint">Numbers the selected files in table order.</p>
             <div class="export-row">
               <label for="autonum-start" data-i18n="generator.startAt">Start at</label>
               <input id="autonum-start" type="number" min="0" step="1" value="1" />
               <label for="autonum-disc" data-i18n="generator.discNo">Disc #</label>
               <input id="autonum-disc" type="text" data-i18n-placeholder="generator.discPlaceholder" placeholder="leave blank to skip" spellcheck="false" />
             </div>
-            <div class="rule-flags autonum-flags">
-              <label class="rule-flag" data-i18n-title="generator.trackTotalTitle" title="Also write the track total (the count of numbered files) to every file">
-                <input id="autonum-total" type="checkbox" /><span data-i18n="generator.trackTotal">Track total</span>
-              </label>
-              <label class="rule-flag" data-i18n-title="generator.perGroupTitle" title="Restart at the start value for each group when a grouping is active">
-                <input id="autonum-per-group" type="checkbox" /><span data-i18n="generator.perGroup">Restart per group</span>
-              </label>
-              <label class="rule-flag" data-i18n-title="generator.keepSidesTitle" title="Leave non-numeric positions like vinyl sides (A1, B2) untouched instead of renumbering them">
-                <input id="autonum-keep-sides" type="checkbox" checked /><span data-i18n="generator.keepSides">Keep vinyl sides</span>
-              </label>
-            </div>
+            <!-- The run button closes the last line (#571): the flags start it,
+                 the button ends it, and the free space sits between them. -->
             <div class="panel-actions">
-              <div class="spacer"></div>
+              <div class="panel-opts autonum-flags">
+                <label class="rule-flag" data-i18n-title="generator.trackTotalTitle" title="Also write the track total (the count of numbered files) to every file">
+                  <input id="autonum-total" type="checkbox" /><span data-i18n="generator.trackTotal">Track total</span>
+                </label>
+                <label class="rule-flag" data-i18n-title="generator.perGroupTitle" title="Restart at the start value for each group when a grouping is active">
+                  <input id="autonum-per-group" type="checkbox" /><span data-i18n="generator.perGroup">Restart per group</span>
+                </label>
+                <label class="rule-flag" data-i18n-title="generator.keepSidesTitle" title="Leave non-numeric positions like vinyl sides (A1, B2) untouched instead of renumbering them">
+                  <input id="autonum-keep-sides" type="checkbox" checked /><span data-i18n="generator.keepSides">Keep vinyl sides</span>
+                </label>
+              </div>
               <button id="autonum-run" class="primary" data-i18n="generator.numberRun">Number tracks</button>
             </div>
           </div>
@@ -629,11 +629,9 @@
                live in the integer track-number tag. Staged like the rest. -->
           <div class="panel-block">
             <h2><span data-i18n="generator.vinylSides">Vinyl sides</span> <span id="vinyl-count" class="muted"></span></h2>
-            <p class="hint muted" style="padding: 0" data-i18n="generator.vinylHint" data-i18n-html>
-              Split a vinyl-side track value (<b>A1</b>, <b>B2</b>) into track + disc: side A → disc 1, B → disc 2, … Only rows with a side letter change.
-            </p>
+            <!-- No controls: the note starts the closing line (#571). -->
             <div class="panel-actions">
-              <div class="spacer"></div>
+              <p class="panel-note" data-i18n="generator.vinylHint" data-i18n-html>Side A → disc 1, B → disc 2; <b>A1</b> becomes track 1. Rows without a side letter stay as they are.</p>
               <button id="vinyl-split" class="primary" data-i18n="generator.splitSide">Split side → disc</button>
             </div>
           </div>
@@ -659,11 +657,11 @@
                 <option value="hash" data-i18n="dedup.criterion.hash">Identical bytes</option>
               </select>
             </label>
+            <!-- The lock line shares the button's line (#571). -->
             <div class="panel-actions">
-              <div class="spacer"></div>
+              <p class="ro-note panel-note"><svg class="ico"><use href="#i-lock"/></svg> <span data-i18n="dedup.readonly">Read-only — nothing is changed.</span></p>
               <button id="dup-scan" class="primary" data-i18n="dedup.scan">Scan library</button>
             </div>
-            <p class="ro-note"><svg class="ico"><use href="#i-lock"/></svg> <span data-i18n="dedup.readonly">Read-only — nothing is changed.</span></p>
           </div>
         </section>
 
@@ -709,9 +707,9 @@
               <label for="export-name" id="export-name-label">File name</label>
               <input id="export-name" type="text" spellcheck="false" />
             </div>
-            <p class="exp-note" data-i18n="exporter.note" data-i18n-html><b>Read-only.</b> Written into the opened library folder — your audio files are not modified.</p>
+            <!-- The read-only line closes the form beside Export (#571). -->
             <div class="panel-actions">
-              <div class="spacer"></div>
+              <p class="exp-note panel-note" data-i18n="exporter.note" data-i18n-html><b>Read-only.</b> Written into the opened library folder — your audio files are not modified.</p>
               <button id="export-run" class="primary" data-i18n="exporter.run">Export</button>
             </div>
           </div>

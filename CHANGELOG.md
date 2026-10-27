@@ -152,6 +152,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Every side panel ends its job the same way.** The run button sits at the
+  end of the block's last line, beside the options that only change the run
+  (Number tracks' checkboxes, now a row that wraps; RENAMER's Carry same-named
+  files) or beside the job's note (Vinyl sides, EXPORTER's read-only line,
+  DEDUPLICATOR's lock), and moves under them only when the panel is too narrow.
+  Number tracks and Vinyl sides say what they do in fewer words. (#571)
 - **GENERATOR's preset list uses the panel's free height.** Number tracks and
   Vinyl sides sit at the bottom of the panel and the Transform list grows into
   the space above them; at the smallest window it keeps its old height and the
