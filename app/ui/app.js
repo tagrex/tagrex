@@ -3311,6 +3311,10 @@ applyCheckboxCol(checkboxColEnabled());
     const ref = el("panel-toggle");
     const target = el("search-format");
     if (!ref || !target) return;
+    // A hidden window can hold this frame back until after a mode switch; the
+    // select then measures as all zeros and the "gap" is the whole window,
+    // which set the inset to 0 (#580). Nothing to calibrate against: keep 14px.
+    if (!target.getClientRects().length) return;
     const delta = ref.getBoundingClientRect().right - target.getBoundingClientRect().right;
     if (Math.abs(delta) < 0.5) return;
     const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--panel-inset")) || 14;

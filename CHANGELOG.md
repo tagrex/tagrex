@@ -125,6 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The side panels keep their right margin** when the window starts in the
+  background: a startup measurement that ran after a mode switch could find
+  nothing to measure and set the margin to zero. (#580)
 - **Number tracks lays out as two columns and a button.** Start at and Disc #
   sit one under the other at one width, the three checkboxes in a column beside
   them at the same height, and Number tracks on its own line under both. (#577)
