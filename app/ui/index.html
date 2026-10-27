@@ -800,11 +800,11 @@
          input or an editing tag cell, in place of the webview's bloated native
          menu. Positioned + driven by app.js. -->
     <div id="edit-ctx" class="ctx-menu" hidden role="menu">
-      <button type="button" class="ctx-item" data-cmd="cut" role="menuitem" data-i18n="ctx.cut">Cut</button>
-      <button type="button" class="ctx-item" data-cmd="copy" role="menuitem" data-i18n="ctx.copy">Copy</button>
-      <button type="button" class="ctx-item" data-cmd="paste" role="menuitem" data-i18n="ctx.paste">Paste</button>
+      <button type="button" class="ctx-item" data-cmd="cut" role="menuitem"><span data-i18n="ctx.cut">Cut</span><span class="ctx-key" data-combo="Mod+KeyX"></span></button>
+      <button type="button" class="ctx-item" data-cmd="copy" role="menuitem"><span data-i18n="ctx.copy">Copy</span><span class="ctx-key" data-combo="Mod+KeyC"></span></button>
+      <button type="button" class="ctx-item" data-cmd="paste" role="menuitem"><span data-i18n="ctx.paste">Paste</span><span class="ctx-key" data-combo="Mod+KeyV"></span></button>
       <div class="ctx-sep"></div>
-      <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem" data-i18n="ctx.selectAll">Select All</button>
+      <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem"><span data-i18n="ctx.selectAll">Select All</span><span class="ctx-key" data-combo="Mod+KeyA"></span></button>
     </div>
 
     <!-- Right-click menu for the file column (#213). What it acts on is the
@@ -823,7 +823,10 @@
          other mask input has. -->
     <div id="colmask-modal" class="modal-backdrop" hidden>
       <div class="modal colmask" role="dialog" aria-modal="true" aria-labelledby="colmask-title">
-        <h3 id="colmask-title" class="modal-msg">Add column</h3>
+        <div class="modal-head">
+          <h2 id="colmask-title">Add column</h2>
+          <button id="colmask-close" class="icon" type="button" data-i18n-title="action.cancel" title="Cancel" data-i18n-aria-label="action.cancel" aria-label="Cancel"><svg class="ico"><use href="#i-close"/></svg></button>
+        </div>
         <div class="colmask-fields">
           <label class="colmask-row">
             <span data-i18n="colmask.name">Name</span>
@@ -831,12 +834,12 @@
           </label>
           <label class="colmask-row">
             <span data-i18n="colmask.pattern">Pattern</span>
-            <span class="colmask-pattern field">
+            <div class="colmask-pattern field">
               <input id="colmask-pattern" type="text" class="mono" spellcheck="false" placeholder="%artist% — %title%" />
-              <span class="field-tools">
+              <div class="field-tools">
                 <button class="icon ph-btn" type="button" data-ph-target="colmask-pattern" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
-              </span>
-            </span>
+              </div>
+            </div>
           </label>
           <div class="colmask-row">
             <span data-i18n="colmask.align">Align</span>
@@ -1018,8 +1021,9 @@
     </div>
 
     <div id="confirm-modal" class="modal-backdrop" hidden>
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-message">
+      <div class="modal confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirm-message" aria-describedby="confirm-detail">
         <p id="confirm-message" class="modal-msg"></p>
+        <p id="confirm-detail" class="modal-detail" hidden></p>
         <div class="modal-actions">
           <button id="confirm-cancel" data-i18n="action.cancel">Cancel</button>
           <button id="confirm-ok" class="primary" data-i18n="action.ok">OK</button>

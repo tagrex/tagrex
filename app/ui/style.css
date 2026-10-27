@@ -2074,6 +2074,35 @@ body.diffing {
 .modal-actions .primary {
   border-color: color-mix(in srgb, var(--accent) 72%, #000);
 }
+/* Confirm (#560): a question and two answers, no head. An optional muted line
+   under the question says what it touches; the OK button names the act, and an
+   act that destroys something takes the danger kind. */
+.modal.confirm {
+  max-width: 400px;
+  gap: var(--space-5);
+}
+.modal-detail {
+  margin: calc(-1 * var(--space-3)) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--lh-snug);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.modal-detail[hidden] {
+  display: none;
+}
+/* The fill is --del darkened: the dark theme's --del is a light red that white
+   text fails AA on (2.8:1); darkened, white reads at 5:1 or better in both. */
+button.primary.danger,
+.modal-actions .primary.danger {
+  background: color-mix(in srgb, var(--del) 72%, #000);
+  border-color: color-mix(in srgb, var(--del) 55%, #000);
+  color: #fff;
+}
+button.primary.danger:hover:not(:disabled) {
+  filter: none;
+  background: color-mix(in srgb, var(--del) 64%, #000);
+}
 
 /* Playing — an orthogonal left-edge bar (not a full-row tint), so it reads
    alongside a selected/dirty row instead of overwriting its background. The bar
@@ -5375,32 +5404,34 @@ td[data-field="year"],
 .col-menu-row .col-row-btn + .col-row-btn {
   margin-left: 0;
 }
+/* Add column (#150, on the shared shell in #560): the modal head, then one
+   label | control grid, every control at --ctl-h, the read-only note last
+   before the buttons. */
 .modal.colmask {
-  width: min(440px, 92vw);
+  width: min(460px, 92vw);
+  max-width: 460px;
   text-align: left;
 }
 /* One grid for the three rows (#426): the label column is as wide as the
-   widest label in the current language — a fixed 64px fit English and let
-   «Выравнивание» run under the align buttons — and each row is a subgrid of
+   widest label in the current language (a fixed 64px fit English and let
+   «Выравнивание» run under the align buttons), and each row is a subgrid of
    it, so the fields still start on one line. */
 .colmask-fields {
   display: grid;
-  grid-template-columns: max-content 1fr;
-  column-gap: var(--space-2);
-  row-gap: var(--space-4);
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--space-4);
+  row-gap: var(--space-3);
 }
 .colmask-row {
   grid-column: 1 / -1;
   display: grid;
   grid-template-columns: subgrid;
   align-items: center;
-  margin-bottom: var(--space-2);
+  margin: 0;
   font-size: var(--text-xs);
 }
-/* Left / Center / Right share the control evenly instead of leaving its
-   frame empty past the last button. */
-#colmask-align .seg-btn {
-  flex: 1;
+.colmask-row > span:first-child {
+  color: var(--muted);
 }
 .colmask-row input[type="text"] {
   width: 100%;
@@ -5408,9 +5439,23 @@ td[data-field="year"],
 .colmask-pattern {
   min-width: 0;
 }
-.colmask-pattern input {
-  flex: 1;
-  min-width: 0;
+.colmask-pattern > input {
+  font-family: var(--font-mono-bundled);
+}
+/* Left / Center / Right hug their buttons instead of stretching across. */
+#colmask-align {
+  justify-self: start;
+  height: var(--ctl-h);
+}
+#colmask-align .seg-btn {
+  flex: none;
+  min-width: 64px;
+}
+.colmask > .settings-hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: var(--lh-snug);
+  color: var(--muted);
 }
 
 /* ---- online-import field picker (#152) ------------------------------------
@@ -6138,15 +6183,16 @@ body.drag-active #drop-overlay {
   color: var(--muted);
 }
 
-/* ---- minimal edit context menu (#132) --------------------------------------
+/* ---- context menus (#132, #213, on the menu metrics in #560) ----------------
    Our own Cut/Copy/Paste/Select-All popup, replacing the webview's sprawling
-   native menu on text fields. Position is set in JS (fixed, clamped to the
-   viewport); the shell mirrors the .col-menu popover. */
+   native menu on text fields, and the file column's menu. Position is set in JS
+   (fixed, clamped to the viewport); the shell and rows use the .col-menu
+   metrics, so a right-click menu and a toolbar menu read as one family. */
 .ctx-menu {
   position: fixed;
   z-index: 95;
-  min-width: 160px;
-  padding: var(--space-2);
+  min-width: 180px;
+  padding: var(--space-1);
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -6159,39 +6205,60 @@ body.drag-active #drop-overlay {
   display: none;
 }
 .ctx-item {
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-6);
   width: 100%;
-  text-align: left;
   padding: var(--space-1) var(--space-2);
   border: 0;
-  box-shadow: none;
   border-radius: var(--radius-sm);
   background: none;
+  box-shadow: none;
   color: var(--text);
   font: inherit;
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
+  text-align: left;
   cursor: default;
 }
-.ctx-item:hover,
+/* The menu-row hover, not the accent fill: the accent fill was the only place
+   in the app where pointing at something painted it green. */
+.ctx-item:hover:not(:disabled),
 .ctx-item:focus-visible {
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--row-hover);
+  color: var(--text);
   outline: none;
+}
+/* A disabled item (Paste with nothing to paste, Cut in a read-only field) is
+   muted, never striped: a stripe in a menu reads as a broken row. */
+.ctx-item:disabled {
+  background: none;
+  color: var(--muted);
+  opacity: 0.6;
+  cursor: default;
+}
+/* The shortcut, right-aligned and muted. */
+.ctx-key {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
 }
 /* An item that deletes something (#213). Red as text rather than a red fill:
    the row is not a warning until you are on it, and a menu that shouts before
-   you reach for it teaches people to click past the colour. */
+   you reach for it teaches people to click past the colour. Under the pointer
+   it gets the error tint. */
 .ctx-item.danger {
   color: var(--del);
 }
-.ctx-item.danger:hover,
+.ctx-item.danger:hover:not(:disabled),
 .ctx-item.danger:focus-visible {
-  background: var(--del);
-  color: #fff;
+  background: var(--error-tint);
+  color: var(--del);
 }
 .ctx-sep {
   height: 1px;
-  margin: var(--space-1) var(--space-1);
+  margin: var(--space-1) var(--space-2);
   background: var(--border);
 }
 

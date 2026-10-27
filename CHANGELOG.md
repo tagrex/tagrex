@@ -110,6 +110,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the gap. The check that is on shows its file count on the button and sits in
   the filter box as a chip whose × clears it; the status line no longer repeats
   its name. (#559)
+- **The small dialogs and context menus match the rest of the app.** Add column
+  has the windows' title bar with a ×, muted labels, and an Align control that
+  hugs its three buttons. A confirmation that destroys something (Move to
+  Trash, deleting a preset, removing a tag block) has a red button and leaves
+  the focus on Cancel, so Return no longer confirms a deletion. The right-click
+  menus use the other menus' rows and hover instead of a green fill, show the
+  shortcuts on the right, and mute Cut and Paste in a read-only field and
+  Paste when the clipboard is empty. (#560)
 
 ### Fixed
 

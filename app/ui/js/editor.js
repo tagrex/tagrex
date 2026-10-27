@@ -170,7 +170,8 @@ async function previewRemoveTagBlock(kind, label) {
           block: label,
           files: tn("unit.file", plan.changes.length),
         }),
-        tr("action.remove")
+        tr("action.remove"),
+        { danger: true }
       );
       if (!ok) return;
     }

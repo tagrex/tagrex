@@ -127,13 +127,19 @@ export function placeFloating(box, anchor, { align = "left", gap = 4, width = nu
 // A minimal in-app confirm dialog returning a Promise<boolean> (#102). Used for
 // the overwrite prompt; WKWebView's window.confirm is unreliable, so this is a
 // self-managed modal. Backdrop click or Cancel resolves false.
-export function confirmDialog(message, okLabel = "OK") {
+// `detail` is an optional muted line saying what the act touches. A `danger`
+// act (one that destroys something) gets the danger button and leaves focus on
+// Cancel, so Return never confirms a deletion by default (#560).
+export function confirmDialog(message, okLabel = "OK", { detail = "", danger = false } = {}) {
   return new Promise((resolve) => {
     const modal = el("confirm-modal");
     el("confirm-message").textContent = message;
+    el("confirm-detail").textContent = detail;
+    el("confirm-detail").hidden = !detail;
     const okBtn = el("confirm-ok");
     const cancelBtn = el("confirm-cancel");
     okBtn.textContent = okLabel;
+    okBtn.classList.toggle("danger", danger);
     modal.hidden = false;
     const done = (result) => {
       modal.hidden = true;
@@ -150,6 +156,6 @@ export function confirmDialog(message, okLabel = "OK") {
     okBtn.addEventListener("click", onOk);
     cancelBtn.addEventListener("click", onCancel);
     modal.addEventListener("click", onBackdrop);
-    okBtn.focus();
+    (danger ? cancelBtn : okBtn).focus();
   });
 }

@@ -271,7 +271,7 @@ function duplicatePreset() {
 async function deletePreset() {
   if (!current || current.builtin) return;
   const name = current.name;
-  const ok = await confirmDialog(t("presets.deleteConfirm", { name }), t("action.delete"));
+  const ok = await confirmDialog(t("presets.deleteConfirm", { name }), t("action.delete"), { danger: true });
   if (!ok) return;
   setActionGroups(actionGroups.filter((g) => g.name !== name));
   persistActionGroups();

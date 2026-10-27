@@ -81,7 +81,7 @@ import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS, fieldLabel } fro
 import { initPlaceholderReference } from "./js/placeholders.js";
 import { initMaskPresets } from "./js/maskpresets.js";
 import { initTooltips } from "./js/tooltip.js";
-import { initShortcuts } from "./js/shortcuts.js";
+import { formatCombo, initShortcuts } from "./js/shortcuts.js";
 import { bpmRunning, retranslateBpm, stopBpm } from "./js/bpm.js";
 import { isFieldLocked, loadFieldLocks, pushFieldLocks } from "./js/locks.js";
 import {
@@ -2116,6 +2116,23 @@ function hideEditCtx() {
 
 function showEditCtx(x, y, field) {
   ctxField = field;
+  // The keys on the right, in this platform's notation (#560); a read-only
+  // field can be copied from but not cut or pasted into.
+  for (const key of editCtx.querySelectorAll(".ctx-key")) key.textContent = formatCombo(key.dataset.combo);
+  const readOnly = !!(field.readOnly || field.disabled || field.getAttribute("contenteditable") === "false");
+  editCtx.querySelector('[data-cmd="cut"]').disabled = readOnly;
+  const paste = editCtx.querySelector('[data-cmd="paste"]');
+  paste.disabled = readOnly;
+  // Paste goes muted when there is nothing to paste. Only through the plugin:
+  // the web API would raise a permission prompt just to open a menu.
+  if (TAURI && !readOnly) {
+    TAURI.invoke("plugin:clipboard-manager|read_text")
+      .then((res) => {
+        const text = typeof res === "string" ? res : (res && res.plainText && res.plainText.text) || "";
+        if (ctxField === field) paste.disabled = !text;
+      })
+      .catch(() => {});
+  }
   editCtx.hidden = false;
   // Measure once visible, then clamp so the menu never spills off-screen.
   const r = editCtx.getBoundingClientRect();
@@ -2201,7 +2218,8 @@ function dropFromList(paths) {
 async function trashFiles(paths) {
   const ok = await confirmDialog(
     msg("confirm.trash", { files: tn("unit.file", paths.length) }),
-    msg("action.moveToTrash")
+    msg("action.moveToTrash"),
+    { danger: true }
   );
   if (!ok) return;
   try {
@@ -2260,7 +2278,7 @@ async function pasteIntoField(field) {
 // field focused so execCommand targets it.
 editCtx.addEventListener("mousedown", (e) => {
   const item = e.target.closest(".ctx-item");
-  if (!item) return;
+  if (!item || item.disabled) return;
   e.preventDefault();
   const field = ctxField;
   if (field && field.focus) field.focus();

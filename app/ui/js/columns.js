@@ -771,6 +771,7 @@ el("colmask-align").addEventListener("click", (e) => {
   if (btn) setColumnAlign(btn.dataset.align);
 });
 el("colmask-cancel").addEventListener("click", closeColumnEditor);
+el("colmask-close").addEventListener("click", closeColumnEditor);
 el("colmask-ok").addEventListener("click", commitColumnEditor);
 el("colmask-modal").addEventListener("click", (e) => {
   if (e.target === el("colmask-modal")) closeColumnEditor();
