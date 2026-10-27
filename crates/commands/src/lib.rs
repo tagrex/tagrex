@@ -5922,6 +5922,18 @@ pub fn builtin_action_groups() -> Vec<ActionGroupDto> {
                 re(r"^\s+|\s+$", ""),
             ],
         ),
+        // #551: names like 101_the_x_factor_-_desert_rain read back with an
+        // underscore in every value.
+        group(
+            "No underscore",
+            "tags",
+            "Replace underscores with spaces, then collapse the gaps that leaves.",
+            vec![
+                re(r"_+", " "),
+                re(r"\s{2,}", " "),
+                re(r"^\s+|\s+$", ""),
+            ],
+        ),
         group(
             "Lower case",
             "filename",
@@ -10222,6 +10234,8 @@ mod tests {
         };
 
         assert_eq!(run("Standard values", "  Desert   Rain "), "Desert Rain");
+        assert_eq!(run("No underscore", "the_x_factor"), "the x factor");
+        assert_eq!(run("No underscore", "_in__my_house_"), "in my house");
         assert_eq!(run("Discogs cleanup", "Sunbeam (2)"), "Sunbeam");
         // #520: the name-variation asterisk, alone and inside a credit; an
         // asterisk that is part of a name stays.

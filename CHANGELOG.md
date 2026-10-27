@@ -67,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   same value states as for file names. A heading is "not a track · skipped", a
   track left without a file says so, and the summary counts tracks, skipped
   lines, tracks without a file and files without a track. (#550)
+- **A built-in No underscore preset**: underscores to spaces, then the gaps
+  collapsed and the ends trimmed, for every tag. Tick it for FROM NAME and
+  `101_the_x_factor_-_desert_rain` reads as `the x factor` and `desert rain`.
+  (#551)
 
 ### Fixed
 

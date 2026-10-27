@@ -96,6 +96,7 @@ compose into one rename instead of the second discarding the first.
 | Normalize english | all tags | Title-case, keeping known acronyms and roman numerals |
 | General Latin | all tags | Romanize non-Latin scripts, then strip leftover accents |
 | No dash | all tags | Dashes to spaces, then collapse the gaps that leaves |
+| No underscore | all tags | Underscores to spaces, then collapse the gaps that leaves |
 | Lower case | file name | Lower-case the stem, extension untouched |
 | File extension | file extension | `.FLAC` → `.flac` |
 | FTP format | file name | Plain ASCII, no spaces — a name that survives any server |
