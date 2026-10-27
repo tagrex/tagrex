@@ -1907,6 +1907,19 @@ body:not(.show-checkbox) #tracks td.sel {
   color: var(--accent-ink);
   overflow-wrap: anywhere;
 }
+/* A result, not a hint (#582): framed like FROM NAME's probe, which reads the
+   mask on the current file the same way, so it stands apart from the hint text
+   around it. Qualified with .hint, whose own padding comes later. */
+.hint.mask-example {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: var(--font-mono-bundled);
+}
+.hint.mask-example.muted {
+  font-family: var(--font-ui);
+}
 .mask-example:empty::before {
   content: "\00a0";
 }

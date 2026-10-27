@@ -125,6 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **RENAMER's live example stands out from the hints.** It sits in a framed
+  box in the monospaced face, like FROM NAME's read-out of the same kind,
+  instead of as one more line of coloured hint text. (#582)
 - **A built-in preset says only that it is read-only.** The pill beside its
   name no longer repeats "Built-in", which the list's heading already says, and
   the "Duplicate to change" button beside it is gone: Duplicate under the list
