@@ -202,6 +202,19 @@ if (TAURI && /Mac/.test(navigator.platform)) {
   document.body.classList.add("mac-overlay-titlebar");
 }
 
+// The in-app windows close where the platform closes (#565): at the start of
+// their heads on macOS, on the traffic-light side; at the end on Windows; on
+// Linux where the desktop's own button layout puts close, the end when it
+// can't be read. CSS keys only on `close-start`.
+const PLATFORM = /Mac/.test(navigator.platform) ? "mac" : /Win/.test(navigator.platform) ? "win" : "linux";
+document.body.classList.add(`platform-${PLATFORM}`);
+if (PLATFORM === "mac") document.body.classList.add("close-start");
+if (PLATFORM === "linux" && TAURI) {
+  invoke("close_button_side")
+    .then((side) => document.body.classList.toggle("close-start", side === "start"))
+    .catch(() => {});
+}
+
 // ---- elements ----
 const rootInput = el("root");
 const tableWrap = el("files-view");

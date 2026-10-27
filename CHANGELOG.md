@@ -141,6 +141,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The in-app windows close where the platform closes.** On macOS the × of
+  Settings, the mask builder, Transform, the preset editor and Add column sits
+  at the start of the window's head, on the same side as the traffic lights; on
+  Windows it stays at the end; on Linux it follows the desktop's own button
+  layout (GNOME or KDE), the end when that can't be read. Everywhere the × now
+  lines up with the content edge below it. (#565)
 - **The tag library moves to lofty 0.25.5.** The release fixes corruption when
   writing OGG files whose packets do not end on a page boundary, panics and
   deleted atoms on some MP4 writes, 64-bit MP4 atoms, AIFF comment chunks with

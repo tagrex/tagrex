@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 
 mod media_session;
 mod update;
+mod window_controls;
 
 use tauri::{Manager, State};
 
@@ -1282,6 +1283,13 @@ fn open_mask_guide() -> Result<(), ErrorDto> {
     open::that(MASK_GUIDE).map_err(ErrorDto::from)
 }
 
+/// Which end of an in-app window's head the close button goes at on this
+/// desktop (#565): "start" or "end".
+#[tauri::command]
+fn close_button_side() -> &'static str {
+    window_controls::close_button_side()
+}
+
 #[tauri::command]
 fn load_settings(app: tauri::AppHandle) -> Result<SettingsDto, ErrorDto> {
     Ok(read_settings(&app))
@@ -1448,6 +1456,7 @@ fn main() {
             find_duplicates,
             open_release_page,
             open_mask_guide,
+            close_button_side,
             preview_rename,
             preview_tags_from_name,
             probe_tags_from_name,

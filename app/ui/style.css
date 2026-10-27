@@ -5596,6 +5596,31 @@ td[data-field="year"],
   background: var(--row-hover);
   color: var(--text);
 }
+/* Window controls (#565). The × follows the side the system puts its own close
+   on: the start on macOS and on a Linux desktop set to close on the left
+   (body.close-start, decided once in app.js), the end everywhere else. The
+   house × on every platform, never an imitation traffic light; the DOM order
+   stays, so the tab order does not change.
+   The 28px button holds a 15px glyph, so it is pulled out by --space-2 toward
+   the window edge it touches: the glyph then lines up with the content edge
+   below (the fields, the foot's buttons) instead of sitting inside it. */
+.modal-head > button.icon,
+.settings-head > button.icon {
+  margin-inline-end: calc(-1 * var(--space-2));
+}
+.close-start .modal-head > button.icon,
+.close-start .settings-head > button.icon {
+  order: -1;
+  margin-inline-start: calc(-1 * var(--space-2));
+  margin-inline-end: 0;
+}
+/* The title follows the × at a tighter gap, so the pair reads as one unit, as
+   the traffic lights and the brand do in the top bar. The title stays at the
+   start, not centred, and the end of the head is left empty. */
+.close-start .modal-head,
+.close-start .settings-head {
+  gap: var(--space-2);
+}
 /* Only the chain scrolls; the heading and the close stay put. */
 .transform-modal-body {
   min-height: 0;
