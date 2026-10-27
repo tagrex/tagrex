@@ -125,6 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Number tracks' Start at and Disc # fields are sized to their numbers**
+  instead of sharing the row half and half; Disc # shows "none" when blank and
+  explains itself in its tooltip. (#573)
 - **DEDUPLICATOR says "read-only" once**, beside Scan library, instead of
   again in the hint above; and RENAMER's "Carry the rest of the folder" and
   "Tidy up empty folders" start with a capital. (#572)

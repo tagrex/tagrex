@@ -2629,6 +2629,13 @@ body.show-checkbox tr.playing td.sel {
   color: var(--text);
   font: inherit;
 }
+/* Number tracks (#573): a start number and a disc number are one to three
+   digits, so the fields are sized to that instead of sharing the row. */
+#autonum-start,
+#autonum-disc {
+  flex: 0 0 8ch;
+  box-sizing: content-box;
+}
 .export-row select {
   padding-right: 24px; /* room for the #115 caret */
 }
