@@ -42,7 +42,8 @@
 > [docs/architecture.md](docs/architecture.md); user-visible changes are in
 > [CHANGELOG.md](CHANGELOG.md).
 
-## Install
+<details>
+<summary><h2>Install</h2></summary>
 
 Builds are on the [Releases](https://github.com/tagrex/tagrex/releases) page.
 
@@ -71,7 +72,10 @@ sudo apt install ./TagRex_*_amd64.deb     # Debian, Ubuntu (arm64.deb on ARM)
 sudo dnf install ./TagRex-*.x86_64.rpm    # Fedora (aarch64.rpm on ARM)
 ```
 
-## What it does
+</details>
+
+<details open>
+<summary><h2>What it does</h2></summary>
 
 **A folder is the library.** Point TagRex at one and it recurses: type or browse
 to the path, drop the folder on the window, or hand it over from the file
@@ -235,6 +239,8 @@ shortcuts for the main actions that you can rebind, a bundled IBM Plex type set
 so text renders identically on every OS, adjustable table density, and a
 Settings › LAB section for typography still being trialled.
 
+</details>
+
 ## Motivation
 
 For years, [TagScanner](https://www.xdlab.ru/) and [Mp3tag](https://www.mp3tag.de/en/)
@@ -285,7 +291,8 @@ cargo tauri build --debug --bundles app
 Linux additionally needs the usual WebKitGTK development packages; see the
 [Tauri prerequisites](https://tauri.app/start/prerequisites/).
 
-## Tech stack
+<details>
+<summary><h2>Tech stack</h2></summary>
 
 A Rust core with a [Tauri](https://tauri.app/) shell and a plain HTML/CSS/JS
 interface — no frontend framework and no Node toolchain. The libraries doing the
@@ -314,6 +321,8 @@ heavy lifting:
 See [docs/architecture.md](docs/architecture.md) for the module layout and the
 reasoning behind it.
 
+</details>
+
 ## Attribution
 
 TagRex reads metadata from the third-party sources you choose. Their data belongs
@@ -322,7 +331,10 @@ to them and to the people who contribute it.
 This application uses Discogs' API but is not affiliated with, sponsored or
 endorsed by Discogs. "Discogs" is a trademark of Zink Media, LLC.
 
-## License
+<details>
+<summary><h2>License</h2></summary>
 
 [GPL-3.0](LICENSE). Free software stays free: forks and derivatives must remain
 open source.
+
+</details>

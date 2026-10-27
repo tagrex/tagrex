@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and editable as text. Off by default, so existing presets behave as before.
   (#537)
 
+### Changed
+
+- **The README opens short.** Install, Tech stack and License are collapsed
+  blocks now, and What it does stays expanded. (#584)
+
 ### Fixed
 
 - **Clearing the preset editor's Try it on line goes back to the selected
