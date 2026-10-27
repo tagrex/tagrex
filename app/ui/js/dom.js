@@ -16,9 +16,57 @@ export function toast(message, isError) {
 /// stays until it is dismissed; one that is all fine times out like a toast.
 export function report(title, parts) {
   showToast(String(title), parts.filter(Boolean), false);
+  // A report shown with a plan staged is about that plan (#562): it closes
+  // when the plan is applied or discarded.
+  reportBound = barShown();
+}
+
+// Whether the toast on screen is a report tied to the staged plan.
+let reportBound = false;
+
+function barShown() {
+  const bar = el("diff-actionbar");
+  return !!bar && !bar.hidden;
+}
+
+// With a plan staged, the toast sits on the change bar's axis just above it,
+// and a report takes the bar's width so it reads as part of it (#562). The
+// bar is centred on the table, not the window, so CSS alone can't line them up.
+function placeToast() {
+  const box = el("toast");
+  if (box.hidden || !barShown()) {
+    box.style.left = box.style.bottom = box.style.width = box.style.maxWidth = "";
+    return;
+  }
+  const bar = el("diff-actionbar").getBoundingClientRect();
+  box.style.left = `${bar.left + bar.width / 2}px`;
+  box.style.bottom = `${window.innerHeight - bar.top + 8}px`;
+  const isReport = !el("toast-parts").hidden;
+  box.style.width = isReport ? `${Math.max(bar.width, 320)}px` : "";
+  box.style.maxWidth = isReport ? "none" : "";
+}
+window.addEventListener("resize", placeToast);
+
+/// Closes a report tied to the staged plan; for the caller letting the plan go.
+export function closePlanReport() {
+  if (!reportBound) return;
+  reportBound = false;
+  clearTimeout(toast._timer);
+  el("toast").hidden = true;
+}
+
+/// Closes a toast that waits to be dismissed (a report with a problem, an
+/// error). True when there was one: Esc closes it before doing anything else.
+export function dismissStickyToast() {
+  if (el("toast").hidden || el("toast-close").hidden) return false;
+  clearTimeout(toast._timer);
+  el("toast").hidden = true;
+  reportBound = false;
+  return true;
 }
 
 function showToast(title, parts, isError) {
+  reportBound = false;
   const box = el("toast");
   el("toast-title").textContent = title;
   const list = el("toast-parts");
@@ -36,6 +84,7 @@ function showToast(title, parts, isError) {
   el("toast-close").hidden = !stays && !isError;
   box.classList.toggle("error", isError);
   box.hidden = false;
+  placeToast();
   clearTimeout(toast._timer);
   if (!stays) toast._timer = setTimeout(() => (box.hidden = true), isError ? 6000 : 3200);
 }

@@ -10,6 +10,8 @@ import {
   ico,
   confirmDialog,
   placeFloating,
+  closePlanReport,
+  dismissStickyToast,
 } from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
@@ -1427,6 +1429,7 @@ function exitDiffState() {
   document.body.classList.remove("diffing");
   el("tracks").classList.remove("show-old");
   el("diff-actionbar").hidden = true;
+  closePlanReport(); // a report about this plan goes with it (#562)
   renderTracks();
   refreshGenerator();
   updateRefreshButton(); // the re-read is reachable again (#212)
@@ -2408,7 +2411,10 @@ window.addEventListener(
   (e) => {
     if (e.key !== "Escape" || e.isComposing) return;
     const detecting = bpmRunning();
-    if (!diffByPath && !detecting) return;
+    // A report or error waiting to be dismissed closes first (#562), so the
+    // plan it describes isn't thrown away under it.
+    const sticky = !el("toast").hidden && !el("toast-close").hidden;
+    if (!diffByPath && !detecting && !sticky) return;
     const active = document.activeElement;
     const typing =
       active && (active.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName));
@@ -2417,6 +2423,11 @@ window.addEventListener(
       !!document.querySelector(".sg-menu:not([hidden]), .modal-backdrop:not([hidden])") ||
       !el("settings").hidden;
     if (typing || popupOpen || searchBusy()) return;
+    if (sticky) {
+      e.preventDefault();
+      dismissStickyToast();
+      return;
+    }
     if (detecting) {
       e.preventDefault();
       stopBpm();

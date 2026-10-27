@@ -121,6 +121,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A run report no longer outlives the preview it describes.** Esc closes a
+  report waiting to be read before it discards the preview, a report goes away
+  when its preview is applied or discarded, and while a preview is staged the
+  report sits right above the Apply and Discard bar, on its axis and at its
+  width, instead of off-centre beside it. (#562)
 - **A disabled select no longer repeats its caret across the box.** The rules
   of a built-in preset are read-only, and in the dark theme each rule's target
   showed a row of carets over its text; the caret is now drawn once, over the

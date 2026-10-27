@@ -58,8 +58,10 @@ already holds the measured number is left out of the plan. A track with no
 steady beat (a beatless intro, spoken word) gets no value. A report at the
 foot of the window says what was staged, with a line under it for each thing
 worth knowing: where a stopped run stopped, how many long files were skipped,
-and, in red, how many files had no steady beat or could not be decoded. A
-report with a red line stays until its × is clicked.
+and, in red, how many files had no steady beat or could not be decoded. The
+report sits on the bar with Apply and Discard and goes away with the preview.
+One with a red line stays until its × is clicked or Esc is pressed: the first
+Esc closes the report, the next one discards the preview.
 
 A file longer than 20 minutes, a DJ mix in practice, is skipped and counted in
 the report: it has no single tempo to measure. The limit, and a switch that
