@@ -45,6 +45,8 @@
 <details>
 <summary><b>Install</b></summary>
 
+<br>
+
 Builds are on the [Releases](https://github.com/tagrex/tagrex/releases) page.
 
 | Platform | Architectures | Package |
@@ -76,6 +78,8 @@ sudo dnf install ./TagRex-*.x86_64.rpm    # Fedora (aarch64.rpm on ARM)
 
 <details open>
 <summary><b>What it does</b></summary>
+
+<br>
 
 **A folder is the library.** Point TagRex at one and it recurses: type or browse
 to the path, drop the folder on the window, or hand it over from the file
@@ -244,6 +248,8 @@ Settings › LAB section for typography still being trialled.
 <details>
 <summary><b>Motivation</b></summary>
 
+<br>
+
 
 For years, [TagScanner](https://www.xdlab.ru/) and [Mp3tag](https://www.mp3tag.de/en/)
 have been the reference tools for putting large music collections in order.
@@ -261,6 +267,8 @@ and Linux.
 
 <details>
 <summary><b>Non-goals</b></summary>
+
+<br>
 
 
 - **Not an auto-tagger.** TagRex is a precision tool for people who want to see
@@ -282,6 +290,8 @@ and Linux.
 
 <details>
 <summary><b>Build from source</b></summary>
+
+<br>
 
 
 Needs a Rust toolchain and the Tauri CLI. **Node is not required** — the
@@ -305,6 +315,8 @@ Linux additionally needs the usual WebKitGTK development packages; see the
 
 <details>
 <summary><b>Tech stack</b></summary>
+
+<br>
 
 A Rust core with a [Tauri](https://tauri.app/) shell and a plain HTML/CSS/JS
 interface — no frontend framework and no Node toolchain. The libraries doing the
@@ -338,6 +350,8 @@ reasoning behind it.
 <details>
 <summary><b>Attribution</b></summary>
 
+<br>
+
 
 TagRex reads metadata from the third-party sources you choose. Their data belongs
 to them and to the people who contribute it.
@@ -349,6 +363,8 @@ endorsed by Discogs. "Discogs" is a trademark of Zink Media, LLC.
 
 <details>
 <summary><b>License</b></summary>
+
+<br>
 
 [GPL-3.0](LICENSE). Free software stays free: forks and derivatives must remain
 open source.

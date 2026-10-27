@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Motivation, Non-goals, Build from source and Attribution join the other
   four, and the block titles are bold text instead of headings, so GitHub no
   longer draws its link icon over the expand triangle. (#585)
+- **The README's open block has air under its title.** What it does no longer
+  starts its first line right against the title, so the sections stop running
+  into each other. (#586)
 
 ### Fixed
 
