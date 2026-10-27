@@ -11,19 +11,22 @@ change them in the preset editor; everywhere else you only tick them.
 **The ticked presets run as part of each job.** Behind the wand button in the
 toolbar is a checklist of every preset. What is ticked runs by itself when you
 import a release, read tags out of file names, or preview a rename — cleanup as
-part of the job, not a second step. The set is shared by every job, and each job
-takes only the rules aimed at what it produces:
+part of the job, not a second step. Each job keeps its own ticked set, and takes
+only the rules aimed at what it produces:
 
-| Job | Takes the rules on |
-| --- | --- |
-| Importing a release, FROM NAME, FROM TEXT | tags |
-| RENAMER | the file name and extension |
-| GENERATOR | everything |
+| Job | Its own set | Takes the rules on |
+| --- | --- | --- |
+| Importing a release (ONLINE) | Import | tags |
+| FROM NAME, FROM TEXT | From name and text | tags |
+| RENAMER and its mask builder | Renaming | the file name and extension |
+| GENERATOR | GENERATOR | everything |
 
-So a file-name preset ticked for renaming never touches the tags FROM NAME
-reads, and a tag preset ticked for imports never renames a file. A row whose
-preset has nothing for the job in front of you reads dimmed. The wand button
-carries a dot while any ticked rule applies to the current job.
+So title case ticked to tidy names read out of files does not run on releases
+imported from a source, where the values are already right, and a file-name
+preset ticked for renaming never touches tags. The checklist shows the set of
+the job in front of you; a preset with nothing for that job reads dimmed and
+can't be ticked there. The wand button carries a dot while any ticked rule
+applies to the current job.
 
 In GENERATOR the checklist sits in the panel, and **Preview changes** runs every
 ticked preset over the selection — or over a staged plan, revising it rather

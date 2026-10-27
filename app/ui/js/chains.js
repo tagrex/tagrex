@@ -21,10 +21,19 @@
 //
 // The set is ordered by the preset list (your presets, then the built-ins), so
 // ticking never has to ask "before or after?".
+//
+// Since #555 each job keeps a ticked set of its own. Rule targets kept tag
+// rules and file-name rules apart, but not two jobs that both write tags:
+// ticking a tidy-up for names read out of files (underscores, title case) also
+// ran it on every import, where the values were already right. A preset with
+// nothing for a job can't be ticked there.
 import { invoke } from "./invoke.js";
 import { persistActionGroups, renderAllGroupsMenus, ruleForGroup, uniquePresetName } from "./chain.js";
 import { actionGroups, builtinGroups, setActionGroups } from "./state.js";
 
+// One list of ticked presets per job (#555), as { context: [keys] }.
+const ACTIVE_BY_JOB_KEY = "tagrex.activePresetsByJob";
+// The one shared list it replaces, read once to seed every job's (#555).
 const ACTIVE_KEY = "tagrex.activePresets";
 // The per-job chains this replaces, read once to carry them over (#392).
 const LEGACY_CHAINS_KEY = "tagrex.chains";
@@ -45,47 +54,65 @@ function presetKey(group) {
   return `${group.builtin ? "builtin" : "user"}:${group.name}`;
 }
 
-function readActive() {
+function keyList(value) {
+  return Array.isArray(value) ? value.filter((k) => typeof k === "string") : [];
+}
+
+// The shared list from before #555, or null when there never was one.
+function readShared() {
   try {
     const raw = localStorage.getItem(ACTIVE_KEY);
-    if (raw === null) return null;
-    const list = JSON.parse(raw);
-    return Array.isArray(list) ? list.filter((k) => typeof k === "string") : [];
+    return raw === null ? null : keyList(JSON.parse(raw));
   } catch (e) {
     return [];
   }
 }
 
+function readByJob() {
+  try {
+    const raw = localStorage.getItem(ACTIVE_BY_JOB_KEY);
+    if (raw === null) return null;
+    const stored = JSON.parse(raw) || {};
+    return Object.fromEntries(Object.keys(CHAIN_CONTEXTS).map((c) => [c, keyList(stored[c])]));
+  } catch (e) {
+    return Object.fromEntries(Object.keys(CHAIN_CONTEXTS).map((c) => [c, []]));
+  }
+}
+
 // Null until the one-time carry-over has run (see migrateChains).
-let active = readActive();
+let active = readByJob();
 
 function persistActive() {
   try {
-    localStorage.setItem(ACTIVE_KEY, JSON.stringify(active || []));
+    localStorage.setItem(ACTIVE_BY_JOB_KEY, JSON.stringify(active || {}));
   } catch (e) {
     /* localStorage unavailable — the ticks just won't survive a restart */
   }
 }
 
-function isPresetActive(group) {
-  return (active || []).includes(presetKey(group));
+function isPresetActive(group, context) {
+  return (active?.[context] || []).includes(presetKey(group));
 }
 
-function setPresetActive(group, on) {
+function setPresetActive(group, on, context) {
+  if (!active) return;
   const key = presetKey(group);
-  const rest = (active || []).filter((k) => k !== key);
-  active = on ? [...rest, key] : rest;
+  const rest = (active[context] || []).filter((k) => k !== key);
+  active[context] = on ? [...rest, key] : rest;
   persistActive();
-  notifyChainChanged();
+  notifyChainChanged(context);
 }
 
-// Keep a renamed preset ticked, and forget a deleted one (`to` null).
+// Keep a renamed preset ticked, and forget a deleted one (`to` null), in every
+// job's set.
 function renameActivePreset(from, to) {
   if (!active) return;
   const key = `user:${from}`;
-  if (!active.includes(key)) return;
-  active = active.filter((k) => k !== key);
-  if (to) active.push(`user:${to}`);
+  for (const context of Object.keys(active)) {
+    if (!active[context].includes(key)) continue;
+    active[context] = active[context].filter((k) => k !== key);
+    if (to) active[context].push(`user:${to}`);
+  }
   persistActive();
 }
 
@@ -115,7 +142,7 @@ function rulesFor(group, context) {
 // acts on; a preset with nothing left for it is left out.
 function presetsFor(context) {
   return allPresets()
-    .filter(isPresetActive)
+    .filter((g) => isPresetActive(g, context))
     .map((g) => ({ name: g.name, scope: "tags", rules: rulesFor(g, context) }))
     .filter((g) => g.rules.length);
 }
@@ -135,15 +162,19 @@ function presetAppliesTo(group, context) {
 // What to redo when the set changes (#248). The panels register their own
 // "show me again" — the read-out under a pattern, the staged plan that came
 // from this very context — because changing a rule and then having to press the
-// button again to see it is the two-step this whole design got rid of. The set
-// is shared, so a change reaches every context.
+// button again to see it is the two-step this whole design got rid of. A tick
+// changes one job's set (#555) and tells that job; an edited preset can change
+// any job, so it tells them all.
 const listeners = new Map();
 function onChainChanged(context, fn) {
   if (!listeners.has(context)) listeners.set(context, []);
   listeners.get(context).push(fn);
 }
-function notifyChainChanged() {
-  for (const fns of listeners.values()) for (const fn of fns) fn();
+function notifyChainChanged(context) {
+  for (const [job, fns] of listeners) {
+    if (context && job !== context) continue;
+    for (const fn of fns) fn();
+  }
 }
 
 function chainHasRules(context) {
@@ -178,6 +209,14 @@ async function runChainOverPlan(plan, context) {
 // the set exists.
 function migrateChains() {
   if (active !== null) return;
+  // The shared list from before #555 seeds every job's set, each keeping only
+  // the presets that have something for it, so the first run after the change
+  // does what the last one before it did.
+  const shared = readShared();
+  if (shared !== null) {
+    seedJobs(shared);
+    return;
+  }
   let legacy = {};
   try {
     legacy = JSON.parse(localStorage.getItem(LEGACY_CHAINS_KEY) || "{}") || {};
@@ -191,7 +230,7 @@ function migrateChains() {
     ["generator", "Generator rules"],
   ];
   const added = [];
-  active = [];
+  const ticked = [];
   for (const [context, label] of labels) {
     const chain = legacy[context];
     if (!chain || !Array.isArray(chain.rules) || !chain.rules.length) continue;
@@ -203,7 +242,7 @@ function migrateChains() {
     // useful there, and ticked in the shared set it would start running in the
     // job those rules DO aim at, ahead of that job's own preset.
     if (context !== "generator" && rules.some((r) => contextTakes(context, r.scope))) {
-      active.push(`user:${name}`);
+      ticked.push(`user:${name}`);
     }
   }
   if (added.length) {
@@ -211,7 +250,21 @@ function migrateChains() {
     persistActionGroups();
     renderAllGroupsMenus();
   }
+  seedJobs(ticked);
+}
+
+// Every job's set from one list of keys (#555): each keeps the presets that
+// have something for it.
+function seedJobs(keys) {
+  const byKey = new Map(allPresets().map((g) => [presetKey(g), g]));
+  active = Object.fromEntries(
+    Object.keys(CHAIN_CONTEXTS).map((context) => [
+      context,
+      keys.filter((key) => byKey.has(key) && presetAppliesTo(byKey.get(key), context)),
+    ])
+  );
   persistActive();
+  renderAllGroupsMenus();
   notifyChainChanged();
 }
 

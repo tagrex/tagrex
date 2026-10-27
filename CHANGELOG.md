@@ -71,6 +71,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   collapsed and the ends trimmed, for every tag. Tick it for FROM NAME and
   `101_the_x_factor_-_desert_rain` reads as `the x factor` and `desert rain`.
   (#551)
+- **Each job keeps its own ticked presets.** Importing a release, reading tags
+  from names and text lists, renaming and GENERATOR each have their own set, so
+  a tidy-up ticked for names read out of files (underscores, title case) no
+  longer runs on every import. A preset with nothing for a job can't be ticked
+  there. On first start every job's set is the old shared one, cut to the
+  presets that apply to it, so nothing changes until you change it. (#555)
 
 ### Fixed
 

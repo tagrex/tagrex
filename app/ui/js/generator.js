@@ -386,9 +386,10 @@ function refreshTransformButton() {
 const presetChecklist = createPresetChecklist({
   menu: "groups-menu",
   context: () => shownContext || "generator",
-  isActive: isPresetActive,
+  // The set of the job the checklist is showing (#555).
+  isActive: (group) => isPresetActive(group, shownContext || "generator"),
   setActive: (group, on) => {
-    setPresetActive(group, on);
+    setPresetActive(group, on, shownContext || "generator");
     refreshTransformButton();
   },
   appliesTo: presetAppliesTo,

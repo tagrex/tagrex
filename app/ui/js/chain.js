@@ -476,6 +476,9 @@ function createPresetChecklist({ menu, context, isActive, setActive, appliesTo }
     tick.type = "checkbox";
     tick.className = "group-tick";
     tick.checked = isActive(group);
+    // Each job has its own set (#555): a preset with nothing for this one can't
+    // be ticked here. One already ticked can still be unticked.
+    tick.disabled = !applies && !tick.checked;
     tick.addEventListener("change", () => setActive(group, tick.checked));
 
     const name = document.createElement("span");
