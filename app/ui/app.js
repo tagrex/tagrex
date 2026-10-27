@@ -83,7 +83,7 @@ import { EXTENDED_FIELDS, KNOWN_CUSTOM_LABELS, VIRTUAL_COLUMNS, fieldLabel } fro
 import { initPlaceholderReference } from "./js/placeholders.js";
 import { initMaskPresets } from "./js/maskpresets.js";
 import { initTooltips } from "./js/tooltip.js";
-import { formatCombo, initShortcuts } from "./js/shortcuts.js";
+import { comboOf, formatCombo, initShortcuts } from "./js/shortcuts.js";
 import { bpmRunning, retranslateBpm, stopBpm } from "./js/bpm.js";
 import { isFieldLocked, loadFieldLocks, pushFieldLocks } from "./js/locks.js";
 import {
@@ -2187,12 +2187,21 @@ function showFileCtx(x, y, tr) {
   }
   fileCtxPaths = selectedPaths();
   const many = fileCtxPaths.length > 1;
-  fileCtx.querySelector('[data-cmd="hide"]').textContent = many
+  fileCtx.querySelector('[data-cmd="hide"] .ctx-label').textContent = many
     ? msg("ctx.removeN", { files: tn("unit.file", fileCtxPaths.length) })
     : msg("ctx.removeFromList");
-  fileCtx.querySelector('[data-cmd="trash"]').textContent = many
+  fileCtx.querySelector('[data-cmd="trash"] .ctx-label').textContent = many
     ? msg("ctx.trashN", { files: tn("unit.file", fileCtxPaths.length) })
     : msg("ctx.trash");
+  // The toolbar's own actions (#563) follow their buttons: Detect BPM goes when
+  // it is switched off and rests while a run is on, Clear tags rests with its
+  // button. The keys come from the shortcut map, so a rebinding shows here.
+  const bpmButton = el("detect-bpm");
+  const bpmItem = fileCtx.querySelector('[data-cmd="bpm"]');
+  bpmItem.hidden = bpmButton.hidden;
+  bpmItem.disabled = bpmRunning() || bpmButton.disabled;
+  fileCtx.querySelector('[data-cmd="clear"]').disabled = el("clear-tags").disabled;
+  for (const key of fileCtx.querySelectorAll(".ctx-key")) key.textContent = formatCombo(comboOf(key.dataset.action));
   fileCtx.hidden = false;
   const r = fileCtx.getBoundingClientRect();
   const pad = 8;
@@ -2245,6 +2254,11 @@ fileCtx.addEventListener("click", (e) => {
     toast(msg("toast.removedFromList", { files: tn("unit.file", paths.length) }));
   } else if (item.dataset.cmd === "trash") {
     trashFiles(paths);
+  } else if (item.dataset.cmd === "bpm") {
+    // Opening the menu made `paths` the selection, which is what these act on.
+    el("detect-bpm").click();
+  } else if (item.dataset.cmd === "clear") {
+    el("clear-tags").click();
   }
 });
 

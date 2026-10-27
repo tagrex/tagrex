@@ -118,6 +118,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   menus use the other menus' rows and hover instead of a green fill, show the
   shortcuts on the right, and mute Cut and Paste in a read-only field and
   Paste when the clipboard is empty. (#560)
+- **The file menu runs Detect BPM and Clear tags**, on the same files as the
+  rest of the menu, and every item in both right-click menus has an icon on the
+  left and its shortcut on the right, as rebound in Settings. Detect BPM is left
+  out when BPM detection is switched off. (#563)
 
 ### Fixed
 

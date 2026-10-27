@@ -61,6 +61,12 @@
       <symbol id="i-import" viewBox="0 0 16 16"><line x1="3" y1="2.8" x2="3" y2="13.2"/><line x1="13.2" y1="8" x2="6" y2="8"/><path d="M9 5 6 8 9 11"/></symbol>
       <symbol id="i-db" viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="4.5" ry="1.8"/><path d="M3.5 4v8c0 1 2 1.8 4.5 1.8s4.5-.8 4.5-1.8V4"/><path d="M3.5 8c0 1 2 1.8 4.5 1.8S12.5 9 12.5 8"/></symbol>
       <symbol id="i-wifi" viewBox="0 0 16 16"><path d="M2.5 6.2a8 8 0 0 1 11 0"/><path d="M4.7 8.7a4.9 4.9 0 0 1 6.6 0"/><circle cx="8" cy="11.6" r="1" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-cut" viewBox="0 0 16 16"><circle cx="4.6" cy="11.6" r="1.9"/><circle cx="11.4" cy="11.6" r="1.9"/><path d="M5.9 10.2 11.6 2.6M10.1 10.2 4.4 2.6"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 16 16"><rect x="5.5" y="5.5" width="8" height="8" rx="1"/><path d="M10.5 5.5v-2a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2"/></symbol>
+      <symbol id="i-paste" viewBox="0 0 16 16"><path d="M10.5 3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h1"/><rect x="5.5" y="2" width="5" height="2.4" rx=".6"/><line x1="6" y1="8" x2="10" y2="8"/><line x1="6" y1="10.8" x2="9" y2="10.8"/></symbol>
+      <symbol id="i-select-all" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="1" stroke-dasharray="2.2 2"/><line x1="5.5" y1="8" x2="10.5" y2="8"/></symbol>
+      <symbol id="i-list-remove" viewBox="0 0 16 16"><line x1="2.5" y1="4.5" x2="13.5" y2="4.5"/><line x1="2.5" y1="8" x2="10" y2="8"/><line x1="2.5" y1="11.5" x2="7" y2="11.5"/><line x1="10" y1="11.5" x2="13.5" y2="11.5"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.8 4.5h10.4"/><path d="M6.2 4.5V3a.6.6 0 0 1 .6-.6h2.4a.6.6 0 0 1 .6.6v1.5"/><path d="M4.4 4.5l.6 8.4a1 1 0 0 0 1 .9h4a1 1 0 0 0 1-.9l.6-8.4"/></symbol>
       <symbol id="i-doc" viewBox="0 0 16 16"><path d="M4 2.5h5l3 3v7.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-9.5a1 1 0 0 1 1-1Z"/><path d="M9 2.5v3h3"/></symbol>
       <symbol id="i-sliders" viewBox="0 0 16 16"><line x1="2.5" y1="4.5" x2="13.5" y2="4.5"/><line x1="2.5" y1="8" x2="13.5" y2="8"/><line x1="2.5" y1="11.5" x2="13.5" y2="11.5"/><circle cx="6" cy="4.5" r="1.7" fill="currentColor" stroke="none"/><circle cx="10.5" cy="8" r="1.7" fill="currentColor" stroke="none"/><circle cx="5" cy="11.5" r="1.7" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-command" viewBox="0 0 16 16"><path d="M6 6V4.3A1.7 1.7 0 1 0 4.3 6H6Zm0 0h4m-4 0v4m4-4V4.3A1.7 1.7 0 1 1 11.7 6H10Zm0 0v4m0 0h1.7a1.7 1.7 0 1 1-1.7 1.7V10Zm0 0H6m0 0v1.7A1.7 1.7 0 1 1 4.3 10H6Z"/></symbol>
@@ -800,11 +806,11 @@
          input or an editing tag cell, in place of the webview's bloated native
          menu. Positioned + driven by app.js. -->
     <div id="edit-ctx" class="ctx-menu" hidden role="menu">
-      <button type="button" class="ctx-item" data-cmd="cut" role="menuitem"><span data-i18n="ctx.cut">Cut</span><span class="ctx-key" data-combo="Mod+KeyX"></span></button>
-      <button type="button" class="ctx-item" data-cmd="copy" role="menuitem"><span data-i18n="ctx.copy">Copy</span><span class="ctx-key" data-combo="Mod+KeyC"></span></button>
-      <button type="button" class="ctx-item" data-cmd="paste" role="menuitem"><span data-i18n="ctx.paste">Paste</span><span class="ctx-key" data-combo="Mod+KeyV"></span></button>
+      <button type="button" class="ctx-item" data-cmd="cut" role="menuitem"><svg class="ico"><use href="#i-cut"/></svg><span data-i18n="ctx.cut">Cut</span><span class="ctx-key" data-combo="Mod+KeyX"></span></button>
+      <button type="button" class="ctx-item" data-cmd="copy" role="menuitem"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="ctx.copy">Copy</span><span class="ctx-key" data-combo="Mod+KeyC"></span></button>
+      <button type="button" class="ctx-item" data-cmd="paste" role="menuitem"><svg class="ico"><use href="#i-paste"/></svg><span data-i18n="ctx.paste">Paste</span><span class="ctx-key" data-combo="Mod+KeyV"></span></button>
       <div class="ctx-sep"></div>
-      <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem"><span data-i18n="ctx.selectAll">Select All</span><span class="ctx-key" data-combo="Mod+KeyA"></span></button>
+      <button type="button" class="ctx-item" data-cmd="selectall" role="menuitem"><svg class="ico"><use href="#i-select-all"/></svg><span data-i18n="ctx.selectAll">Select All</span><span class="ctx-key" data-combo="Mod+KeyA"></span></button>
     </div>
 
     <!-- Right-click menu for the file column (#213). What it acts on is the
@@ -812,9 +818,13 @@
          which is selected first, so what is about to happen is visible before
          it happens. -->
     <div id="file-ctx" class="ctx-menu" hidden role="menu">
-      <button type="button" class="ctx-item" data-cmd="hide" role="menuitem" data-i18n="ctx.removeFromList">Remove from the list</button>
+      <!-- Actions on the files (#563); the keys are filled in from the shortcut map. -->
+      <button type="button" class="ctx-item" data-cmd="bpm" role="menuitem"><svg class="ico"><use href="#i-metronome"/></svg><span data-i18n="toolbar.detectBpm">Detect BPM</span><span class="ctx-key" data-action="detectBpm"></span></button>
+      <button type="button" class="ctx-item" data-cmd="clear" role="menuitem"><svg class="ico"><use href="#i-eraser"/></svg><span data-i18n="editor.clearTags">Clear tags</span><span class="ctx-key" data-action="clearTags"></span></button>
       <div class="ctx-sep"></div>
-      <button type="button" class="ctx-item danger" data-cmd="trash" role="menuitem" data-i18n="ctx.trash">Move to Trash…</button>
+      <button type="button" class="ctx-item" data-cmd="hide" role="menuitem"><svg class="ico"><use href="#i-list-remove"/></svg><span class="ctx-label" data-i18n="ctx.removeFromList">Remove from the list</span></button>
+      <div class="ctx-sep"></div>
+      <button type="button" class="ctx-item danger" data-cmd="trash" role="menuitem"><svg class="ico"><use href="#i-trash"/></svg><span class="ctx-label" data-i18n="ctx.trash">Move to Trash…</span></button>
     </div>
 
     <!-- Mask-defined column editor (#150). A column whose value is a mask

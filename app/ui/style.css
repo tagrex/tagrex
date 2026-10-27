@@ -6206,8 +6206,8 @@ body.drag-active #drop-overlay {
 }
 .ctx-item {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-6);
+  align-items: center;
+  gap: var(--space-3);
   width: 100%;
   padding: var(--space-1) var(--space-2);
   border: 0;
@@ -6236,9 +6236,23 @@ body.drag-active #drop-overlay {
   opacity: 0.6;
   cursor: default;
 }
+.ctx-item[hidden] {
+  display: none;
+}
+/* The icon on the left (#563), muted like the field tools; a danger item's
+   icon keeps the item's red. */
+.ctx-item > .ico {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+.ctx-item.danger > .ico {
+  color: inherit;
+}
 /* The shortcut, right-aligned and muted. */
 .ctx-key {
   margin-left: auto;
+  padding-left: var(--space-6);
   color: var(--muted);
   font-size: var(--text-2xs);
   font-variant-numeric: tabular-nums;
