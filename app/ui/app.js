@@ -221,7 +221,6 @@ const tableWrap = el("files-view");
 const tracksBody = el("tracks-body");
 const tracksEmpty = el("tracks-empty");
 const applyBtn = el("diff-apply");
-const previewBtn = el("preview");
 const undoBtn = el("undo");
 const selectAll = el("select-all");
 const statusSel = el("status-sel");
@@ -1152,7 +1151,6 @@ function renderTracks() {
   el("toggle-groups").hidden = !groupBy;
   syncGroupToggle();
 
-  previewBtn.disabled = tracks.length === 0;
   // While diffing the sel column is the apply scope, not the selection, so the
   // selection UI must not repaint the checkboxes — refresh the action bar instead.
   if (diffByPath) updateDiffBar();

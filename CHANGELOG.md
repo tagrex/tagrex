@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **RENAMER's Preview rename behaves like every other run button.** With no
+  folder open it was the one drawn disabled; it now stays live and, pressed
+  with nothing selected, says to select a track, as the others do. (#595)
 - **Icons are at the set sizes.** The player's buttons, the Settings group
   icons, the release card's import arrow and EDITOR's padlock were a pixel or
   two off the 15px and 12px sizes used everywhere else, and the grouping
