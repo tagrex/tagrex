@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Menus are consistent with each other.** The columns menu's three actions
+  start on one edge instead of alternating sides, the filter presets save
+  with the same field and button as the mask presets, and "Select all" is in
+  sentence case like the rest of the edit menu. (#592)
 - **Labels stay on one line in every language.** Settings' labels wrapped in
   every language, English included, and EXPORTER's in Russian, Ukrainian,
   French and Spanish: both now size their label column to the longest label.

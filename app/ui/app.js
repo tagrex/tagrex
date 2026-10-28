@@ -470,7 +470,8 @@ function renderPresetsMenu() {
   input.className = "preset-name";
   const save = document.createElement("button");
   save.type = "button";
-  save.className = "text-btn";
+  // The same Save as the mask presets' (#592): a button, not a link.
+  save.className = "btn";
   save.textContent = msg("action.save");
   const commit = () => {
     if (input.value.trim()) {

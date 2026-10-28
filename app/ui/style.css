@@ -7633,3 +7633,22 @@ body:not(.show-checkbox) #tracks :is(th[data-key="file"], td.file) {
 .subtabs::-webkit-scrollbar {
   display: none;
 }
+
+/* ---- Batch 4 (#592): menus and popovers ---- */
+/* The columns menu's three text actions start on one edge (they alternated:
+   Add column… right, Fit to content left, Reset to default right). */
+.col-menu-foot {
+  justify-content: flex-start;
+}
+/* The filter presets' save row as the mask presets' one: a standard field
+   beside a .btn. Scoped to the input: the class also names the presets in the
+   mask preset list. */
+input.preset-name {
+  height: var(--ctl-h);
+  padding: 0 9px;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.col-menu-foot.preset-save {
+  align-items: center;
+}

@@ -347,7 +347,7 @@ export const en = {
   "ctx.cut": "Cut",
   "ctx.copy": "Copy",
   "ctx.paste": "Paste",
-  "ctx.selectAll": "Select All",
+  "ctx.selectAll": "Select all",
   "ctx.removeFromList": "Remove from the list",
   "ctx.trash": "Move to Trash…",
   "colmask.title": "Add column",
