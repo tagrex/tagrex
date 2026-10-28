@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Release notes read as paragraphs on the release page.** The changelog
+  wraps its lines, and the release page broke the text at every one of those
+  wraps; the notes are now joined back into whole paragraphs and list items.
+  (#598)
+
 ## [1.0.0] - 2026-10-28
 
 TagRex 1.0. Everything the README describes is in place and meant for daily

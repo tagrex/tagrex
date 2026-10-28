@@ -109,11 +109,21 @@ jobs:
         shell: bash
         run: |
           version="${GITHUB_REF_NAME#v}"
+          # The changelog wraps at 80 columns, and a release description takes
+          # every newline as a line break (#598), so each paragraph and list item
+          # is joined back into one line on the way out.
           awk -v heading="## [$version]" '
             index($0, heading) == 1 { inside = 1; next }
             inside && /^## \[/ { exit }
             inside { print }
-          ' CHANGELOG.md > RELEASE_NOTES.md
+          ' CHANGELOG.md | awk '
+            function flush() { if (buf != "") { print buf; buf = "" } }
+            /^[[:space:]]*$/ { flush(); print; next }
+            /^#/ { flush(); print; next }
+            /^[[:space:]]*([-*] |[0-9]+\. )/ { flush(); buf = $0; next }
+            { line = $0; sub(/^[[:space:]]+/, "", line); buf = (buf == "") ? line : buf " " line }
+            END { flush() }
+          ' > RELEASE_NOTES.md
           # A version with no section says so, rather than the page silently
           # going out empty again.
           if [ ! -s RELEASE_NOTES.md ]; then
