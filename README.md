@@ -31,13 +31,13 @@
 
 ---
 
-> **Status: 0.27.x.** Usable day to day: table editing, rename masks with a
-> function language, tags read back out of file names, text transforms, online
-> lookups, BPM detection from the audio, cover art, tag block conversion,
-> duplicate detection, exports, a preview player, a transactional undo journal,
-> and an interface that speaks
-> English, German, Spanish, French, Italian, Ukrainian and Russian. Not 1.0,
-> so expect rough edges — bug reports and feedback are welcome. How to use it is in the
+> **Status: 1.0.x.** Stable for day-to-day use: table editing, rename masks
+> with a function language, tags read back out of file names and text lists,
+> text transforms, online lookups, BPM detection from the audio, cover art, tag
+> block conversion, duplicate detection, exports, a preview player, a
+> transactional undo journal, and an interface that speaks English, German,
+> Spanish, French, Italian, Ukrainian and Russian. Bug reports and feedback are
+> welcome. How to use it is in the
 > [user guide](docs/guide/README.md); the design is written up in
 > [docs/architecture.md](docs/architecture.md); user-visible changes are in
 > [CHANGELOG.md](CHANGELOG.md).
@@ -157,7 +157,8 @@ with a count; choosing one narrows the table to the files it flags.
   they land in. Folder moves create and clean up directories, and same-named
   sidecar files (`.lrc`, `.cue`, per-track covers…) — and, if you like, the rest
   of the folder — travel with the track.
-- **GENERATOR** — text transforms: case conversion, find/replace, remove
+- **GENERATOR** — text transforms: case conversion (title case can keep small
+  words such as `of` and `the` lowercase), find/replace, remove
   diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key
   notation. Rules are grouped into named presets, made in their own editor,
   which tries them on a sample as you build them; every rule names the field it

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-28
+
+TagRex 1.0. Everything the README describes is in place and meant for daily
+use: editing tags in a table, renaming and sorting by masks with a function
+language, reading tags back out of file names and text lists, transforms kept
+as presets, lookups on Discogs, MusicBrainz and other sources, BPM detection,
+cover art, tag block conversion, duplicate detection, exports and a
+transactional undo journal, on macOS, Windows and Linux, in seven languages.
+The changes in this release finish the work of 0.27: title case can keep small
+words lowercase, unavailable controls are dimmed instead of striped, and an
+audit of the whole interface evened out its heights, edges, labels and type.
+
 ### Added
 
 - **Title case can keep small words lowercase.** A title-case rule has a tick
