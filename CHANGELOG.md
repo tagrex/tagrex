@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Icons are at the set sizes.** The player's buttons, the Settings group
+  icons, the release card's import arrow and EDITOR's padlock were a pixel or
+  two off the 15px and 12px sizes used everywhere else, and the grouping
+  control's spacing is back on the scale. (#594)
 - **Type and case read the same across the panels.** A panel head's count
   says "n selected" in every panel and reads as a note on the title, not in
   its capitals; ONLINE's Source is a field label like the others; Lab is no

@@ -2397,10 +2397,11 @@ body.show-checkbox tr.playing td.sel {
 #sb-play:focus-visible {
   background: var(--row-hover);
 }
+/* 15px, the set size for a glyph in a control-height button (#594). */
 #player .icon > svg,
 #sb-play > svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
 }
 
 /* Transport cluster (#276): the five glyphs group tightly so the row reads as
@@ -2685,7 +2686,7 @@ body.show-checkbox tr.playing td.sel {
 .group-ctl {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--space-2); /* on the spacing scale (#594); it was 5px */
   font-size: 12px;
 }
 
@@ -2910,8 +2911,9 @@ td.unreadable-note {
   line-height: 0;
 }
 .fe-lock > svg {
-  width: 13px;
-  height: 13px;
+  /* 12px, the set size for a tool's glyph (#594). */
+  width: 12px;
+  height: 12px;
   display: block;
 }
 .fe-lock:hover,
@@ -3982,8 +3984,9 @@ button.release-import {
   background: var(--sel-tint);
 }
 .release-import > .ico {
-  width: 17px;
-  height: 17px;
+  /* 15px, the set size for a glyph in a control-height button (#594). */
+  width: 15px;
+  height: 15px;
 }
 
 /* Compact, image-forward header (#98): the cover stretches to the header's full
@@ -7661,4 +7664,11 @@ input.preset-name {
 }
 .col-menu-foot.preset-save {
   align-items: center;
+}
+
+/* ---- Batch 6 (#594): icons ---- */
+/* Settings' group icons at the set 15px (they were the default 16). */
+.settings-nav-item > svg {
+  width: 15px;
+  height: 15px;
 }
