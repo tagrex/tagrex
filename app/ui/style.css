@@ -7508,3 +7508,29 @@ body.drag-active #drop-overlay {
   color: var(--text);
   text-decoration: underline;
 }
+
+/* ==== Interface audit (#588) ================================================
+   The faults an audit of the whole interface found, folded in batch by batch.
+   Overrides placed last on purpose: each fixes how an earlier rule is applied
+   across many places, so it wins by order rather than by editing each one. */
+
+/* ---- Batch 1 (#589): control heights ---- */
+/* A text button (the bare kind, .primary, .btn) is --ctl-h: 5 + 16 + 5 + 2
+   border = 28, not 31. Tabs, menu rows, segments and links keep their own. */
+:is(button:not([class]), button.primary, button.btn) {
+  padding-block: 5px;
+  line-height: 16px;
+}
+/* A bare one-line field is --ctl-h too (it was 29 to 32). Fields inside an
+   input group (.field) and the compact editor inputs keep their own. */
+input:is([type="text"], [type="password"], [type="number"], [type="search"]):not(.field > *):not(.field-input) {
+  padding-block: 5px;
+  line-height: 16px;
+}
+/* The tick column must not set the row height: the engine's checkbox margin
+   made a row 24px instead of 20 the moment a plan was staged. */
+th.sel input[type="checkbox"],
+td.sel input[type="checkbox"] {
+  margin: 0;
+  vertical-align: middle;
+}

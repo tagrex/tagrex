@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Buttons and fields share one height.** Text buttons were 31px and bare
+  fields 29 to 32px beside 28px selects and input groups; all are 28 now. The
+  table no longer grows taller by four pixels a row when a change is staged.
+  (#589)
 - **Clearing the preset editor's Try it on line goes back to the selected
   track.** An emptied line showed nothing; it now shows the track's value as a
   placeholder and tries the preset on it, until you type a sample of your
