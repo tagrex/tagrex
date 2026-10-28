@@ -2856,8 +2856,9 @@ td.unreadable-note {
 .fe-row {
   display: grid;
   /* The fourth column is the padlock (#48); a duo row has none and the column
-     collapses to nothing. */
-  grid-template-columns: 3px 124px 1fr auto;
+     collapses to nothing. 132px fits the longest built-in label in every
+     language (#591). */
+  grid-template-columns: 3px 132px 1fr auto;
   align-items: center;
   column-gap: var(--space-3);
   padding: 1px 0 1px var(--space-1);
@@ -7583,4 +7584,52 @@ body:not(.show-checkbox) #tracks :is(th[data-key="file"], td.file) {
    top of it made 11px before and 3px after. */
 .group-count {
   margin-left: 0;
+}
+
+/* ---- Batch 3 (#591): labels in other languages ---- */
+/* EXPORTER: one label column for the One per, Mask and File name rows, as wide
+   as the longest label (102px in Spanish), instead of 72px that wrapped in
+   Russian, Ukrainian, French and Spanish. Collapsed rows keep collapsing:
+   the spacing goes on the rows that are shown. */
+.exp-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--space-3);
+}
+.exp-fields > :is(.exp-row, .exp-mask) {
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+}
+.exp-fields > .exp-mask:not(.show) {
+  margin-top: 0;
+}
+.exp-fields > :is(.exp-row, .exp-mask.show) ~ :is(.exp-row, .exp-mask.show) {
+  margin-top: var(--space-3);
+}
+/* Settings: one label column per group, as wide as its longest label up to
+   200px (a fixed 116px wrapped "Selection checkbox column" in English and a
+   label in every group in the other languages). Hints and heads span it. */
+.settings-group {
+  display: grid;
+  grid-template-columns: fit-content(200px) minmax(0, 1fr);
+  column-gap: var(--space-4);
+  row-gap: var(--space-3);
+}
+.settings-group > * {
+  grid-column: 1 / -1;
+}
+.settings-group > .settings-row {
+  grid-template-columns: subgrid;
+}
+/* TAGGER's sub-tabs never wrap; a column too narrow for all four scrolls them
+   (German at 360px wrapped onto two lines). */
+.subtab {
+  white-space: nowrap;
+}
+.subtabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.subtabs::-webkit-scrollbar {
+  display: none;
 }

@@ -675,30 +675,34 @@
               </div>
               <p class="exp-format-hint" id="export-hint"></p>
             </div>
-            <!-- Split row reveals only for the playlist format (#62). -->
-            <div class="exp-mask" id="export-split-row">
-              <label for="export-split" data-i18n="exporter.split">One per</label>
-              <select id="export-split">
-                <option value="" data-i18n="exporter.split.selection">Selection</option>
-                <option value="folder" data-i18n="exporter.split.folder">Folder</option>
-                <option value="album" data-i18n="exporter.split.album">Album</option>
-              </select>
-            </div>
-            <!-- Mask row reveals only for the report format. -->
-            <div class="exp-mask" id="export-mask-row">
-              <label for="export-mask" data-i18n="exporter.mask">Mask</label>
-              <!-- The input group (#566), as on every other mask. -->
-              <div class="field">
-                <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
-                <div class="field-tools">
-                  <button class="icon ph-btn" type="button" data-ph-target="export-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
-                  <button class="icon preset-btn" type="button" data-preset-target="export-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+            <!-- One label column for the three rows (#591), as wide as the
+                 longest label in the current language. -->
+            <div class="exp-fields">
+              <!-- Split row reveals only for the playlist format (#62). -->
+              <div class="exp-mask" id="export-split-row">
+                <label for="export-split" data-i18n="exporter.split">One per</label>
+                <select id="export-split">
+                  <option value="" data-i18n="exporter.split.selection">Selection</option>
+                  <option value="folder" data-i18n="exporter.split.folder">Folder</option>
+                  <option value="album" data-i18n="exporter.split.album">Album</option>
+                </select>
+              </div>
+              <!-- Mask row reveals only for the report format. -->
+              <div class="exp-mask" id="export-mask-row">
+                <label for="export-mask" data-i18n="exporter.mask">Mask</label>
+                <!-- The input group (#566), as on every other mask. -->
+                <div class="field">
+                  <input id="export-mask" type="text" value="%artist% - %title%" spellcheck="false" />
+                  <div class="field-tools">
+                    <button class="icon ph-btn" type="button" data-ph-target="export-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+                    <button class="icon preset-btn" type="button" data-preset-target="export-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                  </div>
                 </div>
               </div>
-            </div>
-            <div class="exp-row">
-              <label for="export-name" id="export-name-label">File name</label>
-              <input id="export-name" type="text" spellcheck="false" />
+              <div class="exp-row">
+                <label for="export-name" id="export-name-label">File name</label>
+                <input id="export-name" type="text" spellcheck="false" />
+              </div>
             </div>
             <!-- The read-only line closes the form beside Export (#571). -->
             <div class="panel-actions">

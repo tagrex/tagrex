@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Labels stay on one line in every language.** Settings' labels wrapped in
+  every language, English included, and EXPORTER's in Russian, Ukrainian,
+  French and Spanish: both now size their label column to the longest label.
+  EDITOR's fits Russian "Album artist", and the TAGGER tabs scroll instead of
+  wrapping in a narrow column. (#591)
 - **The table, the TAGGER tabs and the empty states line up with the rest.**
   The table's first column, its folder bands and the duplicates view started
   at 10px and the TAGGER tabs at 20, against the 14px edge everything else
