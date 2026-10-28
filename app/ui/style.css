@@ -625,11 +625,6 @@ button:hover:not(:disabled) {
   background: var(--row-hover);
 }
 
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 button.primary {
   background: var(--accent);
   color: var(--accent-text);
@@ -4661,10 +4656,10 @@ td.editable:focus-visible {
   background: var(--bg);
 }
 
-/* ---- inert / unavailable visual language (#76) ----
-   One diagonal-stripe motif for "nothing here / can't act / loading",
-   replacing ad-hoc opacity:0.5 and blank boxes. Placed last to override the
-   earlier `:disabled { opacity }` rules. */
+/* ---- inert / unavailable visual language (#76, #597) ----
+   The diagonal stripes mean "nothing here": an area that holds nothing (no
+   cover, art not fetched, an unreadable row). A control that can't act now is
+   dimmed instead, and loading is a sheen; both are below. */
 
 /* A placeholder box awaiting fetched content (an <img> dropped in covers it). */
 .inert {
@@ -4672,33 +4667,40 @@ td.editable:focus-visible {
   border: 1px solid var(--border);
 }
 
-/* Disabled controls — soft low-contrast stripes under the label (still legible)
-   instead of a flat fade. Range slider + checkboxes keep their own treatment. */
-button:disabled,
-.seg-btn:disabled,
-input[type="text"]:disabled,
-input[type="password"]:disabled,
-input[type="search"]:disabled,
-select:disabled {
-  background: var(--inert-stripes-soft);
-  color: var(--muted);
-  border-color: var(--border);
+/* Disabled controls (#597): an unavailable control is drawn as itself, dimmed,
+   as every platform does. Same shape, border, caret and glyph at 55% (what a
+   disabled input group already uses), no shadow, no hover, the ordinary
+   cursor. A disabled primary is still the green one, only paler, so a panel
+   keeps its anchor. The stripes are left to areas that hold nothing.
+   :where() keeps this at a bare element's specificity, so a rule that draws a
+   read-only or locked value wins over it. Checkboxes, radios and the range
+   keep the engine's own disabled look. */
+:where(button, input:not([type="checkbox"], [type="radio"], [type="range"]), select, textarea):disabled {
+  opacity: 0.55;
   box-shadow: none;
-  cursor: not-allowed;
-  opacity: 1; /* drop the old 0.5 fade */
+  cursor: default;
 }
-
-/* A disabled select keeps its caret, drawn once over the stripes (#552): the
-   shorthand above resets the repeat, and the caret on its own would tile. */
-select:disabled {
-  background-image: var(--select-caret), var(--inert-stripes-soft);
-  background-repeat: no-repeat, repeat;
-  background-position: right 7px center, 0 0;
-  background-size: 13px 13px, auto;
+/* Inside an input group the group dims; the input must not dim twice. */
+.field > :where(input, textarea):disabled,
+.field:has(> :is(input, textarea):disabled) .field-tools :where(button):disabled {
+  opacity: 1;
 }
-
-button.primary:disabled {
-  color: var(--muted);
+:where(button.primary):disabled {
+  filter: none;
+}
+/* A segmented control whose every option is off dims as one, its outer
+   border with it. */
+.seg:not(:has(> .seg-btn:not(:disabled))) {
+  opacity: 0.55;
+}
+.seg:not(:has(> .seg-btn:not(:disabled))) > .seg-btn:disabled {
+  opacity: 1;
+}
+/* Read-only is not disabled: a built-in preset's rules (a disabled fieldset
+   since #556) and a locked EDITOR field are values to be read, at full ink. */
+.pe-rules-set:disabled :is(input, select, textarea),
+.fe-row.locked .field-input:disabled {
+  opacity: 1;
 }
 
 .mode-tab:disabled {
@@ -4726,13 +4728,23 @@ button.primary:disabled {
   background: none;
 }
 
-/* Skeleton loader — the same stripes, sliding, while a fetch is in progress. */
+/* Skeleton loader (#597): loading is motion on a flat tone, not the stripes, so
+   it never reads as "nothing here" (the stripes) or "not now" (a dimmed
+   control): a --row-hover bar with a light sheen passing over it. */
 .skeleton,
 .skeleton-line {
-  background: var(--inert-stripes);
-  background-size: 200% 100%;
+  background-color: var(--row-hover);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0,
+    color-mix(in srgb, var(--bg) 55%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  background-position: -40% 0;
   border-radius: var(--radius-sm);
-  animation: tagrex-shimmer 1.1s linear infinite;
+  animation: tagrex-sheen 1.2s ease-in-out infinite;
 }
 
 .skeleton-line {
@@ -4750,12 +4762,9 @@ button.primary:disabled {
   width: 80%;
 }
 
-@keyframes tagrex-shimmer {
-  from {
-    background-position: 0 0;
-  }
+@keyframes tagrex-sheen {
   to {
-    background-position: -40px 0;
+    background-position: 140% 0;
   }
 }
 
@@ -4763,6 +4772,7 @@ button.primary:disabled {
   .skeleton,
   .skeleton-line {
     animation: none;
+    background-image: none;
   }
 }
 

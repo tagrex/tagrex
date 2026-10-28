@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Unavailable controls are dimmed instead of striped.** A disabled button,
+  field, select or segment keeps its shape, border and colour at reduced
+  strength, as on every platform, so a disabled main button is still the green
+  one, only paler. Read-only values, such as a built-in preset's rules, keep
+  full strength. Loading placeholders get a passing sheen instead of the
+  stripes, which are left to areas that hold nothing: no cover, art not
+  fetched, an unreadable row. (#597)
 - **The README opens short.** Install, Tech stack and License are collapsed
   blocks now, and What it does stays expanded. (#584)
 - **Every README section is a collapsed block, without the anchor icon.**
