@@ -7534,3 +7534,53 @@ td.sel input[type="checkbox"] {
   margin: 0;
   vertical-align: middle;
 }
+
+/* ---- Batch 2 (#590): edges and centres ---- */
+/* The table's first column starts on the 14px edge the top bar, the path
+   field and the toolbar share (it was 10); so do the folder band and the
+   deduplicator's bar and table. */
+#tracks :is(thead th, tbody td):first-child,
+#tracks td.group-cell,
+.dup-results-table :is(th, td):first-child,
+.dup-results-table tr.dup-group td {
+  padding-left: 14px;
+}
+#tracks :is(th, td).sel:first-child {
+  padding-right: 4px;
+  text-align: left;
+}
+/* The tick column is first in the markup but hidden unless switched on, so
+   then the File column is the first one seen and takes the edge instead. */
+body:not(.show-checkbox) #tracks :is(th[data-key="file"], td.file) {
+  padding-left: 14px;
+}
+#duplicates-view .dup-bar {
+  padding-inline: 14px;
+}
+/* TAGGER's sub-tab labels on the panel's 14px content edge (they were at 20:
+   12px strip padding and 8px tab padding). */
+.subtabs {
+  padding-inline: 6px;
+}
+/* An empty state among controls takes their width: no side margin inside a
+   padded column (ONLINE results), the 14px edge in the table. */
+.online-scroll .empty.inert-panel {
+  margin-inline: 0;
+}
+#files-view .empty.inert-panel {
+  margin-inline: 14px;
+}
+/* ONLINE's Vinyl side checkbox sat on the baseline, 3px above its label's centre. */
+.release-toolbar label:has(> input[type="checkbox"]) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.release-toolbar label > input[type="checkbox"] {
+  margin: 0;
+}
+/* The folder band's markup already has a space before the dot; the margin on
+   top of it made 11px before and 3px after. */
+.group-count {
+  margin-left: 0;
+}

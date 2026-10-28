@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The table, the TAGGER tabs and the empty states line up with the rest.**
+  The table's first column, its folder bands and the duplicates view started
+  at 10px and the TAGGER tabs at 20, against the 14px edge everything else
+  shares; empty states sat 8px inside their neighbours. ONLINE's Vinyl side
+  checkbox is centred on its label, and the folder band's dot sits evenly
+  between the name and the count. (#590)
 - **Buttons and fields share one height.** Text buttons were 31px and bare
   fields 29 to 32px beside 28px selects and input groups; all are 28 now. The
   table no longer grows taller by four pixels a row when a change is staged.
