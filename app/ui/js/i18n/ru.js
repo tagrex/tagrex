@@ -793,7 +793,7 @@ export const ru = {
   "settings.accent.slate": "Сланцевый",
   "settings.checkboxCol": "Колонка флажков выделения",
   "settings.checkboxColHint": "Показывать колонку флажков в таблице файлов. По умолчанию выключена — строка выделяется нажатием, Cmd/Shift-нажатие берёт диапазон или переключает.",
-  "settings.lab": "ЛАБОРАТОРИЯ",
+  "settings.lab": "Лаборатория",
   "settings.experimental": "эксперимент",
   "settings.labNote": "Типографика ещё оценивается. Это может измениться или исчезнуть в следующем выпуске.",
   "settings.valueFont": "Шрифт значений",

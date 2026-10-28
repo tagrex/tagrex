@@ -795,7 +795,7 @@ export const en = {
   "settings.accent.slate": "Slate",
   "settings.checkboxCol": "Selection checkbox column",
   "settings.checkboxColHint": "Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.",
-  "settings.lab": "LAB",
+  "settings.lab": "Lab",
   "settings.experimental": "experimental",
   "settings.labNote": "Typography still under evaluation. These may change or be dropped in a later release.",
   "settings.valueFont": "Value font",

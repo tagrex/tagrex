@@ -41,7 +41,7 @@ const SPLIT_DEFAULTS = {
 // so a name the user typed survives a mode switch.
 function refreshExporter() {
   const count = selectedPaths().length;
-  el("export-count").textContent = count ? `— ${tn("unit.track", count)}` : "";
+  el("export-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
   reflectExportKind();
   if (!el("export-name").value) el("export-name").value = exportName();
 }

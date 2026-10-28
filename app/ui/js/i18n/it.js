@@ -793,7 +793,7 @@ export const it = {
   "settings.accent.slate": "Ardesia",
   "settings.checkboxCol": "Colonna checkbox selezione",
   "settings.checkboxColHint": "Mostra una colonna checkbox nella tabella file. Disattivata di default — clicca una riga per selezionare, Cmd/Shift-clic per un intervallo o per attivare/disattivare.",
-  "settings.lab": "LAB",
+  "settings.lab": "Lab",
   "settings.experimental": "sperimentale",
   "settings.labNote": "Tipografia ancora in valutazione. Potrebbe cambiare o essere rimossa in una release successiva.",
   "settings.valueFont": "Font valori",

@@ -793,7 +793,7 @@ export const fr = {
   "settings.accent.slate": "Ardoise",
   "settings.checkboxCol": "Colonne de cases de sélection",
   "settings.checkboxColHint": "Afficher une colonne de cases dans le tableau des fichiers. Désactivée par défaut — cliquer sur une ligne pour la sélectionner, Cmd/Maj-clic pour une plage ou pour basculer.",
-  "settings.lab": "LABO",
+  "settings.lab": "Labo",
   "settings.experimental": "expérimental",
   "settings.labNote": "Typographie encore en évaluation. Elle peut changer ou disparaître dans une version ultérieure.",
   "settings.valueFont": "Police des valeurs",

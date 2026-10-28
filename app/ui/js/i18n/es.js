@@ -791,7 +791,7 @@ export const es = {
   "settings.accent.slate": "Pizarra",
   "settings.checkboxCol": "Columna de casillas de selección",
   "settings.checkboxColHint": "Mostrar una columna de casillas en la tabla de archivos. Desactivada por defecto — haz clic en una fila para seleccionarla, Cmd/Mayús-clic para un rango o para alternar.",
-  "settings.lab": "LABORATORIO",
+  "settings.lab": "Laboratorio",
   "settings.experimental": "experimental",
   "settings.labNote": "Tipografía aún en evaluación. Puede cambiar o desaparecer en una versión posterior.",
   "settings.valueFont": "Fuente de los valores",

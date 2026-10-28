@@ -1161,6 +1161,13 @@ h2 {
   color: var(--muted);
   margin: 0;
 }
+/* A count in a panel head is a note on the title, not part of it (#593):
+   regular weight and sentence case, not the title's caps. */
+h2 > .muted {
+  font-weight: var(--fw-regular);
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 .muted {
   color: var(--muted);
@@ -3677,7 +3684,8 @@ td.unreadable-note {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  font-size: var(--text-2xs);
+  /* 12px, like the field labels; it was the 11px micro tier (#593). */
+  font-size: var(--text-xs);
   color: var(--muted);
   white-space: nowrap;
   cursor: pointer;
@@ -4958,9 +4966,13 @@ td[data-field="year"],
   align-items: center;
   gap: 8px;
 }
+/* The buttons start the line and the count follows at the end (#593): empty
+   until a list is pasted, it still took the width and pushed them right. */
 .from-text-head .muted {
   flex: 1;
   min-width: 0;
+  order: 1;
+  text-align: right;
   font-size: var(--text-xs);
 }
 .from-text-lines {
@@ -5046,10 +5058,8 @@ td[data-field="year"],
   display: flex;
   align-items: center;
   gap: 6px;
+  /* A field label like Show, By and One per (#593), not a heading. */
   font-size: var(--text-xs);
-  text-transform: uppercase;
-  letter-spacing: var(--ls-caps);
-  font-weight: var(--fw-medium);
   color: var(--muted);
 }
 

@@ -63,7 +63,7 @@ function refreshGenerator() {
   el("transform-count").textContent = staged
     ? `— ${tn("count.stagedFiles", previewPlan.changes.length)}`
     : count
-      ? `— ${tn("unit.file", count)}`
+      ? `— ${tn("count.selected", count)}`
       : "";
   el("transform-over-plan").hidden = !staged || inDialog;
   el("transform-preview").textContent = t(

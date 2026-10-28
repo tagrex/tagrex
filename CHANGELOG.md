@@ -35,6 +35,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **Type and case read the same across the panels.** A panel head's count
+  says "n selected" in every panel and reads as a note on the title, not in
+  its capitals; ONLINE's Source is a field label like the others; Lab is no
+  longer the one all-capitals entry in Settings; a job's options are set at the
+  field labels' size; and FROM TEXT's buttons start their line. (#593)
 - **Menus are consistent with each other.** The columns menu's three actions
   start on one edge instead of alternating sides, the filter presets save
   with the same field and button as the mask presets, and "Select all" is in

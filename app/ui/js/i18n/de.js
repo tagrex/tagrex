@@ -789,7 +789,7 @@ export const de = {
   "settings.accent.slate": "Schiefer",
   "settings.checkboxCol": "Spalte mit Auswahlkästchen",
   "settings.checkboxColHint": "Eine Spalte mit Kontrollkästchen in der Dateitabelle anzeigen. Standardmäßig aus — eine Zeile anklicken zum Auswählen, Cmd/Umschalt-Klick für einen Bereich oder zum Umschalten.",
-  "settings.lab": "LABOR",
+  "settings.lab": "Labor",
   "settings.experimental": "experimentell",
   "settings.labNote": "Typografie, die noch erprobt wird. Kann sich in einer späteren Version ändern oder entfallen.",
   "settings.valueFont": "Schrift für Werte",

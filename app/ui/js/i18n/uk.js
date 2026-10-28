@@ -794,7 +794,7 @@ export const uk = {
   "settings.accent.slate": "Сланцевий",
   "settings.checkboxCol": "Колонка прапорців виділення",
   "settings.checkboxColHint": "Показувати колонку прапорців у таблиці файлів. Типово вимкнена — рядок виділяється натисканням, Cmd/Shift-натискання бере діапазон або перемикає.",
-  "settings.lab": "ЛАБОРАТОРІЯ",
+  "settings.lab": "Лабораторія",
   "settings.experimental": "експеримент",
   "settings.labNote": "Типографіка ще оцінюється. Це може змінитися або зникнути в наступному випуску.",
   "settings.valueFont": "Шрифт значень",

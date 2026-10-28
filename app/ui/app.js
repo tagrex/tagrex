@@ -2756,10 +2756,11 @@ function syncSelectionUI() {
 // DOM even while hidden); the full panel refresh still happens on mode entry.
 function updatePanelCounts() {
   const count = selectedPaths().length;
-  el("transform-count").textContent = count ? `— ${tn("unit.file", count)}` : "";
+  // One noun for one selection in every head (#593).
+  el("transform-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
   el("autonum-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
   el("vinyl-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
-  el("export-count").textContent = count ? `— ${tn("unit.track", count)}` : "";
+  el("export-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
 }
 
 function selectRow(tr, e) {
