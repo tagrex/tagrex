@@ -17,6 +17,20 @@ import { maskPresets, savedSettings, setMaskPresets, setSavedSettings } from "./
 // The input the open popover reads from / writes to, and the button it hangs off.
 let target = null;
 let anchor = null;
+// Which preset each mask input last took its mask from (#599), so the menu can
+// offer to update that preset rather than ask for its name again.
+const origin = new WeakMap();
+
+// Save reads Update when the typed name is an existing preset whose mask differs
+// from the field's (#599): saving under that name replaces the saved mask.
+function paintSave() {
+  const button = el("preset-save");
+  const name = el("preset-name").value.trim();
+  const existing = maskPresets.find((preset) => preset.name === name);
+  const update = !!(existing && target && existing.mask !== target.value.trim());
+  button.textContent = t(update ? "preset.update" : "preset.save");
+  button.title = update ? t("preset.updateTitle", { name }) : "";
+}
 
 async function persist() {
   // Save the whole settings back, carrying every other slice (action groups,
@@ -82,11 +96,16 @@ function openPresets(button, input) {
   const menu = el("preset-menu");
   target = input;
   anchor = button;
-  el("preset-name").value = "";
+  // The preset this field's mask came from, if it still exists (#599).
+  const from = origin.get(input);
+  const known = from && maskPresets.some((preset) => preset.name === from);
+  el("preset-name").value = known ? from : "";
+  paintSave();
   render();
   menu.hidden = false;
   place(menu, button);
   el("preset-name").focus();
+  el("preset-name").select();
 }
 
 // Save the mask currently in the target input under the typed name. An existing
@@ -104,19 +123,24 @@ async function saveCurrent() {
     toast(t("preset.noMask"), true);
     return;
   }
+  const replaced = maskPresets.find((preset) => preset.name === name);
   const rest = maskPresets.filter((preset) => preset.name !== name);
   rest.push({ name, mask });
   rest.sort((a, b) => a.name.localeCompare(b.name));
   setMaskPresets(rest);
   await persist();
+  // The field's mask now is that preset's (#599).
+  origin.set(target, name);
   el("preset-name").value = "";
+  paintSave();
   render();
-  toast(t("preset.saved", { name }));
+  toast(t(replaced && replaced.mask !== mask ? "preset.updated" : "preset.saved", { name }));
 }
 
-function applyPreset(mask) {
+function applyPreset(mask, name) {
   if (!target) return;
   target.value = mask;
+  origin.set(target, name);
   // The live previews (FROM NAME's read-out, the export name) listen for input.
   target.dispatchEvent(new Event("input", { bubbles: true }));
   target.focus();
@@ -160,11 +184,14 @@ export async function initMaskPresets() {
     }
     const apply = e.target.closest?.(".preset-apply");
     if (apply) {
-      applyPreset(apply.closest(".preset-row").dataset.mask);
+      const row = apply.closest(".preset-row");
+      applyPreset(row.dataset.mask, row.querySelector(".preset-del").dataset.name);
       return;
     }
     if (!e.target.closest?.("#preset-menu")) closePresets();
   });
+
+  el("preset-name").addEventListener("input", paintSave);
 
   // Enter in the name field saves the current mask under it.
   el("preset-name").addEventListener("keydown", (e) => {

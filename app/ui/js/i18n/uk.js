@@ -370,6 +370,9 @@ export const uk = {
   "preset.empty": "Поки немає збережених масок. Введіть маску вище, назвіть і збережіть.",
   "preset.delete": "Видалити пресет",
   "preset.saved": "Маску «{name}» збережено",
+  "preset.update": "Оновити",
+  "preset.updateTitle": "Замінити маску «{name}» цією",
+  "preset.updated": "Маску «{name}» оновлено",
   "preset.noMask": "Спершу введіть маску, потім збережіть.",
   // ---- locks, re-read, the file context menu, the trash ----
   "unit.pendingEdit": { one: "{n} незбережена правка", few: "{n} незбережені правки", many: "{n} незбережених правок" },

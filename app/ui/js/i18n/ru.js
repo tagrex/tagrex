@@ -369,6 +369,9 @@ export const ru = {
   "preset.empty": "Пока нет сохранённых масок. Введите маску выше, назовите и сохраните.",
   "preset.delete": "Удалить пресет",
   "preset.saved": "Маска «{name}» сохранена",
+  "preset.update": "Обновить",
+  "preset.updateTitle": "Заменить маску «{name}» этой",
+  "preset.updated": "Маска «{name}» обновлена",
   "preset.noMask": "Сначала введите маску, потом сохраните.",
   // ---- locks, re-read, the file context menu, the trash ----
   "unit.pendingEdit": { one: "{n} несохранённая правка", few: "{n} несохранённые правки", many: "{n} несохранённых правок" },

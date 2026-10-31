@@ -365,6 +365,9 @@ export const de = {
   "preset.empty": "Noch keine gespeicherten Masken. Oben eine Maske eingeben, benennen und Speichern.",
   "preset.delete": "Preset löschen",
   "preset.saved": "Maske „{name}“ gespeichert",
+  "preset.update": "Aktualisieren",
+  "preset.updateTitle": "Die als „{name}“ gespeicherte Maske durch diese ersetzen",
+  "preset.updated": "Maske „{name}“ aktualisiert",
   "preset.noMask": "Zuerst eine Maske eingeben, dann speichern.",
   // ---- locks, re-read, the file context menu, the trash ----
   "unit.pendingEdit": { one: "{n} ausstehende Bearbeitung", other: "{n} ausstehende Bearbeitungen" },

@@ -367,6 +367,9 @@ export const es = {
   "preset.empty": "Aún no hay máscaras guardadas. Escribe una máscara arriba, ponle nombre y Guardar.",
   "preset.delete": "Eliminar preajuste",
   "preset.saved": "Máscara «{name}» guardada",
+  "preset.update": "Actualizar",
+  "preset.updateTitle": "Reemplazar la máscara guardada como «{name}» por esta",
+  "preset.updated": "Máscara «{name}» actualizada",
   "preset.noMask": "Escribe primero una máscara y luego guárdala.",
   // ---- locks, re-read, the file context menu, the trash ----
   "unit.pendingEdit": { one: "{n} edición pendiente", other: "{n} ediciones pendientes" },

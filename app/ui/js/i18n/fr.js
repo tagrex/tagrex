@@ -369,6 +369,9 @@ export const fr = {
   "preset.empty": "Aucun masque enregistré. Saisissez un masque ci-dessus, nommez-le, puis Enregistrer.",
   "preset.delete": "Supprimer le préréglage",
   "preset.saved": "Masque « {name} » enregistré",
+  "preset.update": "Mettre à jour",
+  "preset.updateTitle": "Remplacer le masque enregistré sous « {name} » par celui-ci",
+  "preset.updated": "Masque « {name} » mis à jour",
   "preset.noMask": "Saisissez d'abord un masque, puis enregistrez-le.",
   // ---- locks, re-read, the file context menu, the trash ----
   "unit.pendingEdit": { one: "{n} modification en cours", other: "{n} modifications en cours" },

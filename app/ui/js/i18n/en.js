@@ -371,6 +371,9 @@ export const en = {
   "preset.empty": "No saved masks yet. Type a mask above, name it, and Save.",
   "preset.delete": "Delete preset",
   "preset.saved": "Saved mask “{name}”",
+  "preset.update": "Update",
+  "preset.updateTitle": "Replace the mask saved as “{name}” with this one",
+  "preset.updated": "Updated mask “{name}”",
   "preset.noMask": "Type a mask first, then save it.",
   // ---- locks, re-read, the file context menu, the trash ----
   "unit.pendingEdit": { one: "{n} pending edit", other: "{n} pending edits" },

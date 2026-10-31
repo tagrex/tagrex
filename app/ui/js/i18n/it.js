@@ -369,6 +369,9 @@ export const it = {
   "preset.empty": "Nessuna maschera salvata. Scrivi una maschera qui sopra, dalle un nome e salva.",
   "preset.delete": "Elimina preset",
   "preset.saved": "Maschera “{name}” salvata",
+  "preset.update": "Aggiorna",
+  "preset.updateTitle": "Sostituisci la maschera salvata come “{name}” con questa",
+  "preset.updated": "Maschera “{name}” aggiornata",
   "preset.noMask": "Prima scrivi una maschera, poi salvala.",
   // ---- locks, re-read, the file context menu, the trash ----
   "unit.pendingEdit": { one: "{n} modifica in sospeso", other: "{n} modifiche in sospeso" },

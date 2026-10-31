@@ -225,6 +225,17 @@ Read the other way, in **Tags from the file name**:
 %skip% - %artist% - %title%
 ```
 
+## Saved masks
+
+The bookmark beside a mask field keeps masks under a name, in one list shared
+by every mask field. Type a name and **Save** to keep the mask in the field;
+click a saved mask to put it in the field.
+
+To change a saved mask, put it in the field from the list, edit it, and open
+the list again: its name is already filled in and the button reads **Update**,
+which replaces the saved mask with the edited one. Type a different name
+instead to keep the edit as a new mask beside the old one.
+
 ## When a mask can't render
 
 A mask that needs a tag a file doesn't have cannot render for that file. Rather

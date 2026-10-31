@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A saved mask can be updated in place.** Put a saved mask in a field from
+  the list and edit it: opening the list again has its name filled in and the
+  button reads Update, which replaces it. There was no way to change one
+  except by typing its exact name again. (#599)
 - **Release notes read as paragraphs on the release page.** The changelog
   wraps its lines, and the release page broke the text at every one of those
   wraps; the notes are now joined back into whole paragraphs and list items.
