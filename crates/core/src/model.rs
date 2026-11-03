@@ -1064,7 +1064,130 @@ fn probe_file(path: &Path) -> Result<lofty::file::TaggedFile, TagIoError> {
         }
     }
 
+    // [2026-11-03 14:40] Last: the file without the ID3v2 frames whose text cannot be decoded.
+    if let Some(source) = without_undecodable_id3v2_frames_source(path)? {
+        let probe = match FileType::from_path(path) {
+            Some(file_type) => Probe::with_file_type(source, file_type),
+            None => Probe::new(source).guess_file_type()?,
+        };
+        if let Ok(file) = probe.options(parse_options()).read() {
+            return Ok(file);
+        }
+    }
+
     Err(first.into())
+}
+
+// [2026-11-03 14:40] Added: a read past ID3v2 frames whose text cannot be decoded.
+/// The file at `path` with the frames of its leading ID3v2 tag that the backend
+/// cannot decode blanked out, or `None` when there are none.
+///
+/// The relaxed parse (#183) skips a frame whose header it cannot read, but text
+/// it cannot decode — UTF-16 with no byte-order mark or an odd length, UTF-8
+/// that is not — fails the whole tag, so the file could not be opened at all:
+/// exactly the files that need their tags fixed. Each frame is tried on its own
+/// behind silent MPEG frames, the way the backend itself reads it; the ones it
+/// refuses are overwritten with padding of the same length, so the tag and the
+/// audio keep their places. The rest reads as usual, the blanked frame is simply
+/// absent from the model, and the next save writes the tag without it.
+///
+/// Only reached once every ordinary read has failed, so a file that reads costs
+/// nothing more.
+fn without_undecodable_id3v2_frames_source(path: &Path) -> Result<Option<TagSource>, TagIoError> {
+    let raw = std::fs::read(path)?;
+    Ok(without_undecodable_id3v2_frames(&raw).map(|fixed| TagSource::Memory(Cursor::new(fixed))))
+}
+
+// [2026-11-03 14:40] Added: the MP3 read the ID3v2 writes start from, past undecodable frames.
+/// Read the MP3 at `path` from `file`, and when that fails, read it again
+/// without the ID3v2 frames the backend cannot decode
+/// ([`without_undecodable_id3v2_frames_source`]): a save starts from this read,
+/// so a file that now opens can also be saved, which writes the tag afresh.
+fn read_mpeg_past_undecodable_frames(
+    path: &Path,
+    file: &mut TagSource,
+    options: ParseOptions,
+) -> Result<MpegFile, TagIoError> {
+    match MpegFile::read_from(file, options) {
+        Ok(mpeg) => Ok(mpeg),
+        Err(error) => match without_undecodable_id3v2_frames_source(path)? {
+            Some(mut repaired) => Ok(MpegFile::read_from(&mut repaired, options)?),
+            None => Err(error.into()),
+        },
+    }
+}
+
+// [2026-11-03 14:40] Added: see without_undecodable_id3v2_frames_source.
+fn without_undecodable_id3v2_frames(raw: &[u8]) -> Option<Vec<u8>> {
+    if raw.len() < 10 || &raw[..3] != b"ID3" || !matches!(raw[3], 3 | 4) {
+        return None;
+    }
+    let version = raw[3];
+    // An unsynchronised tag or one with an extended header is not walked here:
+    // its frames do not sit where their headers say.
+    if raw[5] & 0xC0 != 0 {
+        return None;
+    }
+    let end = 10 + syncsafe_u32(&raw[6..10]) as usize;
+    if end > raw.len() {
+        return None;
+    }
+    let mut spans = Vec::new();
+    let mut pos = 10;
+    while pos + 10 <= end {
+        let id = &raw[pos..pos + 4];
+        if id[0] == 0 {
+            break; // padding
+        }
+        if !id
+            .iter()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+        {
+            return None;
+        }
+        let size = if version == 4 {
+            syncsafe_u32(&raw[pos + 4..pos + 8])
+        } else {
+            u32::from_be_bytes([raw[pos + 4], raw[pos + 5], raw[pos + 6], raw[pos + 7]])
+        } as usize;
+        let next = pos + 10 + size;
+        if next > end {
+            return None;
+        }
+        spans.push((pos, next));
+        pos = next;
+    }
+
+    let mut silence = vec![0xFF, 0xFB, 0x90, 0x00];
+    silence.resize(SILENT_MPEG_FRAME_LEN, 0);
+    let decodes = |frame: &[u8]| {
+        let mut probe = raw[..5].to_vec();
+        probe.push(0);
+        probe.extend_from_slice(&syncsafe_bytes(frame.len() as u32));
+        probe.extend_from_slice(frame);
+        for _ in 0..SILENT_MPEG_FRAMES {
+            probe.extend_from_slice(&silence);
+        }
+        MpegFile::read_from(&mut Cursor::new(probe), tag_only_options()).is_ok()
+    };
+    let refused: Vec<(usize, usize)> = spans
+        .into_iter()
+        .filter(|&(start, stop)| !decodes(&raw[start..stop]))
+        .collect();
+    if refused.is_empty() {
+        return None;
+    }
+    // Kept frames first, in their order, then padding up to the tag's own end.
+    let mut fixed = raw[..10].to_vec();
+    let mut pos = 10;
+    for &(start, stop) in &refused {
+        fixed.extend_from_slice(&raw[pos..start]);
+        pos = stop;
+    }
+    fixed.extend_from_slice(&raw[pos..end]);
+    fixed.resize(end, 0);
+    fixed.extend_from_slice(&raw[end..]);
+    Some(fixed)
 }
 
 /// How far past the tag the last-ditch attempt will look for the audio (#204).
@@ -1395,7 +1518,10 @@ fn read_ape(
         Some(FileType::Mpc) => MpcFile::read_from(&mut file, options)?.ape().cloned(),
         Some(FileType::WavPack) => WavPackFile::read_from(&mut file, options)?.ape().cloned(),
         // An MP3 can carry an APE block beside its ID3v2 one (#608).
-        Some(FileType::Mpeg) => MpegFile::read_from(&mut file, options)?.ape().cloned(),
+        // [2026-11-03 14:40] Read past ID3v2 frames the backend cannot decode, as every MP3 read is.
+        Some(FileType::Mpeg) => read_mpeg_past_undecodable_frames(path, &mut file, options)?
+            .ape()
+            .cloned(),
         _ => None,
     })
 }
@@ -2524,9 +2650,12 @@ fn sync_id3v1(
     let old = {
         let mut file = buffered(path)?;
         match container {
-            FileType::Mpeg => MpegFile::read_from(&mut file, tag_only_options())?
-                .id3v1()
-                .cloned(),
+            // [2026-11-03 14:40] Read past ID3v2 frames the backend cannot decode, as every MP3 read is.
+            FileType::Mpeg => {
+                read_mpeg_past_undecodable_frames(path, &mut file, tag_only_options())?
+                    .id3v1()
+                    .cloned()
+            }
             FileType::Aac => AacFile::read_from(&mut file, tag_only_options())?
                 .id3v1()
                 .cloned(),
@@ -3956,7 +4085,10 @@ fn read_id3v2(
 ) -> Result<Option<Id3v2Tag>, TagIoError> {
     let mut file = buffered(path)?;
     let mut tag = match Some(container) {
-        Some(FileType::Mpeg) => MpegFile::read_from(&mut file, options)?.id3v2().cloned(),
+        // [2026-11-03 14:40] An MP3 whose tag holds a frame the backend cannot decode is read without it.
+        Some(FileType::Mpeg) => read_mpeg_past_undecodable_frames(path, &mut file, options)?
+            .id3v2()
+            .cloned(),
         Some(FileType::Aac) => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
         Some(FileType::Aiff) => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
         Some(FileType::Wav) => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
