@@ -106,11 +106,12 @@ impl DiscogsProvider {
     /// the trait object, so keeping it inherent avoids forcing it on every
     /// future provider.
     pub fn fetch_image(&self, url: &str) -> Result<FetchedImage, ProviderError> {
-        let mut response = self
-            .agent
-            .get(url)
-            .header("Authorization", &format!("Discogs token={}", self.token))
-            .header("User-Agent", USER_AGENT)
+        // [2026-11-03 11:05] The token goes only to Discogs itself, over HTTPS.
+        let mut request = self.agent.get(url).header("User-Agent", USER_AGENT);
+        if is_discogs_https(url) {
+            request = request.header("Authorization", &format!("Discogs token={}", self.token));
+        }
+        let mut response = request
             .call()
             .map_err(|err| ProviderError::Network(err.to_string()))?;
 
@@ -667,9 +668,54 @@ fn positional_score(index: usize, count: usize) -> f32 {
     }
 }
 
+// [2026-11-03 11:05] Added: where the personal token may be sent.
+/// Whether `url` is an HTTPS address on Discogs (`discogs.com` or a subdomain).
+///
+/// An image URL reaches [`DiscogsProvider::fetch_image`] from a search or
+/// release response by way of the interface, and nothing checked it: the
+/// user's personal token went in the `Authorization` header to whatever host
+/// it named, and in the clear over plain HTTP. Discogs serves its images
+/// without it, so the token is now kept for Discogs over HTTPS alone.
+fn is_discogs_https(url: &str) -> bool {
+    let Ok(uri) = url.parse::<ureq::http::Uri>() else {
+        return false;
+    };
+    uri.scheme_str() == Some("https")
+        && uri.host().is_some_and(|host| {
+            let host = host.to_ascii_lowercase();
+            host == "discogs.com" || host.ends_with(".discogs.com")
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // [2026-11-03 11:05] Added: regression test for where the token may be sent.
+    #[test]
+    fn the_token_is_sent_to_discogs_over_https_only() {
+        for url in [
+            "https://i.discogs.com/abc/rs:fit/g:sm/q:40/h:150/w:150/czM6Ly9.jpeg",
+            "https://api.discogs.com/images/R-1.jpg",
+            "https://discogs.com/x.jpg",
+            "HTTPS://I.DISCOGS.COM/x.jpg",
+        ] {
+            assert!(is_discogs_https(url), "{url}");
+        }
+        for url in [
+            "http://i.discogs.com/x.jpg",
+            "https://evil.example/x.jpg",
+            "https://discogs.com.evil.example/x.jpg",
+            "https://notdiscogs.com/x.jpg",
+            "https://evil.example/?u=https://i.discogs.com/x.jpg",
+            "https://i.discogs.com@evil.example/x.jpg",
+            "file:///etc/passwd",
+            "not a url",
+            "",
+        ] {
+            assert!(!is_discogs_https(url), "{url}");
+        }
+    }
 
     #[test]
     fn strips_numeric_disambiguation_suffix() {

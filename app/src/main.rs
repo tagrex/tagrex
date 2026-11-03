@@ -1011,7 +1011,34 @@ fn save_discogs_token(app: tauri::AppHandle, token: String) -> Result<(), ErrorD
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(ErrorDto::from)?;
     }
-    std::fs::write(path, token.trim()).map_err(ErrorDto::from)
+    // [2026-11-03 11:05] Written readable by its owner alone.
+    write_secret(&path, token.trim()).map_err(ErrorDto::from)
+}
+
+// [2026-11-03 11:05] Added: a credential file only its owner can read.
+/// Write `contents` to `path` as a file only its owner can read: the Discogs
+/// token and the Beatport session are credentials, and a plain write left them
+/// readable by every account on the machine under the usual umask (0644).
+/// The mode is set on the open handle as well, so a file an earlier version
+/// wrote is tightened on the next save. On Windows the per-user app-config
+/// folder is already private to its owner.
+fn write_secret(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(contents.as_bytes())?;
+    file.flush()
 }
 
 // ---- Beatport sign-in (#162) ----------------------------------------------
@@ -1063,7 +1090,8 @@ fn write_beatport_session(
         std::fs::create_dir_all(parent).map_err(ErrorDto::from)?;
     }
     let json = serde_json::to_string(session).map_err(ErrorDto::from)?;
-    std::fs::write(path, json).map_err(ErrorDto::from)
+    // [2026-11-03 11:05] Written readable by its owner alone.
+    write_secret(&path, &json).map_err(ErrorDto::from)
 }
 
 /// The proxy every provider request goes through, from settings.
@@ -1623,7 +1651,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{paths_from_args, release_url};
+    // [2026-11-03 11:05] write_secret added to the import.
+    use super::{paths_from_args, release_url, write_secret};
 
     #[test]
     fn a_command_line_yields_the_paths_in_it_and_nothing_else() {
@@ -1672,5 +1701,33 @@ mod tests {
         // A path-traversal / injection attempt in the id must never build a URL.
         assert!(release_url("discogs", "5606/../../evil").is_err());
         assert!(release_url("discogs", "5606?q=1").is_err());
+    }
+
+    // [2026-11-03 11:05] Added: regression test for credential file permissions.
+    /// A credential file is readable by its owner alone, and a file an older
+    /// version wrote world-readable is tightened when it is saved again.
+    #[cfg(unix)]
+    #[test]
+    fn a_secret_is_written_readable_by_its_owner_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(format!("tagrex-secret-{}", std::process::id()));
+        std::fs::write(&path, "old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        write_secret(&path, "token").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        let contents = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(mode, 0o600);
+        assert_eq!(contents, "token");
+
+        // A new file starts that way too.
+        let fresh = std::env::temp_dir().join(format!("tagrex-secret-new-{}", std::process::id()));
+        std::fs::remove_file(&fresh).ok();
+        write_secret(&fresh, "t").unwrap();
+        let mode = std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777;
+        std::fs::remove_file(&fresh).ok();
+        assert_eq!(mode, 0o600);
     }
 }
