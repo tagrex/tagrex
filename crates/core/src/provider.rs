@@ -13,6 +13,20 @@
 
 use thiserror::Error;
 
+// [2026-11-03 11:40] Added: the time limits every provider's HTTP client applies.
+/// How long a provider waits to connect. The HTTP client waits forever by
+/// default, and every provider call runs under one lock, so a server that
+/// stopped answering held every search, release and cover request in the app
+/// until it was restarted.
+pub const HTTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// How long a provider waits for a response to start once the request is sent.
+pub const HTTP_RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The most one request may take altogether, the body included: an image of
+/// the 10 MB the client accepts at most, on a slow line, comes in well under it.
+pub const HTTP_TOTAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 /// What the user is searching for. All fields optional; providers use what
 /// they support.
 #[derive(Debug, Clone, Default)]
