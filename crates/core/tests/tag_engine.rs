@@ -5295,3 +5295,77 @@ fn a_multi_value_order_survives_a_save_of_a_file_with_an_encoder_comment() {
         Some("Autechre; Gescom")
     );
 }
+
+// [2026-11-03 14:10] Added: regression test for cp1251 text in an unedited Latin-1 frame.
+/// Older Russian and Ukrainian files carry cp1251 bytes in Latin-1 frames: read
+/// here as `Êèíî` for `Кино`. An edit of another field rebuilt every frame in
+/// Unicode and wrote that mojibake back for good, so every player and tagger
+/// that showed the title right before showed garbage after. An unedited frame
+/// keeps its encoding, and so its bytes; an edited one is written as before.
+#[test]
+fn an_unedited_frame_keeps_its_encoding_and_its_bytes() {
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-test-cp1251-{}.mp3",
+        std::process::id()
+    ));
+    let kino_1251: &[u8] = &[0xCA, 0xE8, 0xED, 0xEE];
+    let frame = |id: &[u8], encoding: u8, text: &[u8]| {
+        let mut f = id.to_vec();
+        f.extend_from_slice(&((text.len() + 1) as u32).to_be_bytes());
+        f.extend_from_slice(&[0, 0, encoding]);
+        f.extend_from_slice(text);
+        f
+    };
+    let tsoy_utf16: Vec<u8> = [0xFF, 0xFE]
+        .into_iter()
+        .chain("Цой".encode_utf16().flat_map(u16::to_le_bytes))
+        .collect();
+    let body = [frame(b"TIT2", 0, kino_1251), frame(b"TPE1", 1, &tsoy_utf16)].concat();
+    let size = body.len() as u32;
+    let mut bytes = b"ID3\x03\x00\x00".to_vec();
+    bytes.extend_from_slice(&[
+        ((size >> 21) & 0x7f) as u8,
+        ((size >> 14) & 0x7f) as u8,
+        ((size >> 7) & 0x7f) as u8,
+        (size & 0x7f) as u8,
+    ]);
+    bytes.extend_from_slice(&body);
+    for _ in 0..20 {
+        let mut audio = vec![0u8; 417];
+        audio[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
+        bytes.extend_from_slice(&audio);
+    }
+    std::fs::write(&path, &bytes).unwrap();
+
+    let mut file = TagEngine::read(&path).unwrap();
+    assert_eq!(
+        file.tags.get(&TagField::Title).map(String::as_str),
+        Some("Êèíî"),
+        "fixture precondition: read as Latin-1"
+    );
+    file.tags.insert(TagField::Genre, "Rock".to_string());
+    TagEngine::write(&file).unwrap();
+    let raw = std::fs::read(&path).unwrap();
+    let contains = |needle: &[u8]| raw.windows(needle.len()).any(|w| w == needle);
+
+    // The title frame is still Latin-1 (encoding byte 0) holding the cp1251 bytes.
+    let mut title_frame = vec![0u8];
+    title_frame.extend_from_slice(kino_1251);
+    assert!(contains(&title_frame), "the cp1251 title kept its bytes");
+    assert!(contains(&tsoy_utf16), "the UTF-16 artist kept its encoding");
+
+    // An edited value is written as before, readable as what was typed.
+    let mut edited = TagEngine::read(&path).unwrap();
+    edited.tags.insert(TagField::Title, "Кино".to_string());
+    TagEngine::write(&edited).unwrap();
+    let after = TagEngine::read(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+    assert_eq!(
+        after.tags.get(&TagField::Title).map(String::as_str),
+        Some("Кино")
+    );
+    assert_eq!(
+        after.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Цой")
+    );
+}
