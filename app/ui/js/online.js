@@ -658,9 +658,27 @@ async function applyImage(c) {
 // Fetch each release once, in the background, to fill the track/disc count on
 // every card up front. A small pool fetches several at a time (the commands are
 // async/off-main-thread) so counts appear quickly without bursting past Discogs'
-// 60/min limit; the backend still honours 429/Retry-After. Cached, so expanding
-// a card and toggling layout are then instant.
+// 60/min limit. Cached, so expanding a card and toggling layout are then instant.
 const PREFETCH_CONCURRENCY = 4;
+
+// [2026-11-03 17:40] Added: the sweep waits out a rate limit instead of pressing on.
+// A rate limit (HTTP 429) pauses every worker of the sweep for as long as the
+// provider asks, then the release it hit is tried again. The backend only reports
+// the limit, it does not wait; the sweep used to skip to the next release at once,
+// so the rest of the page went out straight into the limit and kept it in force.
+// At least a second, so a stated wait of 0 is not a burst, and at most two
+// minutes, so a page left open does not sit dark for an hour.
+const PREFETCH_MIN_PAUSE_MS = 1000;
+const PREFETCH_MAX_PAUSE_MS = 120_000;
+
+// [2026-11-03 17:40] Added: the wait a rate-limit error asks for, in ms, or null for any other error.
+function rateLimitPauseMs(e) {
+  const failure = e && e.failure && e.failure.message;
+  if (!failure || failure.code !== "error.provider.rateLimited") return null;
+  const seconds = Number(failure.args && failure.args.seconds);
+  const ms = Number.isFinite(seconds) ? seconds * 1000 : PREFETCH_MAX_PAUSE_MS;
+  return Math.min(Math.max(ms, PREFETCH_MIN_PAUSE_MS), PREFETCH_MAX_PAUSE_MS);
+}
 
 async function prefetchReleaseCounts(items, gen) {
   const token = await providerToken(releaseSource);
@@ -669,10 +687,18 @@ async function prefetchReleaseCounts(items, gen) {
   // The sweep is interruptible background work — show Stop while it runs (#108).
   prefetching = true;
   updateLoadMoreUi();
+  // [2026-11-03 17:40] When the sweep may send its next request: later than now while a rate limit holds.
+  let resumeAt = 0;
   async function worker() {
     while (queue.length) {
       // A newer search, or Stop (#96), bumps the generation → bail.
       if (gen !== undefined && gen !== searchGen) return;
+      // [2026-11-03 17:40] Wait out a rate limit, then look at the generation again.
+      const wait = resumeAt - Date.now();
+      if (wait > 0) {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+        continue;
+      }
       const c = queue.shift();
       if (!c || releaseCache.has(c.id)) continue;
       try {
@@ -681,7 +707,13 @@ async function prefetchReleaseCounts(items, gen) {
         if (pill) pill.textContent = countLabel(c.id);
         updateMediaBadge(c); // fill the badge's ×N now that disc count is known
       } catch (e) {
-        /* skip this one; the card just keeps its dash */
+        // [2026-11-03 17:40] A rate limit pauses the sweep and retries this release after it.
+        const pause = rateLimitPauseMs(e);
+        if (pause !== null) {
+          queue.unshift(c);
+          resumeAt = Math.max(resumeAt, Date.now() + pause);
+        }
+        /* anything else: skip this one; the card just keeps its dash */
       }
     }
   }

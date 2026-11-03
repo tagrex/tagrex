@@ -82,7 +82,12 @@ impl SoundeoProvider {
             .map_err(|err| ProviderError::Network(err.to_string()))?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
-            return Err(status_to_error(status));
+            // [2026-11-03 17:40] The wait the server asks for, which was ignored.
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok());
+            return Err(status_to_error(status, retry_after));
         }
         response
             .body_mut()
@@ -101,7 +106,12 @@ impl SoundeoProvider {
             .map_err(|err| ProviderError::Network(err.to_string()))?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
-            return Err(status_to_error(status));
+            // [2026-11-03 17:40] The wait the server asks for, which was ignored.
+            let retry_after = response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok());
+            return Err(status_to_error(status, retry_after));
         }
         let mime = response
             .headers()
@@ -160,10 +170,11 @@ impl MetadataProvider for SoundeoProvider {
     }
 }
 
-fn status_to_error(status: u16) -> ProviderError {
+// [2026-11-03 17:40] Takes the Retry-After header: a 429 asking for two minutes was answered "wait 1 s".
+fn status_to_error(status: u16, retry_after: Option<&str>) -> ProviderError {
     match status {
         429 | 503 => ProviderError::RateLimited {
-            retry_after_secs: 1,
+            retry_after_secs: tagrex_core::provider::parse_retry_after(retry_after).unwrap_or(1),
         },
         404 => ProviderError::NotFound,
         401 | 403 => ProviderError::Auth(format!("HTTP {status}")),
@@ -541,6 +552,38 @@ fn unescape(value: &str) -> String {
 mod tests {
     use super::*;
 
+    // [2026-11-03 17:40] Added: regression test for a 429 over real HTTP.
+    /// A server that answers 429 with a `Retry-After` (with the whitespace HTTP
+    /// allows around it) is a rate limit for as long as it asks, end to end.
+    #[test]
+    fn a_429_is_a_rate_limit_for_as_long_as_the_server_asks() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(
+                    b"HTTP/1.1 429 Too Many Requests\r\nRetry-After:  120 \r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+        let result = super::SoundeoProvider::new().fetch_image(&format!("http://{addr}/cover.jpg"));
+        server.join().unwrap();
+        assert!(
+            matches!(
+                result,
+                Err(tagrex_core::provider::ProviderError::RateLimited {
+                    retry_after_secs: 120
+                })
+            ),
+            "{result:?}"
+        );
+    }
+
+    // [2026-11-03 11:40] Added: regression test for the HTTP time limits.
     /// The client waits forever by default, and a server that stopped answering
     /// held every provider call in the app behind the one lock they share.
     #[test]

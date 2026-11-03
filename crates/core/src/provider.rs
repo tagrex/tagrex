@@ -13,6 +13,16 @@
 
 use thiserror::Error;
 
+// [2026-11-03 11:40] Added: the time limits every provider's HTTP client applies.
+// [2026-11-03 17:40] Added: one reading of Retry-After for every provider.
+/// The seconds a `Retry-After` header asks for, or `None` when it states none
+/// this can read. Surrounding whitespace is allowed, as HTTP allows it; the
+/// other form the header may take, an HTTP date, is left to the caller's
+/// default.
+pub fn parse_retry_after(value: Option<&str>) -> Option<u64> {
+    value.and_then(|value| value.trim().parse().ok())
+}
+
 /// How long a provider waits to connect. The HTTP client waits forever by
 /// default, and every provider call runs under one lock, so a server that
 /// stopped answering held every search, release and cover request in the app

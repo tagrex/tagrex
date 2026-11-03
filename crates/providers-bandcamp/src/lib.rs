@@ -202,7 +202,9 @@ fn retry_after(response: &ureq::http::Response<ureq::Body>) -> Option<u64> {
         .headers()
         .get("retry-after")
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse().ok())
+        // [2026-11-03 17:40] Read the way every provider reads it.
+        .map(Some)
+        .and_then(tagrex_core::provider::parse_retry_after)
 }
 
 fn status_to_error(status: u16, retry_after_secs: Option<u64>) -> ProviderError {
@@ -488,6 +490,39 @@ fn str_field(value: &Value, key: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    // [2026-11-03 17:40] Added: regression test for a 429 over real HTTP.
+    /// A server that answers 429 with a `Retry-After` (with the whitespace HTTP
+    /// allows around it) is a rate limit for as long as it asks, end to end.
+    #[test]
+    fn a_429_is_a_rate_limit_for_as_long_as_the_server_asks() {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request);
+            stream
+                .write_all(
+                    b"HTTP/1.1 429 Too Many Requests\r\nRetry-After:  120 \r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                )
+                .unwrap();
+        });
+        let result =
+            super::BandcampProvider::new().fetch_image(&format!("http://{addr}/cover.jpg"));
+        server.join().unwrap();
+        assert!(
+            matches!(
+                result,
+                Err(tagrex_core::provider::ProviderError::RateLimited {
+                    retry_after_secs: 120
+                })
+            ),
+            "{result:?}"
+        );
+    }
+
+    // [2026-11-03 11:40] Added: regression test for the HTTP time limits.
     /// The client waits forever by default, and a server that stopped answering
     /// held every provider call in the app behind the one lock they share.
     #[test]
