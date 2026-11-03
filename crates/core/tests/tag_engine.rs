@@ -2811,6 +2811,70 @@ fn a_vorbis_field_keeps_the_alternative_name_the_file_gave_it() {
     std::fs::remove_file(&path).ok();
 }
 
+/// The order of a multi-value field's values is the user's (primary artist
+/// first), and a write of another field must not change it. Renaming a field
+/// back to the file's own name took its comment off the middle of the tag with
+/// the backend's `remove`, which swaps the front comment into the gap: the
+/// artists came back as "Gescom; Autechre".
+#[test]
+fn a_write_of_another_field_keeps_the_order_of_a_multi_value_vorbis_artist() {
+    use lofty::config::{ParseOptions, WriteOptions};
+    use lofty::file::AudioFile;
+    use lofty::flac::FlacFile;
+    use lofty::ogg::tag::VorbisComments;
+    use lofty::prelude::TagExt;
+
+    let artists = |path: &PathBuf| -> Vec<String> {
+        let mut file = std::fs::File::open(path).unwrap();
+        FlacFile::read_from(&mut file, ParseOptions::new())
+            .unwrap()
+            .vorbis_comments()
+            .map(|tag| tag.get_all("ARTIST").map(str::to_string).collect())
+            .unwrap_or_default()
+    };
+    // Both shapes: a file whose names the backend writes as they are, and one
+    // with a field under an alternative name that is renamed back on save.
+    for (case, extra) in [("plain", None), ("renamed", Some("ALBUM ARTIST"))] {
+        let path = temp_flac_path(&format!("multi-value-order-{case}"));
+        std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+        let mut seeded = VorbisComments::default();
+        seeded.push("ARTIST".to_string(), "Autechre".to_string());
+        seeded.push("ARTIST".to_string(), "Gescom".to_string());
+        if let Some(name) = extra {
+            seeded.push(name.to_string(), "Various Artists".to_string());
+        }
+        seeded.push("TITLE".to_string(), "Old Title".to_string());
+        seeded.save_to_path(&path, WriteOptions::default()).unwrap();
+
+        let mut file = TagEngine::read(&path).unwrap();
+        assert_eq!(
+            file.tags.get(&TagField::Artist).map(String::as_str),
+            Some("Autechre; Gescom"),
+            "{case}: read"
+        );
+        file.tags.insert(TagField::Title, "New Title".into());
+        TagEngine::write(&file).unwrap();
+
+        let after = TagEngine::read(&path).unwrap();
+        assert_eq!(
+            after.tags.get(&TagField::Title).map(String::as_str),
+            Some("New Title"),
+            "{case}: title"
+        );
+        assert_eq!(
+            after.tags.get(&TagField::Artist).map(String::as_str),
+            Some("Autechre; Gescom"),
+            "{case}: editing the title reordered the multi-value artist"
+        );
+        assert_eq!(
+            artists(&path),
+            ["Autechre", "Gescom"],
+            "{case}: the comments themselves"
+        );
+        std::fs::remove_file(&path).ok();
+    }
+}
+
 #[test]
 fn vorbis_lyrics_round_trip_as_a_custom_field() {
     let path = temp_flac_path("lyrics");

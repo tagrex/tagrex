@@ -4405,7 +4405,7 @@ fn save_with_custom_items(
             rename_to_own_names(&mut merged, &own_names);
             keep_unedited_fields(&mut merged, &own_fields);
             merged.set_vendor(vendor);
-            merged.remove(VORBIS_ENCODER).for_each(drop);
+            remove_in_order(&mut merged, VORBIS_ENCODER);
             for encoder in encoders {
                 merged.push(VORBIS_ENCODER.to_string(), encoder);
             }
@@ -4419,7 +4419,7 @@ fn save_with_custom_items(
                 .filter(|name| !maps_to_item_key(tag_type, name))
                 .collect();
             for name in stale {
-                merged.remove(&name).for_each(drop);
+                remove_in_order(&mut merged, &name);
             }
             for (name, value) in raw_custom_fields(tags, tag_type) {
                 let own_values = own
@@ -4564,11 +4564,29 @@ fn rename_to_own_names(vorbis: &mut VorbisComments, own_names: &[(TagField, Stri
         let Some(own_name) = own.last() else {
             continue;
         };
-        let values: Vec<String> = vorbis.remove(&name).collect();
+        let values = remove_in_order(vorbis, &name);
         for value in values {
             vorbis.push(own_name.to_string(), value);
         }
     }
+}
+
+/// Take every comment named `name` (case-insensitively) off `vorbis`, in order,
+/// and leave every other comment where it was.
+///
+/// The backend's own `remove` swaps the comment at the front of the tag into
+/// each gap it leaves, so taking one off the middle reversed the values of a
+/// multi-value field ahead of it: `ARTIST=Autechre`, `ARTIST=Gescom` followed
+/// by an `ALBUM ARTIST` to rename came back with Gescom first, and an edit of
+/// the title alone swapped the primary artist.
+fn remove_in_order(vorbis: &mut VorbisComments, name: &str) -> Vec<String> {
+    let (removed, kept): (Vec<_>, Vec<_>) = vorbis
+        .take_items()
+        .partition(|(own_name, _)| own_name.eq_ignore_ascii_case(name));
+    for (own_name, value) in kept {
+        vorbis.push(own_name, value);
+    }
+    removed.into_iter().map(|(_, value)| value).collect()
 }
 
 /// Put back, as the file had them, the comments of every field `vorbis` states
