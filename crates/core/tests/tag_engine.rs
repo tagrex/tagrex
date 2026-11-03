@@ -5369,3 +5369,80 @@ fn an_unedited_frame_keeps_its_encoding_and_its_bytes() {
         Some("Цой")
     );
 }
+
+// [2026-11-03 14:40] Added: regression test for an MP3 whose tag holds undecodable text.
+/// Text the backend cannot decode — UTF-16 with no byte-order mark, UTF-16 of
+/// an odd length, cp1251 bytes labelled UTF-8 — failed the whole tag, so the
+/// file could not be opened at all. It opens without those frames, keeps every
+/// other value, saves, and reads normally after the save.
+#[test]
+fn an_mp3_with_undecodable_text_frames_opens_and_saves() {
+    let frame = |id: &[u8], encoding: u8, text: &[u8]| {
+        let mut f = id.to_vec();
+        f.extend_from_slice(&((text.len() + 1) as u32).to_be_bytes());
+        f.extend_from_slice(&[0, 0, encoding]);
+        f.extend_from_slice(text);
+        f
+    };
+    let no_bom: Vec<u8> = "No BOM".encode_utf16().flat_map(u16::to_be_bytes).collect();
+    let cases: [(&str, Vec<u8>); 3] = [
+        ("utf16-no-bom", frame(b"TIT2", 1, &no_bom)),
+        (
+            "utf16-odd",
+            frame(b"TIT2", 1, &[0xFF, 0xFE, 0x41, 0x00, 0x42]),
+        ),
+        (
+            "cp1251-as-utf8",
+            frame(b"TIT2", 3, &[0xCA, 0xE8, 0xED, 0xEE]),
+        ),
+    ];
+    for (name, broken) in cases {
+        let body = [frame(b"TPE1", 0, b"Kept Artist"), broken].concat();
+        let size = body.len() as u32;
+        let mut bytes = b"ID3\x03\x00\x00".to_vec();
+        bytes.extend_from_slice(&[
+            ((size >> 21) & 0x7f) as u8,
+            ((size >> 14) & 0x7f) as u8,
+            ((size >> 7) & 0x7f) as u8,
+            (size & 0x7f) as u8,
+        ]);
+        bytes.extend_from_slice(&body);
+        let audio_at = bytes.len();
+        for _ in 0..20 {
+            let mut audio = vec![0u8; 417];
+            audio[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
+            bytes.extend_from_slice(&audio);
+        }
+        let audio = bytes[audio_at..].to_vec();
+        let path = std::env::temp_dir().join(format!(
+            "tagrex-tag-engine-test-undecodable-{name}-{}.mp3",
+            std::process::id()
+        ));
+        std::fs::write(&path, &bytes).unwrap();
+
+        let mut file = TagEngine::read(&path).unwrap_or_else(|e| panic!("{name}: {e}"));
+        assert_eq!(
+            file.tags.get(&TagField::Artist).map(String::as_str),
+            Some("Kept Artist"),
+            "{name}"
+        );
+        assert_eq!(file.tags.get(&TagField::Title), None, "{name}");
+
+        file.tags.insert(TagField::Title, "Fixed".to_string());
+        TagEngine::write(&file).unwrap_or_else(|e| panic!("{name}: {e}"));
+        let raw = std::fs::read(&path).unwrap();
+        let after = TagEngine::read(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+        assert!(raw.ends_with(&audio), "{name}: audio untouched");
+        assert_eq!(
+            after.tags.get(&TagField::Title).map(String::as_str),
+            Some("Fixed"),
+            "{name}"
+        );
+        assert_eq!(
+            after.tags.get(&TagField::Artist).map(String::as_str),
+            Some("Kept Artist"),
+            "{name}"
+        );
+    }
+}
