@@ -1923,10 +1923,86 @@ fn field_for_name_on_tag(name: &str, tag_type: TagType) -> Option<TagField> {
 /// knowledge is allowed to live.
 pub struct TagEngine;
 
+// [2026-11-03 15:30] Added: the boundary that turns a tag-library panic into an error.
+/// Run `body`, one public [`TagEngine`] operation on the file at `path`, and
+/// turn a panic inside it into an error about that file.
+///
+/// The tag library panics on some damaged files instead of returning an error
+/// (an Opus header cut short fails an `expect`, a Speex one divides by zero).
+/// Every tag read of a library listing runs under the app's one lock, so one
+/// such file in a folder poisoned that lock and every later command failed
+/// until a restart. As an error, the file is listed as unreadable like any
+/// other damaged file (#83) and everything else goes on.
+fn guarded<T>(path: &Path, body: impl FnOnce() -> Result<T, TagIoError>) -> Result<T, TagIoError> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)).unwrap_or_else(|_| {
+        Err(TagIoError::Malformed(format!(
+            "{} is damaged: the tag library failed while reading it",
+            path.display()
+        )))
+    })
+}
+
+// [2026-11-03 15:50] Added: an Ogg write that cannot leave the file shorter or unreadable.
+/// Run `body`, a write to the file at `path`, and when that file is Ogg
+/// (Vorbis, Opus, Speex) put its bytes back if the write left it unreadable or
+/// cut its audio short, returning an error instead.
+///
+/// The tag library's Ogg writer drops pages when the stream holds bytes between
+/// two pages, which a damaged file can: a Speex file that read and played came
+/// back 7 KB shorter, its audio gone, from a write that reported success. The
+/// last page's granule position is how far the audio runs, so a write that
+/// keeps the file readable and that position has kept the audio. Ogg files are
+/// small and the writer reads them whole anyway, so holding a copy costs little.
+fn ogg_safe_write<T>(
+    path: &Path,
+    body: impl FnOnce() -> Result<T, TagIoError>,
+) -> Result<T, TagIoError> {
+    if !matches!(
+        FileType::from_path(path),
+        Some(FileType::Vorbis | FileType::Opus | FileType::Speex)
+    ) {
+        return body();
+    }
+    let before = std::fs::read(path)?;
+    let result = body();
+    let after = std::fs::read(path)?;
+    if after == before {
+        return result;
+    }
+    let readable =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| probe_file(path).is_ok()))
+            .unwrap_or(false);
+    let intact = readable && last_ogg_granule(&after) == last_ogg_granule(&before);
+    if result.is_ok() && intact {
+        return result;
+    }
+    rewrite_in_place(path, &after, &before)?;
+    match result {
+        Err(error) => Err(error),
+        Ok(_) => Err(TagIoError::Malformed(format!(
+            "could not write tags to {}: its Ogg stream is damaged, and the write would have cut its audio",
+            path.display()
+        ))),
+    }
+}
+
+// [2026-11-03 15:50] Added: how far an Ogg stream's audio runs.
+/// The granule position of the last Ogg page in `bytes`, found from the end,
+/// or `None` when no page header is there.
+fn last_ogg_granule(bytes: &[u8]) -> Option<i64> {
+    let at = bytes.windows(4).rposition(|window| window == b"OggS")?;
+    let header = bytes.get(at..at + 14)?;
+    if header[4] != 0 {
+        return None;
+    }
+    Some(i64::from_le_bytes(header[6..14].try_into().ok()?))
+}
+
 impl TagEngine {
     /// Read tags from a file on disk.
     pub fn read(path: &Path) -> Result<TrackFile, TagIoError> {
-        Ok(Self::read_with_props(path)?.file)
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || Ok(Self::read_with_props(path)?.file))
     }
 
     /// Read the tags, the technical properties **and** the tag blocks from one
@@ -1938,128 +2014,132 @@ impl TagEngine {
     /// thousands of files by the number of questions asked of it.
     /// [`read`](Self::read) is this keeping only the first.
     pub fn read_with_props(path: &Path) -> Result<TrackRead, TagIoError> {
-        let mut tagged_file = probe_file(path)?;
-        // The container the file actually parsed as — which after #204 is not
-        // always what a sniff of its first bytes says. Passed down so the
-        // concrete reads look at the same file the values came from.
-        let container = tagged_file.file_type();
-        let format = AudioFormat::from_lofty(container)?;
-        let properties = tagged_file.properties();
-        let props = AudioProps {
-            duration_secs: properties.duration().as_secs(),
-            bitrate_kbps: properties.audio_bitrate(),
-            sample_rate_hz: properties.sample_rate(),
-            channels: properties.channels(),
-        };
-
-        // Honor the user's read priority (#84) when the file carries more than
-        // one tag block: pick the first prioritized block that is present, then
-        // fall back to lofty's primary/first tag. Resolve to a `TagType` while
-        // the lock is held, then re-fetch the borrow so no guard outlives it.
-        let present: Vec<TagType> = tagged_file.tags().iter().map(|t| t.tag_type()).collect();
-        // An APE tag's pictures never reach the generic tag, so a file with one
-        // is asked again, concretely (#608). Only those files pay for it.
-        let has_cover = tagged_file
-            .tags()
-            .iter()
-            .any(|tag| !tag.pictures().is_empty())
-            || (present.contains(&TagType::Ape)
-                && read_ape_pictures(path, container).is_ok_and(|pictures| !pictures.is_empty()));
-        let priority_type = READ_PRIORITY
-            .read()
-            .ok()
-            .and_then(|order| choose_priority_type(&present, &order));
-
-        // The block is taken out of the file rather than borrowed from it: the
-        // custom fields are read off its *concrete* form, and for ID3v2 and MP4
-        // that conversion recovers them from the parse already done — but it
-        // consumes the tag to do it (#201). The choice itself is unchanged: the
-        // prioritized block, else the primary one, else the first present.
-        let primary = tagged_file.primary_tag_type();
-        let first_choice = priority_type
-            .or_else(|| present.contains(&primary).then_some(primary))
-            .or_else(|| present.first().copied());
-        // A block that holds no field at all is not where the values are while
-        // another block holds some (#615): an ID3v2 tag made only to carry a
-        // picture hid the ID3v1 tag beside it, and the next write, keeping the
-        // two in step, rewrote ID3v1 with the nothing it had read. So the others
-        // are tried in turn, and the first one that names the track is read
-        // instead — see [`names_the_track`] for why a field alone is not enough.
-        let candidates: Vec<TagType> = first_choice
-            .into_iter()
-            .chain(present.iter().copied().filter(|t| Some(*t) != first_choice))
-            .collect();
-        let mut chosen = first_choice;
-
-        let mut tags = TagMap::new();
-        for candidate in candidates {
-            let Some(tag) = tagged_file.remove(candidate) else {
-                continue;
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let mut tagged_file = probe_file(path)?;
+            // The container the file actually parsed as — which after #204 is not
+            // always what a sniff of its first bytes says. Passed down so the
+            // concrete reads look at the same file the values came from.
+            let container = tagged_file.file_type();
+            let format = AudioFormat::from_lofty(container)?;
+            let properties = tagged_file.properties();
+            let props = AudioProps {
+                duration_secs: properties.duration().as_secs(),
+                bitrate_kbps: properties.audio_bitrate(),
+                sample_rate_hz: properties.sample_rate(),
+                channels: properties.channels(),
             };
-            let tag_type = tag.tag_type();
-            let comment = owned_comment(&tag);
-            for item in tag.items() {
-                // What made the file is not what the file is about (#197).
-                if is_provenance_key(item.key()) {
+
+            // Honor the user's read priority (#84) when the file carries more than
+            // one tag block: pick the first prioritized block that is present, then
+            // fall back to lofty's primary/first tag. Resolve to a `TagType` while
+            // the lock is held, then re-fetch the borrow so no guard outlives it.
+            let present: Vec<TagType> = tagged_file.tags().iter().map(|t| t.tag_type()).collect();
+            // An APE tag's pictures never reach the generic tag, so a file with one
+            // is asked again, concretely (#608). Only those files pay for it.
+            let has_cover = tagged_file
+                .tags()
+                .iter()
+                .any(|tag| !tag.pictures().is_empty())
+                || (present.contains(&TagType::Ape)
+                    && read_ape_pictures(path, container)
+                        .is_ok_and(|pictures| !pictures.is_empty()));
+            let priority_type = READ_PRIORITY
+                .read()
+                .ok()
+                .and_then(|order| choose_priority_type(&present, &order));
+
+            // The block is taken out of the file rather than borrowed from it: the
+            // custom fields are read off its *concrete* form, and for ID3v2 and MP4
+            // that conversion recovers them from the parse already done — but it
+            // consumes the tag to do it (#201). The choice itself is unchanged: the
+            // prioritized block, else the primary one, else the first present.
+            let primary = tagged_file.primary_tag_type();
+            let first_choice = priority_type
+                .or_else(|| present.contains(&primary).then_some(primary))
+                .or_else(|| present.first().copied());
+            // A block that holds no field at all is not where the values are while
+            // another block holds some (#615): an ID3v2 tag made only to carry a
+            // picture hid the ID3v1 tag beside it, and the next write, keeping the
+            // two in step, rewrote ID3v1 with the nothing it had read. So the others
+            // are tried in turn, and the first one that names the track is read
+            // instead — see [`names_the_track`] for why a field alone is not enough.
+            let candidates: Vec<TagType> = first_choice
+                .into_iter()
+                .chain(present.iter().copied().filter(|t| Some(*t) != first_choice))
+                .collect();
+            let mut chosen = first_choice;
+
+            let mut tags = TagMap::new();
+            for candidate in candidates {
+                let Some(tag) = tagged_file.remove(candidate) else {
                     continue;
-                }
-                if is_unowned_comment(item, comment) {
-                    continue;
-                }
-                // Text items (most fields), plus the release URL — its value is a
-                // URL *locator*, not text. Only the one URL frame the model owns
-                // (WOAF / AudioFileUrl) is read; other URL frames are left alone
-                // so they survive as non-model frames instead of becoming text.
-                let value = match item.value() {
-                    ItemValue::Text(text) => Some(text.clone()),
-                    ItemValue::Locator(url) if matches!(item.key(), ItemKey::AudioFileUrl) => {
-                        Some(url.clone())
-                    }
-                    _ => None,
                 };
-                if let Some(value) = value {
-                    let field = item_key_to_tag_field(item.key(), tag_type);
-                    insert_read_value(&mut tags, field, false, unpadded(tag_type, value));
+                let tag_type = tag.tag_type();
+                let comment = owned_comment(&tag);
+                for item in tag.items() {
+                    // What made the file is not what the file is about (#197).
+                    if is_provenance_key(item.key()) {
+                        continue;
+                    }
+                    if is_unowned_comment(item, comment) {
+                        continue;
+                    }
+                    // Text items (most fields), plus the release URL — its value is a
+                    // URL *locator*, not text. Only the one URL frame the model owns
+                    // (WOAF / AudioFileUrl) is read; other URL frames are left alone
+                    // so they survive as non-model frames instead of becoming text.
+                    let value = match item.value() {
+                        ItemValue::Text(text) => Some(text.clone()),
+                        ItemValue::Locator(url) if matches!(item.key(), ItemKey::AudioFileUrl) => {
+                            Some(url.clone())
+                        }
+                        _ => None,
+                    };
+                    if let Some(value) = value {
+                        let field = item_key_to_tag_field(item.key(), tag_type);
+                        insert_read_value(&mut tags, field, false, unpadded(tag_type, value));
+                    }
                 }
-            }
-            insert_concrete_items(path, container, tag, &mut tags)?;
-            if tag_type == TagType::Id3v2 && !tags.contains_key(&TagField::Year) {
-                if let Some(year) = lost_v23_year(path, container) {
-                    tags.insert(TagField::Year, year);
+                insert_concrete_items(path, container, tag, &mut tags)?;
+                if tag_type == TagType::Id3v2 && !tags.contains_key(&TagField::Year) {
+                    if let Some(year) = lost_v23_year(path, container) {
+                        tags.insert(TagField::Year, year);
+                    }
                 }
-            }
-            if Some(candidate) == first_choice {
-                if !tags.is_empty() {
+                if Some(candidate) == first_choice {
+                    if !tags.is_empty() {
+                        break;
+                    }
+                } else if names_the_track(&tags) {
+                    chosen = Some(candidate);
                     break;
+                } else {
+                    tags.clear();
                 }
-            } else if names_the_track(&tags) {
-                chosen = Some(candidate);
-                break;
-            } else {
-                tags.clear();
             }
-        }
 
-        // Which blocks the file carries, in the order it carries them, with the
-        // one being read marked (#47).
-        let blocks = present
-            .iter()
-            .filter_map(|tag_type| {
-                let kind = TagBlockKind::from_tag_type(*tag_type)?;
-                let read_from = chosen == Some(*tag_type);
-                Some(TagBlock { kind, read_from })
+            // Which blocks the file carries, in the order it carries them, with the
+            // one being read marked (#47).
+            let blocks = present
+                .iter()
+                .filter_map(|tag_type| {
+                    let kind = TagBlockKind::from_tag_type(*tag_type)?;
+                    let read_from = chosen == Some(*tag_type);
+                    Some(TagBlock { kind, read_from })
+                })
+                .collect();
+
+            Ok(TrackRead {
+                file: TrackFile {
+                    path: path.to_path_buf(),
+                    format,
+                    tags,
+                },
+                props,
+                blocks,
+                has_cover,
             })
-            .collect();
-
-        Ok(TrackRead {
-            file: TrackFile {
-                path: path.to_path_buf(),
-                format,
-                tags,
-            },
-            props,
-            blocks,
-            has_cover,
         })
     }
 
@@ -2079,48 +2159,57 @@ impl TagEngine {
     /// Only [`plan::Executor`](crate::plan::Executor) is allowed to call this —
     /// see the crate-level invariant.
     pub fn write(file: &TrackFile) -> Result<(), TagIoError> {
-        ensure_audio_after_tags(&file.path)?;
-        ensure_no_misread_id3v1(&file.path)?;
-        // Guard the year before touching the file. It is written as a timestamp
-        // (ID3v2.4 TDRC / Vorbis DATE / MP4 ©day) whose year MUST be exactly 4
-        // digits; lofty accepts a shorter one like "222" on write but then
-        // rejects it on the next READ — poisoning the file so it can no longer
-        // be listed or edited. Reject it here, leaving the file untouched, so no
-        // plan source (edits, transforms, import) can ever corrupt a file.
-        if let Some(year) = file.tags.get(&TagField::Year) {
-            if !is_writable_year(year) {
-                return Err(TagIoError::Malformed(format!(
-                    "invalid year {year:?}: a year must be 4 digits (e.g. 1996)"
-                )));
-            }
-        }
-        // The rating the same way (#654): the backend drops a rating it cannot
-        // parse instead of reporting it, so a `5` typed into the field deleted
-        // the file's rating.
-        let tag_type = file.format.primary_tag_type();
-        for (field, value) in &file.tags {
-            if item_key_for(field, tag_type) == Some(ItemKey::Popularimeter)
-                && !is_writable_rating(value)
-            {
-                return Err(TagIoError::Malformed(format!(
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(&file.path, || {
+            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
+            ogg_safe_write(&file.path, || {
+                ensure_audio_after_tags(&file.path)?;
+                ensure_no_misread_id3v1(&file.path)?;
+                // Guard the year before touching the file. It is written as a timestamp
+                // (ID3v2.4 TDRC / Vorbis DATE / MP4 ©day) whose year MUST be exactly 4
+                // digits; lofty accepts a shorter one like "222" on write but then
+                // rejects it on the next READ — poisoning the file so it can no longer
+                // be listed or edited. Reject it here, leaving the file untouched, so no
+                // plan source (edits, transforms, import) can ever corrupt a file.
+                if let Some(year) = file.tags.get(&TagField::Year) {
+                    if !is_writable_year(year) {
+                        return Err(TagIoError::Malformed(format!(
+                            "invalid year {year:?}: a year must be 4 digits (e.g. 1996)"
+                        )));
+                    }
+                }
+                // The rating the same way (#654): the backend drops a rating it cannot
+                // parse instead of reporting it, so a `5` typed into the field deleted
+                // the file's rating.
+                let tag_type = file.format.primary_tag_type();
+                for (field, value) in &file.tags {
+                    if item_key_for(field, tag_type) == Some(ItemKey::Popularimeter)
+                        && !is_writable_rating(value)
+                    {
+                        return Err(TagIoError::Malformed(format!(
                     "invalid rating {value:?}: a rating is written as email|stars|plays, with 1 to 5 stars (e.g. rater@example.com|4|0)"
                 )));
-            }
-        }
-        drop_id3v2_extended_header(&file.path)?;
-        if file.format.uses_id3v2() {
-            write_id3v2(&file.path, file.format.to_lofty(), &file.tags)
-        } else {
-            write_generic(file)
-        }
+                    }
+                }
+                drop_id3v2_extended_header(&file.path)?;
+                if file.format.uses_id3v2() {
+                    write_id3v2(&file.path, file.format.to_lofty(), &file.tags)
+                } else {
+                    write_generic(file)
+                }
+            })
+        })
     }
 
     /// Read the track's playback duration from its audio properties. Returns
     /// `Duration::ZERO` when the backend can't determine it. Used by the preview
     /// player for the seek bar / total time.
     pub fn read_duration(path: &Path) -> Result<std::time::Duration, TagIoError> {
-        let tagged = probe_file(path)?;
-        Ok(tagged.properties().duration())
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let tagged = probe_file(path)?;
+            Ok(tagged.properties().duration())
+        })
     }
 
     /// Read the technical audio properties from one probe (#40): duration and
@@ -2129,13 +2218,16 @@ impl TagEngine {
     /// placeholders (#147). One probe, so a mask asking for several of them
     /// costs no more than asking for one.
     pub fn read_audio_props(path: &Path) -> Result<AudioProps, TagIoError> {
-        let tagged = probe_file(path)?;
-        let props = tagged.properties();
-        Ok(AudioProps {
-            duration_secs: props.duration().as_secs(),
-            bitrate_kbps: props.audio_bitrate(),
-            sample_rate_hz: props.sample_rate(),
-            channels: props.channels(),
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let tagged = probe_file(path)?;
+            let props = tagged.properties();
+            Ok(AudioProps {
+                duration_secs: props.duration().as_secs(),
+                bitrate_kbps: props.audio_bitrate(),
+                sample_rate_hz: props.sample_rate(),
+                channels: props.channels(),
+            })
         })
     }
 
@@ -2147,11 +2239,14 @@ impl TagEngine {
     /// it is actionable — a file in front of you, a conversion about to run —
     /// never per row of a library.
     pub fn id3v2_revision(path: &Path) -> Result<Option<Id3v2Revision>, TagIoError> {
-        let Some(container) = container_of(path)? else {
-            return Ok(None);
-        };
-        Ok(read_id3v2(path, container, custom_item_options())?
-            .map(|tag| Id3v2Revision::from_lofty(tag.original_version())))
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let Some(container) = container_of(path)? else {
+                return Ok(None);
+            };
+            Ok(read_id3v2(path, container, custom_item_options())?
+                .map(|tag| Id3v2Revision::from_lofty(tag.original_version())))
+        })
     }
 
     /// The file's ID3v2 block as bytes, so undo can put it back frame for
@@ -2169,16 +2264,19 @@ impl TagEngine {
     /// artwork-heavy selection pay for its covers twice — once here and once
     /// there. [`restore_id3v2_bytes`](Self::restore_id3v2_bytes) puts them back.
     pub fn dump_id3v2(path: &Path) -> Result<Option<Vec<u8>>, TagIoError> {
-        let Some(container) = container_of(path)? else {
-            return Ok(None);
-        };
-        let Some(mut tag) = read_id3v2(path, container, custom_item_options())? else {
-            return Ok(None);
-        };
-        tag.retain(|frame| !matches!(frame, Frame::Picture(_)));
-        let mut bytes = Vec::new();
-        tag.dump_to(&mut bytes, write_options())?;
-        Ok(Some(bytes))
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let Some(container) = container_of(path)? else {
+                return Ok(None);
+            };
+            let Some(mut tag) = read_id3v2(path, container, custom_item_options())? else {
+                return Ok(None);
+            };
+            tag.retain(|frame| !matches!(frame, Frame::Picture(_)));
+            let mut bytes = Vec::new();
+            tag.dump_to(&mut bytes, write_options())?;
+            Ok(Some(bytes))
+        })
     }
 
     /// Put back a block [`dump_id3v2`](Self::dump_id3v2) took, with `covers` as
@@ -2198,37 +2296,43 @@ impl TagEngine {
         covers: &[CoverArt],
         revision: Option<Id3v2Revision>,
     ) -> Result<(), TagIoError> {
-        ensure_audio_after_tags(path)?;
-        ensure_no_misread_id3v1(path)?;
-        drop_id3v2_extended_header(path)?;
-        // A block journaled before #648 can still carry its extended header.
-        let mut synthetic = without_id3v2_extended_header(bytes).unwrap_or_else(|| bytes.to_vec());
-        let mut silence = vec![0xFF, 0xFB, 0x90, 0x00];
-        silence.resize(SILENT_MPEG_FRAME_LEN, 0);
-        for _ in 0..SILENT_MPEG_FRAMES {
-            synthetic.extend_from_slice(&silence);
-        }
-        let mut tag = MpegFile::read_from(&mut Cursor::new(synthetic), custom_item_options())?
-            .id3v2()
-            .cloned()
-            .ok_or_else(|| {
-                TagIoError::UnsupportedFormat("the journaled ID3v2 block did not parse".to_string())
-            })?;
-        // The parse just now trims a timestamp the same way a file read does;
-        // the bytes still hold its text (#504).
-        keep_timestamp_text(&mut tag, bytes);
-        for cover in covers {
-            tag.insert_picture(picture_from_cover(cover));
-        }
-        let options = match revision {
-            Some(revision) => write_options().use_id3v23(revision == Id3v2Revision::V3),
-            None => id3_write_options(),
-        };
-        match container_of(path)? {
-            Some(container) => save_id3v2_tag_with(path, container, &tag, options)?,
-            None => tag.save_to_path(path, options)?,
-        }
-        Ok(())
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            ensure_audio_after_tags(path)?;
+            ensure_no_misread_id3v1(path)?;
+            drop_id3v2_extended_header(path)?;
+            // A block journaled before #648 can still carry its extended header.
+            let mut synthetic =
+                without_id3v2_extended_header(bytes).unwrap_or_else(|| bytes.to_vec());
+            let mut silence = vec![0xFF, 0xFB, 0x90, 0x00];
+            silence.resize(SILENT_MPEG_FRAME_LEN, 0);
+            for _ in 0..SILENT_MPEG_FRAMES {
+                synthetic.extend_from_slice(&silence);
+            }
+            let mut tag = MpegFile::read_from(&mut Cursor::new(synthetic), custom_item_options())?
+                .id3v2()
+                .cloned()
+                .ok_or_else(|| {
+                    TagIoError::UnsupportedFormat(
+                        "the journaled ID3v2 block did not parse".to_string(),
+                    )
+                })?;
+            // The parse just now trims a timestamp the same way a file read does;
+            // the bytes still hold its text (#504).
+            keep_timestamp_text(&mut tag, bytes);
+            for cover in covers {
+                tag.insert_picture(picture_from_cover(cover));
+            }
+            let options = match revision {
+                Some(revision) => write_options().use_id3v23(revision == Id3v2Revision::V3),
+                None => id3_write_options(),
+            };
+            match container_of(path)? {
+                Some(container) => save_id3v2_tag_with(path, container, &tag, options)?,
+                None => tag.save_to_path(path, options)?,
+            }
+            Ok(())
+        })
     }
 
     /// The file's Vorbis comment block as bytes, so undo can put it back
@@ -2239,12 +2343,15 @@ impl TagEngine {
     /// Pictures are left out, as in [`dump_id3v2`](Self::dump_id3v2): they
     /// travel beside this as [`TagBlockContent::covers`].
     pub fn dump_vorbis(path: &Path) -> Result<Option<Vec<u8>>, TagIoError> {
-        let Some(container) = container_of(path)? else {
-            return Ok(None);
-        };
-        // As the file spells them: no number parsed, no name folded.
-        let options = custom_item_options().implicit_conversions(false);
-        Ok(read_vorbis(path, container, options)?.map(|tag| vorbis_comment_packet(&tag)))
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let Some(container) = container_of(path)? else {
+                return Ok(None);
+            };
+            // As the file spells them: no number parsed, no name folded.
+            let options = custom_item_options().implicit_conversions(false);
+            Ok(read_vorbis(path, container, options)?.map(|tag| vorbis_comment_packet(&tag)))
+        })
     }
 
     /// Put back a block [`dump_vorbis`](Self::dump_vorbis) took, with `covers`
@@ -2256,20 +2363,27 @@ impl TagEngine {
         bytes: &[u8],
         covers: &[CoverArt],
     ) -> Result<(), TagIoError> {
-        ensure_audio_after_tags(path)?;
-        ensure_no_misread_id3v1(path)?;
-        let mut tag = vorbis_comments_from_packet(bytes).ok_or_else(|| {
-            TagIoError::UnsupportedFormat(
-                "the journaled Vorbis comment block did not parse".to_string(),
-            )
-        })?;
-        for cover in covers {
-            let picture = picture_from_cover(cover);
-            let information = PictureInformation::from_picture(&picture).unwrap_or_default();
-            tag.insert_picture(picture, Some(information)).ok();
-        }
-        tag.save_to_path(path, write_options())?;
-        Ok(())
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
+            ogg_safe_write(path, || {
+                ensure_audio_after_tags(path)?;
+                ensure_no_misread_id3v1(path)?;
+                let mut tag = vorbis_comments_from_packet(bytes).ok_or_else(|| {
+                    TagIoError::UnsupportedFormat(
+                        "the journaled Vorbis comment block did not parse".to_string(),
+                    )
+                })?;
+                for cover in covers {
+                    let picture = picture_from_cover(cover);
+                    let information =
+                        PictureInformation::from_picture(&picture).unwrap_or_default();
+                    tag.insert_picture(picture, Some(information)).ok();
+                }
+                tag.save_to_path(path, write_options())?;
+                Ok(())
+            })
+        })
     }
 
     /// Rewrite the file's ID3v2 block at `revision`, keeping every frame it
@@ -2284,24 +2398,27 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn set_id3v2_revision(path: &Path, revision: Id3v2Revision) -> Result<bool, TagIoError> {
-        ensure_audio_after_tags(path)?;
-        ensure_no_misread_id3v1(path)?;
-        drop_id3v2_extended_header(path)?;
-        let Some(container) = container_of(path)? else {
-            return Ok(false);
-        };
-        // With the pictures: what is read here is what gets written back, and a
-        // read without them saved a tag without them (#607).
-        let Some(tag) = read_id3v2(path, container, tag_only_options())? else {
-            return Ok(false);
-        };
-        save_id3v2_tag_with(
-            path,
-            container,
-            &tag,
-            write_options().use_id3v23(revision == Id3v2Revision::V3),
-        )?;
-        Ok(true)
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            ensure_audio_after_tags(path)?;
+            ensure_no_misread_id3v1(path)?;
+            drop_id3v2_extended_header(path)?;
+            let Some(container) = container_of(path)? else {
+                return Ok(false);
+            };
+            // With the pictures: what is read here is what gets written back, and a
+            // read without them saved a tag without them (#607).
+            let Some(tag) = read_id3v2(path, container, tag_only_options())? else {
+                return Ok(false);
+            };
+            save_id3v2_tag_with(
+                path,
+                container,
+                &tag,
+                write_options().use_id3v23(revision == Id3v2Revision::V3),
+            )?;
+            Ok(true)
+        })
     }
 
     /// What one of the file's tag blocks holds, as a snapshot undo can rebuild
@@ -2315,25 +2432,28 @@ impl TagEngine {
         path: &Path,
         kind: TagBlockKind,
     ) -> Result<Option<TagBlockContent>, TagIoError> {
-        let tagged = probe_file(path)?;
-        let tag_type = kind.to_tag_type();
-        let Some(tag) = tagged.tag(tag_type) else {
-            return Ok(None);
-        };
-        // An APE tag's pictures never reach the generic tag (#608).
-        let covers = if tag_type == TagType::Ape {
-            read_ape_pictures(path, tagged.file_type())?
-                .iter()
-                .map(cover_from_picture)
-                .collect()
-        } else {
-            tag.pictures().iter().map(cover_from_picture).collect()
-        };
-        // The custom fields too (#616): without them a conversion wrote a
-        // block without them and removed the one that had them.
-        let mut tags = tag_to_map(tag);
-        insert_concrete_items(path, tagged.file_type(), tag.clone(), &mut tags)?;
-        Ok(Some(TagBlockContent { tags, covers }))
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let tagged = probe_file(path)?;
+            let tag_type = kind.to_tag_type();
+            let Some(tag) = tagged.tag(tag_type) else {
+                return Ok(None);
+            };
+            // An APE tag's pictures never reach the generic tag (#608).
+            let covers = if tag_type == TagType::Ape {
+                read_ape_pictures(path, tagged.file_type())?
+                    .iter()
+                    .map(cover_from_picture)
+                    .collect()
+            } else {
+                tag.pictures().iter().map(cover_from_picture).collect()
+            };
+            // The custom fields too (#616): without them a conversion wrote a
+            // block without them and removed the one that had them.
+            let mut tags = tag_to_map(tag);
+            insert_concrete_items(path, tagged.file_type(), tag.clone(), &mut tags)?;
+            Ok(Some(TagBlockContent { tags, covers }))
+        })
     }
 
     /// Remove one tag block, leaving every other block in the file alone (#47).
@@ -2345,24 +2465,30 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn remove_block(path: &Path, kind: TagBlockKind) -> Result<(), TagIoError> {
-        ensure_audio_after_tags(path)?;
-        ensure_no_misread_id3v1(path)?;
-        drop_id3v2_extended_header(path)?;
-        // An AIFF's or a WAV's ID3v2 is a chunk this module writes itself
-        // (#358, #505); taking it out goes the same way.
-        if kind == TagBlockKind::Id3v2
-            && matches!(container_of(path)?, Some(FileType::Aiff | FileType::Wav))
-            && write_iff_id3(path, None)?
-        {
-            return Ok(());
-        }
-        let mut handle = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)?;
-        kind.to_tag_type()
-            .remove_from(&mut handle, write_options())?;
-        Ok(())
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
+            ogg_safe_write(path, || {
+                ensure_audio_after_tags(path)?;
+                ensure_no_misread_id3v1(path)?;
+                drop_id3v2_extended_header(path)?;
+                // An AIFF's or a WAV's ID3v2 is a chunk this module writes itself
+                // (#358, #505); taking it out goes the same way.
+                if kind == TagBlockKind::Id3v2
+                    && matches!(container_of(path)?, Some(FileType::Aiff | FileType::Wav))
+                    && write_iff_id3(path, None)?
+                {
+                    return Ok(());
+                }
+                let mut handle = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(path)?;
+                kind.to_tag_type()
+                    .remove_from(&mut handle, write_options())?;
+                Ok(())
+            })
+        })
     }
 
     /// Put a removed tag block back from its snapshot (#47) — the undo of
@@ -2374,7 +2500,8 @@ impl TagEngine {
         kind: TagBlockKind,
         content: &TagBlockContent,
     ) -> Result<(), TagIoError> {
-        Self::write_block(path, kind, None, content)
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || Self::write_block(path, kind, None, content))
     }
 
     /// Write one tag block of `kind`, replacing whatever block of that kind the
@@ -2394,121 +2521,134 @@ impl TagEngine {
         revision: Option<Id3v2Revision>,
         content: &TagBlockContent,
     ) -> Result<(), TagIoError> {
-        ensure_audio_after_tags(path)?;
-        ensure_no_misread_id3v1(path)?;
-        drop_id3v2_extended_header(path)?;
-        let options = match (kind, revision) {
-            (TagBlockKind::Id3v2, Some(revision)) => {
-                write_options().use_id3v23(revision == Id3v2Revision::V3)
-            }
-            (TagBlockKind::Id3v2, None) => id3_write_options(),
-            _ => write_options(),
-        };
-        let mut tag = tag_for_block(kind, content);
-        // The fields the generic tag cannot carry go onto the concrete one by
-        // name (#616), the way an ordinary write puts them there.
-        let named: Vec<(String, String)> = raw_custom_fields(&content.tags, kind.to_tag_type())
-            .map(|(name, value)| (name.to_string(), value.to_string()))
-            .collect();
-        match kind {
-            TagBlockKind::Id3v2 => {
-                let mut id3 = Id3v2Tag::from(tag);
-                spell_id3v2_number_pairs(&mut id3, &content.tags);
-                for (name, value) in named {
-                    id3.insert(Frame::UserText(ExtendedTextFrame::new(
-                        TextEncoding::UTF8,
-                        name,
-                        value,
-                    )));
-                }
-                order_frames(&mut id3, None);
-                match container_of(path)? {
-                    Some(container) => save_id3v2_tag_with(path, container, &id3, options)?,
-                    None => id3.save_to_path(path, options)?,
-                }
-            }
-            TagBlockKind::VorbisComments => {
-                // Carried by hand, as in [`save_with_custom_items`]: the
-                // conversion drops an image it cannot measure.
-                let pictures: Vec<Picture> = tag.pictures().to_vec();
-                while !tag.pictures().is_empty() {
-                    tag.remove_picture(0);
-                }
-                let mut vorbis = vorbis_comments_from(tag);
-                for picture in pictures {
-                    let information =
-                        PictureInformation::from_picture(&picture).unwrap_or_default();
-                    vorbis.insert_picture(picture, Some(information)).ok();
-                }
-                for (name, value) in named {
-                    vorbis.push(name, value);
-                }
-                vorbis.save_to_path(path, options)?;
-            }
-            TagBlockKind::Ape => {
-                let mut ape = ApeTag::from(tag);
-                spell_ape_number_pairs(&mut ape, &content.tags);
-                for (name, value) in named {
-                    if let Ok(item) = ApeItem::new(name, ItemValue::Text(value)) {
-                        ape.insert(item);
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
+            ogg_safe_write(path, || {
+                ensure_audio_after_tags(path)?;
+                ensure_no_misread_id3v1(path)?;
+                drop_id3v2_extended_header(path)?;
+                let options = match (kind, revision) {
+                    (TagBlockKind::Id3v2, Some(revision)) => {
+                        write_options().use_id3v23(revision == Id3v2Revision::V3)
                     }
+                    (TagBlockKind::Id3v2, None) => id3_write_options(),
+                    _ => write_options(),
+                };
+                let mut tag = tag_for_block(kind, content);
+                // The fields the generic tag cannot carry go onto the concrete one by
+                // name (#616), the way an ordinary write puts them there.
+                let named: Vec<(String, String)> =
+                    raw_custom_fields(&content.tags, kind.to_tag_type())
+                        .map(|(name, value)| (name.to_string(), value.to_string()))
+                        .collect();
+                match kind {
+                    TagBlockKind::Id3v2 => {
+                        let mut id3 = Id3v2Tag::from(tag);
+                        spell_id3v2_number_pairs(&mut id3, &content.tags);
+                        for (name, value) in named {
+                            id3.insert(Frame::UserText(ExtendedTextFrame::new(
+                                TextEncoding::UTF8,
+                                name,
+                                value,
+                            )));
+                        }
+                        order_frames(&mut id3, None);
+                        match container_of(path)? {
+                            Some(container) => save_id3v2_tag_with(path, container, &id3, options)?,
+                            None => id3.save_to_path(path, options)?,
+                        }
+                    }
+                    TagBlockKind::VorbisComments => {
+                        // Carried by hand, as in [`save_with_custom_items`]: the
+                        // conversion drops an image it cannot measure.
+                        let pictures: Vec<Picture> = tag.pictures().to_vec();
+                        while !tag.pictures().is_empty() {
+                            tag.remove_picture(0);
+                        }
+                        let mut vorbis = vorbis_comments_from(tag);
+                        for picture in pictures {
+                            let information =
+                                PictureInformation::from_picture(&picture).unwrap_or_default();
+                            vorbis.insert_picture(picture, Some(information)).ok();
+                        }
+                        for (name, value) in named {
+                            vorbis.push(name, value);
+                        }
+                        vorbis.save_to_path(path, options)?;
+                    }
+                    TagBlockKind::Ape => {
+                        let mut ape = ApeTag::from(tag);
+                        spell_ape_number_pairs(&mut ape, &content.tags);
+                        for (name, value) in named {
+                            if let Ok(item) = ApeItem::new(name, ItemValue::Text(value)) {
+                                ape.insert(item);
+                            }
+                        }
+                        ape.save_to_path(path, options)?;
+                        // The APE tag carries its pictures as items of its own (#608).
+                        if let Some(container) = container_of(path)? {
+                            write_ape_pictures(path, container, &content.covers)?;
+                        }
+                    }
+                    TagBlockKind::Mp4Ilst => {
+                        let mut ilst = Ilst::from(tag);
+                        for (name, value) in named {
+                            ilst.insert(Atom::new(
+                                AtomIdent::Freeform {
+                                    mean: FREEFORM_MEAN.into(),
+                                    name: name.into(),
+                                },
+                                AtomData::UTF8(value),
+                            ));
+                        }
+                        // One integer tempo, as an ordinary write leaves it (#610),
+                        // taken out in order (#618).
+                        ilst.retain(|atom| atom.ident() != &MP4_TEMPO);
+                        if let Some(bpm) = content.tags.get(&TagField::Bpm) {
+                            ilst.insert(mp4_tempo_atom(bpm));
+                        }
+                        ilst.save_to_path(path, options)?;
+                    }
+                    _ => tag.save_to_path(path, options)?,
                 }
-                ape.save_to_path(path, options)?;
-                // The APE tag carries its pictures as items of its own (#608).
-                if let Some(container) = container_of(path)? {
-                    write_ape_pictures(path, container, &content.covers)?;
-                }
-            }
-            TagBlockKind::Mp4Ilst => {
-                let mut ilst = Ilst::from(tag);
-                for (name, value) in named {
-                    ilst.insert(Atom::new(
-                        AtomIdent::Freeform {
-                            mean: FREEFORM_MEAN.into(),
-                            name: name.into(),
-                        },
-                        AtomData::UTF8(value),
-                    ));
-                }
-                // One integer tempo, as an ordinary write leaves it (#610),
-                // taken out in order (#618).
-                ilst.retain(|atom| atom.ident() != &MP4_TEMPO);
-                if let Some(bpm) = content.tags.get(&TagField::Bpm) {
-                    ilst.insert(mp4_tempo_atom(bpm));
-                }
-                ilst.save_to_path(path, options)?;
-            }
-            _ => tag.save_to_path(path, options)?,
-        }
-        Ok(())
+                Ok(())
+            })
+        })
     }
 
     /// Every image the file carries (#56), in the order the tag holds them.
     pub fn read_covers(path: &Path) -> Result<Vec<CoverArt>, TagIoError> {
-        let tagged = probe_file(path)?;
-        let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
-            return Ok(Vec::new());
-        };
-        // An APE tag's pictures never reach the generic tag (#608).
-        if tag.tag_type() == TagType::Ape {
-            return Ok(read_ape_pictures(path, tagged.file_type())?
-                .iter()
-                .map(cover_from_picture)
-                .collect());
-        }
-        Ok(tag.pictures().iter().map(cover_from_picture).collect())
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let tagged = probe_file(path)?;
+            let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
+                return Ok(Vec::new());
+            };
+            // An APE tag's pictures never reach the generic tag (#608).
+            if tag.tag_type() == TagType::Ape {
+                return Ok(read_ape_pictures(path, tagged.file_type())?
+                    .iter()
+                    .map(cover_from_picture)
+                    .collect());
+            }
+            Ok(tag.pictures().iter().map(cover_from_picture).collect())
+        })
     }
 
     /// The file's front cover (or the first embedded image if there's no
     /// explicit front cover), if any — "the cover" as the rest of the app means
     /// it, over the set [`read_covers`](Self::read_covers) returns.
     pub fn read_cover(path: &Path) -> Result<Option<CoverArt>, TagIoError> {
-        let covers = Self::read_covers(path)?;
-        Ok(covers
-            .iter()
-            .find(|cover| cover.kind == CoverKind::Front)
-            .or_else(|| covers.first())
-            .cloned())
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            let covers = Self::read_covers(path)?;
+            Ok(covers
+                .iter()
+                .find(|cover| cover.kind == CoverKind::Front)
+                .or_else(|| covers.first())
+                .cloned())
+        })
     }
 
     /// Replace the file's images with `covers`, preserving all text tags (#56).
@@ -2520,54 +2660,61 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn write_covers(path: &Path, covers: &[CoverArt]) -> Result<(), TagIoError> {
-        ensure_audio_after_tags(path)?;
-        ensure_no_misread_id3v1(path)?;
-        drop_id3v2_extended_header(path)?;
-        // Same reason as `write`: going through the generic tag would drop an
-        // MP3's non-representable frames, so edit the concrete tag instead.
-        if is_id3v2_container(path) {
-            let container = container_of(path)?.ok_or(TagIoError::UnsupportedFormat(
-                path.to_string_lossy().into_owned(),
-            ))?;
-            let mut tag = read_id3v2(path, container, tag_only_options())?.unwrap_or_default();
-            // `remove_picture_type` takes one type at a time and the file may
-            // hold types the model maps onto one of ours, so clear by rebuilding
-            // from the frames that are not pictures at all.
-            tag.retain(|frame| !matches!(frame, Frame::Picture(_)));
-            for cover in covers {
-                tag.insert_picture(picture_from_cover(cover));
-            }
-            // AIFF and WAV get the hand-written `ID3 ` chunk (#358, #505), same
-            // as the text write, so lofty's IFF writers can't drop the cover or
-            // break the container on a later edit.
-            save_id3v2_tag(path, container, &tag)?;
-            return Ok(());
-        }
-        let mut tag = load_or_new_tag(path)?;
-        // An APE tag's pictures are items of the concrete tag, which is edited
-        // in place: nothing else in it is touched (#608).
-        if tag.tag_type() == TagType::Ape {
-            if let Some(container) = container_of(path)? {
-                return write_ape_pictures(path, container, covers);
-            }
-        }
-        while !tag.pictures().is_empty() {
-            tag.remove_picture(0);
-        }
-        for cover in covers {
-            tag.push_picture(picture_from_cover(cover));
-        }
-        // A plain save of the generic tag drops every custom field a Vorbis
-        // Comments or APE tag holds (#201), so those go out the way a text write
-        // does, with the file's own fields (#606).
-        match tag.tag_type() {
-            TagType::VorbisComments | TagType::Ape => {
-                let file = Self::read(path)?;
-                save_with_custom_items(path, file.format.to_lofty(), tag, &file.tags)?;
-            }
-            _ => tag.save_to_path(path, write_options())?,
-        }
-        Ok(())
+        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
+        guarded(path, || {
+            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
+            ogg_safe_write(path, || {
+                ensure_audio_after_tags(path)?;
+                ensure_no_misread_id3v1(path)?;
+                drop_id3v2_extended_header(path)?;
+                // Same reason as `write`: going through the generic tag would drop an
+                // MP3's non-representable frames, so edit the concrete tag instead.
+                if is_id3v2_container(path) {
+                    let container = container_of(path)?.ok_or(TagIoError::UnsupportedFormat(
+                        path.to_string_lossy().into_owned(),
+                    ))?;
+                    let mut tag =
+                        read_id3v2(path, container, tag_only_options())?.unwrap_or_default();
+                    // `remove_picture_type` takes one type at a time and the file may
+                    // hold types the model maps onto one of ours, so clear by rebuilding
+                    // from the frames that are not pictures at all.
+                    tag.retain(|frame| !matches!(frame, Frame::Picture(_)));
+                    for cover in covers {
+                        tag.insert_picture(picture_from_cover(cover));
+                    }
+                    // AIFF and WAV get the hand-written `ID3 ` chunk (#358, #505), same
+                    // as the text write, so lofty's IFF writers can't drop the cover or
+                    // break the container on a later edit.
+                    save_id3v2_tag(path, container, &tag)?;
+                    return Ok(());
+                }
+                let mut tag = load_or_new_tag(path)?;
+                // An APE tag's pictures are items of the concrete tag, which is edited
+                // in place: nothing else in it is touched (#608).
+                if tag.tag_type() == TagType::Ape {
+                    if let Some(container) = container_of(path)? {
+                        return write_ape_pictures(path, container, covers);
+                    }
+                }
+                while !tag.pictures().is_empty() {
+                    tag.remove_picture(0);
+                }
+                for cover in covers {
+                    tag.push_picture(picture_from_cover(cover));
+                }
+                // A plain save of the generic tag drops every custom field a Vorbis
+                // Comments or APE tag holds (#201), so those go out the way a text write
+                // does, with the file's own fields (#606).
+                match tag.tag_type() {
+                    TagType::VorbisComments | TagType::Ape => {
+                        let file = Self::read(path)?;
+                        save_with_custom_items(path, file.format.to_lofty(), tag, &file.tags)?;
+                    }
+                    _ => tag.save_to_path(path, write_options())?,
+                }
+                Ok(())
+            })
+        })
     }
 }
 

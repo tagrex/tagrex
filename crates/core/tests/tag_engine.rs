@@ -5446,3 +5446,117 @@ fn an_mp3_with_undecodable_text_frames_opens_and_saves() {
         );
     }
 }
+
+// [2026-11-03 15:50] Added: one Ogg page, for the damaged-stream tests below (CRC left zero: not checked on read).
+fn ogg_page(header_type: u8, granule: i64, sequence: u32, packet: &[u8]) -> Vec<u8> {
+    let mut page = b"OggS".to_vec();
+    page.push(0);
+    page.push(header_type);
+    page.extend_from_slice(&granule.to_le_bytes());
+    page.extend_from_slice(&0x5EED_u32.to_le_bytes());
+    page.extend_from_slice(&sequence.to_le_bytes());
+    page.extend_from_slice(&0u32.to_le_bytes());
+    let mut lacing = Vec::new();
+    let mut left = packet.len();
+    loop {
+        let n = left.min(255);
+        lacing.push(n as u8);
+        left -= n;
+        if n < 255 {
+            break;
+        }
+    }
+    page.push(lacing.len() as u8);
+    page.extend_from_slice(&lacing);
+    page.extend_from_slice(packet);
+    page
+}
+
+// [2026-11-03 15:50] Added: regression test for tag-library panics on damaged Ogg files.
+/// The tag library panics on some damaged files instead of returning an error:
+/// an Opus header stating no channels fails an `expect`, a Speex stream whose
+/// length rounds to nothing divides by zero. Every read of a library listing
+/// runs under the app's one lock, so one such file poisoned it for every later
+/// command. Each is an ordinary error now, so the file lists as unreadable.
+#[test]
+fn a_damaged_ogg_file_is_an_error_not_a_panic() {
+    let tags = |vendor: &[u8], magic: &[u8]| {
+        let mut packet = magic.to_vec();
+        packet.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
+        packet.extend_from_slice(vendor);
+        packet.extend_from_slice(&0u32.to_le_bytes());
+        packet
+    };
+
+    let mut opus_head = b"OpusHead".to_vec();
+    opus_head.push(1); // version
+    opus_head.push(0); // channels: none
+    opus_head.extend_from_slice(&312u16.to_le_bytes());
+    opus_head.extend_from_slice(&48_000u32.to_le_bytes());
+    opus_head.extend_from_slice(&0i16.to_le_bytes());
+    opus_head.push(0); // mapping family
+    let opus = [
+        ogg_page(2, 0, 0, &opus_head),
+        ogg_page(0, 0, 1, &tags(b"x", b"OpusTags")),
+        ogg_page(4, 960, 2, &[0xFC, 0xFF, 0xFE]),
+    ]
+    .concat();
+
+    let mut speex_head = b"Speex   ".to_vec();
+    speex_head.extend_from_slice(&[b'1'; 20]); // version string
+    for value in [1u32, 80, 16_000, 1, 4, 1, 16_000, 320, 0, 0, 0, 0] {
+        // version id, header size, rate, mode, mode version, channels,
+        // bitrate (nonzero), frame size, vbr, frames per packet, extra, reserved
+        speex_head.extend_from_slice(&value.to_le_bytes());
+    }
+    let speex = [
+        ogg_page(2, 0, 0, &speex_head),
+        ogg_page(0, 0, 1, &tags(b"x", b"")),
+        // One sample: the length rounds to 0 ms, and the bitrate divides by it.
+        ogg_page(4, 1, 2, &[0u8; 10]),
+    ]
+    .concat();
+
+    for (name, bytes) in [("opus", opus), ("spx", speex)] {
+        let path = std::env::temp_dir().join(format!(
+            "tagrex-tag-engine-test-panic-{}.{name}",
+            std::process::id()
+        ));
+        std::fs::write(&path, &bytes).unwrap();
+        let result = std::panic::catch_unwind(|| TagEngine::read(&path).map(|_| ()));
+        std::fs::remove_file(&path).ok();
+        match result {
+            Err(_) => panic!("{name}: the panic escaped the tag engine"),
+            Ok(read) => assert!(
+                read.is_err(),
+                "{name}: fixture precondition, it must not read"
+            ),
+        }
+    }
+}
+
+// [2026-11-03 15:50] Added: regression test for an Ogg write that dropped pages.
+/// The tag library's Ogg writer drops pages when the stream holds bytes between
+/// two pages: this Speex file (from the fuzzer: junk after its comment page)
+/// reads and plays, and a write that reported success left it 7 KB shorter with
+/// its audio gone. The write is refused now and the file left as it was.
+#[test]
+fn an_ogg_write_that_would_cut_the_audio_is_refused() {
+    let fixture: &[u8] = include_bytes!("fixtures/damaged-page-gap.spx");
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-test-page-gap-{}.spx",
+        std::process::id()
+    ));
+    std::fs::write(&path, fixture).unwrap();
+
+    let mut file = TagEngine::read(&path).expect("fixture precondition: it reads");
+    file.tags.insert(TagField::Artist, "Edited".to_string());
+    let result = TagEngine::write(&file);
+    let after = std::fs::read(&path).unwrap();
+    let still_reads = TagEngine::read(&path).is_ok();
+    std::fs::remove_file(&path).ok();
+
+    assert!(result.is_err(), "the write must be refused: {result:?}");
+    assert_eq!(after, fixture, "the file must be left as it was");
+    assert!(still_reads);
+}

@@ -224,3 +224,35 @@ fn fuzz_all() {
     run("wav", "wav", AudioFormat::Wav, wav_bytes(), n);
     run("ogg", "ogg", AudioFormat::OggVorbis, ogg_like(), n);
 }
+
+// [2026-11-03 15:10] Added: the same fuzz seeded with real files of every format.
+/// Seeds from real files (made by an outside encoder), one run per file in
+/// `TAGREX_AUDIT_IN`; covers the containers the synthetic seeds above cannot
+/// build by hand (Ogg Vorbis, Opus, Speex, AIFF, WavPack, MP4).
+#[test]
+#[ignore = "audit harness: prints findings, run with --ignored --nocapture"]
+fn fuzz_real_files() {
+    let Ok(dir) = std::env::var("TAGREX_AUDIT_IN") else {
+        println!("TAGREX_AUDIT_IN not set");
+        return;
+    };
+    let mut files: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    files.sort();
+    for path in files {
+        let Ok(read) = TagEngine::read(&path) else {
+            continue;
+        };
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        let ext = name.rsplit('.').next().unwrap().to_string();
+        run(
+            &name,
+            &ext,
+            read.format,
+            std::fs::read(&path).unwrap(),
+            1500,
+        );
+    }
+}
