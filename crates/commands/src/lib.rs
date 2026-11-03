@@ -11747,4 +11747,72 @@ mod tests {
         );
         assert!(app.history().unwrap().is_empty());
     }
+
+    // [2026-11-03 18:10] Added: the portable names, applied to real files and undone.
+    /// The names a rename proposes for titles Windows and FAT refuse are the
+    /// names the files get on disk, exactly, and undo brings the old ones back.
+    /// Run in CI on Windows, this is NTFS accepting them as they are; there the
+    /// raw name is also shown to be refused, which is why they are rewritten.
+    #[test]
+    fn portable_rename_targets_are_the_names_the_files_get() {
+        let dir = TempDir::new("portable-apply");
+        let cases = [
+            ("one.flac", "CON", "What? Live: <1996>."),
+            ("two.flac", "AC|DC", "Back * In \"Black\""),
+            ("three.flac", "aux", "Trailing. . "),
+        ];
+        let originals: Vec<PathBuf> = cases
+            .iter()
+            .map(|(name, artist, title)| dir.tagged_flac(name, artist, title))
+            .collect();
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_rename("%artist% - %title%", &originals)
+            .unwrap();
+        let proposed: Vec<String> = plan
+            .changes
+            .iter()
+            .map(|change| change.rename_to.clone().unwrap())
+            .collect();
+        assert_eq!(proposed.len(), cases.len());
+        let batch = app.apply(&plan).unwrap();
+
+        let on_disk = |dir: &Path| -> std::collections::BTreeSet<String> {
+            std::fs::read_dir(dir)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|name| name.ends_with(".flac"))
+                .collect()
+        };
+        let expected: std::collections::BTreeSet<String> = proposed
+            .iter()
+            .map(|target| {
+                Path::new(target)
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        assert_eq!(
+            on_disk(&dir.0),
+            expected,
+            "the files carry the proposed names exactly"
+        );
+        for target in &proposed {
+            assert!(TagEngine::read(Path::new(target)).is_ok(), "{target}");
+        }
+
+        app.undo(batch.id).unwrap();
+        let back: std::collections::BTreeSet<String> =
+            cases.iter().map(|(name, _, _)| name.to_string()).collect();
+        assert_eq!(on_disk(&dir.0), back);
+
+        #[cfg(windows)]
+        assert!(
+            std::fs::write(dir.0.join("What?.flac"), b"x").is_err(),
+            "Windows refuses the raw name"
+        );
+    }
 }
