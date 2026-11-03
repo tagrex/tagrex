@@ -277,7 +277,7 @@ fn status_to_error(status: u16, retry_after: Option<&str>) -> ProviderError {
         // MusicBrainz throttles with 503 (not 429); treat both as rate limiting.
         429 | 503 => ProviderError::RateLimited {
             // Etiquette is ~1 req/s; default to a 1s backoff when unstated.
-            // [2026-11-03 17:40] Read the way every provider reads it.
+            // Read the way every provider reads it.
             retry_after_secs: tagrex_core::provider::parse_retry_after(retry_after).unwrap_or(1),
         },
         401 | 403 => ProviderError::Auth(format!("HTTP {status}")),
@@ -597,7 +597,6 @@ fn date_to_year(value: &Value) -> Option<u16> {
 mod tests {
     use super::*;
 
-    // [2026-11-03 17:40] Added: regression test for a 429 over real HTTP.
     /// A server that answers 429 with a `Retry-After` (with the whitespace HTTP
     /// allows around it) is a rate limit for as long as it asks, end to end.
     #[test]
@@ -629,7 +628,6 @@ mod tests {
         );
     }
 
-    // [2026-11-03 11:40] Added: regression test for the HTTP time limits.
     /// The client waits forever by default, and a server that stopped answering
     /// held every provider call in the app behind the one lock they share.
     #[test]

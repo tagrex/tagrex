@@ -264,7 +264,7 @@ fn status_to_error(status: u16, retry_after: Option<&str>) -> ProviderError {
         429 => ProviderError::RateLimited {
             // Default to the documented 60s window if the header is absent or
             // unparseable.
-            // [2026-11-03 17:40] Read the way every provider reads it.
+            // Read the way every provider reads it.
             retry_after_secs: tagrex_core::provider::parse_retry_after(retry_after).unwrap_or(60),
         },
         _ => ProviderError::Other(format!("HTTP {status}")),
@@ -692,7 +692,6 @@ fn is_discogs_https(url: &str) -> bool {
 mod tests {
     use super::*;
 
-    // [2026-11-03 17:40] Added: regression test for a 429 over real HTTP.
     /// A server that answers 429 with a `Retry-After` (with the whitespace HTTP
     /// allows around it) is a rate limit for as long as it asks, end to end.
     #[test]
@@ -724,7 +723,6 @@ mod tests {
         );
     }
 
-    // [2026-11-03 11:40] Added: regression test for the HTTP time limits.
     /// The client waits forever by default, and a server that stopped answering
     /// held every provider call in the app behind the one lock they share.
     #[test]

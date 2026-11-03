@@ -202,7 +202,7 @@ fn retry_after(response: &ureq::http::Response<ureq::Body>) -> Option<u64> {
         .headers()
         .get("retry-after")
         .and_then(|value| value.to_str().ok())
-        // [2026-11-03 17:40] Read the way every provider reads it.
+        // Read the way every provider reads it.
         .map(Some)
         .and_then(tagrex_core::provider::parse_retry_after)
 }
@@ -490,7 +490,6 @@ fn str_field(value: &Value, key: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    // [2026-11-03 17:40] Added: regression test for a 429 over real HTTP.
     /// A server that answers 429 with a `Retry-After` (with the whitespace HTTP
     /// allows around it) is a rate limit for as long as it asks, end to end.
     #[test]
@@ -522,7 +521,6 @@ mod tests {
         );
     }
 
-    // [2026-11-03 11:40] Added: regression test for the HTTP time limits.
     /// The client waits forever by default, and a server that stopped answering
     /// held every provider call in the app behind the one lock they share.
     #[test]

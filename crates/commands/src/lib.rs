@@ -2310,7 +2310,7 @@ impl App {
         let mut groups: BTreeMap<String, (String, Vec<DuplicateFileDto>)> = BTreeMap::new();
 
         for path in self.source_paths() {
-            // [2026-11-03 16:55] One parse for the tags and the audio properties: two read every file twice.
+            // One parse for the tags and the audio properties.
             let Ok(read) = TagEngine::read_with_props(&path) else {
                 continue;
             };
@@ -11748,7 +11748,6 @@ mod tests {
         assert!(app.history().unwrap().is_empty());
     }
 
-    // [2026-11-03 18:10] Added: the portable names, applied to real files and undone.
     /// The names a rename proposes for titles Windows and FAT refuse are the
     /// names the files get on disk, exactly, and undo brings the old ones back.
     /// Run in CI on Windows, this is NTFS accepting them as they are; there the

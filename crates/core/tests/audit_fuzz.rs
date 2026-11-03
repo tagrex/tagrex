@@ -225,7 +225,6 @@ fn fuzz_all() {
     run("ogg", "ogg", AudioFormat::OggVorbis, ogg_like(), n);
 }
 
-// [2026-11-03 15:10] Added: the same fuzz seeded with real files of every format.
 /// Seeds from real files (made by an outside encoder), one run per file in
 /// `TAGREX_AUDIT_IN`; covers the containers the synthetic seeds above cannot
 /// build by hand (Ogg Vorbis, Opus, Speex, AIFF, WavPack, MP4).

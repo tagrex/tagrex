@@ -5296,7 +5296,6 @@ fn a_multi_value_order_survives_a_save_of_a_file_with_an_encoder_comment() {
     );
 }
 
-// [2026-11-03 14:10] Added: regression test for cp1251 text in an unedited Latin-1 frame.
 /// Older Russian and Ukrainian files carry cp1251 bytes in Latin-1 frames: read
 /// here as `Êèíî` for `Кино`. An edit of another field rebuilt every frame in
 /// Unicode and wrote that mojibake back for good, so every player and tagger
@@ -5370,7 +5369,6 @@ fn an_unedited_frame_keeps_its_encoding_and_its_bytes() {
     );
 }
 
-// [2026-11-03 14:40] Added: regression test for an MP3 whose tag holds undecodable text.
 /// Text the backend cannot decode — UTF-16 with no byte-order mark, UTF-16 of
 /// an odd length, cp1251 bytes labelled UTF-8 — failed the whole tag, so the
 /// file could not be opened at all. It opens without those frames, keeps every
@@ -5447,7 +5445,7 @@ fn an_mp3_with_undecodable_text_frames_opens_and_saves() {
     }
 }
 
-// [2026-11-03 15:50] Added: one Ogg page, for the damaged-stream tests below (CRC left zero: not checked on read).
+// One Ogg page, for the damaged-stream tests below (CRC left zero: not checked on read).
 fn ogg_page(header_type: u8, granule: i64, sequence: u32, packet: &[u8]) -> Vec<u8> {
     let mut page = b"OggS".to_vec();
     page.push(0);
@@ -5472,7 +5470,6 @@ fn ogg_page(header_type: u8, granule: i64, sequence: u32, packet: &[u8]) -> Vec<
     page
 }
 
-// [2026-11-03 15:50] Added: regression test for tag-library panics on damaged Ogg files.
 /// The tag library panics on some damaged files instead of returning an error:
 /// an Opus header stating no channels fails an `expect`, a Speex stream whose
 /// length rounds to nothing divides by zero. Every read of a library listing
@@ -5535,7 +5532,6 @@ fn a_damaged_ogg_file_is_an_error_not_a_panic() {
     }
 }
 
-// [2026-11-03 15:50] Added: regression test for an Ogg write that dropped pages.
 /// The tag library's Ogg writer drops pages when the stream holds bytes between
 /// two pages: this Speex file (from the fuzzer: junk after its comment page)
 /// reads and plays, and a write that reported success left it 7 KB shorter with

@@ -13,8 +13,6 @@
 
 use thiserror::Error;
 
-// [2026-11-03 11:40] Added: the time limits every provider's HTTP client applies.
-// [2026-11-03 17:40] Added: one reading of Retry-After for every provider.
 /// The seconds a `Retry-After` header asks for, or `None` when it states none
 /// this can read. Surrounding whitespace is allowed, as HTTP allows it; the
 /// other form the header may take, an HTTP date, is left to the caller's

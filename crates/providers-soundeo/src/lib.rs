@@ -82,7 +82,7 @@ impl SoundeoProvider {
             .map_err(|err| ProviderError::Network(err.to_string()))?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
-            // [2026-11-03 17:40] The wait the server asks for, which was ignored.
+            // The wait the server asks for.
             let retry_after = response
                 .headers()
                 .get("retry-after")
@@ -106,7 +106,7 @@ impl SoundeoProvider {
             .map_err(|err| ProviderError::Network(err.to_string()))?;
         let status = response.status().as_u16();
         if !(200..300).contains(&status) {
-            // [2026-11-03 17:40] The wait the server asks for, which was ignored.
+            // The wait the server asks for.
             let retry_after = response
                 .headers()
                 .get("retry-after")
@@ -170,7 +170,7 @@ impl MetadataProvider for SoundeoProvider {
     }
 }
 
-// [2026-11-03 17:40] Takes the Retry-After header: a 429 asking for two minutes was answered "wait 1 s".
+// The wait comes from the Retry-After header, and is 1 s when it states none.
 fn status_to_error(status: u16, retry_after: Option<&str>) -> ProviderError {
     match status {
         429 | 503 => ProviderError::RateLimited {
@@ -552,7 +552,6 @@ fn unescape(value: &str) -> String {
 mod tests {
     use super::*;
 
-    // [2026-11-03 17:40] Added: regression test for a 429 over real HTTP.
     /// A server that answers 429 with a `Retry-After` (with the whitespace HTTP
     /// allows around it) is a rate limit for as long as it asks, end to end.
     #[test]
@@ -583,7 +582,6 @@ mod tests {
         );
     }
 
-    // [2026-11-03 11:40] Added: regression test for the HTTP time limits.
     /// The client waits forever by default, and a server that stopped answering
     /// held every provider call in the app behind the one lock they share.
     #[test]

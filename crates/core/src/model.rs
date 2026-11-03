@@ -1064,7 +1064,7 @@ fn probe_file(path: &Path) -> Result<lofty::file::TaggedFile, TagIoError> {
         }
     }
 
-    // [2026-11-03 14:40] Last: the file without the ID3v2 frames whose text cannot be decoded.
+    // Last: the file without the ID3v2 frames whose text cannot be decoded.
     if let Some(source) = without_undecodable_id3v2_frames_source(path)? {
         let probe = match FileType::from_path(path) {
             Some(file_type) => Probe::with_file_type(source, file_type),
@@ -1078,7 +1078,6 @@ fn probe_file(path: &Path) -> Result<lofty::file::TaggedFile, TagIoError> {
     Err(first.into())
 }
 
-// [2026-11-03 14:40] Added: a read past ID3v2 frames whose text cannot be decoded.
 /// The file at `path` with the frames of its leading ID3v2 tag that the backend
 /// cannot decode blanked out, or `None` when there are none.
 ///
@@ -1098,7 +1097,6 @@ fn without_undecodable_id3v2_frames_source(path: &Path) -> Result<Option<TagSour
     Ok(without_undecodable_id3v2_frames(&raw).map(|fixed| TagSource::Memory(Cursor::new(fixed))))
 }
 
-// [2026-11-03 14:40] Added: the MP3 read the ID3v2 writes start from, past undecodable frames.
 /// Read the MP3 at `path` from `file`, and when that fails, read it again
 /// without the ID3v2 frames the backend cannot decode
 /// ([`without_undecodable_id3v2_frames_source`]): a save starts from this read,
@@ -1117,7 +1115,7 @@ fn read_mpeg_past_undecodable_frames(
     }
 }
 
-// [2026-11-03 14:40] Added: see without_undecodable_id3v2_frames_source.
+// See without_undecodable_id3v2_frames_source.
 fn without_undecodable_id3v2_frames(raw: &[u8]) -> Option<Vec<u8>> {
     if raw.len() < 10 || &raw[..3] != b"ID3" || !matches!(raw[3], 3 | 4) {
         return None;
@@ -1204,7 +1202,7 @@ const STUBBORN_JUNK_BYTES: usize = 64 * 1024;
 /// the read path pass the type down from their own probe instead; this is for
 /// the ones that only ever hold a path.
 fn container_of(path: &Path) -> Result<Option<FileType>, TagIoError> {
-    // [2026-11-03 17:05] The type from the file's first bytes, as the probe guesses it, without parsing
+    // The type from the file's first bytes, as the probe guesses it, without parsing
     // the whole file: a full read here cost a second pass over every file (cover art included) on each
     // block, revision and undo step. A file the guess cannot place gets the full probe, as before.
     if let Some(file_type) = probe_source(path)?.guess_file_type()?.file_type() {
@@ -1518,7 +1516,7 @@ fn read_ape(
     container: FileType,
     options: ParseOptions,
 ) -> Result<Option<ApeTag>, TagIoError> {
-    // [2026-11-03 16:40] An MP3 that surely has no APE block is not parsed to find that out.
+    // An MP3 that surely has no APE block is not parsed to find that out.
     if container == FileType::Mpeg && mp3_surely_without_ape(path)? {
         return Ok(None);
     }
@@ -1528,7 +1526,7 @@ fn read_ape(
         Some(FileType::Mpc) => MpcFile::read_from(&mut file, options)?.ape().cloned(),
         Some(FileType::WavPack) => WavPackFile::read_from(&mut file, options)?.ape().cloned(),
         // An MP3 can carry an APE block beside its ID3v2 one (#608).
-        // [2026-11-03 14:40] Read past ID3v2 frames the backend cannot decode, as every MP3 read is.
+        // Read past ID3v2 frames the backend cannot decode, as every MP3 read is.
         Some(FileType::Mpeg) => read_mpeg_past_undecodable_frames(path, &mut file, options)?
             .ape()
             .cloned(),
@@ -1933,7 +1931,6 @@ fn field_for_name_on_tag(name: &str, tag_type: TagType) -> Option<TagField> {
 /// knowledge is allowed to live.
 pub struct TagEngine;
 
-// [2026-11-03 15:30] Added: the boundary that turns a tag-library panic into an error.
 /// Run `body`, one public [`TagEngine`] operation on the file at `path`, and
 /// turn a panic inside it into an error about that file.
 ///
@@ -1952,7 +1949,6 @@ fn guarded<T>(path: &Path, body: impl FnOnce() -> Result<T, TagIoError>) -> Resu
     })
 }
 
-// [2026-11-03 15:50] Added: an Ogg write that cannot leave the file shorter or unreadable.
 /// Run `body`, a write to the file at `path`, and when that file is Ogg
 /// (Vorbis, Opus, Speex) put its bytes back if the write left it unreadable or
 /// cut its audio short, returning an error instead.
@@ -1996,7 +1992,6 @@ fn ogg_safe_write<T>(
     }
 }
 
-// [2026-11-03 15:50] Added: how far an Ogg stream's audio runs.
 /// The granule position of the last Ogg page in `bytes`, found from the end,
 /// or `None` when no page header is there.
 fn last_ogg_granule(bytes: &[u8]) -> Option<i64> {
@@ -2008,7 +2003,6 @@ fn last_ogg_granule(bytes: &[u8]) -> Option<i64> {
     Some(i64::from_le_bytes(header[6..14].try_into().ok()?))
 }
 
-// [2026-11-03 16:40] Added: the revision of an MP3's or an AAC's leading ID3v2 tag, from its header.
 /// The revision an MP3 or AAC file's ID3v2 tag is written in, read from the
 /// tag's own 10-byte header, or `None` when this file is not that simple case
 /// (another container, no leading tag, a revision the header cannot be) and
@@ -2037,7 +2031,6 @@ fn leading_id3v2_revision(path: &Path) -> Result<Option<Id3v2Revision>, TagIoErr
     })
 }
 
-// [2026-11-03 16:40] Added: an MP3 that surely carries no APE block.
 /// Whether the MP3 at `path` surely carries no APE block, judged from the
 /// places the tag library looks for one: right after a leading ID3v2 tag, and
 /// at the end, before an ID3v1 tag. Anything it cannot rule out cheaply — an
@@ -2075,7 +2068,6 @@ fn mp3_surely_without_ape(path: &Path) -> Result<bool, TagIoError> {
 impl TagEngine {
     /// Read tags from a file on disk.
     pub fn read(path: &Path) -> Result<TrackFile, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || Ok(Self::read_with_props(path)?.file))
     }
 
@@ -2088,7 +2080,6 @@ impl TagEngine {
     /// thousands of files by the number of questions asked of it.
     /// [`read`](Self::read) is this keeping only the first.
     pub fn read_with_props(path: &Path) -> Result<TrackRead, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             let mut tagged_file = probe_file(path)?;
             // The container the file actually parsed as — which after #204 is not
@@ -2233,9 +2224,7 @@ impl TagEngine {
     /// Only [`plan::Executor`](crate::plan::Executor) is allowed to call this —
     /// see the crate-level invariant.
     pub fn write(file: &TrackFile) -> Result<(), TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(&file.path, || {
-            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
             ogg_safe_write(&file.path, || {
                 ensure_audio_after_tags(&file.path)?;
                 ensure_no_misread_id3v1(&file.path)?;
@@ -2279,7 +2268,6 @@ impl TagEngine {
     /// `Duration::ZERO` when the backend can't determine it. Used by the preview
     /// player for the seek bar / total time.
     pub fn read_duration(path: &Path) -> Result<std::time::Duration, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             let tagged = probe_file(path)?;
             Ok(tagged.properties().duration())
@@ -2292,7 +2280,6 @@ impl TagEngine {
     /// placeholders (#147). One probe, so a mask asking for several of them
     /// costs no more than asking for one.
     pub fn read_audio_props(path: &Path) -> Result<AudioProps, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             let tagged = probe_file(path)?;
             let props = tagged.properties();
@@ -2313,9 +2300,8 @@ impl TagEngine {
     /// it is actionable — a file in front of you, a conversion about to run —
     /// never per row of a library.
     pub fn id3v2_revision(path: &Path) -> Result<Option<Id3v2Revision>, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
-            // [2026-11-03 16:40] An MP3's or an AAC's leading tag states its revision in its header.
+            // An MP3's or an AAC's leading tag states its revision in its header.
             if let Some(revision) = leading_id3v2_revision(path)? {
                 return Ok(Some(revision));
             }
@@ -2342,7 +2328,6 @@ impl TagEngine {
     /// artwork-heavy selection pay for its covers twice — once here and once
     /// there. [`restore_id3v2_bytes`](Self::restore_id3v2_bytes) puts them back.
     pub fn dump_id3v2(path: &Path) -> Result<Option<Vec<u8>>, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             let Some(container) = container_of(path)? else {
                 return Ok(None);
@@ -2374,7 +2359,6 @@ impl TagEngine {
         covers: &[CoverArt],
         revision: Option<Id3v2Revision>,
     ) -> Result<(), TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             ensure_audio_after_tags(path)?;
             ensure_no_misread_id3v1(path)?;
@@ -2421,7 +2405,6 @@ impl TagEngine {
     /// Pictures are left out, as in [`dump_id3v2`](Self::dump_id3v2): they
     /// travel beside this as [`TagBlockContent::covers`].
     pub fn dump_vorbis(path: &Path) -> Result<Option<Vec<u8>>, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             let Some(container) = container_of(path)? else {
                 return Ok(None);
@@ -2441,9 +2424,7 @@ impl TagEngine {
         bytes: &[u8],
         covers: &[CoverArt],
     ) -> Result<(), TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
-            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_no_misread_id3v1(path)?;
@@ -2476,7 +2457,6 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn set_id3v2_revision(path: &Path, revision: Id3v2Revision) -> Result<bool, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             ensure_audio_after_tags(path)?;
             ensure_no_misread_id3v1(path)?;
@@ -2510,7 +2490,6 @@ impl TagEngine {
         path: &Path,
         kind: TagBlockKind,
     ) -> Result<Option<TagBlockContent>, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             let tagged = probe_file(path)?;
             let tag_type = kind.to_tag_type();
@@ -2543,9 +2522,7 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn remove_block(path: &Path, kind: TagBlockKind) -> Result<(), TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
-            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_no_misread_id3v1(path)?;
@@ -2578,7 +2555,6 @@ impl TagEngine {
         kind: TagBlockKind,
         content: &TagBlockContent,
     ) -> Result<(), TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || Self::write_block(path, kind, None, content))
     }
 
@@ -2599,9 +2575,7 @@ impl TagEngine {
         revision: Option<Id3v2Revision>,
         content: &TagBlockContent,
     ) -> Result<(), TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
-            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_no_misread_id3v1(path)?;
@@ -2697,7 +2671,6 @@ impl TagEngine {
 
     /// Every image the file carries (#56), in the order the tag holds them.
     pub fn read_covers(path: &Path) -> Result<Vec<CoverArt>, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             let tagged = probe_file(path)?;
             let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
@@ -2718,7 +2691,6 @@ impl TagEngine {
     /// explicit front cover), if any — "the cover" as the rest of the app means
     /// it, over the set [`read_covers`](Self::read_covers) returns.
     pub fn read_cover(path: &Path) -> Result<Option<CoverArt>, TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
             let covers = Self::read_covers(path)?;
             Ok(covers
@@ -2738,9 +2710,7 @@ impl TagEngine {
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
     pub fn write_covers(path: &Path, covers: &[CoverArt]) -> Result<(), TagIoError> {
-        // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
-            // [2026-11-03 15:50] An Ogg file is put back if the write damaged it.
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_no_misread_id3v1(path)?;
@@ -2875,7 +2845,7 @@ fn sync_id3v1(
     let old = {
         let mut file = buffered(path)?;
         match container {
-            // [2026-11-03 14:40] Read past ID3v2 frames the backend cannot decode, as every MP3 read is.
+            // Read past ID3v2 frames the backend cannot decode, as every MP3 read is.
             FileType::Mpeg => {
                 read_mpeg_past_undecodable_frames(path, &mut file, tag_only_options())?
                     .id3v1()
@@ -3759,7 +3729,7 @@ fn save_id3v2(
         for frame in edited_rating {
             updated.insert(frame);
         }
-        // [2026-11-03 14:10] A text frame nobody edited keeps the encoding the file wrote it in.
+        // A text frame nobody edited keeps the encoding the file wrote it in.
         keep_unedited_encodings(&mut updated, &original);
         order_frames(&mut updated, Some(&original));
     } else {
@@ -3783,7 +3753,6 @@ fn save_id3v2(
 /// same frame by the backend's own reckoning, which is what replaces it on
 /// insert) keeps its place in `original`; a new one goes after those, by its id
 /// and then its description.
-// [2026-11-03 14:10] Added: the original encoding of every unedited text frame.
 /// Give every text, user-text and comment frame of `updated` whose value is the
 /// one `original` holds the encoding `original` wrote it in.
 ///
@@ -4283,7 +4252,7 @@ fn read_id3v2(
 ) -> Result<Option<Id3v2Tag>, TagIoError> {
     let mut file = buffered(path)?;
     let mut tag = match Some(container) {
-        // [2026-11-03 14:40] An MP3 whose tag holds a frame the backend cannot decode is read without it.
+        // An MP3 whose tag holds a frame the backend cannot decode is read without it.
         Some(FileType::Mpeg) => read_mpeg_past_undecodable_frames(path, &mut file, options)?
             .id3v2()
             .cloned(),
@@ -6629,7 +6598,7 @@ mod tests {
         ));
     }
 
-    // [2026-11-03 16:40] Added: the cheap APE check answers "surely not" only where the full parse would find none.
+    // The cheap APE check answers "surely not" only where the full parse would find none.
     #[test]
     fn an_mp3_is_called_without_ape_only_when_no_place_could_hold_one() {
         let mut audio = Vec::new();

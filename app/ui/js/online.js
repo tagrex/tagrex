@@ -661,7 +661,6 @@ async function applyImage(c) {
 // 60/min limit. Cached, so expanding a card and toggling layout are then instant.
 const PREFETCH_CONCURRENCY = 4;
 
-// [2026-11-03 17:40] Added: the sweep waits out a rate limit instead of pressing on.
 // A rate limit (HTTP 429) pauses every worker of the sweep for as long as the
 // provider asks, then the release it hit is tried again. The backend only reports
 // the limit, it does not wait; the sweep used to skip to the next release at once,
@@ -671,7 +670,7 @@ const PREFETCH_CONCURRENCY = 4;
 const PREFETCH_MIN_PAUSE_MS = 1000;
 const PREFETCH_MAX_PAUSE_MS = 120_000;
 
-// [2026-11-03 17:40] Added: the wait a rate-limit error asks for, in ms, or null for any other error.
+// The wait a rate-limit error asks for, in ms, or null for any other error.
 function rateLimitPauseMs(e) {
   const failure = e && e.failure && e.failure.message;
   if (!failure || failure.code !== "error.provider.rateLimited") return null;
@@ -687,13 +686,13 @@ async function prefetchReleaseCounts(items, gen) {
   // The sweep is interruptible background work — show Stop while it runs (#108).
   prefetching = true;
   updateLoadMoreUi();
-  // [2026-11-03 17:40] When the sweep may send its next request: later than now while a rate limit holds.
+  // When the sweep may send its next request: later than now while a rate limit holds.
   let resumeAt = 0;
   async function worker() {
     while (queue.length) {
       // A newer search, or Stop (#96), bumps the generation → bail.
       if (gen !== undefined && gen !== searchGen) return;
-      // [2026-11-03 17:40] Wait out a rate limit, then look at the generation again.
+      // Wait out a rate limit, then look at the generation again.
       const wait = resumeAt - Date.now();
       if (wait > 0) {
         await new Promise((resolve) => setTimeout(resolve, wait));
@@ -707,7 +706,7 @@ async function prefetchReleaseCounts(items, gen) {
         if (pill) pill.textContent = countLabel(c.id);
         updateMediaBadge(c); // fill the badge's ×N now that disc count is known
       } catch (e) {
-        // [2026-11-03 17:40] A rate limit pauses the sweep and retries this release after it.
+        // A rate limit pauses the sweep and retries this release after it.
         const pause = rateLimitPauseMs(e);
         if (pause !== null) {
           queue.unshift(c);
