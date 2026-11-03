@@ -1899,6 +1899,10 @@ pub struct App {
     /// operated on. `None` = an ordinary library rooted at `library_root`.
     file_filter: Option<Vec<PathBuf>>,
     journal: SqliteJournal,
+    // [2026-11-03 12:30] Added: where a damaged journal was set aside when this session opened.
+    /// Where a damaged journal was set aside when this session opened it, until
+    /// the interface has said so ([`App::take_journal_notice`]).
+    journal_set_aside: RefCell<Option<PathBuf>>,
     /// Max cover dimension before embedding, 0 = off (#41), from settings.
     cover_max_px: Cell<u32>,
     /// JPEG quality for a resized cover (#41), from settings.
@@ -1960,10 +1964,13 @@ impl App {
                 library_root.to_string_lossy().into_owned(),
             ));
         }
+        // [2026-11-03 12:30] A damaged journal is set aside instead of refusing every library.
+        let (journal, journal_set_aside) = SqliteJournal::open_or_recover(journal_path)?;
         Ok(Self {
             library_root,
             file_filter: None,
-            journal: SqliteJournal::open(journal_path)?,
+            journal,
+            journal_set_aside: RefCell::new(journal_set_aside),
             cover_max_px: Cell::new(0),
             cover_quality: Cell::new(85),
             carry_sidecars: Cell::new(default_carry_sidecars()),
@@ -4578,6 +4585,18 @@ impl App {
         let batch =
             Executor::apply_with(&change_plan, &mut self.journal, &roots, progress, cancel)?;
         Ok(BatchDto::from(&batch))
+    }
+
+    // [2026-11-03 12:30] Added: the one-time notice of a journal set aside.
+    /// Where the undo journal was set aside because it was damaged, the first
+    /// time it is asked after opening, and `None` after that and whenever the
+    /// journal opened as it was. The history it held is gone from Undo; the file
+    /// is kept for recovery.
+    pub fn take_journal_notice(&self) -> Option<String> {
+        self.journal_set_aside
+            .borrow_mut()
+            .take()
+            .map(|path| path.to_string_lossy().into_owned())
     }
 
     /// Roll back a previously applied batch.
@@ -11586,5 +11605,22 @@ mod tests {
         };
         assert_eq!(flagged("custom:ÜNI"), Some(true));
         assert_eq!(flagged("custom:MOOD"), Some(false));
+    }
+
+    // [2026-11-03 12:30] Added: regression test for a library opened over a damaged journal.
+    /// A damaged undo journal made every library refuse to open. The library
+    /// opens, and the interface is told once where the damaged file was kept.
+    #[test]
+    fn a_library_opens_over_a_damaged_journal_and_says_so_once() {
+        let dir = TempDir::new("damaged-journal");
+        let journal = dir.0.join("journal.sqlite");
+        std::fs::write(&journal, b"not a database".repeat(100)).unwrap();
+
+        let app = App::open(dir.0.clone(), &journal).unwrap();
+        let notice = app.take_journal_notice().expect("the reset is reported");
+        assert!(notice.contains("journal.sqlite.corrupt-"), "{notice}");
+        assert!(Path::new(&notice).is_file());
+        assert_eq!(app.take_journal_notice(), None, "reported once");
+        assert!(app.history().unwrap().is_empty());
     }
 }

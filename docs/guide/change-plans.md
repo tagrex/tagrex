@@ -74,6 +74,11 @@ current library.
   deliver for files outside the open folder.
 - **Renames and moves undo completely**, including removing directories the move
   had to create, and including sidecar files that travelled with the track.
+- **A damaged journal does not lock you out.** If the journal file cannot be
+  read (a crash or a full disk part-way through a write), it is set aside next to
+  where it was, as `journal.sqlite.corrupt-…`, and a fresh one is started. The
+  folder opens as usual; a message says the earlier history can no longer be
+  undone and where the damaged file was kept.
 
 The journal lives with the rest of the app's data — see
 [Settings › Where things are stored](settings.md#where-things-are-stored).

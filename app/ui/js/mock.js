@@ -867,6 +867,9 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case "history":
       return Promise.resolve(s.history);
+    // [2026-11-03 12:30] The mock's journal is never damaged.
+    case "take_journal_notice":
+      return Promise.resolve(null);
     case "undo":
       s.history.shift();
       return Promise.resolve();

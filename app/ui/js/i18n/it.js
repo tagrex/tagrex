@@ -1011,6 +1011,9 @@ export const it = {
   "app.noPendingEdits": "Nessuna modifica in sospeso da visualizzare",
   "app.tickOneRow": "Seleziona almeno una riga da applicare",
   "app.undid": "Ultima operazione annullata",
+  // [2026-11-03 12:30] Added: a damaged undo journal set aside on open.
+  "app.journalReset": "Non è stato possibile leggere la cronologia degli annullamenti, che è stata ricominciata: le modifiche precedenti non si possono più annullare qui.",
+  "app.journalSetAside": "Il file di cronologia danneggiato è stato conservato in {path}",
   "app.typePath": "Digita un percorso della libreria, poi premi Apri",
   "app.dblClickEdit": "Doppio clic per modificare",
   "app.lockedCell": "Bloccato: sbloccalo nel pannello EDITOR",

@@ -886,6 +886,12 @@ async fn undo(
 // `async` so it runs off the main thread (#449): the interface asks for the
 // history before and after every apply and undo, and a synchronous command
 // would hold the window for as long as the journal takes to read.
+// [2026-11-03 12:30] Added: where a damaged undo journal was set aside, once.
+#[tauri::command]
+fn take_journal_notice(state: State<AppState>) -> Result<Option<String>, ErrorDto> {
+    with_app(&state, |app| Ok(app.take_journal_notice()))
+}
+
 #[tauri::command]
 async fn history(state: State<'_, AppState>) -> Result<Vec<BatchDto>, ErrorDto> {
     with_app(&state, |app| app.history().map_err(ErrorDto::from))
@@ -1595,6 +1601,8 @@ fn main() {
             cancel_detect_bpm,
             undo,
             history,
+            // [2026-11-03 12:30] Registered: the damaged-journal notice.
+            take_journal_notice,
             provider_search,
             provider_fetch_release,
             provider_fetch_image,

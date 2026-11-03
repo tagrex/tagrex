@@ -617,3 +617,78 @@ fn the_id3v2_revisions_survive_a_restart() {
     let stored = reopened.batch(batch.id).unwrap().unwrap();
     assert_eq!(stored.id3v2_revisions, revisions);
 }
+
+// [2026-11-03 12:30] Added: regression test for a damaged journal.
+/// A damaged journal made every library refuse to open. It is set aside, byte
+/// for byte, and a fresh journal takes its place.
+#[test]
+fn a_damaged_journal_is_set_aside_and_started_afresh() {
+    let dir = TempDir::new("damaged");
+    let db = dir.db();
+    {
+        let mut journal = SqliteJournal::open(&db).unwrap();
+        let track = dir.flac("a.flac");
+        let plan = ChangePlan {
+            description: "seed".to_string(),
+            changes: vec![FileChange {
+                path: track,
+                tag_changes: vec![FieldChange {
+                    field: TagField::Artist,
+                    old: None,
+                    new: Some("A".to_string()),
+                }],
+                ..FileChange::default()
+            }],
+            ..ChangePlan::default()
+        };
+        Executor::apply(&plan, &mut journal, &[dir.path().to_path_buf()]).unwrap();
+    }
+    let healthy = std::fs::read(&db).unwrap();
+    let mut header_corrupt = healthy.clone();
+    for byte in &mut header_corrupt[16..100] {
+        *byte = 0xFF;
+    }
+    let cases: [(&str, Vec<u8>); 3] = [
+        ("garbage", b"this is not a database".repeat(100)),
+        ("truncated", healthy[..100].to_vec()),
+        ("header", header_corrupt),
+    ];
+    for (name, bytes) in cases {
+        std::fs::write(&db, &bytes).unwrap();
+        assert!(
+            SqliteJournal::open(&db).is_err(),
+            "{name}: fixture must be damaged"
+        );
+
+        let (journal, aside) = SqliteJournal::open_or_recover(&db).unwrap();
+        let aside = aside.unwrap_or_else(|| panic!("{name}: nothing set aside"));
+        assert!(journal.batches().unwrap().is_empty(), "{name}");
+        assert_eq!(
+            std::fs::read(&aside).unwrap(),
+            bytes,
+            "{name}: kept as it was"
+        );
+        std::fs::remove_file(&aside).ok();
+        drop(journal);
+        std::fs::remove_file(&db).ok();
+    }
+}
+
+// [2026-11-03 12:30] Added: regression test for a journal that is fine or only unavailable.
+/// Only damage sets a journal aside: a healthy one opens as it is, and one that
+/// cannot be opened for another reason is an error with nothing moved.
+#[test]
+fn a_healthy_or_unavailable_journal_is_never_set_aside() {
+    let dir = TempDir::new("not-damaged");
+    let db = dir.db();
+    drop(SqliteJournal::open(&db).unwrap());
+    let (_, aside) = SqliteJournal::open_or_recover(&db).unwrap();
+    assert_eq!(aside, None);
+
+    // A folder where the file should be cannot be opened, and is no database
+    // to recover either.
+    let folder = dir.path().join("journal-folder.sqlite");
+    std::fs::create_dir_all(&folder).unwrap();
+    assert!(SqliteJournal::open_or_recover(&folder).is_err());
+    assert!(folder.is_dir(), "an unavailable journal is not moved");
+}

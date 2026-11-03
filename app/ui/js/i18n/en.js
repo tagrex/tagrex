@@ -1013,6 +1013,9 @@ export const en = {
   "app.noPendingEdits": "No pending edits to preview",
   "app.tickOneRow": "Tick at least one row to apply",
   "app.undid": "Undid last batch",
+  // [2026-11-03 12:30] Added: a damaged undo journal set aside on open.
+  "app.journalReset": "The undo history could not be read and was started afresh: earlier changes can no longer be undone here.",
+  "app.journalSetAside": "The damaged history file was kept at {path}",
   "app.typePath": "Type a library path, then press Open",
   "app.dblClickEdit": "Double-click to edit",
   "app.lockedCell": "Locked — unlock it in the EDITOR panel",

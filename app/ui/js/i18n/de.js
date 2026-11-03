@@ -1007,6 +1007,9 @@ export const de = {
   "app.noPendingEdits": "Keine ausstehenden Änderungen zur Vorschau",
   "app.tickOneRow": "Mindestens eine Zeile zum Anwenden ankreuzen",
   "app.undid": "Letzten Stapel rückgängig gemacht",
+  // [2026-11-03 12:30] Added: a damaged undo journal set aside on open.
+  "app.journalReset": "Der Rückgängig-Verlauf war nicht lesbar und wurde neu begonnen: frühere Änderungen lassen sich hier nicht mehr rückgängig machen.",
+  "app.journalSetAside": "Die beschädigte Verlaufsdatei wurde aufbewahrt unter {path}",
   "app.typePath": "Bibliothekspfad eingeben, dann Öffnen drücken",
   "app.dblClickEdit": "Zum Bearbeiten doppelklicken",
   "app.lockedCell": "Gesperrt — im Panel EDITOR entsperren",

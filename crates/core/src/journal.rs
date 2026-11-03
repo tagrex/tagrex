@@ -120,6 +120,33 @@ impl CopyStamp {
 /// Whether `table` already has `column`. Used to make the `copied` migration
 /// (#153) idempotent — `ALTER TABLE ADD COLUMN` has no `IF NOT EXISTS`, and
 /// `open` runs on every start.
+// [2026-11-03 12:30] Added: tells a damaged journal from one that is only unavailable.
+/// Whether the file at `path` is a damaged SQLite database: not a database at
+/// all, or one whose pages fail SQLite's own check. A file that cannot be
+/// opened or is locked is not called damaged, so it is never moved aside.
+fn is_damaged_database(path: &Path) -> bool {
+    use rusqlite::{ErrorCode, OpenFlags};
+    let Ok(conn) = rusqlite::Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+    else {
+        return false;
+    };
+    match conn.query_row("PRAGMA quick_check", [], |row| row.get::<_, String>(0)) {
+        Ok(verdict) => verdict != "ok",
+        Err(rusqlite::Error::SqliteFailure(failure, _)) => matches!(
+            failure.code,
+            ErrorCode::NotADatabase | ErrorCode::DatabaseCorrupt
+        ),
+        Err(_) => false,
+    }
+}
+
+// [2026-11-03 12:30] Added: `path` with `suffix` after its file name.
+fn with_suffix(path: &Path, suffix: &str) -> PathBuf {
+    let mut name = path.as_os_str().to_owned();
+    name.push(suffix);
+    PathBuf::from(name)
+}
+
 fn column_exists(
     conn: &rusqlite::Connection,
     table: &str,
@@ -239,6 +266,43 @@ pub struct SqliteJournal {
 }
 
 impl SqliteJournal {
+    // [2026-11-03 12:30] Added: opening a journal that may be damaged.
+    /// [`open`](Self::open), and when the file there is a damaged database, set
+    /// it aside and start a fresh journal in its place.
+    ///
+    /// The journal is shared by every library, so a damaged one — a crash or a
+    /// full disk part-way through a write, a sync tool's half copy — made every
+    /// folder refuse to open, with nothing to do about it short of finding and
+    /// deleting the file by hand. Only damage does this: a journal that is
+    /// locked by another instance, or that cannot be read for want of
+    /// permission, is an error as before, since moving a healthy history aside
+    /// would lose it. The damaged file is renamed, not deleted, so it can still
+    /// be recovered; its new path comes back so the caller can say so.
+    pub fn open_or_recover(path: &Path) -> Result<(Self, Option<PathBuf>), JournalError> {
+        let error = match Self::open(path) {
+            Ok(journal) => return Ok((journal, None)),
+            Err(error) => error,
+        };
+        if !is_damaged_database(path) {
+            return Err(error);
+        }
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_secs())
+            .unwrap_or(0);
+        let aside = with_suffix(path, &format!(".corrupt-{stamp}"));
+        std::fs::rename(path, &aside).map_err(|err| JournalError::Storage(err.to_string()))?;
+        // SQLite's own companions of the damaged file go with it: left behind,
+        // a hot rollback journal would be replayed into the fresh database.
+        for companion in ["-journal", "-wal", "-shm"] {
+            let from = with_suffix(path, companion);
+            if from.exists() {
+                std::fs::rename(&from, with_suffix(&aside, companion)).ok();
+            }
+        }
+        Ok((Self::open(path)?, Some(aside)))
+    }
+
     /// Open (creating if needed) the journal database at `path` and run
     /// migrations.
     pub fn open(path: &Path) -> Result<Self, JournalError> {
