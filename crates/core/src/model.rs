@@ -1204,6 +1204,12 @@ const STUBBORN_JUNK_BYTES: usize = 64 * 1024;
 /// the read path pass the type down from their own probe instead; this is for
 /// the ones that only ever hold a path.
 fn container_of(path: &Path) -> Result<Option<FileType>, TagIoError> {
+    // [2026-11-03 17:05] The type from the file's first bytes, as the probe guesses it, without parsing
+    // the whole file: a full read here cost a second pass over every file (cover art included) on each
+    // block, revision and undo step. A file the guess cannot place gets the full probe, as before.
+    if let Some(file_type) = probe_source(path)?.guess_file_type()?.file_type() {
+        return Ok(Some(file_type));
+    }
     Ok(Some(probe_file(path)?.file_type()))
 }
 
@@ -1512,6 +1518,10 @@ fn read_ape(
     container: FileType,
     options: ParseOptions,
 ) -> Result<Option<ApeTag>, TagIoError> {
+    // [2026-11-03 16:40] An MP3 that surely has no APE block is not parsed to find that out.
+    if container == FileType::Mpeg && mp3_surely_without_ape(path)? {
+        return Ok(None);
+    }
     let mut file = buffered(path)?;
     Ok(match Some(container) {
         Some(FileType::Ape) => ApeFile::read_from(&mut file, options)?.ape().cloned(),
@@ -1998,6 +2008,70 @@ fn last_ogg_granule(bytes: &[u8]) -> Option<i64> {
     Some(i64::from_le_bytes(header[6..14].try_into().ok()?))
 }
 
+// [2026-11-03 16:40] Added: the revision of an MP3's or an AAC's leading ID3v2 tag, from its header.
+/// The revision an MP3 or AAC file's ID3v2 tag is written in, read from the
+/// tag's own 10-byte header, or `None` when this file is not that simple case
+/// (another container, no leading tag, a revision the header cannot be) and
+/// the full read has to answer.
+///
+/// The journal asks for it before every in-place write (#666), and the full
+/// read parsed the whole file twice to learn one byte: with the 1 MB cover a
+/// real library carries, that was 2 MB of reading per file in every batch.
+fn leading_id3v2_revision(path: &Path) -> Result<Option<Id3v2Revision>, TagIoError> {
+    use std::io::Read;
+    if !matches!(
+        FileType::from_path(path),
+        Some(FileType::Mpeg | FileType::Aac)
+    ) {
+        return Ok(None);
+    }
+    let mut head = [0u8; 10];
+    if std::fs::File::open(path)?.read_exact(&mut head).is_err() || &head[..3] != b"ID3" {
+        return Ok(None);
+    }
+    Ok(match head[3] {
+        2 => Some(Id3v2Revision::V2),
+        3 => Some(Id3v2Revision::V3),
+        4 => Some(Id3v2Revision::V4),
+        _ => None,
+    })
+}
+
+// [2026-11-03 16:40] Added: an MP3 that surely carries no APE block.
+/// Whether the MP3 at `path` surely carries no APE block, judged from the
+/// places the tag library looks for one: right after a leading ID3v2 tag, and
+/// at the end, before an ID3v1 tag. Anything it cannot rule out cheaply — an
+/// `APETAGEX` in either place, a Lyrics3 block that would move the footer —
+/// answers `false`, and the full parse decides as before.
+///
+/// Every MP3 write asked twice whether the file carries an APE block (#655),
+/// each time by parsing the whole file, cover art included: with the 1 MB cover
+/// a real library carries, 2 MB of reading per file in every batch, for a block
+/// almost no MP3 has.
+fn mp3_surely_without_ape(path: &Path) -> Result<bool, TagIoError> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let mut head = [0u8; 10];
+    let mut after_leading_tag = 0u64;
+    if file.read_exact(&mut head).is_ok() && &head[..3] == b"ID3" {
+        let footer = if head[5] & 0x10 != 0 { 10 } else { 0 };
+        after_leading_tag = 10 + u64::from(syncsafe_u32(&head[6..10])) + footer;
+    }
+    let mut probe = [0u8; 10];
+    file.seek(SeekFrom::Start(after_leading_tag))?;
+    if file.read_exact(&mut probe).is_ok() && (&probe[..8] == b"APETAGEX" || &probe[..3] == b"ID3")
+    {
+        return Ok(false);
+    }
+    let tail_len = len.min(256);
+    let mut tail = vec![0u8; tail_len as usize];
+    file.seek(SeekFrom::End(-(tail_len as i64)))?;
+    file.read_exact(&mut tail)?;
+    let holds = |needle: &[u8]| tail.windows(needle.len()).any(|window| window == needle);
+    Ok(!holds(b"APETAGEX") && !holds(b"LYRICS200") && !holds(b"LYRICSEND"))
+}
+
 impl TagEngine {
     /// Read tags from a file on disk.
     pub fn read(path: &Path) -> Result<TrackFile, TagIoError> {
@@ -2241,6 +2315,10 @@ impl TagEngine {
     pub fn id3v2_revision(path: &Path) -> Result<Option<Id3v2Revision>, TagIoError> {
         // [2026-11-03 15:30] Guarded: a panic in the tag library on a damaged file becomes an error.
         guarded(path, || {
+            // [2026-11-03 16:40] An MP3's or an AAC's leading tag states its revision in its header.
+            if let Some(revision) = leading_id3v2_revision(path)? {
+                return Ok(Some(revision));
+            }
             let Some(container) = container_of(path)? else {
                 return Ok(None);
             };
@@ -6602,5 +6680,57 @@ mod tests {
 
         assert!(result.is_err(), "the write must be refused");
         assert_eq!(after, bytes, "a refused write must not change the file");
+    }
+
+    // [2026-11-03 16:40] Added: the cheap APE check answers "surely not" only where the full parse would find none.
+    #[test]
+    fn an_mp3_is_called_without_ape_only_when_no_place_could_hold_one() {
+        let mut audio = Vec::new();
+        for _ in 0..4 {
+            let mut frame = vec![0u8; 417];
+            frame[..4].copy_from_slice(&[0xFF, 0xFB, 0x90, 0x00]);
+            audio.extend_from_slice(&frame);
+        }
+        let id3v2 = b"ID3\x04\x00\x00\x00\x00\x00\x00".to_vec();
+        let mut ape_footer = b"APETAGEX".to_vec();
+        ape_footer.resize(32, 0);
+        let mut id3v1 = b"TAG".to_vec();
+        id3v1.resize(128, 0);
+        let cases: [(&str, Vec<u8>, bool); 6] = [
+            ("plain", audio.clone(), true),
+            (
+                "id3v2 + id3v1",
+                [id3v2.clone(), audio.clone(), id3v1.clone()].concat(),
+                true,
+            ),
+            (
+                "ape at the end",
+                [audio.clone(), ape_footer.clone()].concat(),
+                false,
+            ),
+            (
+                "ape before id3v1",
+                [audio.clone(), ape_footer.clone(), id3v1.clone()].concat(),
+                false,
+            ),
+            (
+                "ape after id3v2",
+                [id3v2.clone(), ape_footer.clone(), audio.clone()].concat(),
+                false,
+            ),
+            (
+                "lyrics3",
+                [audio.clone(), b"000011LYRICS200".to_vec(), id3v1.clone()].concat(),
+                false,
+            ),
+        ];
+        for (name, bytes, expected) in cases {
+            let path =
+                std::env::temp_dir().join(format!("tagrex-ape-check-{}.mp3", std::process::id()));
+            std::fs::write(&path, &bytes).unwrap();
+            let answer = mp3_surely_without_ape(&path).unwrap();
+            std::fs::remove_file(&path).ok();
+            assert_eq!(answer, expected, "{name}");
+        }
     }
 }
