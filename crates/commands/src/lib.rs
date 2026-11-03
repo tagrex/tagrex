@@ -2310,11 +2310,13 @@ impl App {
         let mut groups: BTreeMap<String, (String, Vec<DuplicateFileDto>)> = BTreeMap::new();
 
         for path in self.source_paths() {
-            let Ok(track) = TagEngine::read(&path) else {
+            // [2026-11-03 16:55] One parse for the tags and the audio properties: two read every file twice.
+            let Ok(read) = TagEngine::read_with_props(&path) else {
                 continue;
             };
+            let track = read.file;
             let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            let props = TagEngine::read_audio_props(&path).ok();
+            let props = Some(read.props);
             let duration = props.map(|p| p.duration_secs).unwrap_or(0);
             let bitrate = props.and_then(|p| p.bitrate_kbps);
             let field = |key| track.tags.get(key).cloned().unwrap_or_default();
