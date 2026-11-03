@@ -5186,3 +5186,114 @@ fn an_unedited_genre_outside_the_id3v1_list_keeps_its_byte() {
 
     std::fs::remove_file(&path).ok();
 }
+
+// [2026-11-03 09:10] Added: regression test for multi-value order surviving an edit of another field.
+/// The order of a multi-value field is the file's: the first artist is the main
+/// one. Writing the read-back tags with only the title changed used to hand the
+/// artists back reversed, on the first write and on every one after it.
+#[test]
+fn a_multi_value_order_survives_an_edit_of_another_field() {
+    let path = temp_flac_path("multi-value-order");
+    std::fs::write(&path, MINIMAL_FLAC).expect("write fixture");
+
+    // A file that held one artist first, then was given two: the history the
+    // order went wrong on.
+    let mut tags = BTreeMap::new();
+    tags.insert(TagField::Artist, "placeholder".to_string());
+    tags.insert(TagField::Title, "Old".to_string());
+    TagEngine::write(&TrackFile {
+        path: path.clone(),
+        format: AudioFormat::Flac,
+        tags,
+    })
+    .expect("seed");
+    let mut seeded = TagEngine::read(&path).expect("read seed");
+    seeded
+        .tags
+        .insert(TagField::Artist, "Autechre; Gescom".to_string());
+    seeded
+        .tags
+        .insert(TagField::Genre, "Electronic; IDM; Ambient".to_string());
+    // A custom comment too: the stale custom items are taken out on every save.
+    seeded.tags.insert(
+        TagField::Custom("TAGREX_ORDER".to_string()),
+        "x".to_string(),
+    );
+    TagEngine::write(&seeded).expect("seed multi-value");
+
+    let mut seen = Vec::new();
+    for title in ["New", "Newer", "Newest"] {
+        let mut file = TagEngine::read(&path).expect("read");
+        seen.push((
+            file.tags.get(&TagField::Artist).cloned(),
+            file.tags.get(&TagField::Genre).cloned(),
+        ));
+        file.tags.insert(TagField::Title, title.to_string());
+        TagEngine::write(&file).expect("write");
+    }
+    let last = TagEngine::read(&path).expect("read");
+    seen.push((
+        last.tags.get(&TagField::Artist).cloned(),
+        last.tags.get(&TagField::Genre).cloned(),
+    ));
+    std::fs::remove_file(&path).ok();
+
+    for (artist, genre) in seen {
+        assert_eq!(artist.as_deref(), Some("Autechre; Gescom"));
+        assert_eq!(genre.as_deref(), Some("Electronic; IDM; Ambient"));
+    }
+}
+
+// [2026-11-03 13:20] Added: regression test for multi-value order next to an encoder comment.
+/// Every save takes the `ENCODER` comment out and puts it back, and the tag
+/// library's removal reorders what it leaves: a FLAC with an encoder comment
+/// came back with its artists reversed after an edit of the title alone.
+#[test]
+fn a_multi_value_order_survives_a_save_of_a_file_with_an_encoder_comment() {
+    let path = temp_flac_path("multi-value-encoder");
+    // A Vorbis comment block as an encoder writes it, built by hand: the model
+    // folds an `ENCODER` comment into the vendor string, so no write of ours
+    // can make one.
+    let comments: [&[u8]; 4] = [
+        b"ENCODER=flac 1.4.3",
+        b"ARTIST=Autechre",
+        b"ARTIST=Gescom",
+        b"TITLE=Old",
+    ];
+    let mut block = Vec::new();
+    block.extend_from_slice(&(b"reference".len() as u32).to_le_bytes());
+    block.extend_from_slice(b"reference");
+    block.extend_from_slice(&(comments.len() as u32).to_le_bytes());
+    for comment in comments {
+        block.extend_from_slice(&(comment.len() as u32).to_le_bytes());
+        block.extend_from_slice(comment);
+    }
+    let mut bytes = MINIMAL_FLAC[..42].to_vec(); // fLaC + STREAMINFO
+    bytes.push(0x04); // VORBIS_COMMENT, not last
+    bytes.extend_from_slice(&(block.len() as u32).to_be_bytes()[1..]);
+    bytes.extend_from_slice(&block);
+    bytes.extend_from_slice(&MINIMAL_FLAC[42..]); // PADDING (last) + audio
+    std::fs::write(&path, &bytes).expect("write fixture");
+    let seeded = TagEngine::read(&path).expect("read fixture");
+    assert_eq!(
+        seeded.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Autechre; Gescom"),
+        "fixture precondition"
+    );
+
+    let mut file = TagEngine::read(&path).expect("read");
+    file.tags.insert(TagField::Title, "New".to_string());
+    TagEngine::write(&file).expect("write");
+    let after = TagEngine::read(&path).expect("read back");
+    let raw = std::fs::read(&path).unwrap();
+    std::fs::remove_file(&path).ok();
+
+    assert!(
+        raw.windows(7).any(|w| w.eq_ignore_ascii_case(b"ENCODER")),
+        "fixture precondition: the file holds an encoder comment"
+    );
+    assert_eq!(
+        after.tags.get(&TagField::Artist).map(String::as_str),
+        Some("Autechre; Gescom")
+    );
+}
