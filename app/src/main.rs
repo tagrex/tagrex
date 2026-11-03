@@ -1696,8 +1696,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    // [2026-11-03 11:05] write_secret added to the import.
-    use super::{paths_from_args, release_url, write_secret};
+    use super::{paths_from_args, release_url};
 
     #[test]
     fn a_command_line_yields_the_paths_in_it_and_nothing_else() {
@@ -1754,6 +1753,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_secret_is_written_readable_by_its_owner_alone() {
+        // [2026-11-03 11:50] Imported here: the test is Unix-only, and a module-level import is unused on Windows.
+        use super::write_secret;
         use std::os::unix::fs::PermissionsExt;
         let path = std::env::temp_dir().join(format!("tagrex-secret-{}", std::process::id()));
         std::fs::write(&path, "old").unwrap();
