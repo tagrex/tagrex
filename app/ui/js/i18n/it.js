@@ -1011,6 +1011,14 @@ export const it = {
   "app.noPendingEdits": "Nessuna modifica in sospeso da visualizzare",
   "app.tickOneRow": "Seleziona almeno una riga da applicare",
   "app.undid": "Ultima operazione annullata",
+  // [2026-11-03 13:40] Added: an undo refused over a later edit, and what it kept.
+  "app.undidKept": { one: "{n} campo è stato modificato nel frattempo da un’altra modifica ed è rimasto com’è", other: "{n} campi sono stati modificati nel frattempo da un’altra modifica e sono rimasti come sono" },
+  "app.undidKeptMore": { one: "e {n} altro file", other: "e altri {n} file" },
+  "undo.changed.title": "Alcuni file sono stati modificati dopo aver applicato questa modifica",
+  "undo.changed.detail": "Annullarla sovrascriverebbe quella modifica ({file}). Annullare solo ciò che non è stato toccato da allora, tenendo i valori più recenti, o ripristinare tutto com’era?",
+  "undo.changed.keep": "Annulla il non toccato",
+  "undo.changed.overwrite": "Annulla tutto",
+  "undo.changed.cancel": "Non annullare",
   // [2026-11-03 12:30] Added: a damaged undo journal set aside on open.
   "app.journalReset": "Non è stato possibile leggere la cronologia degli annullamenti, che è stata ricominciata: le modifiche precedenti non si possono più annullare qui.",
   "app.journalSetAside": "Il file di cronologia danneggiato è stato conservato in {path}",

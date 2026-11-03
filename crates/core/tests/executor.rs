@@ -7,7 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tagrex_core::journal::{UndoJournal, VecJournal};
 use tagrex_core::model::{TagEngine, TagField};
-use tagrex_core::plan::{ChangePlan, Executor, FieldChange, FileChange, PlanError};
+// [2026-11-03 13:40] KeptField and UndoMode added to the import.
+use tagrex_core::plan::{
+    ChangePlan, Executor, FieldChange, FileChange, KeptField, PlanError, UndoMode,
+};
 
 /// `fLaC` magic + STREAMINFO + PADDING + one audio frame — the same minimal, writable shape
 /// used by the tag-engine tests. Enough for lofty to identify the format and
@@ -1597,4 +1600,95 @@ fn a_custom_field_the_tag_cannot_store_is_refused_before_anything_is_written() {
         ..ChangePlan::default()
     };
     Executor::apply(&clear, &mut journal, &roots(dir.path())).unwrap();
+}
+
+// [2026-11-03 13:40] Added: regression test for the two ways past a refused undo.
+/// A refused undo (#658) had no way past it when the later edit came from
+/// another program: there is no later batch to undo, and the history is a
+/// stack. The person chooses instead: keep the newer values and undo the rest,
+/// or put every old value back.
+#[test]
+fn a_refused_undo_can_keep_the_later_edit_or_overwrite_it() {
+    for mode in [UndoMode::KeepChanged, UndoMode::Overwrite] {
+        let dir = TempDir::new(&format!("undo-mode-{mode:?}"));
+        let first = dir.flac("first.flac");
+        let second = dir.flac("second.flac");
+        let mut journal = VecJournal::new();
+        let change = |path: &Path| FileChange {
+            path: path.to_path_buf(),
+            tag_changes: vec![
+                FieldChange {
+                    field: TagField::Artist,
+                    old: None,
+                    new: Some("Batch Artist".to_string()),
+                },
+                FieldChange {
+                    field: TagField::Title,
+                    old: None,
+                    new: Some("Batch Title".to_string()),
+                },
+            ],
+            ..FileChange::default()
+        };
+        let plan = ChangePlan {
+            description: "two files".to_string(),
+            changes: vec![change(&first), change(&second)],
+            ..ChangePlan::default()
+        };
+        let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
+
+        // Another program edits the first file's artist afterwards.
+        let mut edited = TagEngine::read(&first).unwrap();
+        edited
+            .tags
+            .insert(TagField::Artist, "Edited Elsewhere".to_string());
+        TagEngine::write(&edited).unwrap();
+
+        // Asked first, the undo is refused and writes nothing.
+        assert!(matches!(
+            Executor::undo(&mut journal, batch.id, &roots(dir.path())),
+            Err(PlanError::ChangedSinceApplied(_))
+        ));
+
+        let report = Executor::undo_with_mode(
+            &mut journal,
+            batch.id,
+            &roots(dir.path()),
+            mode,
+            &mut |_| {},
+        )
+        .unwrap();
+
+        let first_now = TagEngine::read(&first).unwrap().tags;
+        let second_now = TagEngine::read(&second).unwrap().tags;
+        assert_eq!(
+            first_now.get(&TagField::Title),
+            None,
+            "{mode:?}: title undone"
+        );
+        assert!(
+            second_now.is_empty(),
+            "{mode:?}: other file undone: {second_now:?}"
+        );
+        assert!(journal.batches().unwrap().is_empty(), "{mode:?}");
+        match mode {
+            UndoMode::KeepChanged => {
+                assert_eq!(
+                    first_now.get(&TagField::Artist).map(String::as_str),
+                    Some("Edited Elsewhere")
+                );
+                assert_eq!(
+                    report.kept,
+                    vec![KeptField {
+                        path: first.clone(),
+                        field: TagField::Artist,
+                    }]
+                );
+            }
+            _ => {
+                assert_eq!(first_now.get(&TagField::Artist), None, "overwritten");
+                assert!(report.kept.is_empty());
+            }
+        }
+    }
 }

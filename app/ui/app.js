@@ -14,10 +14,13 @@ import {
   dismissStickyToast,
   // [2026-11-03 12:30] The multi-line report, for a damaged journal set aside on open.
   report,
+  // [2026-11-03 13:40] The two-way choice, for an undo refused over a later edit.
+  choiceDialog,
 } from "./js/dom.js";
 import { enablePointerReorder } from "./js/reorder.js";
 import { refreshExporter, setExportKind } from "./js/exporters.js";
-import { applyStaticText, planText, t as msg, tn } from "./js/i18n.js";
+// [2026-11-03 13:40] list() added, to name the kept fields.
+import { applyStaticText, planText, t as msg, tn, list as joinList } from "./js/i18n.js";
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
@@ -2026,6 +2029,27 @@ async function apply() {
   }
 }
 
+// [2026-11-03 13:40] Added: the report lines for the fields an undo kept.
+// After "undo what was not touched", each field another edit changed is named,
+// a line per file, so the user knows which files still hold a newer value. Kept
+// on screen until dismissed (the first line is a problem).
+const UNDO_KEPT_FILES_SHOWN = 5;
+function undoKeptParts(kept) {
+  const byFile = new Map();
+  for (const { path, field } of kept) {
+    if (!byFile.has(path)) byFile.set(path, []);
+    const label = field.startsWith("custom:") ? field.slice("custom:".length) : fieldLabel(field);
+    byFile.get(path).push(label);
+  }
+  const parts = [{ text: tn("app.undidKept", kept.length), problem: true }];
+  for (const [path, labels] of [...byFile].slice(0, UNDO_KEPT_FILES_SHOWN)) {
+    parts.push({ text: `${fileName(path)}: ${joinList(labels)}`, problem: false });
+  }
+  const more = byFile.size - UNDO_KEPT_FILES_SHOWN;
+  if (more > 0) parts.push({ text: tn("app.undidKeptMore", more), problem: false });
+  return parts;
+}
+
 async function undo() {
   // The backend takes one job at a time; a second click would only queue (#448).
   if (applying || undoing) return;
@@ -2034,8 +2058,31 @@ async function undo() {
     const batches = await invoke("history", {});
     if (batches.length === 0) return;
     await beginUndoProgress();
-    await invoke("undo", { batchId: batches[0].id });
-    toast(msg("app.undid"));
+    // [2026-11-03 13:40] A refusal over a later edit offers the two ways past it.
+    let result;
+    try {
+      result = await invoke("undo", { batchId: batches[0].id });
+    } catch (e) {
+      const failure = e && e.failure && e.failure.message;
+      if (!failure || failure.code !== "error.plan.changedSinceApplied") throw e;
+      endUndoProgress();
+      const path = (failure.args && failure.args.path) || "";
+      const choice = await choiceDialog(msg("undo.changed.title"), {
+        detail: msg("undo.changed.detail", { file: fileName(path) }),
+        primary: msg("undo.changed.keep"),
+        secondary: msg("undo.changed.overwrite"),
+        cancel: msg("undo.changed.cancel"),
+      });
+      if (!choice) return;
+      await beginUndoProgress();
+      result = await invoke("undo", {
+        batchId: batches[0].id,
+        mode: choice === "primary" ? "keep_changed" : "overwrite",
+      });
+    }
+    const kept = (result && result.kept) || [];
+    if (kept.length === 0) toast(msg("app.undid"));
+    else report(msg("app.undid"), undoKeptParts(kept));
     resetEdits();
     setTracks(await invoke("list_tracks", {}));
     sortTracks(); // the list came back in scan order (#196)

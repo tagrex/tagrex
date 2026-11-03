@@ -1009,6 +1009,14 @@ export const es = {
   "app.noPendingEdits": "No hay ediciones pendientes para previsualizar",
   "app.tickOneRow": "Marca al menos una fila para aplicar",
   "app.undid": "Se deshizo el último lote",
+  // [2026-11-03 13:40] Added: an undo refused over a later edit, and what it kept.
+  "app.undidKept": { one: "{n} campo se cambió después en otra edición y se dejó como está", other: "{n} campos se cambiaron después en otra edición y se dejaron como están" },
+  "app.undidKeptMore": { one: "y {n} archivo más", other: "y {n} archivos más" },
+  "undo.changed.title": "Algunos archivos se editaron después de aplicar este cambio",
+  "undo.changed.detail": "Deshacerlo sobrescribiría esa edición ({file}). ¿Deshacer solo lo que no se tocó desde entonces, conservando los valores nuevos, o devolverlo todo como estaba?",
+  "undo.changed.keep": "Deshacer lo no tocado",
+  "undo.changed.overwrite": "Deshacer todo",
+  "undo.changed.cancel": "No deshacer",
   // [2026-11-03 12:30] Added: a damaged undo journal set aside on open.
   "app.journalReset": "No se pudo leer el historial de deshacer y se empezó de nuevo: los cambios anteriores ya no se pueden deshacer aquí.",
   "app.journalSetAside": "El archivo de historial dañado se conservó en {path}",

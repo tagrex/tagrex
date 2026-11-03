@@ -439,23 +439,44 @@ impl Executor {
     /// the journal is where that authorization lives. Undo can still only move
     /// files back along paths the journal recorded, so this widens what undo
     /// may touch without widening what a plan may reach.
+    // [2026-11-03 13:40] Returns the report; refuses over a later edit, as before.
     pub fn undo(
         journal: &mut dyn UndoJournal,
         batch_id: BatchId,
         allowed_roots: &[PathBuf],
-    ) -> Result<(), PlanError> {
+    ) -> Result<UndoReport, PlanError> {
         Self::undo_with(journal, batch_id, allowed_roots, &mut |_| {})
     }
 
     /// [`Executor::undo`] that reports how far it has got (#448), the same way
     /// [`Executor::apply_with`] does. There is no cancel: stopping half-way would
     /// leave the batch partly undone, which is the state #441 removed for apply.
+    // [2026-11-03 13:40] Returns the report; refuses over a later edit, as before.
     pub fn undo_with(
         journal: &mut dyn UndoJournal,
         batch_id: BatchId,
         allowed_roots: &[PathBuf],
         progress: &mut dyn FnMut(&ApplyProgress),
-    ) -> Result<(), PlanError> {
+    ) -> Result<UndoReport, PlanError> {
+        Self::undo_with_mode(journal, batch_id, allowed_roots, UndoMode::Strict, progress)
+    }
+
+    // [2026-11-03 13:40] Added: undo with the person's answer to a later edit.
+    /// [`Executor::undo_with`] told what to do about a field changed after the
+    /// batch was applied (#658). [`UndoMode::Strict`] refuses, which is what the
+    /// interface asks first. A refusal had no way past it when the later edit
+    /// came from another program, since there is no later batch to undo and the
+    /// history is a stack; the other two modes are that way past, chosen by the
+    /// person: keep the newer values and undo the rest, or put every old value
+    /// back over them.
+    pub fn undo_with_mode(
+        journal: &mut dyn UndoJournal,
+        batch_id: BatchId,
+        allowed_roots: &[PathBuf],
+        mode: UndoMode,
+        progress: &mut dyn FnMut(&ApplyProgress),
+    ) -> Result<UndoReport, PlanError> {
+        let mut report = UndoReport::default();
         let batch = journal
             .batch(batch_id)?
             .ok_or(PlanError::Journal(JournalError::UnknownBatch(batch_id)))?;
@@ -505,7 +526,26 @@ impl Executor {
             }
         }
 
-        ensure_unchanged_since_applied(&batch)?;
+        // [2026-11-03 13:40] Every field changed since, then what the mode does with them.
+        let changed = changed_since_applied(&batch)?;
+        match mode {
+            UndoMode::Strict => {
+                if let Some((_, first)) = changed.first() {
+                    return Err(PlanError::ChangedSinceApplied(first.path.clone()));
+                }
+            }
+            UndoMode::KeepChanged => {
+                // Named where the file is once undone: a rename goes back first.
+                report.kept = changed
+                    .iter()
+                    .map(|(index, kept)| KeptField {
+                        path: batch.plan.changes[*index].path.clone(),
+                        field: kept.field.clone(),
+                    })
+                    .collect();
+            }
+            UndoMode::Overwrite => {}
+        }
 
         // Reverse the transfers first, so tag restoration finds each file back
         // at its original path. Undoing a copy means removing the copy — the
@@ -528,7 +568,8 @@ impl Executor {
                 steps.done();
             }
         }
-        for change in &batch.plan.changes {
+        // [2026-11-03 13:40] Indexed, to match the fields kept as changed since.
+        for (index, change) in batch.plan.changes.iter().enumerate() {
             // A copy's tag changes were written to the copy, which no longer
             // exists; the source still holds its original values.
             if change.copy || !writes_in_place(change) {
@@ -540,7 +581,9 @@ impl Executor {
             // stripped is the one the app reads from: put it back first and the
             // restoring writes land on the same block they were taken from.
             write_blocks(&change.path, change, Direction::Undo)?;
-            write_tag_changes(&change.path, change, Direction::Undo)?;
+            // [2026-11-03 13:40] A field kept as changed since is left out of the restore.
+            let restorable = without_kept_fields(change, index, &changed, mode);
+            write_tag_changes(&change.path, &restorable, Direction::Undo)?;
             apply_cover_change(&change.path, change, Direction::Undo)?;
             restore_revision(&change.path, &batch.id3v2_revisions)?;
             steps.done();
@@ -556,8 +599,63 @@ impl Executor {
         }
 
         journal.rollback(batch_id)?;
-        Ok(())
+        // [2026-11-03 13:40] What was kept goes back to the caller.
+        Ok(report)
     }
+}
+
+// [2026-11-03 13:40] Added: what to do about a field changed after the batch.
+/// What [`Executor::undo_with_mode`] does with a field that no longer reads as
+/// the batch left it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum UndoMode {
+    /// Refuse the undo and write nothing (#658). What is asked first.
+    #[default]
+    Strict,
+    /// Leave each such field as it now is and undo everything else; the
+    /// [`UndoReport`] names the fields left.
+    KeepChanged,
+    /// Put every old value back, over the later edits too.
+    Overwrite,
+}
+
+// [2026-11-03 13:40] Added: the report of an undo.
+/// What an undo left as it found it: empty unless it ran as
+/// [`UndoMode::KeepChanged`] over fields changed after the batch.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UndoReport {
+    pub kept: Vec<KeptField>,
+}
+
+// [2026-11-03 13:40] Added: one field an undo kept.
+/// One field an undo kept: where the file was when the undo looked, and which
+/// field.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeptField {
+    pub path: PathBuf,
+    pub field: TagField,
+}
+
+// [2026-11-03 13:40] Added: `change` without the fields kept as changed since.
+fn without_kept_fields(
+    change: &FileChange,
+    index: usize,
+    changed: &[(usize, KeptField)],
+    mode: UndoMode,
+) -> FileChange {
+    let mut restorable = FileChange {
+        path: change.path.clone(),
+        tag_changes: change.tag_changes.clone(),
+        ..FileChange::default()
+    };
+    if mode == UndoMode::KeepChanged {
+        restorable.tag_changes.retain(|field_change| {
+            !changed
+                .iter()
+                .any(|(at, kept)| *at == index && kept.field == field_change.field)
+        });
+    }
+    restorable
 }
 
 /// How far a running [`Executor::apply_with`] has got (#437). `total` counts the
@@ -901,16 +999,19 @@ fn applied_values(plan: &ChangePlan) -> Vec<AppliedValue> {
     values
 }
 
-/// Refuse to undo `batch` over a later edit (#658): every field it changed must
-/// still read as the batch left it, or as its `old` value already, where an
-/// earlier undo stopped part-way (#604). Checked for every file before any is
-/// touched, so a refusal writes nothing.
-fn ensure_unchanged_since_applied(batch: &AppliedBatch) -> Result<(), PlanError> {
+// [2026-11-03 13:40] Was ensure_unchanged_since_applied: now lists every changed field instead of stopping at the first.
+/// Every field of `batch` that no longer reads as the batch left it (#658),
+/// with the index of its change in the plan: a field must still read as the
+/// batch wrote it, or as its `old` value already, where an earlier undo stopped
+/// part-way (#604). Read for every file before any is touched, so a refusal
+/// built on it writes nothing.
+fn changed_since_applied(batch: &AppliedBatch) -> Result<Vec<(usize, KeptField)>, PlanError> {
+    let mut changed = Vec::new();
     let mut recorded: HashMap<&Path, Vec<&AppliedValue>> = HashMap::new();
     for applied in &batch.applied_values {
         recorded.entry(&applied.path).or_default().push(applied);
     }
-    for change in &batch.plan.changes {
+    for (index, change) in batch.plan.changes.iter().enumerate() {
         if change.copy {
             continue;
         }
@@ -933,11 +1034,17 @@ fn ensure_unchanged_since_applied(batch: &AppliedBatch) -> Result<(), PlanError>
                 .find(|field_change| field_change.field == applied.field)
                 .and_then(|field_change| field_change.old.as_ref());
             if now != applied.value.as_ref() && now != old {
-                return Err(PlanError::ChangedSinceApplied(now_at.to_path_buf()));
+                changed.push((
+                    index,
+                    KeptField {
+                        path: now_at.to_path_buf(),
+                        field: applied.field.clone(),
+                    },
+                ));
             }
         }
     }
-    Ok(())
+    Ok(changed)
 }
 
 /// The stamp of every copy `plan` made, read once the batch is written (#604).

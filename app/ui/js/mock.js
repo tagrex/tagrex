@@ -872,7 +872,8 @@ function mockInvoke(cmd, args) {
       return Promise.resolve(null);
     case "undo":
       s.history.shift();
-      return Promise.resolve();
+      // [2026-11-03 13:40] The backend answers with what the undo kept.
+      return Promise.resolve({ kept: [] });
     case "preview_cover_embed": {
       const changes = args.paths.map((p) => ({
         path: p,

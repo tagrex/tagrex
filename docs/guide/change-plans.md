@@ -74,6 +74,11 @@ current library.
   deliver for files outside the open folder.
 - **Renames and moves undo completely**, including removing directories the move
   had to create, and including sidecar files that travelled with the track.
+- **An edit made since is never overwritten without asking.** If a file was
+  edited after the batch was applied (by a later batch, or by another program),
+  undo stops and asks: **Undo the untouched** keeps the newer values and undoes
+  everything else, then names each field it kept; **Undo everything** puts every
+  old value back over the later edit; **Don't undo** leaves the files as they are.
 - **A damaged journal does not lock you out.** If the journal file cannot be
   read (a crash or a full disk part-way through a write), it is set aside next to
   where it was, as `journal.sqlite.corrupt-…`, and a fresh one is started. The

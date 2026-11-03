@@ -1013,6 +1013,14 @@ export const en = {
   "app.noPendingEdits": "No pending edits to preview",
   "app.tickOneRow": "Tick at least one row to apply",
   "app.undid": "Undid last batch",
+  // [2026-11-03 13:40] Added: an undo refused over a later edit, and what it kept.
+  "app.undidKept": { one: "{n} field was changed by another edit since, and was kept as it is", other: "{n} fields were changed by another edit since, and were kept as they are" },
+  "app.undidKeptMore": { one: "and {n} more file", other: "and {n} more files" },
+  "undo.changed.title": "Some files were edited after this change was applied",
+  "undo.changed.detail": "Undoing it would overwrite that edit ({file}). Undo only what was not touched since, keeping the newer values, or put everything back as it was?",
+  "undo.changed.keep": "Undo the untouched",
+  "undo.changed.overwrite": "Undo everything",
+  "undo.changed.cancel": "Don't undo",
   // [2026-11-03 12:30] Added: a damaged undo journal set aside on open.
   "app.journalReset": "The undo history could not be read and was started afresh: earlier changes can no longer be undone here.",
   "app.journalSetAside": "The damaged history file was kept at {path}",

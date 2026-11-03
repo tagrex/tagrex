@@ -1007,6 +1007,14 @@ export const de = {
   "app.noPendingEdits": "Keine ausstehenden Änderungen zur Vorschau",
   "app.tickOneRow": "Mindestens eine Zeile zum Anwenden ankreuzen",
   "app.undid": "Letzten Stapel rückgängig gemacht",
+  // [2026-11-03 13:40] Added: an undo refused over a later edit, and what it kept.
+  "app.undidKept": { one: "{n} Feld wurde seitdem anderweitig geändert und bleibt, wie es ist", other: "{n} Felder wurden seitdem anderweitig geändert und bleiben, wie sie sind" },
+  "app.undidKeptMore": { one: "und {n} weitere Datei", other: "und {n} weitere Dateien" },
+  "undo.changed.title": "Einige Dateien wurden nach dieser Änderung bearbeitet",
+  "undo.changed.detail": "Das Rückgängigmachen würde diese Bearbeitung überschreiben ({file}). Nur das seitdem Unberührte rückgängig machen und die neueren Werte behalten, oder alles wiederherstellen?",
+  "undo.changed.keep": "Unberührtes rückgängig",
+  "undo.changed.overwrite": "Alles rückgängig",
+  "undo.changed.cancel": "Nicht rückgängig",
   // [2026-11-03 12:30] Added: a damaged undo journal set aside on open.
   "app.journalReset": "Der Rückgängig-Verlauf war nicht lesbar und wurde neu begonnen: frühere Änderungen lassen sich hier nicht mehr rückgängig machen.",
   "app.journalSetAside": "Die beschädigte Verlaufsdatei wurde aufbewahrt unter {path}",

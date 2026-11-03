@@ -1011,6 +1011,14 @@ export const fr = {
   "app.noPendingEdits": "Aucune modification en attente à prévisualiser",
   "app.tickOneRow": "Cochez au moins une ligne à appliquer",
   "app.undid": "Dernier lot annulé",
+  // [2026-11-03 13:40] Added: an undo refused over a later edit, and what it kept.
+  "app.undidKept": { one: "{n} champ a été modifié depuis par une autre édition et a été laissé tel quel", other: "{n} champs ont été modifiés depuis par une autre édition et ont été laissés tels quels" },
+  "app.undidKeptMore": { one: "et {n} autre fichier", other: "et {n} autres fichiers" },
+  "undo.changed.title": "Des fichiers ont été modifiés après l’application de ce changement",
+  "undo.changed.detail": "L’annuler écraserait cette modification ({file}). Annuler seulement ce qui n’a pas été touché depuis, en gardant les valeurs récentes, ou tout remettre comme avant ?",
+  "undo.changed.keep": "Annuler le reste",
+  "undo.changed.overwrite": "Tout annuler",
+  "undo.changed.cancel": "Ne pas annuler",
   // [2026-11-03 12:30] Added: a damaged undo journal set aside on open.
   "app.journalReset": "L’historique d’annulation était illisible et a été recommencé : les modifications précédentes ne peuvent plus être annulées ici.",
   "app.journalSetAside": "Le fichier d’historique endommagé a été conservé ici : {path}",

@@ -208,3 +208,50 @@ export function confirmDialog(message, okLabel = "OK", { detail = "", danger = f
     (danger ? cancelBtn : okBtn).focus();
   });
 }
+
+// [2026-11-03 13:40] Added: the confirm dialog with an alternative action.
+// The confirm modal with two actions instead of one, plus the cancel button:
+// resolves to "primary", "secondary" or null (cancelled). The secondary action
+// gets the danger style and the focus starts on cancel, since it is the one
+// that overwrites something; its button is made here and taken away after.
+export function choiceDialog(message, { detail = "", primary, secondary, cancel }) {
+  return new Promise((resolve) => {
+    const modal = el("confirm-modal");
+    el("confirm-message").textContent = message;
+    el("confirm-detail").textContent = detail;
+    el("confirm-detail").hidden = !detail;
+    const okBtn = el("confirm-ok");
+    const cancelBtn = el("confirm-cancel");
+    const okText = okBtn.textContent;
+    const cancelText = cancelBtn.textContent;
+    const altBtn = document.createElement("button");
+    altBtn.className = "danger";
+    altBtn.textContent = secondary;
+    okBtn.before(altBtn);
+    okBtn.textContent = primary;
+    okBtn.classList.remove("danger");
+    if (cancel) cancelBtn.textContent = cancel;
+    modal.hidden = false;
+    const done = (result) => {
+      modal.hidden = true;
+      altBtn.remove();
+      okBtn.textContent = okText;
+      cancelBtn.textContent = cancelText;
+      okBtn.removeEventListener("click", onOk);
+      cancelBtn.removeEventListener("click", onCancel);
+      modal.removeEventListener("click", onBackdrop);
+      resolve(result);
+    };
+    const onOk = () => done("primary");
+    const onAlt = () => done("secondary");
+    const onCancel = () => done(null);
+    const onBackdrop = (e) => {
+      if (e.target === modal) done(null);
+    };
+    okBtn.addEventListener("click", onOk);
+    altBtn.addEventListener("click", onAlt);
+    cancelBtn.addEventListener("click", onCancel);
+    modal.addEventListener("click", onBackdrop);
+    cancelBtn.focus();
+  });
+}
