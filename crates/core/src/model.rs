@@ -3070,7 +3070,34 @@ fn keep_spelled_number_pair(tags: &mut TagMap, number: &TagField, total: &TagFie
 /// would look applied and then vanish on the next read. This verifies the write
 /// took; for an AIFF it first tries to repair the container and write again, and
 /// only then gives up with an honest error rather than a false success.
+// [2026-11-03 08:03] Wrapper added: a failed write to an AIFF or a WAV puts the file's bytes back.
+/// For an AIFF or a WAV the file is kept as it was read, and a write that fails
+/// puts those bytes back (in place, by [`rewrite_in_place`]): the fallback
+/// writer for a container [`write_iff_id3`] cannot walk appends its chunk before
+/// the check below can tell it went nowhere, and a refused write must leave the
+/// file untouched. Costs one more copy of the file in memory, which the IFF
+/// writers already read whole.
 fn write_id3v2(path: &Path, container: FileType, tags: &TagMap) -> Result<(), TagIoError> {
+    let original = if matches!(container, FileType::Aiff | FileType::Wav) {
+        Some(std::fs::read(path)?)
+    } else {
+        None
+    };
+    let result = write_id3v2_verified(path, container, tags);
+    if let (Err(_), Some(original)) = (&result, &original) {
+        if let Ok(now) = std::fs::read(path) {
+            if &now != original {
+                // The write's own error is the one worth reporting; a restore
+                // that fails as well leaves the file no worse than the write did.
+                rewrite_in_place(path, &now, original).ok();
+            }
+        }
+    }
+    result
+}
+
+// [2026-11-03 08:03] Renamed from write_id3v2; the body is unchanged.
+fn write_id3v2_verified(path: &Path, container: FileType, tags: &TagMap) -> Result<(), TagIoError> {
     // What the file read as before this write, so the legacy text blocks of a
     // WAV or an AIFF, an ID3v1 tag and an MP3's APE block lose only what the
     // model cleared (#652, #653, #655).
@@ -4990,7 +5017,43 @@ pub fn is_writable_value(field: &TagField, value: &str) -> bool {
 pub fn is_writable_value_at(path: &Path, field: &TagField, value: &str) -> bool {
     let integers_only = matches!(field, TagField::TrackNumber | TagField::DiscNumber)
         && FileType::from_path(path) == Some(FileType::Mp4);
-    is_writable_value(field, value) && !(integers_only && is_vinyl_position(value))
+    // [2026-11-03 08:03] A custom field whose name the file's tag cannot store is rejected too.
+    let unstorable_name = match field {
+        TagField::Custom(name) => !value.is_empty() && !is_storable_custom_name_at(path, name),
+        _ => false,
+    };
+    is_writable_value(field, value)
+        && !(integers_only && is_vinyl_position(value))
+        && !unstorable_name
+}
+
+// [2026-11-03 08:03] Added: the name rules of the tag a file at `path` is written to.
+/// Whether a custom field called `name` can be stored in the tag the file at
+/// `path` is written to. The backend skips a name the tag type forbids without
+/// an error, so the value would look applied and then be gone on the next read:
+/// - every tag needs a name at all;
+/// - Vorbis Comments (FLAC, Ogg, Opus, Speex) allow ASCII 0x20..=0x7D, `=` excluded;
+/// - APE (Monkey's Audio, Musepack, WavPack) allows 2..=255 bytes of ASCII
+///   0x20..=0x7E and reserves `ID3`, `TAG`, `OggS` and `MP+`.
+///
+/// ID3v2 (`TXXX`) and MP4 freeform atoms take any non-empty name. A file whose
+/// type the extension does not tell is given the benefit of the doubt.
+pub fn is_storable_custom_name_at(path: &Path, name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    match FileType::from_path(path) {
+        Some(FileType::Flac | FileType::Vorbis | FileType::Opus | FileType::Speex) => name
+            .bytes()
+            .all(|byte| (0x20..=0x7D).contains(&byte) && byte != b'='),
+        Some(FileType::Ape | FileType::Mpc | FileType::WavPack) => {
+            const RESERVED: [&str; 4] = ["ID3", "TAG", "OggS", "MP+"];
+            (2..=255).contains(&name.len())
+                && name.bytes().all(|byte| (0x20..=0x7E).contains(&byte))
+                && !RESERVED.iter().any(|key| key.eq_ignore_ascii_case(name))
+        }
+        _ => true,
+    }
 }
 
 /// A vinyl (or cassette) position as a track or disc number (#641): one or two
@@ -6104,5 +6167,99 @@ mod tests {
             std::fs::remove_file(&path).ok();
             std::fs::remove_file(&link).ok();
         }
+    }
+
+    // [2026-11-03 08:03] Added: regression test for custom field names a tag type cannot store.
+    /// A custom field name the file's tag cannot store was written with `Ok` and
+    /// then gone on the next read: the preview has to flag it, on exactly the
+    /// tag types that forbid it.
+    #[test]
+    fn a_custom_name_the_tag_cannot_store_is_not_writable() {
+        let custom = |name: &str| TagField::Custom(name.to_string());
+        for name in ["ÜNI", "a=b", "\u{1F3B5}", ""] {
+            assert!(
+                !is_storable_custom_name_at(Path::new("a.flac"), name),
+                "{name:?}"
+            );
+            assert!(
+                !is_storable_custom_name_at(Path::new("a.ogg"), name),
+                "{name:?}"
+            );
+            assert!(
+                !is_storable_custom_name_at(Path::new("a.opus"), name),
+                "{name:?}"
+            );
+            assert!(!is_writable_value_at(
+                Path::new("a.flac"),
+                &custom(name),
+                "value"
+            ));
+        }
+        for name in ["X", "TAG", "oggs", "Ü", &"A".repeat(256)] {
+            assert!(
+                !is_storable_custom_name_at(Path::new("a.ape"), name),
+                "{name:?}"
+            );
+            assert!(
+                !is_storable_custom_name_at(Path::new("a.wv"), name),
+                "{name:?}"
+            );
+        }
+        // Allowed where the tag allows it.
+        for name in ["MOOD", "Spaces In Name", "DISCOGS_RELEASE_ID", "a-b_c.d"] {
+            assert!(
+                is_storable_custom_name_at(Path::new("a.flac"), name),
+                "{name:?}"
+            );
+            assert!(
+                is_storable_custom_name_at(Path::new("a.ape"), name),
+                "{name:?}"
+            );
+        }
+        // `~` is 0x7E: past what Vorbis allows, within what APE allows.
+        assert!(!is_storable_custom_name_at(Path::new("a.flac"), "a~b"));
+        assert!(is_storable_custom_name_at(Path::new("a.ape"), "a~b"));
+        // ID3v2 TXXX and MP4 freeform atoms take any name but an empty one.
+        for path in ["a.mp3", "a.m4a", "a.wav", "a.aiff"] {
+            assert!(is_storable_custom_name_at(
+                Path::new(path),
+                "ÜNI a=b \u{1F3B5}"
+            ));
+            assert!(!is_storable_custom_name_at(Path::new(path), ""));
+        }
+        // Clearing a field is always fine, whatever it is called.
+        assert!(is_writable_value_at(
+            Path::new("a.flac"),
+            &custom("ÜNI"),
+            ""
+        ));
+        assert!(is_writable_value_at(
+            Path::new("a.flac"),
+            &custom("MOOD"),
+            "Calm"
+        ));
+    }
+
+    // [2026-11-03 08:03] Added: regression test for a refused WAV write that used to change the file.
+    /// A WAV whose `fmt ` chunk states a size past the end of the file cannot be
+    /// walked, so the backend's own writer took it and appended an `ID3 ` chunk;
+    /// the check that the tag landed then refused the write and the file was
+    /// left 1 KB longer with a new RIFF size. A refused write leaves it as it was.
+    #[test]
+    fn a_refused_wav_write_leaves_the_file_as_it_was() {
+        let mut bytes = wav_bytes(&[(b"fmt ", &PCM_FMT), (b"data", &[0; 8])], None);
+        bytes[16..20].copy_from_slice(&0xFFFF_7F10u32.to_le_bytes());
+        let path =
+            std::env::temp_dir().join(format!("tagrex-refused-wav-{}.wav", std::process::id()));
+        std::fs::write(&path, &bytes).unwrap();
+
+        let mut tags = TagMap::new();
+        tags.insert(TagField::Artist, "Never lands".to_string());
+        let result = write_id3v2(&path, FileType::Wav, &tags);
+        let after = std::fs::read(&path).unwrap();
+        std::fs::remove_file(&path).ok();
+
+        assert!(result.is_err(), "the write must be refused");
+        assert_eq!(after, bytes, "a refused write must not change the file");
     }
 }

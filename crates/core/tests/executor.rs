@@ -1549,3 +1549,52 @@ fn undoing_a_vorbis_block_removal_puts_back_every_comment() {
     assert_eq!(TagEngine::read_covers(&track).unwrap(), vec![cover]);
     assert!(!TagBlockContent::exact(TagBlockKind::VorbisComments));
 }
+
+// [2026-11-03 08:03] Added: regression test for the custom field name guard.
+/// A custom field the file's tag cannot store — Vorbis Comments forbid
+/// non-ASCII names and `=` — used to be written with `Ok` and be gone on the
+/// next read. The whole plan is refused before anything is written instead.
+#[test]
+fn a_custom_field_the_tag_cannot_store_is_refused_before_anything_is_written() {
+    let dir = TempDir::new("unstorable-custom");
+    let first = dir.flac("first.flac");
+    let second = dir.flac("second.flac");
+    let before = std::fs::read(&first).unwrap();
+    let mut journal = VecJournal::new();
+
+    for name in ["ÜNI", "a=b"] {
+        let mut plan = set_artist(&first, None, Some("Fine"));
+        plan.changes.push(FileChange {
+            path: second.clone(),
+            tag_changes: vec![FieldChange {
+                field: TagField::Custom(name.to_string()),
+                old: None,
+                new: Some("lost".to_string()),
+            }],
+            ..FileChange::default()
+        });
+        let result = Executor::apply(&plan, &mut journal, &roots(dir.path()));
+        assert!(
+            matches!(result, Err(PlanError::TagIo(_))),
+            "{name:?}: {result:?}"
+        );
+        assert_eq!(std::fs::read(&first).unwrap(), before, "{name:?}");
+        assert!(journal.batches().unwrap().is_empty());
+    }
+
+    // Clearing such a field is not refused: there is nothing to lose.
+    let clear = ChangePlan {
+        description: "clear".to_string(),
+        changes: vec![FileChange {
+            path: second.clone(),
+            tag_changes: vec![FieldChange {
+                field: TagField::Custom("ÜNI".to_string()),
+                old: None,
+                new: None,
+            }],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+    Executor::apply(&clear, &mut journal, &roots(dir.path())).unwrap();
+}

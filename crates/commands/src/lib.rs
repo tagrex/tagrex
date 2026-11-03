@@ -25,7 +25,8 @@ use thiserror::Error;
 use base64::Engine as _;
 use tagrex_core::export::{self, CueTrack, PlaylistTrack};
 use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
-use tagrex_core::mask::{FileContext, Mask, MaskError};
+// [2026-11-03 08:03] portable_file_name added to the import.
+use tagrex_core::mask::{portable_file_name, FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{
     is_vinyl_position, is_writable_value, is_writable_value_at, CoverArt, CoverKind, Id3v2Revision,
@@ -2540,6 +2541,22 @@ impl App {
             Some(ext) => format!("{}.{ext}", components.pop().unwrap_or_default()),
             None => components.pop().unwrap_or_default().to_string(),
         };
+        // [2026-11-03 08:03] Every component made valid on Windows, FAT32 and exFAT; one that ends up empty is refused.
+        let components: Vec<String> = components
+            .into_iter()
+            .map(|part| {
+                if part == "." {
+                    part.to_string()
+                } else {
+                    portable_file_name(part)
+                }
+            })
+            .collect();
+        // [2026-11-03 08:03] The file name, extension included, made portable the same way.
+        let last = portable_file_name(&last);
+        if last.is_empty() || components.iter().any(String::is_empty) {
+            return Err(None);
+        }
         // Pushed one at a time so the platform supplies its own separator
         // instead of us embedding one in the string.
         let mut target = root.to_path_buf();
@@ -2951,6 +2968,13 @@ impl App {
                     Some(ext) => format!("{renamed}.{ext}"),
                     None => renamed,
                 };
+                // [2026-11-03 08:03] The new name made portable: a separator in it would move the file, `..` out of its folder.
+                let file_name = portable_file_name(&file_name);
+                if file_name.is_empty()
+                    || path.file_name().and_then(|name| name.to_str()) == Some(file_name.as_str())
+                {
+                    continue;
+                }
                 let mut change = FileChangeDto {
                     path: path.to_string_lossy().into_owned(),
                     rename_to: Some(
@@ -2991,10 +3015,16 @@ impl App {
                     .file_stem()
                     .map(|stem| stem.to_string_lossy().into_owned())
                     .unwrap_or_default();
+                // [2026-11-03 08:03] The new name made portable, as the filename scope does.
+                let file_name = portable_file_name(&format!("{stem}.{renamed}"));
+                if path.file_name().and_then(|name| name.to_str()) == Some(file_name.as_str()) {
+                    continue;
+                }
                 let mut change = FileChangeDto {
                     path: path.to_string_lossy().into_owned(),
                     rename_to: Some(
-                        path.with_file_name(format!("{stem}.{renamed}"))
+                        // [2026-11-03 08:03] Uses the portable name built above.
+                        path.with_file_name(file_name)
                             .to_string_lossy()
                             .into_owned(),
                     ),
@@ -3279,12 +3309,15 @@ impl App {
                         for folder in folders.iter_mut() {
                             let next = chain.apply(folder);
                             let trimmed = next.trim();
+                            // [2026-11-03 08:03] The cleaned folder is made portable too; one that ends up empty keeps its name.
+                            let portable = portable_file_name(&next);
                             if !trimmed.is_empty()
                                 && trimmed != "."
                                 && trimmed != ".."
                                 && !next.contains(['/', '\\'])
+                                && !portable.is_empty()
                             {
-                                *folder = next;
+                                *folder = portable;
                             }
                         }
                     }
@@ -3321,6 +3354,15 @@ impl App {
             let file_name = match &ext {
                 Some(ext) => format!("{name}.{ext}"),
                 None => name.clone(),
+            };
+            // [2026-11-03 08:03] The cleaned name made portable: a separator in it moved the file, `..` out of its folder.
+            // A name that ends up empty keeps the one the plan proposed.
+            let file_name = match portable_file_name(&file_name) {
+                portable if portable.is_empty() => proposed
+                    .file_name()
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default(),
+                portable => portable,
             };
             let target_dir = match &root {
                 Some(root) if proposed_dir.starts_with(root) => folders
@@ -11444,5 +11486,105 @@ mod tests {
             read_cover_image(&txt),
             Err(AppError::NotAnImage(_))
         ));
+    }
+
+    // [2026-11-03 08:03] Added: regression test for rename targets that fail on Windows, FAT32 and exFAT.
+    /// A title like `What?` or an artist like `CON` rendered a name Windows and
+    /// the FAT32/exFAT of a USB stick refuse; every component is made portable.
+    #[test]
+    fn a_rename_proposes_a_portable_name() {
+        let dir = TempDir::new("rename-portable");
+        let track = dir.tagged_flac("track.flac", "CON", "What? Live: <1996>.");
+        let app = open_app(&dir);
+
+        let plan = app
+            .preview_rename("%artist%/%title%", std::slice::from_ref(&track))
+            .unwrap();
+        let expected = dir.0.join("CON_").join("What_ Live_ _1996_..flac");
+        assert_eq!(
+            plan.changes[0].rename_to.as_deref(),
+            Some(expected.to_string_lossy().as_ref())
+        );
+    }
+
+    // [2026-11-03 08:03] Added: regression test for a file-name transform that put a separator in the name.
+    /// A filename-scoped chain that writes a separator or `..` into the name used
+    /// to move the file into a subfolder or out of its own; it is a rename in
+    /// place, with the separator made `_`.
+    #[test]
+    fn a_filename_transform_never_moves_the_file() {
+        let dir = TempDir::new("transform-portable");
+        let track = dir.tagged_flac("Artist - Title.flac", "Artist", "Title");
+        let app = open_app(&dir);
+
+        for (rule, expected) in [
+            (replace_rule(" - ", "/"), "Artist_Title.flac"),
+            (replace_rule("Artist - ", "../"), ".._Title.flac"),
+            (replace_rule(" - ", "?"), "Artist?Title.flac"),
+        ] {
+            let plan = app
+                .preview_transform(std::slice::from_ref(&track), &[rule], "filename")
+                .unwrap();
+            let expected = expected.replace('?', "_");
+            assert_eq!(
+                plan.changes[0].rename_to.as_deref(),
+                Some(dir.0.join(&expected).to_string_lossy().as_ref()),
+                "{expected}"
+            );
+        }
+
+        // The same over a plan the rename staged.
+        let staged = app
+            .preview_rename("%artist% - %title%x", std::slice::from_ref(&track))
+            .unwrap();
+        let cleaned = app
+            .preview_transform_over_plan(
+                &staged,
+                &[ActionGroupDto {
+                    name: "separator".into(),
+                    scope: "filename".into(),
+                    rules: vec![replace_rule(" - ", "/../")],
+                    note: String::new(),
+                }],
+            )
+            .unwrap();
+        assert_eq!(
+            cleaned.changes[0].rename_to.as_deref(),
+            Some(
+                dir.0
+                    .join("Artist_.._Titlex.flac")
+                    .to_string_lossy()
+                    .as_ref()
+            )
+        );
+    }
+
+    // [2026-11-03 08:03] Added: regression test for a custom field name the file's tag cannot store.
+    /// A custom field name Vorbis Comments cannot hold was staged, written with
+    /// no error and gone on the next read; the preview flags it instead, and it
+    /// is left unwritten like any other value a field cannot hold.
+    #[test]
+    fn a_custom_name_the_file_cannot_store_is_flagged() {
+        let dir = TempDir::new("custom-name-invalid");
+        let track = dir.tagged_flac("track.flac", "Artist", "Title");
+        let app = open_app(&dir);
+        let edit = |field: &str| TagEditDto {
+            path: track.to_string_lossy().into_owned(),
+            field: field.to_string(),
+            value: Some("value".to_string()),
+        };
+
+        let plan = app
+            .preview_tag_edits(&[edit("custom:ÜNI"), edit("custom:MOOD")])
+            .unwrap();
+        let flagged = |key: &str| {
+            plan.changes[0]
+                .tag_changes
+                .iter()
+                .find(|c| c.field == key)
+                .map(|c| c.invalid)
+        };
+        assert_eq!(flagged("custom:ÜNI"), Some(true));
+        assert_eq!(flagged("custom:MOOD"), Some(false));
     }
 }

@@ -125,7 +125,7 @@ fn audit_executor() {
         let r = Executor::apply(
             &plan(vec![tag(&a, "A"), tag(&b, "B"), tag(&c, "C")]),
             &mut j,
-            &[d.0.clone()],
+            std::slice::from_ref(&d.0),
         );
         let after = snapshot(&d.0);
         report(
@@ -155,7 +155,7 @@ fn audit_executor() {
                 rename(&c, d.0.join("c2.flac")),
             ]),
             &mut j,
-            &[d.0.clone()],
+            std::slice::from_ref(&d.0),
         );
         let after = snapshot(&d.0);
         report(
@@ -178,7 +178,7 @@ fn audit_executor() {
         Executor::apply(
             &plan(vec![tag(&a, "IS-A"), tag(&b, "IS-B")]),
             &mut j,
-            &[d.0.clone()],
+            std::slice::from_ref(&d.0),
         )
         .unwrap();
         let before = snapshot(&d.0);
@@ -188,7 +188,7 @@ fn audit_executor() {
                 rename(&b, d.0.join("a.flac")),
             ]),
             &mut j,
-            &[d.0.clone()],
+            std::slice::from_ref(&d.0),
         );
         let after = snapshot(&d.0);
         let names: Vec<_> = after.keys().cloned().collect();
@@ -207,7 +207,7 @@ fn audit_executor() {
                 rename(&b, d.0.join("c.flac")),
             ]),
             &mut j,
-            &[d.0.clone()],
+            std::slice::from_ref(&d.0),
         );
         let after2 = snapshot(&d.0);
         report(
@@ -225,12 +225,17 @@ fn audit_executor() {
         let d = Dir::new("s4");
         let a = d.flac("a.flac");
         let mut j = VecJournal::new();
-        let batch = Executor::apply(&plan(vec![tag(&a, "Mine")]), &mut j, &[d.0.clone()]).unwrap();
+        let batch = Executor::apply(
+            &plan(vec![tag(&a, "Mine")]),
+            &mut j,
+            std::slice::from_ref(&d.0),
+        )
+        .unwrap();
         // someone else edits the artist afterwards
         let mut t = TagEngine::read(&a).unwrap();
         t.tags.insert(TagField::Artist, "Edited elsewhere".into());
         TagEngine::write(&t).unwrap();
-        let r = Executor::undo(&mut j, batch.id, &[d.0.clone()]);
+        let r = Executor::undo(&mut j, batch.id, std::slice::from_ref(&d.0));
         let now = TagEngine::read(&a)
             .unwrap()
             .tags
@@ -255,7 +260,11 @@ fn audit_executor() {
         std::os::unix::fs::symlink(&target, &link).unwrap();
         let before = std::fs::read(&target).unwrap();
         let mut j = VecJournal::new();
-        let r = Executor::apply(&plan(vec![tag(&link, "ESCAPED")]), &mut j, &[d.0.clone()]);
+        let r = Executor::apply(
+            &plan(vec![tag(&link, "ESCAPED")]),
+            &mut j,
+            std::slice::from_ref(&d.0),
+        );
         let after = std::fs::read(&target).unwrap();
         report(
             "S5 tag write through symlink cannot touch file outside root",
@@ -278,7 +287,7 @@ fn audit_executor() {
         let r = Executor::apply(
             &plan(vec![rename(&a, d.0.join("sub").join("moved.flac"))]),
             &mut j,
-            &[d.0.clone()],
+            std::slice::from_ref(&d.0),
         );
         let escaped = outside.0.join("moved.flac").exists();
         report(
@@ -300,12 +309,12 @@ fn audit_executor() {
         let r = Executor::apply(
             &plan(vec![rename(&a, d.0.join("b.flac"))]),
             &mut j,
-            &[d.0.clone()],
+            std::slice::from_ref(&d.0),
         );
         let after = snapshot(&d.0);
         report(
             "S7 case-variant target keeps both files on case-sensitive fs",
-            after.len() == before.len() + 0,
+            after.len() == before.len(),
             format!(
                 "result={:?} files={:?}",
                 r.as_ref().map(|_| "ok").map_err(|e| e.to_string()),
@@ -325,7 +334,7 @@ fn audit_executor() {
         let r = Executor::apply_with(
             &plan(vec![tag(&a, "A"), tag(&b, "B")]),
             &mut j,
-            &[d.0.clone()],
+            std::slice::from_ref(&d.0),
             &mut |_| {
                 n += 1;
                 if n == 1 {
@@ -359,7 +368,7 @@ fn audit_executor() {
             let r = Executor::apply(
                 &plan(vec![rename(&a, d.0.join(name))]),
                 &mut j,
-                &[d.0.clone()],
+                std::slice::from_ref(&d.0),
             );
             println!(
                 "INFO S9 rename -> {name:?}: {:?}",

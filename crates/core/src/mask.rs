@@ -1342,16 +1342,95 @@ pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
     docs
 }
 
+// [2026-11-03 08:03] Comment updated: the other reserved characters are now handled by portable_file_name.
 /// Path separators in a tag value would otherwise split the rendered string
 /// across directories, or fail outright on Windows. Other filesystem-
-/// reserved characters (`:`, `*`, `?`, ...) are left alone -- that's the
-/// future rename/apply step's job (architecture.md), not the mask grammar.
+/// reserved characters (`:`, `*`, `?`, ...) are left alone here: the rename
+/// step makes each rendered path component portable with [`portable_file_name`].
 fn sanitize_for_filename(value: &str) -> Cow<'_, str> {
     if value.contains(['/', '\\']) {
         Cow::Owned(value.replace(['/', '\\'], "_"))
     } else {
         Cow::Borrowed(value)
     }
+}
+
+// [2026-11-03 08:03] Added: one path component made safe for Windows, FAT32 and exFAT.
+/// The longest file or folder name, in bytes, that every common file system
+/// takes: 255 bytes on Linux and macOS, 255 UTF-16 units on Windows and exFAT,
+/// and a UTF-8 string is never shorter in bytes than in UTF-16 units.
+const MAX_NAME_BYTES: usize = 255;
+
+/// The longest tail after the last dot that is kept whole as an extension when
+/// a name has to be shortened.
+const MAX_KEPT_EXTENSION_BYTES: usize = 16;
+
+/// The device names Windows reserves, with or without an extension.
+const RESERVED_DEVICE_NAMES: [&str; 22] = [
+    "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+    "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+];
+
+/// Make one file or folder name valid on every file system a music library
+/// lives on: Windows (NTFS), and the FAT32 and exFAT of USB sticks and SD cards
+/// on any system. Without this a title like `What?` renders a name that fails
+/// to rename on those, and a trailing dot is silently dropped by Windows, so two
+/// planned names could land on one file.
+///
+/// - `< > : " | ? *`, the path separators and control characters become `_`;
+/// - trailing dots and spaces are removed;
+/// - a reserved device name (`CON`, `NUL`, `COM1` ...) gets a `_` after it;
+/// - a name longer than 255 bytes is shortened on a character boundary,
+///   keeping its extension.
+///
+/// An empty result is left empty, for the caller to refuse.
+pub fn portable_file_name(name: &str) -> String {
+    let mut out: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*' | '/' | '\\') {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    strip_trailing_dots_and_spaces(&mut out);
+
+    let base_len = out
+        .split('.')
+        .next()
+        .unwrap_or_default()
+        .trim_end_matches(' ')
+        .len();
+    if RESERVED_DEVICE_NAMES
+        .iter()
+        .any(|reserved| reserved.eq_ignore_ascii_case(&out[..base_len]))
+    {
+        out.insert(base_len, '_');
+    }
+
+    if out.len() > MAX_NAME_BYTES {
+        let extension_at = out
+            .rfind('.')
+            .filter(|&at| at > 0 && out.len() - at <= MAX_KEPT_EXTENSION_BYTES)
+            .unwrap_or(out.len());
+        let extension = out[extension_at..].to_string();
+        let mut cut = MAX_NAME_BYTES - extension.len();
+        while !out.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        out.truncate(cut);
+        out.push_str(&extension);
+        strip_trailing_dots_and_spaces(&mut out);
+    }
+    out
+}
+
+// [2026-11-03 08:03] Added: helper for portable_file_name.
+fn strip_trailing_dots_and_spaces(name: &mut String) {
+    let kept = name.trim_end_matches(['.', ' ']).len();
+    name.truncate(kept);
 }
 
 #[derive(Debug, Error)]
@@ -2433,5 +2512,55 @@ mod tests {
         assert_eq!(civil_from_days(59), (1970, 3, 1));
         // A leap day, the case the conversion is easiest to get wrong on.
         assert_eq!(civil_from_days(19_782), (2024, 2, 29));
+    }
+
+    // [2026-11-03 08:03] Added: regression test for names that fail on Windows, FAT32 and exFAT.
+    #[test]
+    fn a_file_name_is_made_portable() {
+        let cases = [
+            ("Plain Name.flac", "Plain Name.flac"),
+            ("What?.flac", "What_.flac"),
+            (
+                "AC: DC <live> \"x\" | y * z.mp3",
+                "AC_ DC _live_ _x_ _ y _ z.mp3",
+            ),
+            ("tab\there\u{7}.flac", "tab_here_.flac"),
+            ("a/b\\c.flac", "a_b_c.flac"),
+            // Windows drops a trailing dot or space; two names would become one.
+            ("Folder.", "Folder"),
+            ("Folder . .", "Folder"),
+            ("...", ""),
+            // Reserved device names, with or without an extension, in any case.
+            ("CON.flac", "CON_.flac"),
+            ("nul", "nul_"),
+            ("Com1.tar.gz", "Com1_.tar.gz"),
+            ("aux .mp3", "aux_ .mp3"),
+            ("CONCERT.flac", "CONCERT.flac"),
+            ("COM10.flac", "COM10.flac"),
+            ("Ünïcödé 日本語 🎵.flac", "Ünïcödé 日本語 🎵.flac"),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(portable_file_name(input), expected, "{input:?}");
+        }
+    }
+
+    // [2026-11-03 08:03] Added: regression test for names past 255 bytes.
+    #[test]
+    fn a_long_file_name_is_cut_to_255_bytes_keeping_its_extension() {
+        let long = format!("{}.flac", "x".repeat(300));
+        let out = portable_file_name(&long);
+        assert_eq!(out.len(), 255);
+        assert!(out.ends_with("x.flac"));
+
+        // Never inside a multi-byte character.
+        let wide = format!("{}.mp3", "日".repeat(100));
+        let out = portable_file_name(&wide);
+        assert!(out.len() <= 255);
+        assert!(out.ends_with("日.mp3"));
+
+        // A folder name has no extension to keep, and loses a dot or space the cut exposes.
+        let folder = format!("{}. {}", "y".repeat(253), "z".repeat(50));
+        let out = portable_file_name(&folder);
+        assert_eq!(out, "y".repeat(253));
     }
 }

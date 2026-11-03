@@ -75,7 +75,7 @@ fn mutate(base: &[u8], rng: &mut Rng) -> Vec<u8> {
             let i = rng.below(b.len());
             let n = rng.below(32);
             let fill = rng.next() as u8;
-            b.splice(i..i, std::iter::repeat(fill).take(n));
+            b.splice(i..i, std::iter::repeat_n(fill, n));
         }
         3 => {
             // set a random 4-byte window to a hostile length
