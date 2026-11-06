@@ -32,5 +32,5 @@ rodio = { version = "0.23", default-features = false, features = [
 # cannot do (it loads from a path), and `anyhow` because its model trait says so.
 beat-this = { version = "1.1", default-features = false }
 rten = "0.24"
-rten-tensor = "0.24"
+rten-tensor = "0.27"
 anyhow = "1"
