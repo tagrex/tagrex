@@ -489,7 +489,11 @@ fn a_batch_is_journaled_before_its_first_write() {
         &plan,
         &mut journal,
         &roots(dir.path()),
-        &mut |_| {
+        &mut |progress| {
+            // Preflight reports before a batch exists and writes nothing.
+            if progress.done < plan.changes.len() {
+                return;
+            }
             // What another process would find, were this one to stop here.
             let other = SqliteJournal::open(&dir.db()).unwrap();
             seen.push(

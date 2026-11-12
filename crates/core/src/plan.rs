@@ -256,14 +256,20 @@ impl Executor {
         // Pre-flight: validate the WHOLE plan before touching disk. Rename
         // targets are collected so two files can't be planned onto the same
         // destination.
+        let total = plan.changes.len() + count_steps(plan);
         let mut planned_targets = HashSet::new();
-        for change in &plan.changes {
+        for (index, change) in plan.changes.iter().enumerate() {
             // Reading every file to check it is not stale is the long part of a
             // big apply on a slow disk, and it writes nothing, so a cancel here
             // has nothing to put back (#437).
             if cancel.load(Ordering::SeqCst) {
                 return Err(PlanError::Cancelled);
             }
+            progress(&ApplyProgress {
+                done: index,
+                total,
+                path: change.path.clone(),
+            });
             ensure_within_roots(&change.path, &roots)?;
             ensure_not_stale(change)?;
             ensure_storable_custom_names(change)?;
@@ -318,12 +324,20 @@ impl Executor {
 
         let mut written = Written::new(plan.changes.len());
         written.revisions.clone_from(&batch.id3v2_revisions);
-        let mut steps = Steps::new(count_steps(plan), progress, cancel);
+        let mut steps = Steps::new(total, progress, cancel);
+        steps.done = plan.changes.len();
         let removed_dirs = match Self::write_phase(plan, &roots, &mut written, &mut steps) {
             Ok(removed_dirs) => removed_dirs,
             Err(error) => {
                 let error = written.roll_back_after(plan, &[], error);
-                let _ = journal.rollback(batch.id);
+                if !matches!(error, PlanError::RollbackIncomplete { .. }) {
+                    let _ = journal.rollback(batch.id);
+                } else {
+                    batch.created_dirs.clone_from(&written.created_dirs);
+                    batch.applied_values = applied_values(plan);
+                    batch.copy_stamps = copy_stamps(plan);
+                    let _ = journal.retain_interrupted(batch.id, &batch);
+                }
                 return Err(error);
             }
         };
@@ -333,9 +347,16 @@ impl Executor {
         batch.applied_values = applied_values(plan);
         batch.interrupted = false;
         if let Err(error) = journal.finish(batch.id, &batch) {
-            written.created_dirs = batch.created_dirs;
+            written.created_dirs.clone_from(&batch.created_dirs);
             let error = written.roll_back_after(plan, &batch.removed_dirs, error.into());
-            let _ = journal.rollback(batch.id);
+            if !matches!(error, PlanError::RollbackIncomplete { .. }) {
+                let _ = journal.rollback(batch.id);
+            } else {
+                batch.interrupted = true;
+                batch.applied_values = applied_values(plan);
+                batch.copy_stamps = copy_stamps(plan);
+                let _ = journal.retain_interrupted(batch.id, &batch);
+            }
             return Err(error);
         }
         Ok(batch)
@@ -652,7 +673,7 @@ fn without_kept_fields(
 }
 
 /// How far a running [`Executor::apply_with`] has got (#437). `total` counts the
-/// write steps of the whole plan (tags of a file, a move or copy, a sidecar),
+/// preflight reads plus write steps (tags of a file, a move or copy, a sidecar),
 /// `done` those finished before `path`'s step, which is about to run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyProgress {

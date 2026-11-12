@@ -183,6 +183,16 @@ pub trait UndoJournal {
     /// stamps, the values it left) and clear its `interrupted` mark.
     fn finish(&mut self, id: BatchId, batch: &AppliedBatch) -> Result<(), JournalError>;
 
+    /// Preserve execution facts after a failed rollback. The original record
+    /// must survive even if this best-effort update fails.
+    fn retain_interrupted(
+        &mut self,
+        _id: BatchId,
+        _batch: &AppliedBatch,
+    ) -> Result<(), JournalError> {
+        Ok(())
+    }
+
     /// Roll back a whole batch as a unit.
     fn rollback(&mut self, id: BatchId) -> Result<(), JournalError>;
 }
@@ -232,6 +242,24 @@ impl UndoJournal for VecJournal {
         *stored = AppliedBatch {
             id,
             interrupted: false,
+            ..batch.clone()
+        };
+        Ok(())
+    }
+
+    fn retain_interrupted(
+        &mut self,
+        id: BatchId,
+        batch: &AppliedBatch,
+    ) -> Result<(), JournalError> {
+        let stored = self
+            .batches
+            .iter_mut()
+            .find(|b| b.id == id)
+            .ok_or(JournalError::UnknownBatch(id))?;
+        *stored = AppliedBatch {
+            id,
+            interrupted: true,
             ..batch.clone()
         };
         Ok(())
@@ -704,14 +732,46 @@ impl UndoJournal for SqliteJournal {
         Ok(())
     }
 
+    fn retain_interrupted(
+        &mut self,
+        id: BatchId,
+        batch: &AppliedBatch,
+    ) -> Result<(), JournalError> {
+        let tx = self.conn.transaction()?;
+        if tx.execute(
+            "UPDATE batches SET interrupted = 1 WHERE id = ?1",
+            rusqlite::params![id.0],
+        )? == 0
+        {
+            return Err(JournalError::UnknownBatch(id));
+        }
+        // Replace outcome rows, rather than duplicating facts recorded before
+        // the write began. Snapshot payloads are left untouched.
+        for table in [
+            "created_dirs",
+            "removed_dirs",
+            "allowed_roots",
+            "copy_stamps",
+            "applied_values",
+        ] {
+            tx.execute(
+                &format!("DELETE FROM {table} WHERE batch_id = ?1"),
+                rusqlite::params![id.0],
+            )?;
+        }
+        insert_outcome(&tx, id.0, batch)?;
+        tx.commit()?;
+        Ok(())
+    }
+
     fn rollback(&mut self, id: BatchId) -> Result<(), JournalError> {
         // Children cascade away via the foreign keys enabled in `open`.
-        let affected = self
-            .conn
-            .execute("DELETE FROM batches WHERE id = ?1", rusqlite::params![id.0])?;
+        let tx = self.conn.transaction()?;
+        let affected = tx.execute("DELETE FROM batches WHERE id = ?1", rusqlite::params![id.0])?;
         if affected == 0 {
             return Err(JournalError::UnknownBatch(id));
         }
+        tx.commit()?;
         Ok(())
     }
 }

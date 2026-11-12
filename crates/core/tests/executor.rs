@@ -1082,7 +1082,7 @@ fn apply_reports_each_step_with_a_running_total() {
     )
     .unwrap();
 
-    assert_eq!(seen, vec![(0, 3), (1, 3), (2, 3)]);
+    assert_eq!(seen, vec![(0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (5, 6)]);
 }
 
 #[test]
@@ -1101,10 +1101,10 @@ fn a_cancel_between_files_rolls_the_batch_back() {
         &mut journal,
         &roots(dir.path()),
         &mut |progress| {
-            if progress.done == 1 {
+            if progress.done == plan.changes.len() + 1 {
                 cancel.store(true, Ordering::SeqCst);
             }
-            written_when_stopped = progress.done + 1;
+            written_when_stopped = progress.done.saturating_sub(plan.changes.len()) + 1;
         },
         &cancel,
     );
@@ -1764,4 +1764,132 @@ fn a_refused_undo_can_keep_the_later_edit_or_overwrite_it() {
             }
         }
     }
+}
+
+/// A failed final journal update plus an unavailable restoration path must keep
+/// the original durable record, including after the journal is reopened.
+#[test]
+fn incomplete_rollback_retains_recovery_batch_after_reopen() {
+    use tagrex_core::journal::{AppliedBatch, BatchId, JournalError, SqliteJournal};
+    struct FailFinish {
+        journal: SqliteJournal,
+        path: PathBuf,
+        saved: PathBuf,
+    }
+    impl UndoJournal for FailFinish {
+        fn record(&mut self, b: &AppliedBatch) -> Result<BatchId, JournalError> {
+            self.journal.record(b)
+        }
+        fn batches(&self) -> Result<Vec<AppliedBatch>, JournalError> {
+            self.journal.batches()
+        }
+        fn finish(&mut self, id: BatchId, _: &AppliedBatch) -> Result<(), JournalError> {
+            std::fs::rename(&self.path, &self.saved).unwrap();
+            std::fs::create_dir(&self.path).unwrap();
+            Err(JournalError::UnknownBatch(id))
+        }
+        fn retain_interrupted(
+            &mut self,
+            id: BatchId,
+            batch: &AppliedBatch,
+        ) -> Result<(), JournalError> {
+            self.journal.retain_interrupted(id, batch)
+        }
+        fn rollback(&mut self, id: BatchId) -> Result<(), JournalError> {
+            self.journal.rollback(id)
+        }
+    }
+    let dir = TempDir::new("recovery-retention");
+    let track = dir.flac("track.flac");
+    let restored = dir.flac("restored.flac");
+    let saved = dir.path().join("surviving.flac");
+    let db = dir.path().join("journal.sqlite");
+    let mut journal = FailFinish {
+        journal: SqliteJournal::open(&db).unwrap(),
+        path: track.clone(),
+        saved: saved.clone(),
+    };
+    let mut plan = set_artist(&track, None, Some("CHANGED"));
+    plan.changes
+        .extend(set_artist(&restored, None, Some("CHANGED")).changes);
+    let error = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap_err();
+    assert!(matches!(error, PlanError::RollbackIncomplete { .. }));
+    drop(journal);
+    let mut journal = SqliteJournal::open(&db).unwrap();
+    let batches = journal.batches().unwrap();
+    assert_eq!(
+        batches.len(),
+        1,
+        "the surviving mutation needs durable recovery evidence"
+    );
+    assert!(batches[0].interrupted);
+    assert!(!TagEngine::read(&restored)
+        .unwrap()
+        .tags
+        .contains_key(&TagField::Artist));
+    // A restored file is recorded in its *current* state; it must not make a
+    // retry falsely look like an unrelated later edit.
+    assert!(batches[0]
+        .applied_values
+        .iter()
+        .any(|v| v.path == restored && v.field == TagField::Artist && v.value.is_none()));
+    std::fs::remove_dir(&track).unwrap();
+    std::fs::rename(saved, &track).unwrap();
+    Executor::undo(&mut journal, batches[0].id, &roots(dir.path())).unwrap();
+    assert!(!TagEngine::read(&track)
+        .unwrap()
+        .tags
+        .contains_key(&TagField::Artist));
+    assert!(journal.batches().unwrap().is_empty());
+}
+
+#[test]
+fn write_phase_failure_retains_the_interrupted_batch_when_restore_is_blocked() {
+    use tagrex_core::journal::SqliteJournal;
+    let dir = TempDir::new("write-phase-recovery");
+    let first = dir.flac("first.flac");
+    let second = dir.flac("second.flac");
+    let saved_first = dir.path().join("saved-first.flac");
+    let saved_second = dir.path().join("saved-second.flac");
+    let mut plan = set_artist(&first, None, Some("Changed"));
+    plan.changes
+        .extend(set_artist(&second, None, Some("Changed")).changes);
+    let mut journal = SqliteJournal::open(&dir.path().join("journal.sqlite")).unwrap();
+    let mut injected = false;
+    let error = Executor::apply_with(
+        &plan,
+        &mut journal,
+        &roots(dir.path()),
+        &mut |progress| {
+            // Preflight has finished and the first write is complete. Simulate a
+            // share changing before the second write and restoration can run.
+            if !injected && progress.done == plan.changes.len() + 1 {
+                injected = true;
+                for (from, to) in [(&first, &saved_first), (&second, &saved_second)] {
+                    std::fs::rename(from, to).unwrap();
+                    std::fs::create_dir(from).unwrap();
+                }
+            }
+        },
+        &AtomicBool::new(false),
+    )
+    .unwrap_err();
+    assert!(injected);
+    assert!(matches!(error, PlanError::RollbackIncomplete { .. }));
+    let batch = journal.batches().unwrap().pop().unwrap();
+    assert!(batch.interrupted);
+    drop(journal);
+    for (from, to) in [(&saved_first, &first), (&saved_second, &second)] {
+        std::fs::remove_dir(to).unwrap();
+        std::fs::rename(from, to).unwrap();
+    }
+    let mut journal = SqliteJournal::open(&dir.path().join("journal.sqlite")).unwrap();
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
+    for path in [&first, &second] {
+        assert!(!TagEngine::read(path)
+            .unwrap()
+            .tags
+            .contains_key(&TagField::Artist));
+    }
+    assert!(journal.batches().unwrap().is_empty());
 }
