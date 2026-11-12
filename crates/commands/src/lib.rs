@@ -24,7 +24,7 @@ use thiserror::Error;
 
 use base64::Engine as _;
 use tagrex_core::export::{self, CueTrack, PlaylistTrack};
-use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
+use tagrex_core::journal::{BatchHeader, BatchId, SqliteJournal};
 use tagrex_core::mask::{portable_file_name, FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{
@@ -4941,22 +4941,10 @@ impl App {
                 roots.push(canon);
             }
         }
-        let under_root = |path: &std::path::Path| roots.iter().any(|r| path.starts_with(r));
         Ok(self
             .journal
-            .batches()?
+            .headers(&roots)?
             .iter()
-            // Judged by where the files CAME FROM, not where they went (#153):
-            // a reorganize can now file them into a folder outside the library,
-            // and testing the destination would hide exactly the batch the user
-            // is most likely to want back.
-            .filter(|batch| {
-                batch
-                    .plan
-                    .changes
-                    .iter()
-                    .all(|change| under_root(&change.path))
-            })
             .map(BatchDto::from)
             .collect())
     }
@@ -6743,6 +6731,19 @@ impl PlanDto {
 
 impl From<&tagrex_core::journal::AppliedBatch> for BatchDto {
     fn from(batch: &tagrex_core::journal::AppliedBatch) -> Self {
+        Self::from(&BatchHeader {
+            id: batch.id,
+            description: batch.description.clone(),
+            message: batch.message.clone(),
+            applied_at: batch.applied_at,
+            interrupted: batch.interrupted,
+            paths: Vec::new(),
+        })
+    }
+}
+
+impl From<&BatchHeader> for BatchDto {
+    fn from(batch: &BatchHeader) -> Self {
         let stored = decode_plan_message(batch.message.as_deref());
         let mut notes = stored.as_ref().map(|s| s.notes.clone()).unwrap_or_default();
         let mut description = batch.description.clone();

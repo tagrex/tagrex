@@ -19,6 +19,18 @@ use crate::plan::{BlockChange, ChangePlan, CoverChange, FieldChange, FileChange}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BatchId(pub i64);
 
+/// History metadata with source paths only. Listing this never hydrates tag,
+/// cover or block snapshots; those are fetched only for an actual Undo.
+#[derive(Debug, Clone)]
+pub struct BatchHeader {
+    pub id: BatchId,
+    pub description: String,
+    pub message: Option<String>,
+    pub applied_at: i64,
+    pub interrupted: bool,
+    pub paths: Vec<PathBuf>,
+}
+
 /// A batch that has been applied to disk, as recorded in the journal.
 #[derive(Debug, Clone)]
 pub struct AppliedBatch {
@@ -770,6 +782,42 @@ fn insert_outcome(
 }
 
 impl SqliteJournal {
+    /// Fetch history in one metadata-only query. Path membership stays exact
+    /// (`Path::starts_with`, not SQL wildcard/prefix matching), including empty
+    /// batches and symlink-root spellings supported by the command layer.
+    pub fn headers(&self, roots: &[PathBuf]) -> Result<Vec<BatchHeader>, JournalError> {
+        let mut statement = self.conn.prepare("SELECT b.id, b.description, b.message, b.applied_at, b.interrupted, f.path FROM batches b LEFT JOIN file_changes f ON f.batch_id = b.id ORDER BY b.id DESC, f.id")?;
+        let mut rows = statement.query([])?;
+        let mut headers: Vec<BatchHeader> = Vec::new();
+        while let Some(row) = rows.next()? {
+            let id = BatchId(row.get(0)?);
+            if headers.last().is_none_or(|h| h.id != id) {
+                headers.push(BatchHeader {
+                    id,
+                    description: row.get(1)?,
+                    message: row.get(2)?,
+                    applied_at: row.get(3)?,
+                    interrupted: row.get(4)?,
+                    paths: Vec::new(),
+                });
+            }
+            if let Some(path) = row.get::<_, Option<String>>(5)? {
+                headers
+                    .last_mut()
+                    .expect("header inserted above")
+                    .paths
+                    .push(PathBuf::from(path));
+            }
+        }
+        headers.retain(|header| {
+            header
+                .paths
+                .iter()
+                .all(|path| roots.iter().any(|root| path.starts_with(root)))
+        });
+        Ok(headers)
+    }
+
     /// One of the batch's plain path lists, in insertion order. `table` is a
     /// literal from this module, never anything a caller supplies.
     fn load_paths(&self, table: &str, batch_id: i64) -> Result<Vec<PathBuf>, JournalError> {
