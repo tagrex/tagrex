@@ -1,0 +1,28 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebKitGTK fade presentation probe</title>
+<style>
+html,body { margin:0; background:rgb(50,79,182); }
+#overlay { position:fixed; inset:0; background:rgb(182,69,50); opacity:0;
+  transition:opacity 180ms ease; will-change:opacity; }
+#overlay.on { opacity:1; }
+</style>
+<div id="overlay"></div>
+<script>
+(async () => {
+  const send = value => window.webkit.messageHandlers.probe.postMessage(JSON.stringify(value));
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  let phase = '', start = 0;
+  function sample(time) {
+    if (phase) send({phase, t:time-start, x:100, y:100});
+    requestAnimationFrame(sample);
+  }
+  requestAnimationFrame(sample);
+  await wait(500);
+  for (let i=0;i<6;i++) {
+    phase=`open-${i}`; start=performance.now(); overlay.classList.add('on'); await wait(550);
+    phase=`close-${i}`; start=performance.now(); overlay.classList.remove('on'); await wait(550);
+  }
+  phase=''; send({done:true});
+})().catch(error => window.webkit.messageHandlers.probe.postMessage(JSON.stringify({error:String(error)})));
+</script>

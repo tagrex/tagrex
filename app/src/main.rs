@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex};
 
 mod media_session;
 mod update;
+#[cfg(target_os = "linux")]
+mod webkit_compositor;
 mod window_controls;
 
 use tauri::{Manager, State};
@@ -1593,6 +1595,10 @@ fn main() {
             std::env::args_os().skip(1),
         )))
         .setup(|app| {
+            #[cfg(target_os = "linux")]
+            if let Some(window) = app.get_webview_window("main") {
+                webkit_compositor::install(&window);
+            }
             // The provider hub exists from startup, before any library is
             // opened (#166), so it takes the saved network settings here rather
             // than waiting for a library or a trip through Settings › Save.

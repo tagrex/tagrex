@@ -103,6 +103,9 @@ objc2-media-player = { version = "0.3.2", default-features = false, features = [
 # crate that links libdbus or brings an older zbus.
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5"
+# Native WebKit compositor compatibility for the 2.54 fade regression.
+webkit2gtk = "2.0.2"
+libc = "0.2"
 
 # The system media session on Windows (#515): the System Media Transport
 # Controls behind the media keys and the media flyout. The `windows` crate the
