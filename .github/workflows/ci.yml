@@ -54,6 +54,10 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+      # A standalone ES-module regression, with no npm install or frontend build.
+      - name: Check field-lock submission order
+        run: node --experimental-vm-modules --test tests/unit/field-lock-order.test.js
+
       # The Linux media session (#516) exports MPRIS on the session bus; its
       # tests are ignored by default because a plain `cargo test` has no bus.
       # dbus-run-session gives this step a private one.

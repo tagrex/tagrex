@@ -4981,19 +4981,46 @@ impl App {
         urls: &[String],
         overwrite: bool,
     ) -> Result<SaveImagesDto, AppError> {
+        self.validate_image_target(track)?;
+        let images = urls
+            .iter()
+            .map(|url| providers.fetch_image_bytes(source, token, url))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.save_fetched_release_images(track, &images, overwrite)
+    }
+
+    /// Validate the destination before starting network work. Repeated when
+    /// publishing downloaded images; callers must also preserve session identity.
+    pub fn validate_image_target(&self, track: &Path) -> Result<PathBuf, AppError> {
         let root = std::fs::canonicalize(&self.library_root)?;
         let dir = track.parent().unwrap_or(Path::new("."));
-        let canonical_dir = std::fs::canonicalize(dir)?;
-        if !canonical_dir.starts_with(&root) {
+        let canonical = std::fs::canonicalize(dir)?;
+        if !canonical.starts_with(&root) {
             return Err(AppError::OutsideRoot(track.to_string_lossy().into_owned()));
         }
-        let mut planned: Vec<(PathBuf, Vec<u8>)> = Vec::new();
-        for (index, url) in urls.iter().enumerate() {
-            let image = providers.fetch_image_bytes(source, token, url)?;
-            let ext = extension_for_mime(&image.mime);
-            let name = format!("{}.{ext}", image_basename(index));
-            planned.push((canonical_dir.join(name), image.data));
-        }
+        Ok(canonical)
+    }
+
+    /// Publish already-fetched images without holding the session during HTTP.
+    pub fn save_fetched_release_images(
+        &self,
+        track: &Path,
+        images: &[FetchedImage],
+        overwrite: bool,
+    ) -> Result<SaveImagesDto, AppError> {
+        let dir = self.validate_image_target(track)?;
+        let planned: Vec<_> = images
+            .iter()
+            .enumerate()
+            .map(|(index, image)| {
+                let name = format!(
+                    "{}.{}",
+                    image_basename(index),
+                    extension_for_mime(&image.mime)
+                );
+                (dir.join(name), image.data.clone())
+            })
+            .collect();
         let conflicts: Vec<String> = planned
             .iter()
             .filter(|(target, _)| target.exists())
@@ -5006,13 +5033,14 @@ impl App {
                 conflicts,
             });
         }
-        let mut written = Vec::new();
         for (target, data) in &planned {
             std::fs::write(target, data)?;
-            written.push(target.to_string_lossy().into_owned());
         }
         Ok(SaveImagesDto {
-            written,
+            written: planned
+                .iter()
+                .map(|(p, _)| p.to_string_lossy().into_owned())
+                .collect(),
             conflicts: Vec::new(),
         })
     }

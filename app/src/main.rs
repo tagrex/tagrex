@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+mod blocking;
 mod media_session;
 mod update;
 mod window_controls;
@@ -28,13 +29,69 @@ use tagrex_player::{Player, PlayerStatus};
 
 /// No library is open until the user opens one, hence `Option`. `Mutex` makes
 /// the non-`Sync` journal usable as shared Tauri state.
-type AppState = Mutex<Option<App>>;
+type AppState = Arc<Mutex<Option<App>>>;
+
+static SAMPLE_QUEUE: blocking::Queue = blocking::Queue::new();
+static IMAGE_READ_QUEUE: blocking::Queue = blocking::Queue::new();
+static BROWSER_QUEUE: blocking::Queue = blocking::Queue::new();
+static SETTINGS_QUEUE: blocking::Queue = blocking::Queue::new();
+static SESSION_QUEUE: blocking::Queue = blocking::Queue::new();
+static LIBRARY_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static SETTINGS_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 /// The provider side (#166): one per process, alive whether or not a library is
-/// open. `Mutex` for the same reason as `AppState` — its interior mutability is
-/// not `Sync` — and it doubles as what serializes provider requests, which is
-/// what makes the throttle a single cadence per source.
-type ProviderState = Mutex<ProviderHub>;
+/// open. Each source has one persistent hub and queue, preserving its throttle
+/// cadence without making unrelated sources wait for each other's network I/O.
+type ProviderState = Arc<ProviderQueues>;
+
+struct SourceQueue {
+    hub: Mutex<ProviderHub>,
+    jobs: blocking::Queue,
+    settings: Arc<Mutex<SettingsDto>>,
+}
+
+struct ProviderQueues {
+    sources: std::collections::HashMap<&'static str, Arc<SourceQueue>>,
+    settings: Arc<Mutex<SettingsDto>>,
+}
+
+impl Default for ProviderQueues {
+    fn default() -> Self {
+        let settings = Arc::new(Mutex::new(SettingsDto::default()));
+        Self {
+            sources: ["discogs", "musicbrainz", "beatport", "bandcamp", "soundeo"]
+                .into_iter()
+                .map(|source| {
+                    (
+                        source,
+                        Arc::new(SourceQueue {
+                            hub: Mutex::new(ProviderHub::default()),
+                            jobs: blocking::Queue::new(),
+                            settings: settings.clone(),
+                        }),
+                    )
+                })
+                .collect(),
+            settings,
+        }
+    }
+}
+
+impl ProviderQueues {
+    fn source(&self, source: &str) -> Result<Arc<SourceQueue>, ErrorDto> {
+        self.sources
+            .get(source)
+            .cloned()
+            .ok_or_else(|| shell_error(format!("unknown source: {source}")))
+    }
+
+    fn apply_settings(&self, settings: &SettingsDto) -> Result<(), ErrorDto> {
+        // Do not wait for in-flight HTTP while saving preferences. Each next
+        // source job adopts this snapshot without resetting request cadence.
+        *self.settings.lock().map_err(shell_error)? = settings.clone();
+        Ok(())
+    }
+}
 
 /// Paths the OS handed the app, waiting for the frontend to come and take them
 /// (#51). Opening one is the frontend's job — it is the same "open these paths"
@@ -92,10 +149,10 @@ fn shell_error(error: impl std::fmt::Display) -> ErrorDto {
 }
 
 fn with_app<T>(
-    state: &State<AppState>,
+    state: &AppState,
     f: impl FnOnce(&App) -> Result<T, ErrorDto>,
 ) -> Result<T, ErrorDto> {
-    let guard = state.lock().unwrap();
+    let guard = state.lock().map_err(shell_error)?;
     let app = guard
         .as_ref()
         .ok_or_else(|| ErrorDto::from(AppError::NoLibraryOpen))?;
@@ -103,17 +160,20 @@ fn with_app<T>(
 }
 
 fn with_providers<T>(
-    state: &State<ProviderState>,
+    state: &SourceQueue,
     f: impl FnOnce(&ProviderHub) -> Result<T, ErrorDto>,
 ) -> Result<T, ErrorDto> {
-    f(&state.lock().unwrap())
+    let hub = state.hub.lock().map_err(shell_error)?;
+    let settings = state.settings.lock().map_err(shell_error)?.clone();
+    hub.apply_settings(&settings);
+    f(&hub)
 }
 
 fn with_app_mut<T>(
-    state: &State<AppState>,
+    state: &AppState,
     f: impl FnOnce(&mut App) -> Result<T, ErrorDto>,
 ) -> Result<T, ErrorDto> {
-    let mut guard = state.lock().unwrap();
+    let mut guard = state.lock().map_err(shell_error)?;
     let app = guard
         .as_mut()
         .ok_or_else(|| ErrorDto::from(AppError::NoLibraryOpen))?;
@@ -121,38 +181,52 @@ fn with_app_mut<T>(
 }
 
 #[tauri::command]
-fn open_library(
-    state: State<AppState>,
+async fn open_library(
+    state: State<'_, AppState>,
     app: tauri::AppHandle,
     root: String,
 ) -> Result<(), ErrorDto> {
-    let config_dir = app.path().app_config_dir().map_err(shell_error)?;
-    std::fs::create_dir_all(&config_dir).map_err(ErrorDto::from)?;
-    let journal_path = config_dir.join("journal.sqlite");
-    let opened = App::open(root, &journal_path).map_err(ErrorDto::from)?;
-    // Apply saved settings (proxy / rate-limit / ID3 version) to the new session.
-    opened.apply_settings(&read_settings(&app));
-    *state.lock().unwrap() = Some(opened);
-    Ok(())
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let config_dir = app.path().app_config_dir().map_err(shell_error)?;
+            std::fs::create_dir_all(&config_dir).map_err(ErrorDto::from)?;
+            let journal_path = config_dir.join("journal.sqlite");
+            let opened = App::open(root, &journal_path).map_err(ErrorDto::from)?;
+            // Apply saved settings (proxy / rate-limit / ID3 version) to the new session.
+            opened.apply_settings(&read_settings(&app));
+            let mut session = state.lock().map_err(shell_error)?;
+            *session = Some(opened);
+            LIBRARY_GENERATION.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        })
+        .await
 }
 
 /// Open a drag-and-drop of `paths` (#127): a lone folder opens as a library,
 /// anything else (files, several folders, a mix) as a file-set. Returns the
 /// resolved mode + grouping info for the frontend.
 #[tauri::command]
-fn open_drop(
-    state: State<AppState>,
+async fn open_drop(
+    state: State<'_, AppState>,
     app: tauri::AppHandle,
     paths: Vec<String>,
 ) -> Result<DropResultDto, ErrorDto> {
-    let config_dir = app.path().app_config_dir().map_err(shell_error)?;
-    std::fs::create_dir_all(&config_dir).map_err(ErrorDto::from)?;
-    let journal_path = config_dir.join("journal.sqlite");
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    let (opened, result) = App::open_drop(paths, &journal_path).map_err(ErrorDto::from)?;
-    opened.apply_settings(&read_settings(&app));
-    *state.lock().unwrap() = Some(opened);
-    Ok(result)
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let config_dir = app.path().app_config_dir().map_err(shell_error)?;
+            std::fs::create_dir_all(&config_dir).map_err(ErrorDto::from)?;
+            let journal_path = config_dir.join("journal.sqlite");
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            let (opened, result) = App::open_drop(paths, &journal_path).map_err(ErrorDto::from)?;
+            opened.apply_settings(&read_settings(&app));
+            let mut session = state.lock().map_err(shell_error)?;
+            *session = Some(opened);
+            LIBRARY_GENERATION.fetch_add(1, Ordering::SeqCst);
+            Ok(result)
+        })
+        .await
 }
 
 /// Take the paths the OS handed the app, if any (#51).
@@ -168,47 +242,76 @@ fn take_launch_paths(pending: State<PendingOpen>) -> Vec<String> {
         .collect()
 }
 
+// Session jobs acquire their queue asynchronously, then run blocking work on
+// the blocking pool. No mutex guard crosses an await or blocks the event thread.
 #[tauri::command]
-fn list_tracks(state: State<AppState>) -> Result<Vec<TrackDto>, ErrorDto> {
-    with_app(&state, |app| Ok(app.list_tracks()))
+async fn list_tracks(state: State<'_, AppState>) -> Result<Vec<TrackDto>, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || with_app(&state, |app| Ok(app.list_tracks())))
+        .await
 }
 
 /// Move files to the system Trash (#213). Returns what actually went, so the
 /// table drops exactly those rows. Refuses the whole call if any path is not a
 /// file this session lists inside the open library — nothing is moved then.
 #[tauri::command]
-fn trash_files(state: State<AppState>, paths: Vec<PathBuf>) -> Result<Vec<String>, ErrorDto> {
-    with_app_mut(&state, |app| {
-        app.trash_files(&paths).map_err(ErrorDto::from)
-    })
+async fn trash_files(
+    state: State<'_, AppState>,
+    paths: Vec<PathBuf>,
+) -> Result<Vec<String>, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app_mut(&state, |app| {
+                app.trash_files(&paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Lock a set of fields against change for the rest of the session (#48).
 /// Replaces the whole set, so the UI sends what is locked rather than a delta.
 #[tauri::command]
-fn set_locked_fields(state: State<AppState>, fields: Vec<String>) -> Result<(), ErrorDto> {
-    with_app(&state, |app| {
-        app.set_locked_fields(&fields);
-        Ok(())
-    })
+async fn set_locked_fields(
+    state: State<'_, AppState>,
+    fields: Vec<String>,
+) -> Result<(), ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.set_locked_fields(&fields);
+                Ok(())
+            })
+        })
+        .await
 }
 
 /// What is locked right now (#48). The UI reads it back on start rather than
 /// trusting its own copy — the lock lives in the session, and the window can be
 /// reloaded without the session ending.
 #[tauri::command]
-fn locked_fields(state: State<AppState>) -> Result<Vec<String>, ErrorDto> {
-    with_app(&state, |app| Ok(app.locked_fields()))
+async fn locked_fields(state: State<'_, AppState>) -> Result<Vec<String>, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || with_app(&state, |app| Ok(app.locked_fields())))
+        .await
 }
 
 #[tauri::command]
-fn find_duplicates(
-    state: State<AppState>,
+async fn find_duplicates(
+    state: State<'_, AppState>,
     criterion: String,
 ) -> Result<Vec<DuplicateGroupDto>, ErrorDto> {
-    with_app(&state, |app| {
-        app.find_duplicates(&criterion).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.find_duplicates(&criterion).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Build a provider *release* page URL from a hard-coded host plus a
@@ -231,394 +334,555 @@ fn release_url(source: &str, id: &str) -> Result<String, ErrorDto> {
 
 /// Open a provider release page in the system browser (#92).
 #[tauri::command]
-fn open_release_page(source: String, id: String) -> Result<(), ErrorDto> {
-    let url = release_url(&source, &id)?;
-    open::that(url).map_err(ErrorDto::from)
+async fn open_release_page(source: String, id: String) -> Result<(), ErrorDto> {
+    BROWSER_QUEUE
+        .run(move || {
+            let url = release_url(&source, &id)?;
+            open::that(url).map_err(ErrorDto::from)
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_rename(
-    state: State<AppState>,
+async fn preview_rename(
+    state: State<'_, AppState>,
     mask: String,
     paths: Vec<String>,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_rename(&mask, &paths).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_rename(&mask, &paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_tags_from_name(
-    state: State<AppState>,
+async fn preview_tags_from_name(
+    state: State<'_, AppState>,
     mask: String,
     paths: Vec<String>,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_tags_from_name(&mask, &paths)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_tags_from_name(&mask, &paths)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn probe_tags_from_name(
-    state: State<AppState>,
+async fn probe_tags_from_name(
+    state: State<'_, AppState>,
     mask: String,
     path: String,
 ) -> Result<NameProbeDto, ErrorDto> {
-    with_app(&state, |app| {
-        app.probe_tags_from_name(&mask, &PathBuf::from(path))
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.probe_tags_from_name(&mask, &PathBuf::from(path))
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Every line of a text list under a FROM TEXT mask and the file each track
 /// lands on (#550), for the mask builder's list.
 #[tauri::command]
-fn probe_text_lines(
-    state: State<AppState>,
+async fn probe_text_lines(
+    state: State<'_, AppState>,
     mask: String,
     text: String,
     paths: Vec<String>,
 ) -> Result<TextLinesDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.probe_text_lines(&mask, &text, &paths)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.probe_text_lines(&mask, &text, &paths)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// What a FROM NAME mask reads from each of several files (#548), for the mask
 /// builder's list.
 #[tauri::command]
-fn probe_tags_from_names(
-    state: State<AppState>,
+async fn probe_tags_from_names(
+    state: State<'_, AppState>,
     mask: String,
     paths: Vec<String>,
 ) -> Result<NameProbesDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.probe_tags_from_names(&mask, &paths)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.probe_tags_from_names(&mask, &paths)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Tags from a text list (#61): one line per selected file, in order.
 #[tauri::command]
-fn preview_tags_from_text(
-    state: State<AppState>,
+async fn preview_tags_from_text(
+    state: State<'_, AppState>,
     mask: String,
     text: String,
     paths: Vec<String>,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_tags_from_text(&mask, &text, &paths)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_tags_from_text(&mask, &text, &paths)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn probe_tags_from_text(
-    state: State<AppState>,
+async fn probe_tags_from_text(
+    state: State<'_, AppState>,
     mask: String,
     text: String,
 ) -> Result<TextProbeDto, ErrorDto> {
-    with_app(&state, |app| {
-        app.probe_tags_from_text(&mask, &text)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.probe_tags_from_text(&mask, &text)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// A FROM TEXT mask read off the list's own shape (#522), or none when no
 /// reading of it fits a line. Stateless: it only looks at the text.
 #[tauri::command]
-fn suggest_text_list_mask(text: String) -> Option<String> {
-    tagrex_commands::suggest_text_list_mask(&text)
+async fn suggest_text_list_mask(text: String) -> Result<Option<String>, ErrorDto> {
+    SAMPLE_QUEUE
+        .run(move || Ok(tagrex_commands::suggest_text_list_mask(&text)))
+        .await
 }
 
 /// Read a text list the user picked for the FROM TEXT panel (#61). Stateless,
 /// like [`read_cover_image`]: the file is the user's explicit choice.
 #[tauri::command]
-fn read_text_list(path: String) -> Result<String, ErrorDto> {
-    tagrex_commands::read_text_list(&PathBuf::from(path)).map_err(ErrorDto::from)
+async fn read_text_list(path: String) -> Result<String, ErrorDto> {
+    IMAGE_READ_QUEUE
+        .run(move || tagrex_commands::read_text_list(&PathBuf::from(path)).map_err(ErrorDto::from))
+        .await
 }
 
 #[tauri::command]
-fn preview_transform(
-    state: State<AppState>,
+async fn preview_transform(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     rules: Vec<TransformRuleDto>,
     scope: String,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_transform(&paths, &rules, &scope)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_transform(&paths, &rules, &scope)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_move(
-    state: State<AppState>,
+async fn preview_move(
+    state: State<'_, AppState>,
     mask: String,
     paths: Vec<String>,
     destination: Option<String>,
     copy: bool,
     prune_empty_dirs: bool,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    let destination = destination
-        .map(|d| d.trim().to_string())
-        .filter(|d| !d.is_empty())
-        .map(PathBuf::from);
-    with_app(&state, |app| {
-        app.preview_move(
-            &mask,
-            &paths,
-            destination.as_deref(),
-            copy,
-            prune_empty_dirs,
-        )
-        .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            let destination = destination
+                .map(|d| d.trim().to_string())
+                .filter(|d| !d.is_empty())
+                .map(PathBuf::from);
+            with_app(&state, |app| {
+                app.preview_move(
+                    &mask,
+                    &paths,
+                    destination.as_deref(),
+                    copy,
+                    prune_empty_dirs,
+                )
+                .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_tag_edits(
-    state: State<AppState>,
+async fn preview_tag_edits(
+    state: State<'_, AppState>,
     edits: Vec<TagEditDto>,
     // The release cover an import brought with it (#207), when there is one.
     cover: Option<CoverArtDto>,
 ) -> Result<PlanDto, ErrorDto> {
-    with_app(&state, |app| {
-        app.preview_tag_edits_with_cover(&edits, cover.as_ref())
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.preview_tag_edits_with_cover(&edits, cover.as_ref())
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Preview replacing every selected file's whole image set (#56) — the one
 /// command behind add, remove, reorder and set-the-type.
 #[tauri::command]
-fn preview_cover_set(
-    state: State<AppState>,
+async fn preview_cover_set(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     covers: Vec<CoverArtDto>,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_cover_set(&paths, &covers)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_cover_set(&paths, &covers)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_cover_embed(
-    state: State<AppState>,
+async fn preview_cover_embed(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     cover: CoverArtDto,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_cover_embed(&paths, &cover)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_cover_embed(&paths, &cover)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn export_cover(
-    state: State<AppState>,
+async fn export_cover(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     basename: String,
 ) -> Result<CoverExportDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.export_cover(&paths, &basename).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.export_cover(&paths, &basename).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn read_cover_summary(
-    state: State<AppState>,
+async fn read_cover_summary(
+    state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> Result<CoverSummaryDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.read_cover_summary(&paths).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.read_cover_summary(&paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn read_external_cover(
-    state: State<AppState>,
+async fn read_external_cover(
+    state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> Result<Option<CoverArtDto>, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.read_external_cover(&paths).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.read_external_cover(&paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Read an image file (dropped onto the cover well, #133) into a cover DTO for
 /// [`preview_cover_embed`]. Stateless — the source image isn't confined to the
 /// library, matching the file picker (the user chose it explicitly).
 #[tauri::command]
-fn read_cover_image(path: String) -> Result<CoverArtDto, ErrorDto> {
-    tagrex_commands::read_cover_image(&PathBuf::from(path)).map_err(ErrorDto::from)
+async fn read_cover_image(path: String) -> Result<CoverArtDto, ErrorDto> {
+    IMAGE_READ_QUEUE
+        .run(move || {
+            tagrex_commands::read_cover_image(&PathBuf::from(path)).map_err(ErrorDto::from)
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_cover_remove(state: State<AppState>, paths: Vec<String>) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_cover_remove(&paths).map_err(ErrorDto::from)
-    })
+async fn preview_cover_remove(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<PlanDto, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_cover_remove(&paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_remove_tag_block(
-    state: State<AppState>,
+async fn preview_remove_tag_block(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     kind: String,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_remove_tag_block(&paths, &kind)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_remove_tag_block(&paths, &kind)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_fix_encoding(state: State<AppState>, paths: Vec<String>) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_fix_encoding(&paths).map_err(ErrorDto::from)
-    })
+async fn preview_fix_encoding(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<PlanDto, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_fix_encoding(&paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn tag_block_targets(
-    state: State<AppState>,
+async fn tag_block_targets(
+    state: State<'_, AppState>,
     paths: Vec<String>,
 ) -> Result<BlockTargetsDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.tag_block_targets(&paths).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.tag_block_targets(&paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_convert_tag_block(
-    state: State<AppState>,
+async fn preview_convert_tag_block(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     from: String,
     to: String,
     revision: Option<String>,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_convert_tag_block(&paths, &from, &to, revision.as_deref())
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_convert_tag_block(&paths, &from, &to, revision.as_deref())
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_clear_tags(state: State<AppState>, paths: Vec<String>) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_clear_tags(&paths).map_err(ErrorDto::from)
-    })
+async fn preview_clear_tags(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<PlanDto, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_clear_tags(&paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn export_playlist(
-    state: State<AppState>,
+async fn export_playlist(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     file_name: String,
 ) -> Result<String, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.export_playlist(&paths, &file_name)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.export_playlist(&paths, &file_name)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// One playlist per folder or per album (#62). Returns every file written.
 #[tauri::command]
-fn export_playlists(
-    state: State<AppState>,
+async fn export_playlists(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     grouping: String,
     name_mask: String,
 ) -> Result<Vec<String>, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.export_playlists(&paths, &grouping, &name_mask)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.export_playlists(&paths, &grouping, &name_mask)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn export_cue(
-    state: State<AppState>,
+async fn export_cue(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     file_name: String,
 ) -> Result<String, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.export_cue(&paths, &file_name).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.export_cue(&paths, &file_name).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn export_csv(
-    state: State<AppState>,
+async fn export_csv(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     file_name: String,
 ) -> Result<String, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.export_csv(&paths, &file_name).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.export_csv(&paths, &file_name).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn export_report(
-    state: State<AppState>,
+async fn export_report(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     mask: String,
     file_name: String,
 ) -> Result<String, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.export_report(&paths, &mask, &file_name)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.export_report(&paths, &mask, &file_name)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn export_html(
-    state: State<AppState>,
+async fn export_html(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     file_name: String,
 ) -> Result<String, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.export_html(&paths, &file_name).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.export_html(&paths, &file_name).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn export_xml(
-    state: State<AppState>,
+async fn export_xml(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     file_name: String,
 ) -> Result<String, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.export_xml(&paths, &file_name).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.export_xml(&paths, &file_name).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
@@ -673,12 +937,20 @@ const WAVEFORM_CACHE_ENTRIES: usize = 64;
 /// on a runtime worker that provider requests also want.
 #[tauri::command]
 async fn waveform(cache: State<'_, WaveformState>, path: String) -> Result<Vec<u8>, ErrorDto> {
-    let stamp = std::fs::metadata(&path)
-        .and_then(|meta| meta.modified())
-        .ok()
-        .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|since| since.as_secs())
-        .unwrap_or(0);
+    let target = path.clone();
+    let stamp = IMAGE_READ_QUEUE
+        .run(move || {
+            Ok({
+                std::fs::metadata(&target)
+                    .and_then(|meta| meta.modified())
+                    .ok()
+                    .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|since| since.as_secs())
+                    .unwrap_or(0)
+            })
+        })
+        .await?;
+
     // Scoped so no guard is alive across the await below.
     {
         let entries = cache.lock().unwrap();
@@ -726,7 +998,7 @@ fn progress_reporter(
 ) -> impl FnMut(&tagrex_core::plan::ApplyProgress) {
     let mut last = std::time::Instant::now() - APPLY_PROGRESS_INTERVAL;
     move |progress| {
-        if last.elapsed() < APPLY_PROGRESS_INTERVAL {
+        if progress.done != progress.total && last.elapsed() < APPLY_PROGRESS_INTERVAL {
             return;
         }
         last = std::time::Instant::now();
@@ -746,7 +1018,7 @@ fn progress_reporter(
 /// [`AppState`]: the apply holds that lock for its whole run, and the request has
 /// to get through while it does.
 #[derive(Default)]
-struct ApplyControl(AtomicBool);
+struct ApplyControl(Arc<AtomicBool>);
 
 #[derive(serde::Serialize, Clone)]
 struct ApplyProgressDto {
@@ -755,10 +1027,8 @@ struct ApplyProgressDto {
     path: String,
 }
 
-// `async` so Tauri runs it off the main thread (a synchronous command runs ON
-// it): an apply over many files or a slow share would otherwise freeze the
-// window, its progress would never be painted and a cancel could not get in. No
-// `.await` inside, so the lock guard never crosses one.
+// Both session lock waiting and Apply work stay off the event/runtime threads.
+// Cancellation uses independent atomic state and bypasses the session queue.
 #[tauri::command]
 async fn apply_plan(
     app_handle: tauri::AppHandle,
@@ -766,12 +1036,18 @@ async fn apply_plan(
     control: State<'_, ApplyControl>,
     plan: PlanDto,
 ) -> Result<BatchDto, ErrorDto> {
-    control.0.store(false, Ordering::SeqCst);
-    let mut report = progress_reporter(app_handle);
-    with_app_mut(&state, |app| {
-        app.apply_with(&plan, &mut report, &control.0)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    let control = control.0.clone();
+    control.store(false, Ordering::SeqCst);
+    SESSION_QUEUE
+        .run(move || {
+            let mut report = progress_reporter(app_handle);
+            with_app_mut(&state, |app| {
+                app.apply_with(&plan, &mut report, &control)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
@@ -817,7 +1093,10 @@ async fn detect_bpm(
 ) -> Result<BpmDetectionDto, ErrorDto> {
     control.0.store(false, Ordering::SeqCst);
     let cancel = control.0.clone();
-    let limit = with_app(&state, |app| Ok(app.bpm_max_length()))?;
+    let session = state.inner().clone();
+    let limit = SESSION_QUEUE
+        .run(move || with_app(&session, |app| Ok(app.bpm_max_length())))
+        .await?;
     let measured = tauri::async_runtime::spawn_blocking(move || {
         let mut detector = tagrex_player::tempo::TempoDetector::new().map_err(shell_error)?;
         let total = paths.len();
@@ -858,9 +1137,14 @@ async fn detect_bpm(
     .await
     .map_err(shell_error)??;
     let (detected, analysed, no_tempo, too_long, failed, cancelled) = measured;
-    let plan = with_app(&state, |app| {
-        app.preview_bpm(&detected).map_err(ErrorDto::from)
-    })?;
+    let session = state.inner().clone();
+    let plan = SESSION_QUEUE
+        .run(move || {
+            with_app(&session, |app| {
+                app.preview_bpm(&detected).map_err(ErrorDto::from)
+            })
+        })
+        .await?;
     Ok(BpmDetectionDto {
         plan,
         analysed,
@@ -887,37 +1171,46 @@ async fn undo(
     batch_id: i64,
     mode: Option<String>,
 ) -> Result<UndoReportDto, ErrorDto> {
-    let mode = match mode.as_deref() {
-        Some("keep_changed") => UndoMode::KeepChanged,
-        Some("overwrite") => UndoMode::Overwrite,
-        _ => UndoMode::Strict,
-    };
-    let mut report = progress_reporter(app_handle);
-    with_app_mut(&state, |app| {
-        app.undo_with_mode(batch_id, mode, &mut report)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let mode = match mode.as_deref() {
+                Some("keep_changed") => UndoMode::KeepChanged,
+                Some("overwrite") => UndoMode::Overwrite,
+                _ => UndoMode::Strict,
+            };
+            let mut report = progress_reporter(app_handle);
+            with_app_mut(&state, |app| {
+                app.undo_with_mode(batch_id, mode, &mut report)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 // `async` so it runs off the main thread (#449): the interface asks for the
 // history before and after every apply and undo, and a synchronous command
 // would hold the window for as long as the journal takes to read.
 #[tauri::command]
-fn take_journal_notice(state: State<AppState>) -> Result<Option<String>, ErrorDto> {
-    with_app(&state, |app| Ok(app.take_journal_notice()))
+async fn take_journal_notice(state: State<'_, AppState>) -> Result<Option<String>, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || with_app(&state, |app| Ok(app.take_journal_notice())))
+        .await
 }
 
 #[tauri::command]
 async fn history(state: State<'_, AppState>) -> Result<Vec<BatchDto>, ErrorDto> {
-    with_app(&state, |app| app.history().map_err(ErrorDto::from))
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || with_app(&state, |app| app.history().map_err(ErrorDto::from)))
+        .await
 }
 
-// The three provider commands are `async` so Tauri runs them off the main
-// thread: their bodies do blocking HTTP (ureq), and a synchronous command would
-// freeze the webview for the whole request — very visible when the picker
-// prefetches a release per candidate. No `.await` inside, so no MutexGuard
-// crosses one. `source` selects the provider ("discogs" | "musicbrainz" |
-// "beatport"); the token is ignored by token-less providers.
+// Provider requests queue per source before entering the blocking pool.
+// Blocking HTTP/throttle waits cannot occupy the event or async runtime thread,
+// and a slow source cannot prevent another source from answering. The token
+// is ignored by token-less providers.
 //
 // They take the provider state, NOT the library (#166): looking a release up is
 // something the user does before choosing files, so requiring an open folder
@@ -930,10 +1223,17 @@ async fn provider_search(
     token: String,
     query: SearchQueryDto,
 ) -> Result<Vec<CandidateDto>, ErrorDto> {
-    with_providers(&providers, |hub| {
-        hub.provider_search(&source, &token, &query)
-            .map_err(ErrorDto::from)
-    })
+    let providers = providers.source(&source)?;
+    let hub = providers.clone();
+    providers
+        .jobs
+        .run(move || {
+            with_providers(&hub, |hub| {
+                hub.provider_search(&source, &token, &query)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
@@ -943,10 +1243,17 @@ async fn provider_fetch_release(
     token: String,
     release_id: String,
 ) -> Result<ReleaseDto, ErrorDto> {
-    with_providers(&providers, |hub| {
-        hub.provider_fetch_release(&source, &token, &release_id)
-            .map_err(ErrorDto::from)
-    })
+    let providers = providers.source(&source)?;
+    let hub = providers.clone();
+    providers
+        .jobs
+        .run(move || {
+            with_providers(&hub, |hub| {
+                hub.provider_fetch_release(&source, &token, &release_id)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
@@ -956,10 +1263,17 @@ async fn provider_fetch_image(
     token: String,
     url: String,
 ) -> Result<CoverArtDto, ErrorDto> {
-    with_providers(&providers, |hub| {
-        hub.provider_fetch_image(&source, &token, &url)
-            .map_err(ErrorDto::from)
-    })
+    let providers = providers.source(&source)?;
+    let hub = providers.clone();
+    providers
+        .jobs
+        .run(move || {
+            with_providers(&hub, |hub| {
+                hub.provider_fetch_image(&source, &token, &url)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Save a release's images to disk next to the selected tracks (#102). Async:
@@ -974,40 +1288,82 @@ async fn save_release_images(
     urls: Vec<String>,
     overwrite: bool,
 ) -> Result<SaveImagesDto, ErrorDto> {
+    let state = state.inner().clone();
     let path = PathBuf::from(path);
-    // This one does need the library: it writes the images next to the tracks,
-    // inside the opened root.
-    let hub = providers.lock().unwrap();
-    with_app(&state, |app| {
-        app.save_release_images(&hub, &source, &token, &path, &urls, overwrite)
-            .map_err(ErrorDto::from)
-    })
+    let target = path.clone();
+    let session = state.clone();
+    let generation = SESSION_QUEUE
+        .run(move || {
+            with_app(&session, |app| {
+                app.validate_image_target(&target).map_err(ErrorDto::from)?;
+                Ok(LIBRARY_GENERATION.load(Ordering::SeqCst))
+            })
+        })
+        .await?;
+    let provider = providers.source(&source)?;
+    let hub = provider.clone();
+    let images = provider
+        .jobs
+        .run(move || {
+            with_providers(&hub, |hub| {
+                urls.iter()
+                    .map(|url| {
+                        hub.fetch_image_bytes(&source, &token, url)
+                            .map_err(ErrorDto::from)
+                    })
+                    .collect::<Result<Vec<_>, _>>()
+            })
+        })
+        .await?;
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                if LIBRARY_GENERATION.load(Ordering::SeqCst) != generation {
+                    return Err(shell_error(
+                        "The open library changed. Save the artwork again.",
+                    ));
+                }
+                app.save_fetched_release_images(&path, &images, overwrite)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn auto_align(
-    state: State<AppState>,
+async fn auto_align(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     tracks: Vec<ImportTrackDto>,
 ) -> Result<Vec<Option<AlignMatchDto>>, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.auto_align(&paths, &tracks).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.auto_align(&paths, &tracks).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn preview_import(
-    state: State<AppState>,
+async fn preview_import(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     selection: ImportSelectionDto,
     vinyl_sides_to_disc: bool,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_import(&paths, &selection, vinyl_sides_to_disc)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_import(&paths, &selection, vinyl_sides_to_disc)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Path to the locally saved Discogs token (in the OS app-config dir, never in
@@ -1018,22 +1374,30 @@ fn token_path(app: &tauri::AppHandle) -> Result<PathBuf, ErrorDto> {
 }
 
 #[tauri::command]
-fn saved_discogs_token(app: tauri::AppHandle) -> Result<String, ErrorDto> {
-    let path = token_path(&app)?;
-    tighten_secret(&path);
-    Ok(std::fs::read_to_string(path)
-        .unwrap_or_default()
-        .trim()
-        .to_string())
+async fn saved_discogs_token(app: tauri::AppHandle) -> Result<String, ErrorDto> {
+    SETTINGS_QUEUE
+        .run(move || {
+            let path = token_path(&app)?;
+            tighten_secret(&path);
+            Ok(std::fs::read_to_string(path)
+                .unwrap_or_default()
+                .trim()
+                .to_string())
+        })
+        .await
 }
 
 #[tauri::command]
-fn save_discogs_token(app: tauri::AppHandle, token: String) -> Result<(), ErrorDto> {
-    let path = token_path(&app)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(ErrorDto::from)?;
-    }
-    write_secret(&path, token.trim()).map_err(ErrorDto::from)
+async fn save_discogs_token(app: tauri::AppHandle, token: String) -> Result<(), ErrorDto> {
+    SETTINGS_QUEUE
+        .run(move || {
+            let path = token_path(&app)?;
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(ErrorDto::from)?;
+            }
+            write_secret(&path, token.trim()).map_err(ErrorDto::from)
+        })
+        .await
 }
 
 /// Write `contents` to `path` as a file only its owner can read: the Discogs
@@ -1139,28 +1503,38 @@ fn beatport_proxy(app: &tauri::AppHandle) -> Option<String> {
 }
 
 #[tauri::command]
-fn beatport_status(app: tauri::AppHandle) -> BeatportStatusDto {
-    match read_beatport_session(&app) {
-        Some(session) => BeatportStatusDto {
-            authorized: true,
-            username: session.username,
-        },
-        None => BeatportStatusDto {
-            authorized: false,
-            username: String::new(),
-        },
-    }
+async fn beatport_status(app: tauri::AppHandle) -> Result<BeatportStatusDto, ErrorDto> {
+    SETTINGS_QUEUE
+        .run(move || {
+            Ok({
+                match read_beatport_session(&app) {
+                    Some(session) => BeatportStatusDto {
+                        authorized: true,
+                        username: session.username,
+                    },
+                    None => BeatportStatusDto {
+                        authorized: false,
+                        username: String::new(),
+                    },
+                }
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn beatport_logout(app: tauri::AppHandle) -> Result<(), ErrorDto> {
-    let path = beatport_session_path(&app)?;
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        // Signing out of a session that isn't there is a no-op, not a failure.
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(ErrorDto::from(err)),
-    }
+async fn beatport_logout(app: tauri::AppHandle) -> Result<(), ErrorDto> {
+    SETTINGS_QUEUE
+        .run(move || {
+            let path = beatport_session_path(&app)?;
+            match std::fs::remove_file(path) {
+                Ok(()) => Ok(()),
+                // Signing out of a session that isn't there is a no-op, not a failure.
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(err) => Err(ErrorDto::from(err)),
+            }
+        })
+        .await
 }
 
 /// Sign in: read the public client id, open Beatport's login page in its own
@@ -1330,11 +1704,17 @@ async fn check_for_update(
     pending: State<'_, update::PendingUpdate>,
     automatic: bool,
 ) -> Result<Option<update::UpdateCheckDto>, ErrorDto> {
-    let settings = read_settings(&app);
+    let handle = app.clone();
+    let settings = SETTINGS_QUEUE
+        .run(move || Ok(read_settings(&handle)))
+        .await?;
     if automatic && !settings.check_updates {
         return Ok(None);
     }
-    let mut found = update::check(&settings.proxy)
+    let proxy = settings.proxy.clone();
+    let mut found = tauri::async_runtime::spawn_blocking(move || update::check(&proxy))
+        .await
+        .map_err(shell_error)?
         .map_err(|detail| ErrorDto::plain(format!("Could not check for updates: {detail}")))?;
     let ready = if found.newer {
         update::installable(&app, &settings.proxy, &found.latest).await
@@ -1398,8 +1778,10 @@ async fn install_update(
 /// Open the releases page in the system browser (#435). No argument: the address
 /// is fixed here, so nothing the frontend sends can make this open anything else.
 #[tauri::command]
-fn open_releases_page() -> Result<(), ErrorDto> {
-    open::that(update::RELEASES_PAGE).map_err(ErrorDto::from)
+async fn open_releases_page() -> Result<(), ErrorDto> {
+    BROWSER_QUEUE
+        .run(move || open::that(update::RELEASES_PAGE).map_err(ErrorDto::from))
+        .await
 }
 
 /// The mask guide, linked from the foot of the placeholder reference (#557).
@@ -1408,8 +1790,10 @@ const MASK_GUIDE: &str = "https://github.com/tagrex/tagrex/blob/main/docs/guide/
 /// Open the mask guide in the system browser (#557). Fixed address, like the
 /// releases page: nothing the frontend sends can make this open anything else.
 #[tauri::command]
-fn open_mask_guide() -> Result<(), ErrorDto> {
-    open::that(MASK_GUIDE).map_err(ErrorDto::from)
+async fn open_mask_guide() -> Result<(), ErrorDto> {
+    BROWSER_QUEUE
+        .run(move || open::that(MASK_GUIDE).map_err(ErrorDto::from))
+        .await
 }
 
 /// The small-word lists a title-case rule can keep lowercase (#537), as
@@ -1431,13 +1815,15 @@ fn small_word_lists() -> Vec<(String, Vec<String>)> {
 /// Which end of an in-app window's head the close button goes at on this
 /// desktop (#565): "start" or "end".
 #[tauri::command]
-fn close_button_side() -> &'static str {
-    window_controls::close_button_side()
+async fn close_button_side() -> Result<&'static str, ErrorDto> {
+    BROWSER_QUEUE
+        .run(move || Ok(window_controls::close_button_side()))
+        .await
 }
 
 #[tauri::command]
-fn load_settings(app: tauri::AppHandle) -> Result<SettingsDto, ErrorDto> {
-    Ok(read_settings(&app))
+async fn load_settings(app: tauri::AppHandle) -> Result<SettingsDto, ErrorDto> {
+    SETTINGS_QUEUE.run(move || Ok(read_settings(&app))).await
 }
 
 /// The shipped preset library (#137). Read-only and not part of settings: the
@@ -1450,12 +1836,16 @@ fn builtin_action_groups() -> Vec<ActionGroupDto> {
 /// Run a preset's rules over one sample string, for the preset editor's live
 /// example (#394). Needs no library: it is the rules and the text alone.
 #[tauri::command]
-fn transform_sample(
+async fn transform_sample(
     group: ActionGroupDto,
     text: String,
     target: String,
 ) -> Result<String, ErrorDto> {
-    tagrex_commands::transform_sample(&group, &text, &target).map_err(ErrorDto::from)
+    SAMPLE_QUEUE
+        .run(move || {
+            tagrex_commands::transform_sample(&group, &text, &target).map_err(ErrorDto::from)
+        })
+        .await
 }
 
 /// Every placeholder a mask accepts (#148), for the in-app reference. Needs no
@@ -1474,66 +1864,112 @@ fn import_fields() -> Vec<ImportFieldDto> {
 
 /// Render a mask-defined column over a batch of files (#150).
 #[tauri::command]
-fn render_column(
-    state: State<AppState>,
+async fn render_column(
+    state: State<'_, AppState>,
     pattern: String,
     paths: Vec<String>,
 ) -> Result<Vec<String>, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.render_column(&pattern, &paths).map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.render_column(&pattern, &paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Preview the ticked action groups run in order as one plan (#137).
+/// Selection-driven previews may read many files, including remote files.
+/// Dispatch off the webview event thread, as with preview_tag_edits.
 #[tauri::command]
-fn preview_transform_groups(
-    state: State<AppState>,
+async fn preview_transform_groups(
+    state: State<'_, AppState>,
     paths: Vec<String>,
     groups: Vec<ActionGroupDto>,
 ) -> Result<PlanDto, ErrorDto> {
-    let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-    with_app(&state, |app| {
-        app.preview_transform_groups(&paths, &groups)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_transform_groups(&paths, &groups)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 /// Run the ticked action groups over a staged plan rather than over the files
 /// (#142) — cleanup composed into the operation that produced the values.
 #[tauri::command]
-fn preview_transform_over_plan(
-    state: State<AppState>,
+async fn preview_transform_over_plan(
+    state: State<'_, AppState>,
     plan: PlanDto,
     groups: Vec<ActionGroupDto>,
 ) -> Result<PlanDto, ErrorDto> {
-    with_app(&state, |app| {
-        app.preview_transform_over_plan(&plan, &groups)
-            .map_err(ErrorDto::from)
-    })
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.preview_transform_over_plan(&plan, &groups)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
 }
 
 #[tauri::command]
-fn save_settings(
+async fn save_settings(
     app: tauri::AppHandle,
-    state: State<AppState>,
-    providers: State<ProviderState>,
+    state: State<'_, AppState>,
+    providers: State<'_, ProviderState>,
     settings: SettingsDto,
 ) -> Result<(), ErrorDto> {
-    let path = settings_path(&app)?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(ErrorDto::from)?;
-    }
-    let json = serde_json::to_string_pretty(&settings).map_err(ErrorDto::from)?;
-    std::fs::write(path, json).map_err(ErrorDto::from)?;
-    // Apply immediately: the network half always (the hub is always there), the
-    // library half only when a library is open — so a change takes effect
-    // without reopening either way.
-    providers.lock().unwrap().apply_settings(&settings);
-    if let Some(app) = state.lock().unwrap().as_ref() {
-        app.apply_settings(&settings);
-    }
-    Ok(())
+    save_settings_at(
+        settings_path(&app)?,
+        state.inner().clone(),
+        providers.inner().clone(),
+        settings,
+    )
+    .await
+}
+
+async fn save_settings_at(
+    path: PathBuf,
+    state: AppState,
+    providers: ProviderState,
+    settings: SettingsDto,
+) -> Result<(), ErrorDto> {
+    let (settings, revision) = SETTINGS_QUEUE
+        .run(move || {
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(ErrorDto::from)?;
+            }
+            let json = serde_json::to_string_pretty(&settings).map_err(ErrorDto::from)?;
+            std::fs::write(path, json).map_err(ErrorDto::from)?;
+            // Apply immediately: the network half always (the hub is always there), the
+            // library half only when a library is open — so a change takes effect
+            // without reopening either way.
+            providers.apply_settings(&settings)?;
+            let revision = SETTINGS_REVISION.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok((settings, revision))
+        })
+        .await?;
+    // Opening a library and adopting parser/write preferences must have one
+    // order. Persist/network snapshots can proceed independently, but must not
+    // apply to the old session while a new one is still being constructed.
+    SESSION_QUEUE
+        .run(move || {
+            if SETTINGS_REVISION.load(Ordering::SeqCst) == revision {
+                if let Some(app) = state.lock().map_err(shell_error)?.as_ref() {
+                    app.apply_settings(&settings);
+                }
+            }
+            Ok(())
+        })
+        .await
 }
 
 fn main() {
@@ -1587,9 +2023,8 @@ fn main() {
             // than waiting for a library or a trip through Settings › Save.
             let settings = read_settings(&app.handle().clone());
             app.state::<ProviderState>()
-                .lock()
-                .unwrap()
-                .apply_settings(&settings);
+                .apply_settings(&settings)
+                .map_err(|error| std::io::Error::other(error.text))?;
             media_session::install(app.handle());
             Ok(())
         })
@@ -1702,6 +2137,109 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::{paths_from_args, release_url};
+
+    #[test]
+    fn saved_preferences_reach_a_library_that_is_still_opening() {
+        use std::sync::{mpsc, Arc, Mutex};
+        use std::time::{Duration, Instant, SystemTime};
+        let root = std::env::temp_dir().join(format!(
+            "tagrex-settings-open-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let state: super::AppState = Arc::new(Mutex::new(None));
+        let providers: super::ProviderState = Arc::new(super::ProviderQueues::default());
+        let (started, ready) = mpsc::channel();
+        let (release, wait) = mpsc::channel();
+        let opening = tauri::async_runtime::spawn({
+            let state = state.clone();
+            let root = root.clone();
+            async move {
+                super::SESSION_QUEUE
+                    .run(move || {
+                        started.send(()).unwrap();
+                        wait.recv_timeout(Duration::from_secs(10)).unwrap();
+                        let app = super::App::open(&root, &root.join("journal.sqlite")).unwrap();
+                        app.apply_settings(&super::SettingsDto::default());
+                        *state.lock().unwrap() = Some(app);
+                        Ok(())
+                    })
+                    .await
+            }
+        });
+        ready.recv_timeout(Duration::from_secs(5)).unwrap();
+        let saving = tauri::async_runtime::spawn(super::save_settings_at(
+            root.join("settings.json"),
+            state.clone(),
+            providers.clone(),
+            super::SettingsDto {
+                bpm_max_minutes: 7,
+                ..Default::default()
+            },
+        ));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while providers.settings.lock().unwrap().bpm_max_minutes != 7 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let persisted = providers.settings.lock().unwrap().bpm_max_minutes == 7;
+        release.send(()).unwrap();
+        tauri::async_runtime::block_on(opening).unwrap().unwrap();
+        tauri::async_runtime::block_on(saving).unwrap().unwrap();
+        assert!(persisted);
+        let actual = state.lock().unwrap().as_ref().unwrap().bpm_max_length();
+        drop(state);
+        std::fs::remove_dir_all(root).unwrap();
+        assert_eq!(actual, Some(Duration::from_secs(7 * 60)));
+    }
+
+    #[test]
+    fn provider_sources_keep_independent_persistent_queues() {
+        let providers = super::ProviderQueues::default();
+        let first = providers.source("discogs").unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            &first,
+            &providers.source("discogs").unwrap()
+        ));
+        assert!(!std::sync::Arc::ptr_eq(
+            &first,
+            &providers.source("musicbrainz").unwrap()
+        ));
+        assert!(providers.source("unknown").is_err());
+    }
+
+    #[test]
+    fn saving_network_preferences_does_not_wait_for_inflight_http() {
+        let providers = std::sync::Arc::new(super::ProviderQueues::default());
+        let source = providers.source("discogs").unwrap();
+        // Represents a provider request holding its hub during HTTP/throttling.
+        let inflight = source.hub.lock().unwrap();
+        let (finished, received) = std::sync::mpsc::channel();
+        let worker = std::thread::spawn({
+            let providers = providers.clone();
+            move || {
+                let settings = super::SettingsDto {
+                    rate_limit_per_min: 15,
+                    ..Default::default()
+                };
+                providers.apply_settings(&settings).unwrap();
+                finished.send(()).unwrap();
+            }
+        });
+        let ready = received
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .is_ok();
+        drop(inflight);
+        worker.join().unwrap();
+        assert!(
+            ready,
+            "saving settings waited for an in-flight provider request"
+        );
+        assert_eq!(source.settings.lock().unwrap().rate_limit_per_min, 15);
+    }
 
     #[test]
     fn a_command_line_yields_the_paths_in_it_and_nothing_else() {

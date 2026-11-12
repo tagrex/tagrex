@@ -40,13 +40,21 @@ export function lockedFieldKeys() {
 // Hand the session what is locked. Called after every toggle and again after a
 // library is opened: opening builds a new session with nothing locked, and the
 // locks belong to the person rather than to the folder they happen to have open.
-export async function pushFieldLocks() {
-  try {
-    await invoke("set_locked_fields", { fields: [...locked] });
-  } catch {
-    // No library open, so there is no session to lock anything in — and no
-    // plan can be built either. The next open pushes the set again.
-  }
+let pendingLockPush = Promise.resolve();
+export function pushFieldLocks() {
+  // Snapshot at submission, then await the previous IPC before sending this
+  // one. Separate click handlers can overlap; native mutex arrival order is
+  // not JavaScript invocation order.
+  const fields = [...locked];
+  pendingLockPush = pendingLockPush.then(async () => {
+    try {
+      await invoke("set_locked_fields", { fields });
+    } catch {
+      // No library open, so there is no session to lock anything in — and no
+      // plan can be built either. The next open pushes the set again.
+    }
+  });
+  return pendingLockPush;
 }
 
 // Read back what the session holds (start-up, and after a window reload). With
