@@ -50,6 +50,7 @@ const IMAGE_SIZE: u32 = 1400;
 /// What the store sells: one digital medium, no discs, no sides.
 const FORMAT: &str = "Digital";
 
+#[derive(Clone)]
 pub struct BeatportProvider {
     agent: ureq::Agent,
     access_token: String,

@@ -31,6 +31,7 @@ const USER_AGENT: &str = concat!(
     " +https://github.com/tagrex/tagrex"
 );
 
+#[derive(Clone)]
 pub struct DiscogsProvider {
     agent: ureq::Agent,
     token: String,

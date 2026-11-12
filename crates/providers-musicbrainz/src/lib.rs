@@ -42,6 +42,7 @@ const USER_AGENT: &str = concat!(
     " +https://github.com/tagrex/tagrex"
 );
 
+#[derive(Clone)]
 pub struct MusicBrainzProvider {
     agent: ureq::Agent,
 }
