@@ -1952,15 +1952,16 @@ impl ProviderHub {
         token: &str,
         query: &SearchQueryDto,
     ) -> Result<Vec<CandidateDto>, AppError> {
-        self.throttle(source);
         let search = query.to_search_query();
-        let candidates = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
-            "beatport" => self.beatport_provider(token)?.search(&search)?,
-            "bandcamp" => self.bandcamp_provider()?.search(&search)?,
-            "soundeo" => self.soundeo_provider()?.search(&search)?,
-            _ => self.discogs_provider(token)?.search(&search)?,
-        };
+        let candidates = self.with_retry(source, || {
+            Ok(match source {
+                "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
+                "beatport" => self.beatport_provider(token)?.search(&search)?,
+                "bandcamp" => self.bandcamp_provider()?.search(&search)?,
+                "soundeo" => self.soundeo_provider()?.search(&search)?,
+                _ => self.discogs_provider(token)?.search(&search)?,
+            })
+        })?;
         let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
 
         let wanted = [
@@ -1989,15 +1990,16 @@ impl ProviderHub {
         token: &str,
         id: &str,
     ) -> Result<ReleaseDto, AppError> {
-        self.throttle(source);
         let rid = ReleaseId(id.to_string());
-        let release = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
-            "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
-            "bandcamp" => self.bandcamp_provider()?.fetch_release(&rid)?,
-            "soundeo" => self.soundeo_provider()?.fetch_release(&rid)?,
-            _ => self.discogs_provider(token)?.fetch_release(&rid)?,
-        };
+        let release = self.with_retry(source, || {
+            Ok(match source {
+                "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
+                "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
+                "bandcamp" => self.bandcamp_provider()?.fetch_release(&rid)?,
+                "soundeo" => self.soundeo_provider()?.fetch_release(&rid)?,
+                _ => self.discogs_provider(token)?.fetch_release(&rid)?,
+            })
+        })?;
         Ok(ReleaseDto::from(&release))
     }
 
@@ -2013,14 +2015,7 @@ impl ProviderHub {
         token: &str,
         url: &str,
     ) -> Result<CoverArtDto, AppError> {
-        self.throttle(source);
-        let image = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
-            "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
-            "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
-            "soundeo" => self.soundeo_provider()?.fetch_image(url)?,
-            _ => self.discogs_provider(token)?.fetch_image(url)?,
-        };
+        let image = self.fetch_image_bytes(source, token, url)?;
         Ok(CoverArtDto {
             mime: display_safe_mime(&image.mime, &image.data),
             data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),
@@ -2038,16 +2033,44 @@ impl ProviderHub {
         token: &str,
         url: &str,
     ) -> Result<FetchedImage, AppError> {
-        self.throttle(source);
-        Ok(match source {
-            "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
-            "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
-            "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
-            "soundeo" => self.soundeo_provider()?.fetch_image(url)?,
-            _ => self.discogs_provider(token)?.fetch_image(url)?,
+        self.with_retry(source, || {
+            Ok(match source {
+                "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
+                "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
+                "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
+                "soundeo" => self.soundeo_provider()?.fetch_image(url)?,
+                _ => self.discogs_provider(token)?.fetch_image(url)?,
+            })
         })
     }
+
+    /// Run one provider request, spaced by [`throttle`](Self::throttle), and
+    /// try it once more after a short rate-limit refusal (#747). A provider
+    /// shedding load (MusicBrainz answers `503` with `Retry-After: 0`) usually
+    /// serves the same request a second later. A longer stated wait is reported
+    /// at once, so the interface's own pause-and-resume handling stays in charge.
+    fn with_retry<T>(
+        &self,
+        source: &str,
+        mut request: impl FnMut() -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
+        self.throttle(source);
+        match request() {
+            Err(AppError::Provider(tagrex_core::provider::ProviderError::RateLimited {
+                retry_after_secs,
+            })) if retry_after_secs <= SHORT_RATE_LIMIT_SECS => {
+                std::thread::sleep(Duration::from_secs(retry_after_secs.max(1)));
+                self.throttle(source);
+                request()
+            }
+            other => other,
+        }
+    }
 }
+
+/// The longest stated rate-limit wait a provider request is retried after
+/// (#747); anything longer goes back to the caller as it always did.
+const SHORT_RATE_LIMIT_SECS: u64 = 5;
 
 /// A tagging session rooted at one library directory. The root doubles as the
 /// [`Executor`] `allowed_root`, so every write is confined to the opened
@@ -7886,6 +7909,70 @@ mod tests {
         hub.apply_settings(&SettingsDto::default());
         assert!(hub.proxy.borrow().is_none());
         assert!(hub.min_interval.get().is_none());
+    }
+
+    /// A short rate-limit refusal is waited out and the request tried once more;
+    /// a long stated wait goes straight back to the caller (#747).
+    #[test]
+    fn a_short_rate_limit_is_retried_once_and_a_long_one_is_reported() {
+        use tagrex_core::provider::ProviderError;
+        let limited = |secs| {
+            Err::<u32, _>(AppError::Provider(ProviderError::RateLimited {
+                retry_after_secs: secs,
+            }))
+        };
+        let hub = ProviderHub::default();
+
+        // Refused once with `Retry-After: 0`, then served: one retry, after at
+        // least a second.
+        let calls = Cell::new(0);
+        let started = Instant::now();
+        let result = hub.with_retry("discogs", || {
+            calls.set(calls.get() + 1);
+            if calls.get() == 1 {
+                limited(0)
+            } else {
+                Ok(7)
+            }
+        });
+        assert_eq!(result.unwrap(), 7);
+        assert_eq!(calls.get(), 2);
+        assert!(started.elapsed() >= Duration::from_secs(1));
+
+        // Refused twice: only one retry, then the refusal is reported.
+        let calls = Cell::new(0);
+        let result = hub.with_retry("discogs", || {
+            calls.set(calls.get() + 1);
+            limited(0)
+        });
+        assert!(matches!(
+            result,
+            Err(AppError::Provider(ProviderError::RateLimited { .. }))
+        ));
+        assert_eq!(calls.get(), 2);
+
+        // A minute's wait is not sat out here: the caller decides.
+        let calls = Cell::new(0);
+        let result = hub.with_retry("discogs", || {
+            calls.set(calls.get() + 1);
+            limited(60)
+        });
+        assert!(matches!(
+            result,
+            Err(AppError::Provider(ProviderError::RateLimited {
+                retry_after_secs: 60
+            }))
+        ));
+        assert_eq!(calls.get(), 1);
+
+        // Any other failure is never retried.
+        let calls = Cell::new(0);
+        let result = hub.with_retry("discogs", || {
+            calls.set(calls.get() + 1);
+            Err::<u32, _>(AppError::Provider(ProviderError::NotFound))
+        });
+        assert!(result.is_err());
+        assert_eq!(calls.get(), 1);
     }
 
     #[test]

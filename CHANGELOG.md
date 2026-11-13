@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A cover image larger than 10 MB downloads instead of failing with "the response body is larger than request limit". Cover Art Archive originals are often bigger, so such a MusicBrainz release card showed no cover and the image could not be embedded or saved. Images are now accepted up to 64 MB ([#746](https://github.com/tagrex/tagrex/issues/746)).
+- A search, release or cover request that a provider turns away with a short rate-limit wait is tried once more after that wait, instead of failing at once. MusicBrainz does this whenever it is shedding load, answering part of its requests with a refusal that the same request a second later gets past. A longer stated wait, such as a minute from Discogs, is still reported straight away ([#747](https://github.com/tagrex/tagrex/issues/747)).
+- MusicBrainz release cards show a cover thumbnail without being expanded. A MusicBrainz search says nothing about cover art, so a card now loads the archive's small 250 px front image once the release lookup the picker already runs confirms there is one; releases without art cost no extra request. A release that has no front cover also no longer offers a cover link that could only fail ([#748](https://github.com/tagrex/tagrex/issues/748)).
+
+## [1.4.0] - 2026-11-12
+
+A release about the file table. A new Cover column shows at a glance which
+files have embedded cover art and which do not, and sorts the ones without
+together; switched on, it stands first, in front of File. Files can now be
+selected by dragging over the table. The app also gets a redrawn icon, which
+no longer sits on a grey plate on macOS 26.
+
 ### Added
 
 - A Cover column for the file table: a glyph for a file with embedded cover art, a red struck-through one for a file without, and sorting that brings the files without a cover together. Turn it on from the Columns menu ([#730](https://github.com/tagrex/tagrex/issues/730)).

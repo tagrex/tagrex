@@ -632,6 +632,12 @@ function roundArtInset(img) {
   return inset / n;
 }
 
+// Sources whose search hits cannot say whether a release has cover art (#748).
+// Their thumbnail URL is only where the art would be, so a card loads it once
+// the release lookup (the count sweep runs one per card) confirms a front cover;
+// a release without art then costs no request that could only answer 404.
+const THUMB_AFTER_LOOKUP = new Set(["musicbrainz"]);
+
 // Show the release's cover thumbnail, fetching + caching it once. Cached data
 // URIs are reused, so a re-render never re-hits Discogs.
 async function applyImage(c) {
@@ -640,6 +646,10 @@ async function applyImage(c) {
   if (!url) return;
   const cached = imageCache.get(c.id) || {};
   let dataUri = cached[kind];
+  if (!dataUri && THUMB_AFTER_LOOKUP.has(releaseSource)) {
+    const release = releaseCache.get(c.id);
+    if (!release || !release.cover_image_url) return;
+  }
   if (!dataUri) {
     const token = await providerToken(releaseSource);
     try {
@@ -650,6 +660,9 @@ async function applyImage(c) {
     } catch (e) {
       return; // leave the striped placeholder
     }
+    // A thumbnail that arrives after the card was expanded must not cover up
+    // the full-size image that came in first (#748 loads thumbnails later).
+    if (coverCache.has(c.id)) return;
   }
   const cover = coverElOf(c.id);
   if (cover) setCoverImage(cover, dataUri);
@@ -711,6 +724,7 @@ async function prefetchReleaseCounts(items, gen) {
         const pill = countPillOf(c.id);
         if (pill) pill.textContent = countLabel(c.id);
         updateMediaBadge(c); // fill the badge's ×N now that disc count is known
+        applyImage(c); // a thumbnail that waited for this lookup (#748)
         limitsInARow = 0;
       } catch (e) {
         // A rate limit pauses the sweep and retries this release after it.

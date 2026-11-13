@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 1.3.x.** Stable for day-to-day use: table editing, rename masks
+> **Status: 1.4.x.** Stable for day-to-day use: table editing, rename masks
 > with a function language, tags read back out of file names and text lists,
 > text transforms, online lookups, BPM detection from the audio, cover art, tag
 > block conversion, duplicate detection, exports, a preview player, a
@@ -85,9 +85,11 @@ to the path, drop the folder on the window, or hand it over from the file
 manager — **Open With**, the Dock icon, or the command line.
 
 **The table is the subject.** Files load into a spreadsheet-style table with
-configurable tag columns, grouping by any modeled field, filtering (substring or
+configurable tag columns (one of them flags the files without cover art),
+grouping by any modeled field, filtering (substring or
 regex, optionally field-scoped as `artist:aphex`) and saved filter/sort presets.
-Selection is first-class: click, ⌘/Ctrl, Shift ranges, keyboard. Tag cells edit
+Selection is first-class: click, ⌘/Ctrl, Shift ranges, a drag over the rows,
+keyboard. Tag cells edit
 in place, offering the values the library already holds as you type, and a cell
 is written when you press Enter — a change of its own that undo takes back. A button
 beside the folder path re-reads what is open without losing your sort, filter or

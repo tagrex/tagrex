@@ -140,6 +140,8 @@ impl MusicBrainzProvider {
 
         let data = response
             .body_mut()
+            .with_config()
+            .limit(tagrex_core::provider::MAX_IMAGE_BYTES)
             .read_to_vec()
             .map_err(|err| ProviderError::Network(err.to_string()))?;
 
@@ -205,6 +207,14 @@ impl MetadataProvider for MusicBrainzProvider {
 /// the actual image; a release with no art 404s (handled as "no cover").
 fn cover_art_front_url(mbid: &str) -> String {
     format!("{COVER_ART_BASE}/release/{mbid}/front")
+}
+
+/// The Cover Art Archive's 250 px front thumbnail for a release MBID (#748),
+/// tens of kilobytes where the full front can run past ten megabytes. It is
+/// what a search card shows; like the full front it 404s for a release with no
+/// art, so the card loads it only once the release lookup confirms a front.
+fn cover_art_thumb_url(mbid: &str) -> String {
+    format!("{COVER_ART_BASE}/release/{mbid}/front-250")
 }
 
 /// Build the MusicBrainz search query and whether to request `dismax` mode.
@@ -300,6 +310,7 @@ fn parse_search_response(body: &str) -> Result<Vec<ReleaseCandidate>, ProviderEr
         .filter_map(|release| {
             let id = string_field(release, "id")?;
             let string = |key: &str| string_field(release, key);
+            let thumb_url = Some(cover_art_thumb_url(&id));
             Some(ReleaseCandidate {
                 id: ReleaseId(id),
                 artist: join_artist_credit(release.get("artist-credit")).unwrap_or_default(),
@@ -313,10 +324,11 @@ fn parse_search_response(body: &str) -> Result<Vec<ReleaseCandidate>, ProviderEr
                     .and_then(Value::as_u64)
                     .map(|s| (s as f32 / 100.0).clamp(0.0, 1.0))
                     .unwrap_or(0.0),
-                // Search hits carry no cover; the front cover is filled on
-                // fetch_release from the Cover Art Archive. Fetching a CAA image
-                // per candidate would be a request storm of mostly-404s.
-                thumb_url: None,
+                // Search hits say nothing about cover art, so this is where the
+                // archive's thumbnail WOULD be (#748). The picker loads it only
+                // after the release lookup confirms a front cover; fetching it
+                // for every hit would be a request storm of mostly-404s.
+                thumb_url,
                 cover_url: None,
                 country: string("country"),
                 label: first_label(release.get("label-info")),
@@ -390,6 +402,15 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         .and_then(|media| u32::try_from(media.len()).ok())
         .filter(|count| *count > 0);
 
+    // The lookup states whether the archive holds a front cover (#748). Only an
+    // explicit "no" drops the URL, which could then only answer 404; a lookup
+    // that does not say keeps it, as before.
+    let has_front = root
+        .get("cover-art-archive")
+        .and_then(|caa| caa.get("front"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+
     Ok(Release {
         id: ReleaseId(id.clone()),
         artist,
@@ -407,15 +428,19 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         format: media_formats(root.get("media")),
         disc_total,
         url: Some(format!("https://musicbrainz.org/release/{id}")),
-        cover_image_url: Some(cover_art_front_url(&id)),
+        cover_image_url: has_front.then(|| cover_art_front_url(&id)),
         // The Cover Art Archive front image; CAA doesn't report dimensions in
         // this path, so they stay `0` (unknown) — resolution just won't show for
         // MusicBrainz results (#102).
-        images: vec![ReleaseImage {
-            url: cover_art_front_url(&id),
-            width: 0,
-            height: 0,
-        }],
+        images: if has_front {
+            vec![ReleaseImage {
+                url: cover_art_front_url(&id),
+                width: 0,
+                height: 0,
+            }]
+        } else {
+            Vec::new()
+        },
     })
 }
 
@@ -627,6 +652,70 @@ mod tests {
         );
     }
 
+    /// An image over the HTTP client's 10 MiB default arrives whole (#746):
+    /// Cover Art Archive originals are often larger.
+    #[test]
+    fn an_image_over_ten_mebibytes_is_downloaded_whole() {
+        use std::io::{Read, Write};
+        const SIZE: usize = 13 * 1024 * 1024;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request);
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: {SIZE}\r\nConnection: close\r\n\r\n"
+            );
+            stream.write_all(head.as_bytes()).unwrap();
+            let _ = stream.write_all(&vec![0xAB; SIZE]);
+        });
+        let result =
+            super::MusicBrainzProvider::new().fetch_image(&format!("http://{addr}/cover.jpg"));
+        server.join().unwrap();
+        let image = result.unwrap();
+        assert_eq!(image.mime, "image/jpeg");
+        assert_eq!(image.data.len(), SIZE);
+    }
+
+    /// A body past the cap is refused rather than read without limit.
+    #[test]
+    fn an_image_past_the_cap_is_refused() {
+        use std::io::{Read, Write};
+        let size = tagrex_core::provider::MAX_IMAGE_BYTES as usize + 1;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 2048];
+            let _ = stream.read(&mut request);
+            let head = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: image/jpeg\r\nContent-Length: {size}\r\nConnection: close\r\n\r\n"
+            );
+            stream.write_all(head.as_bytes()).unwrap();
+            // The client stops reading at the cap; a broken pipe after it is expected.
+            let chunk = vec![0u8; 1024 * 1024];
+            let mut sent = 0;
+            while sent < size {
+                let n = chunk.len().min(size - sent);
+                if stream.write_all(&chunk[..n]).is_err() {
+                    break;
+                }
+                sent += n;
+            }
+        });
+        let result =
+            super::MusicBrainzProvider::new().fetch_image(&format!("http://{addr}/cover.jpg"));
+        drop(server);
+        assert!(
+            matches!(
+                result,
+                Err(tagrex_core::provider::ProviderError::Network(_))
+            ),
+            "{result:?}"
+        );
+    }
+
     /// The client waits forever by default, and a server that stopped answering
     /// held every provider call in the app behind the one lock they share.
     #[test]
@@ -756,8 +845,13 @@ mod tests {
         assert_eq!(first.format.as_deref(), Some("CD"));
         assert!((first.score - 1.0).abs() < f32::EPSILON);
         assert!(first.score > second_score(&candidates));
-        // No cover in search hits.
-        assert_eq!(first.thumb_url, None);
+        // A search hit says nothing about cover art: the thumbnail points where
+        // the archive's would be, for the card to load once the lookup confirms
+        // a front (#748), and there is no full-size cover.
+        assert_eq!(
+            first.thumb_url.as_deref(),
+            Some("https://coverartarchive.org/release/aeb1c1c0-0000-0000-0000-000000000001/front-250")
+        );
         assert_eq!(first.cover_url, None);
 
         let second = &candidates[1];
@@ -868,6 +962,32 @@ mod tests {
             .map(|t| t.section.as_deref())
             .collect();
         assert_eq!(sections, vec![None, Some("Bonus Disc")]);
+    }
+
+    #[test]
+    fn a_release_the_archive_has_no_front_for_reports_no_cover() {
+        let body = |front: &str| {
+            format!(
+                r#"{{
+                    "id": "aeb1c1c0-0000-0000-0000-000000000003",
+                    "title": "Bare",
+                    "artist-credit": [{{ "name": "Nobody" }}],
+                    "cover-art-archive": {{ "front": {front}, "count": 0 }},
+                    "media": []
+                }}"#
+            )
+        };
+        // The lookup says there is no front: no URL that could only 404 (#748).
+        let bare = parse_release(&body("false")).unwrap();
+        assert_eq!(bare.cover_image_url, None);
+        assert!(bare.images.is_empty());
+        // It says there is one: the full front, as before.
+        let covered = parse_release(&body("true")).unwrap();
+        assert_eq!(
+            covered.cover_image_url.as_deref(),
+            Some("https://coverartarchive.org/release/aeb1c1c0-0000-0000-0000-000000000003/front")
+        );
+        assert_eq!(covered.images.len(), 1);
     }
 
     #[test]

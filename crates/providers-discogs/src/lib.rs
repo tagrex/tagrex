@@ -139,6 +139,8 @@ impl DiscogsProvider {
 
         let data = response
             .body_mut()
+            .with_config()
+            .limit(tagrex_core::provider::MAX_IMAGE_BYTES)
             .read_to_vec()
             .map_err(|err| ProviderError::Network(err.to_string()))?;
 
