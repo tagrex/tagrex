@@ -2052,25 +2052,139 @@ impl ProviderHub {
     fn with_retry<T>(
         &self,
         source: &str,
-        mut request: impl FnMut() -> Result<T, AppError>,
+        request: impl FnMut() -> Result<T, AppError>,
     ) -> Result<T, AppError> {
         self.throttle(source);
-        match request() {
-            Err(AppError::Provider(tagrex_core::provider::ProviderError::RateLimited {
-                retry_after_secs,
-            })) if retry_after_secs <= SHORT_RATE_LIMIT_SECS => {
-                std::thread::sleep(Duration::from_secs(retry_after_secs.max(1)));
-                self.throttle(source);
-                request()
-            }
-            other => other,
+        retry_after_short_limit(request, || self.throttle(source))
+    }
+
+    /// Take an image download out of the hub (#749). Building the fetcher is
+    /// all that needs the hub, and it takes an instant; the caller runs the
+    /// download without holding the provider lock, so a slow image no longer
+    /// holds up every search, lookup and other image behind it.
+    ///
+    /// MusicBrainz images come from the Cover Art Archive, which the
+    /// MusicBrainz API spacing does not cover, so they are not throttled. Every
+    /// other source keeps its spacing, taken here before the fetcher is handed
+    /// out.
+    pub fn image_fetch(&self, source: &str, token: &str) -> Result<ImageFetch, AppError> {
+        if source != "musicbrainz" {
+            self.throttle(source);
         }
+        Ok(ImageFetch(match source {
+            "musicbrainz" => ImageProvider::MusicBrainz(self.musicbrainz_provider()?),
+            "beatport" => ImageProvider::Beatport(self.beatport_provider(token)?),
+            "bandcamp" => ImageProvider::Bandcamp(self.bandcamp_provider()?),
+            "soundeo" => ImageProvider::Soundeo(self.soundeo_provider()?),
+            _ => ImageProvider::Discogs(self.discogs_provider(token)?),
+        }))
+    }
+}
+
+/// Run a provider request and try it once more after a short rate-limit
+/// refusal (#747): wait what the provider asked (at least a second), call
+/// `before_retry` (the throttle, for an API request), then send it again. A
+/// longer stated wait goes back to the caller at once.
+fn retry_after_short_limit<T>(
+    mut request: impl FnMut() -> Result<T, AppError>,
+    before_retry: impl FnOnce(),
+) -> Result<T, AppError> {
+    match request() {
+        Err(AppError::Provider(tagrex_core::provider::ProviderError::RateLimited {
+            retry_after_secs,
+        })) if retry_after_secs <= SHORT_RATE_LIMIT_SECS => {
+            std::thread::sleep(Duration::from_secs(retry_after_secs.max(1)));
+            before_retry();
+            request()
+        }
+        other => other,
     }
 }
 
 /// The longest stated rate-limit wait a provider request is retried after
 /// (#747); anything longer goes back to the caller as it always did.
 const SHORT_RATE_LIMIT_SECS: u64 = 5;
+
+/// One provider's image download, taken out of the [`ProviderHub`] by
+/// [`ProviderHub::image_fetch`] so it can run without the provider lock (#749).
+pub struct ImageFetch(ImageProvider);
+
+enum ImageProvider {
+    MusicBrainz(MusicBrainzProvider),
+    Beatport(BeatportProvider),
+    Bandcamp(BandcampProvider),
+    Soundeo(SoundeoProvider),
+    Discogs(DiscogsProvider),
+}
+
+/// How many image downloads may run at once (#749). Out of the provider lock
+/// they would otherwise all go together: a page of Discogs cards asks for its
+/// thumbnails at once, and two dozen simultaneous requests to one image host
+/// is a good way to get refused. Six is what browsers allow per host.
+const MAX_IMAGE_DOWNLOADS: usize = 6;
+static IMAGE_DOWNLOADS: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+static IMAGE_DOWNLOAD_FREED: std::sync::Condvar = std::sync::Condvar::new();
+
+/// A held image-download slot; dropping it frees the slot for the next one.
+struct ImageDownloadSlot;
+
+impl ImageDownloadSlot {
+    /// Wait for a free slot. Blocking, like the download it guards, so call it
+    /// off the async runtime.
+    fn acquire() -> Self {
+        let mut running = IMAGE_DOWNLOADS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while *running >= MAX_IMAGE_DOWNLOADS {
+            running = IMAGE_DOWNLOAD_FREED
+                .wait(running)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        *running += 1;
+        ImageDownloadSlot
+    }
+}
+
+impl Drop for ImageDownloadSlot {
+    fn drop(&mut self) {
+        let mut running = IMAGE_DOWNLOADS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *running -= 1;
+        IMAGE_DOWNLOAD_FREED.notify_one();
+    }
+}
+
+impl ImageFetch {
+    /// Download the image as raw bytes, retrying once after a short rate-limit
+    /// refusal (#747). Blocking: run it off the async runtime.
+    pub fn fetch_bytes(&self, url: &str) -> Result<FetchedImage, AppError> {
+        let _slot = ImageDownloadSlot::acquire();
+        retry_after_short_limit(
+            || {
+                Ok(match &self.0 {
+                    ImageProvider::MusicBrainz(provider) => provider.fetch_image(url)?,
+                    ImageProvider::Beatport(provider) => provider.fetch_image(url)?,
+                    ImageProvider::Bandcamp(provider) => provider.fetch_image(url)?,
+                    ImageProvider::Soundeo(provider) => provider.fetch_image(url)?,
+                    ImageProvider::Discogs(provider) => provider.fetch_image(url)?,
+                })
+            },
+            || {},
+        )
+    }
+
+    /// Download the image as the cover DTO the cover well and the release
+    /// cards take, like [`ProviderHub::provider_fetch_image`].
+    pub fn fetch_cover(&self, url: &str) -> Result<CoverArtDto, AppError> {
+        let image = self.fetch_bytes(url)?;
+        Ok(CoverArtDto {
+            mime: display_safe_mime(&image.mime, &image.data),
+            data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),
+            ..CoverArtDto::default()
+        })
+    }
+}
 
 /// A tagging session rooted at one library directory. The root doubles as the
 /// [`Executor`] `allowed_root`, so every write is confined to the opened
@@ -7913,6 +8027,43 @@ mod tests {
 
     /// A short rate-limit refusal is waited out and the request tried once more;
     /// a long stated wait goes straight back to the caller (#747).
+    #[test]
+    fn a_musicbrainz_image_fetch_does_not_spend_the_api_spacing() {
+        // Cover Art Archive images are not MusicBrainz API requests (#749).
+        let hub = ProviderHub::default();
+        hub.image_fetch("musicbrainz", "").unwrap();
+        assert!(hub.last_musicbrainz_request.get().is_none());
+        // Any other source keeps its spacing.
+        hub.image_fetch("bandcamp", "").unwrap();
+        assert!(hub.last_bandcamp_request.get().is_some());
+    }
+
+    #[test]
+    fn no_more_than_six_image_downloads_run_at_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let running = Arc::new(AtomicUsize::new(0));
+        let most = Arc::new(AtomicUsize::new(0));
+        let workers: Vec<_> = (0..MAX_IMAGE_DOWNLOADS * 2)
+            .map(|_| {
+                let (running, most) = (Arc::clone(&running), Arc::clone(&most));
+                std::thread::spawn(move || {
+                    let _slot = ImageDownloadSlot::acquire();
+                    let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+                    most.fetch_max(now, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(200));
+                    running.fetch_sub(1, Ordering::SeqCst);
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        // Capped, but still in parallel up to the cap (#749).
+        assert_eq!(most.load(Ordering::SeqCst), MAX_IMAGE_DOWNLOADS);
+        assert_eq!(*IMAGE_DOWNLOADS.lock().unwrap(), 0);
+    }
+
     #[test]
     fn a_short_rate_limit_is_retried_once_and_a_long_one_is_reported() {
         use tagrex_core::provider::ProviderError;

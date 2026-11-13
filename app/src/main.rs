@@ -1265,15 +1265,19 @@ async fn provider_fetch_image(
 ) -> Result<CoverArtDto, ErrorDto> {
     let providers = providers.source(&source)?;
     let hub = providers.clone();
-    providers
+    let fetch = providers
         .jobs
         .run(move || {
             with_providers(&hub, |hub| {
-                hub.provider_fetch_image(&source, &token, &url)
-                    .map_err(ErrorDto::from)
+                hub.image_fetch(&source, &token).map_err(ErrorDto::from)
             })
         })
+        .await?;
+    // Only fetcher preparation uses the source queue/lock. The download is
+    // bounded by the shared image slots and cannot block a release lookup.
+    tauri::async_runtime::spawn_blocking(move || fetch.fetch_cover(&url).map_err(ErrorDto::from))
         .await
+        .map_err(shell_error)?
 }
 
 /// Save a release's images to disk next to the selected tracks (#102). Async:
