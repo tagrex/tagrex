@@ -809,6 +809,9 @@ impl SqliteJournal {
                     .push(PathBuf::from(path));
             }
         }
+        // #153: membership is judged by where the files CAME FROM, not where
+        // they went. A reorganize can move files outside the library; its batch
+        // must still appear in history so those changes can be undone.
         headers.retain(|header| {
             header
                 .paths
