@@ -1,21 +1,31 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import vm from 'node:vm';
+import { randomUUID } from 'node:crypto';
 
 async function locksWith(invoke) {
-  const context = vm.createContext({ invokeStub: invoke });
-  const source = await readFile(new URL('../../app/ui/js/locks.js', import.meta.url), 'utf8');
-  const module = new vm.SourceTextModule(source, { context });
+  // Load the real module with only its browser/IPC imports replaced. Data-URL
+  // ES modules use Node's stable loader; each instance gets its own lock state.
+  const stubKey = `tagrex-lock-test-${randomUUID()}`;
+  let source = await readFile(new URL('../../app/ui/js/locks.js', import.meta.url), 'utf8');
+  globalThis[stubKey] = invoke;
   const dependencies = {
     './dom.js': 'export const ico = () => "";',
     './i18n.js': 'export const t = () => "";',
     './hooks.js': 'export const hooks = { renderTableHead() {}, renderTracks() {} };',
-    './invoke.js': 'export const invoke = globalThis.invokeStub;',
+    './invoke.js': `export const invoke = globalThis[${JSON.stringify(stubKey)}];`,
   };
-  await module.link(specifier => new vm.SourceTextModule(dependencies[specifier], { context }));
-  await module.evaluate();
-  return module.namespace;
+  const moduleUrl = body => `data:text/javascript;base64,${Buffer.from(body).toString('base64')}`;
+  try {
+    for (const [specifier, body] of Object.entries(dependencies)) {
+      const quoted = JSON.stringify(specifier);
+      assert.equal(source.split(quoted).length, 2, `expected one import of ${specifier}`);
+      source = source.replace(quoted, JSON.stringify(moduleUrl(body)));
+    }
+    return await import(moduleUrl(`${source}\n// isolated test: ${stubKey}`));
+  } finally {
+    delete globalThis[stubKey];
+  }
 }
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
