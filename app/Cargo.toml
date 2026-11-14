@@ -102,7 +102,7 @@ objc2-media-player = { version = "0.3.2", default-features = false, features = [
 # zbus 5 the single-instance plugin already builds, pure Rust, rather than a
 # crate that links libdbus or brings an older zbus.
 [target.'cfg(target_os = "linux")'.dependencies]
-zbus = "5"
+zbus = "6"
 
 # The system media session on Windows (#515): the System Media Transport
 # Controls behind the media keys and the media flyout. The `windows` crate the
