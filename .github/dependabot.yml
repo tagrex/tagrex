@@ -31,6 +31,17 @@ updates:
       cargo-minor-and-patch:
         update-types: [minor, patch]
 
+  # The undeclared-name check for the interface (#764). Only the lint tool lives
+  # here; the app has no npm dependencies.
+  - package-ecosystem: npm
+    directory: "/tools/lint"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    groups:
+      lint:
+        patterns: ["*"]
+
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

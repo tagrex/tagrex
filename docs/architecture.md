@@ -233,6 +233,9 @@ alone do not establish those behaviours on either platform.
   to the webview. No npm, no framework and no build step — a change to the
   interface is a file edit and a reload, and the UI can be opened in an ordinary
   browser against a mock of the command layer to develop it without the shell.
+  The one npm use is a CI check in `tools/lint` that fails on a name a module
+  uses but neither declares nor imports (#764). Run it locally with
+  `npm ci --prefix tools/lint` once, then `node tools/lint/check.js`.
 - **Audio:** rodio over symphonia, for the preview player. Decoding earns its
   place twice: playback, and the loudness envelope the seek bar draws. Analysis
   beyond that — ReplayGain — is still out of scope.

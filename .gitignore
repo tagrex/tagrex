@@ -2,3 +2,5 @@
 .DS_Store
 # Tauri-generated ACL schemas (regenerated from tauri.conf.json + capabilities)
 /app/gen
+# The interface lint tool's packages (#764), installed with npm ci
+/tools/lint/node_modules

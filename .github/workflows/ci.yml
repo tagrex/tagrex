@@ -64,7 +64,26 @@ jobs:
       - name: Test the media session on a private D-Bus
         run: dbus-run-session -- cargo test -p tagrex mpris -- --ignored
 
-  # A second job that only compiles, on Windows (#223). A dependency can be
+  # Undeclared names in the frontend modules (#764). The interface has no build
+  # step, so a name a module uses but neither declares nor imports only fails
+  # when that line runs, and silently inside a try/catch (#763). The linter is
+  # pinned by the lockfile in tools/lint; the app itself still needs no npm.
+  ui-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Install the pinned linter
+        run: npm ci --prefix tools/lint --ignore-scripts --no-audit --no-fund
+
+      - name: Check for undeclared names in app/ui
+        run: node tools/lint/check.js
+
+  # A job that only compiles, on Windows (#223). A dependency can be
   # wrong for that platform alone — a feature flag it needs, a `cfg(windows)`
   # block that stopped building — while this workflow stays green, and until
   # this job existed the first sign of it was the release workflow failing on a

@@ -1,0 +1,13 @@
+{
+  "name": "tagrex-ui-lint",
+  "private": true,
+  "description": "Undeclared-name check for the frontend modules in app/ui (#764). The app itself has no npm build.",
+  "type": "module",
+  "scripts": {
+    "lint": "node check.js"
+  },
+  "devDependencies": {
+    "eslint": "10.14.0",
+    "globals": "17.13.0"
+  }
+}
