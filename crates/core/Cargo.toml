@@ -33,7 +33,7 @@ regex = "1.13.1"
 # decoded image (#622). Already in the tree via image.
 png = "0.18.1"
 # 0.41 for its bundled SQLite 3.54.1 (RUSTSEC-2026-0459, #728).
-rusqlite = { version = "0.41.1", features = ["bundled"] }
+rusqlite = { version = "0.42.0", features = ["bundled"] }
 # Tells a case-only rename of one file from a move onto another file on a
 # case-insensitive file system (#604, #605). Already in the tree via walkdir.
 same-file = "1.0.6"
