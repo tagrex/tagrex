@@ -397,6 +397,10 @@ function syncFilterControls() {
 
 // A named preset captures the full view query: filter text + mode flags, the
 // sort column/direction, and the grouping — everything the user tuned by hand.
+// The key lives here, next to its only readers: left behind in columns.js by
+// the module split, it was out of scope and every load and save threw (#763).
+const PRESETS_STORAGE_KEY = "tagrex.filterPresets";
+
 function loadPresets() {
   try {
     const saved = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY));
@@ -507,7 +511,12 @@ function renderPresetsMenu() {
       input.value = "";
     }
   };
-  save.addEventListener("click", commit);
+  save.addEventListener("click", (e) => {
+    // Saving repaints the menu, which detaches this button before the click
+    // reaches the outside-click handler; keep the menu open on the new list.
+    e.stopPropagation();
+    commit();
+  });
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();

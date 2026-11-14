@@ -424,7 +424,6 @@ function maybeAutofit() {
 // (`artist:aphex`) narrows the match to one column. `filterQuery` is the parsed
 // form (re-derived by recompileFilter whenever the text or flags change) so the
 // per-row test stays cheap; `filterError` flags a regex that failed to compile.
-const PRESETS_STORAGE_KEY = "tagrex.filterPresets";
 setGroupByValue(groupByPref());
 // The dropped directories of a file-set drag-and-drop (#127), or null for an
 // ordinary library. When set, the table's "drop" grouping buckets each track
