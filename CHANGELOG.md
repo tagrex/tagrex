@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Putting files in folder order compares the numbers in their names without copying them first, so sorting a large folder is about a quarter faster; the order is the same ([#750](https://github.com/tagrex/tagrex/pull/750)).
 - Tags read for the table are kept in memory and reused by previews and column renders until the file changes on disk, so a second listing or a preview over 2000 files takes milliseconds instead of re-reading every file. Writes and Undo clear the memory, and the check before a write still reads each file afresh ([#741](https://github.com/tagrex/tagrex/pull/741)).
 - Playlists, CUE sheets, reports and exported covers are written to a temporary file first and only then put in place, so a failed export leaves the previous file as it was. An export refuses to write through a link or into a folder that resolves outside the library, and never replaces a file that appeared in the meantime. This works on FAT and exFAT volumes such as USB sticks too ([#743](https://github.com/tagrex/tagrex/pull/743)).
+- Updated `globals`, the browser name list the interface lint check uses, to 17.14.0 ([#765](https://github.com/tagrex/tagrex/pull/765)).
+- Updated `rustix` to 1.1.6, a patch release with fixes in areas the app does not use, among them a security fix in socket message parsing ([#766](https://github.com/tagrex/tagrex/pull/766)).
+- Updated `rusqlite` to 0.42.0. The undo journal keeps the same bundled SQLite 3.54.1, so existing journals are unaffected; the build drops a second copy of `hashbrown` ([#767](https://github.com/tagrex/tagrex/pull/767)).
 
 ### Fixed
 
