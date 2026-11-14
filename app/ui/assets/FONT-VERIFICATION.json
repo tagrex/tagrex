@@ -1,0 +1,257 @@
+{
+  "tool_versions": {
+    "fonttools": "4.61.1",
+    "Brotli": "1.2.0"
+  },
+  "assets": {
+    "tagrex-inter.woff2": {
+      "bytes": 175316,
+      "sha256": "dfc7ed494a52f448eae1a318ca2efe2d0947943948e12daf596f2b1594a64906",
+      "codepoints": 2849,
+      "weight_outline_sha256": {
+        "400": "45ff03d498aef0be98c3d3ce80b738709a3b952117cb6453a1de3a3ff6c28f79",
+        "500": "64ed6ec173a18ffe19481f4b13f9ed21ba9b1bfcf28aaf8c171a4d6698031611",
+        "600": "d8a792dc586a93c7d3ce25d5eabc6c18997ec42f85ac5f6340f7d3d5ef837f91",
+        "700": "f375417bd21b922993325baaa50dec24636bb35d8a5c45f5c25bf4f0e7835eb2"
+      },
+      "locale_source_letters": {
+        "en": 69,
+        "de": 82,
+        "es": 83,
+        "fr": 84,
+        "it": 80,
+        "ru": 122,
+        "uk": 122
+      }
+    },
+    "tagrex-inter-italic.woff2": {
+      "bytes": 186500,
+      "sha256": "b211a734bf18cdde5ac89fb3223fa290e01f457dc91f1e4ddbea61c5f45954ba",
+      "codepoints": 2813,
+      "weight_outline_sha256": {
+        "400": "0846a4ffa426db1cc90d0e00fb8508b0f9543896e62bba5933709e8f79d9af52",
+        "500": "6ce00bdc890160ab70e18c331d37120502f51f29e7e3d6230cf668251012a5ba",
+        "600": "129f2ee7fd3a44e8ab20279119a8bc3ce840e672e3bdf56a80e3f678c613826f",
+        "700": "831a5550cc64144be2985b4fdb273f8c6e13458430f46f3088591f7a6da97065"
+      },
+      "locale_source_letters": {
+        "en": 69,
+        "de": 82,
+        "es": 83,
+        "fr": 84,
+        "it": 80,
+        "ru": 122,
+        "uk": 122
+      }
+    },
+    "tagrex-sans.woff2": {
+      "bytes": 124936,
+      "sha256": "8ecd2aaeb1a921d8e58eee5087e9ded8cd628587c9b191778284ad0dee3489b0",
+      "codepoints": 891,
+      "weight_outline_sha256": {
+        "400": "59743bc4f67ada309eddbf5f94c012c64992d558bfa348ee42b8b8eb1c13a869",
+        "500": "9782f8ede6634e8f19d8141ae0c3d6ebd704456fe523cebb1a7236cc7fcef073",
+        "600": "8188cd2b86c0e3d7267c25a71b70b740732df38f39abc99794ed317d87d5ce21",
+        "700": "bbb171d3006b7b726f8e012d9e7b4c524fca32ab4a66861fa710c859d5f8c8e2"
+      },
+      "locale_source_letters": {
+        "en": 69,
+        "de": 82,
+        "es": 83,
+        "fr": 84,
+        "it": 80,
+        "ru": 122,
+        "uk": 122
+      }
+    },
+    "tagrex-sans-italic.woff2": {
+      "bytes": 135564,
+      "sha256": "b6544621aaaa79a4fdce0fd3aee495b7776808cc96d3907586ceb73eecbf26cc",
+      "codepoints": 891,
+      "weight_outline_sha256": {
+        "400": "fdea7a88d6d95bacef99e9062d734964aa9bc2de67de2a920b48e3cf0af60ff3",
+        "500": "6616aa67410512c2f3ac0f6593ad1bd05deebf40f93b0a6c867d8079bc0bfaee",
+        "600": "6957b7ae05f38703d60c7610323554c0bbd4beb23b68547ca39c370058a75257",
+        "700": "488f2698c0c6c865e083a611f6106d707955041a9430a007d73450af6337aea1"
+      },
+      "locale_source_letters": {
+        "en": 69,
+        "de": 82,
+        "es": 83,
+        "fr": 84,
+        "it": 80,
+        "ru": 122,
+        "uk": 122
+      }
+    },
+    "tagrex-source-sans.woff2": {
+      "bytes": 178868,
+      "sha256": "6c07abdcdb6da9a77ab19c1b6281edc306f9d68c08b584b97f2768acc3a9b95d",
+      "codepoints": 1615,
+      "weight_outline_sha256": {
+        "400": "8595a9e33d28fc4fbd44fe32960fa247f60725117bf9faf283d637434d6fb4b9",
+        "500": "3f8bbf457f70635bbaece7fddfcff574c4bb1f577130555872387873cea0bc52",
+        "600": "084f99f3ea924e2926b0347bd3a58fccf63e481235cee5d04c4179af07372dba",
+        "700": "57e98fc717ba52d99251b38b2fb4c84843918e2ea4c1d1f364ee2612aadb562f"
+      },
+      "locale_source_letters": {
+        "en": 69,
+        "de": 82,
+        "es": 83,
+        "fr": 84,
+        "it": 80,
+        "ru": 122,
+        "uk": 122
+      }
+    },
+    "tagrex-source-sans-italic.woff2": {
+      "bytes": 144812,
+      "sha256": "3fdc2fc7447f3fe8f7c4cf8f0bc443377776b3c0d429c41be26b74909af57fd7",
+      "codepoints": 1615,
+      "weight_outline_sha256": {
+        "400": "cf4f63a70e9082a62db41ffbb98c62c38d553f02f3f563aa6a9d76b41fbd4a7a",
+        "500": "14004d88f91f1018084ad5d3ad372fc062c19cb539b575680b76cba283ba25ec",
+        "600": "b367f878967e04b4eb9516bc0e5dd571f64ce136be10088509ea911048e2ff53",
+        "700": "e3cff5a99ff78ad7b3b829d895ee5b7164cb04dbe3de4ea1c9f7b3255fbacd57"
+      },
+      "locale_source_letters": {
+        "en": 69,
+        "de": 82,
+        "es": 83,
+        "fr": 84,
+        "it": 80,
+        "ru": 122,
+        "uk": 122
+      }
+    },
+    "tagrex-mono.woff2": {
+      "bytes": 89544,
+      "sha256": "3dcb5a2c8eab0879d7e491040aef98d40856ddb7cb154037c9364495ca0719e3",
+      "codepoints": 1372,
+      "weight_outline_sha256": {
+        "400": "7d290bcda1ebda8c750dc661d8656f032ad39bcc225121d85029f61952cb259d",
+        "500": "dc33684405277837abd5b4851c3a7aa4dede489da9e21debfd08b361a20fdb94",
+        "600": "03205ad90e8f38c6ea2c66343e344b59ef26af60b1c1511cbe1464db0cce94a7",
+        "700": "f5bad20e34e1a5ead03665ab19da93792ad641456a7e440c4cbce36815c15b53"
+      },
+      "locale_source_letters": {
+        "en": 69,
+        "de": 82,
+        "es": 83,
+        "fr": 84,
+        "it": 80,
+        "ru": 122,
+        "uk": 122
+      }
+    },
+    "tagrex-mono-italic.woff2": {
+      "bytes": 96308,
+      "sha256": "ba4a94a160f71b10232b1ae392e03153e9ff609487fabc7f5a552f19b92551d3",
+      "codepoints": 1372,
+      "weight_outline_sha256": {
+        "400": "4922c0165970854e998cb8c157c30131784b58361015163576bb7e9294c9fa71",
+        "500": "56ae70a5fbd154e4780e38f5b25c9882a35535d1b15d33a603f25ca944d71763",
+        "600": "5465d58ed03f9f10df94ada83529aa8a1ae8d86c6bc6701ab53420740c8ed295",
+        "700": "48f4611b0c49dd5a8f67b52c14c34349790698336d1e2b65f14eea30c5fc3b84"
+      },
+      "locale_source_letters": {
+        "en": 69,
+        "de": 82,
+        "es": 83,
+        "fr": 84,
+        "it": 80,
+        "ru": 122,
+        "uk": 122
+      }
+    },
+    "tagrex-ui-condensed.woff2": {
+      "bytes": 46012,
+      "sha256": "4586a0ef95cf92d02718f772b60d70c7c5842274b92847156eee212f3913b2e7",
+      "codepoints": 612,
+      "unchanged_glyphs_and_metrics": true
+    }
+  },
+  "format_comparison": {
+    "tagrex-inter.woff2": {
+      "variable_bytes": 175316,
+      "four_static_bytes": 465148,
+      "static_bytes": [
+        113612,
+        116632,
+        117640,
+        117264
+      ]
+    },
+    "tagrex-inter-italic.woff2": {
+      "variable_bytes": 186500,
+      "four_static_bytes": 492104,
+      "static_bytes": [
+        119920,
+        123352,
+        124828,
+        124004
+      ]
+    },
+    "tagrex-sans.woff2": {
+      "variable_bytes": 124936,
+      "four_static_bytes": 300596,
+      "static_bytes": [
+        72108,
+        78612,
+        78756,
+        71120
+      ]
+    },
+    "tagrex-sans-italic.woff2": {
+      "variable_bytes": 135564,
+      "four_static_bytes": 322604,
+      "static_bytes": [
+        77276,
+        84444,
+        84576,
+        76308
+      ]
+    },
+    "tagrex-source-sans.woff2": {
+      "variable_bytes": 178868,
+      "four_static_bytes": 414568,
+      "static_bytes": [
+        103212,
+        103560,
+        103888,
+        103908
+      ]
+    },
+    "tagrex-source-sans-italic.woff2": {
+      "variable_bytes": 144812,
+      "four_static_bytes": 336560,
+      "static_bytes": [
+        83504,
+        83880,
+        84284,
+        84892
+      ]
+    },
+    "tagrex-mono.woff2": {
+      "variable_bytes": 89544,
+      "four_static_bytes": 257980,
+      "static_bytes": [
+        63044,
+        64992,
+        65116,
+        64828
+      ]
+    },
+    "tagrex-mono-italic.woff2": {
+      "variable_bytes": 96308,
+      "four_static_bytes": 274772,
+      "static_bytes": [
+        67096,
+        69184,
+        69600,
+        68892
+      ]
+    }
+  },
+  "total_woff2_bytes": 1177860
+}

@@ -61,6 +61,12 @@ pub fn is_supported_audio(path: &Path) -> bool {
 }
 
 fn is_supported(path: &Path) -> bool {
+    // macOS writes an AppleDouble `._a.mp3` next to every file on a FAT or
+    // exFAT volume (#755). It keeps the audio extension but holds only
+    // metadata, so the extension alone would list it as a second track.
+    if crate::plan::is_os_junk(path) {
+        return false;
+    }
     path.extension()
         .and_then(|ext| ext.to_str())
         .is_some_and(|ext| {
@@ -179,5 +185,24 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
 
         assert_eq!(names, vec!["Mixed.FlAc", "SHOUTY.MP3"]);
+    }
+
+    #[test]
+    fn appledouble_companions_are_not_tracks() {
+        let dir = std::env::temp_dir().join(format!(
+            "tagrex-scanner-test-appledouble-{}",
+            std::process::id()
+        ));
+        write(&dir, "a.mp3");
+        write(&dir, "._a.mp3");
+        write(&dir, "sub/b.flac");
+        write(&dir, "sub/._b.flac");
+
+        let names = scanned_names(&dir, &ScanOptions::default());
+        std::fs::remove_dir_all(&dir).ok();
+
+        assert_eq!(names, vec!["a.mp3", "b.flac"]);
+        assert!(!is_supported_audio(Path::new("/music/._a.mp3")));
+        assert!(is_supported_audio(Path::new("/music/a.mp3")));
     }
 }

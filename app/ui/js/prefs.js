@@ -7,14 +7,11 @@
 // library data, and they apply themselves by toggling classes and CSS
 // variables on <body>.
 import { filterRegex, filterCase } from "./state.js";
+import { DEFAULT_ACCENT, PALETTE_DEFAULT, normalizePalette, paletteAccent } from "./palettes.js";
 
-// Value-font preference: which face every value surface uses — the file table,
-// the release tracklist, deduplicator paths, rename/export pattern fields and
-// editor inputs. "mono" is the default disambiguating monospace; "sans" and
-// "condensed" swap in the bundled UI faces app-wide (the stylesheet redefines
-// --font-mono-bundled off a body class). Grew out of the #100 condensed-table
-// toggle, which was table-only — the old boolean key migrates below. A pure
-// display choice, so it persists in localStorage, not the backend settings.
+// Data-font preference: file names, tags and tracklists use the selected face.
+// Literal pattern/regex syntax keeps its immutable Mono role. The saved sans
+// value means "follow the interface"; old mono/condensed choices stay intact.
 const VALUE_FONT_STORAGE_KEY = "tagrex.valueFont";
 const CONDENSED_STORAGE_KEY = "tagrex.condensedTable"; // legacy, migrated once
 const VALUE_FONTS = ["mono", "sans", "condensed"];
@@ -50,19 +47,24 @@ function applyValueFont(mode) {
 // optional convenience rather than the primary affordance.
 const CHECKBOX_COL_STORAGE_KEY = "tagrex.checkboxCol";
 function checkboxColEnabled() {
-  try {
-    return localStorage.getItem(CHECKBOX_COL_STORAGE_KEY) === "1";
-  } catch (e) {
-    return false;
-  }
+  return false; // Legacy setting retained for older saved settings; rows use highlight.
 }
 function applyCheckboxCol(on) {
-  document.body.classList.toggle("show-checkbox", on);
+  document.body.classList.remove("show-checkbox");
   try {
-    localStorage.setItem(CHECKBOX_COL_STORAGE_KEY, on ? "1" : "0");
+    localStorage.setItem(CHECKBOX_COL_STORAGE_KEY, "0");
   } catch (e) {
     /* localStorage unavailable — preference just won't persist */
   }
+}
+
+function showOldValues() {
+  try { return localStorage.getItem('tagrex.showOldValues') === '1'; }
+  catch { return false; }
+}
+function saveShowOldValues(on) {
+  try { localStorage.setItem('tagrex.showOldValues', on ? '1' : '0'); }
+  catch { /* View preferences remain optional when storage is unavailable. */ }
 }
 
 // Filter mode prefs (#44): regex on/off and case sensitivity. Pure view choices,
@@ -194,7 +196,7 @@ function applyBadgeFont(mode) {
   // different x-heights (#176).
   document.documentElement.style.setProperty(
     "--badge-font",
-    m === "sans" ? "var(--font-ui)" : "var(--font-mono-bundled)",
+    m === "sans" ? "var(--font-ui)" : "var(--font-literal)",
   );
   try {
     localStorage.setItem(BADGE_FONT_STORAGE_KEY, m);
@@ -203,9 +205,8 @@ function applyBadgeFont(mode) {
   }
 }
 
-// Accent colour (#431): the brand green by default, or one of a few presets or
-// any colour the user picks. Only the base `--accent` is a free choice; the two
-// companions are derived so a custom colour stays readable: `--accent-text` is
+// Each complete theme supplies its primary; the legacy custom-colour API remains
+// compatible. The two companions are derived to keep it readable: `--accent-text` is
 // the label on an accent fill (white, with the fill darkened until it clears
 // WCAG AA against it) and `--accent-ink` is the accent used as text on the page
 // surface (shifted darker in the light theme, lighter in the dark one). The
@@ -215,6 +216,47 @@ function applyBadgeFont(mode) {
 // inline style on <html>, which wins over both theme palettes, and is recomputed
 // whenever the resolved theme changes because the ink depends on the surface.
 const ACCENT_STORAGE_KEY = "tagrex.accent";
+const PALETTE_STORAGE_KEY = "tagrex.palette";
+// Keep first-run storage compatible with the legacy custom-colour API. Complete
+// themes use the paired primary below without overwriting existing custom data.
+let freshAccent = null;
+try {
+  if (localStorage.getItem("tagrex.theme") === null &&
+      localStorage.getItem(PALETTE_STORAGE_KEY) === null &&
+      localStorage.getItem(ACCENT_STORAGE_KEY) === null) {
+    freshAccent = DEFAULT_ACCENT;
+    localStorage.setItem(ACCENT_STORAGE_KEY, DEFAULT_ACCENT);
+  }
+} catch { /* Still show the first-run accent if storage cannot persist it. */ }
+let currentPalette = PALETTE_DEFAULT;
+let presetAccent = true;
+try {
+  presetAccent = localStorage.getItem('tagrex.themeAccent') !== 'custom';
+  if (presetAccent) localStorage.setItem('tagrex.themeAccent', 'preset');
+} catch { /* Still use a complete preset when storage is unavailable. */ }
+function applyThemePreset(mode) {
+  presetAccent = true;
+  try { localStorage.setItem('tagrex.themeAccent', 'preset'); } catch { /* Still apply live. */ }
+  applyPalette(mode);
+}
+function paletteMode() {
+  // The live choice still applies if storage is unavailable or out of quota.
+  const active = document.documentElement.dataset.palette;
+  if (active && normalizePalette(active) === active) return active;
+  try {
+    return normalizePalette(localStorage.getItem(PALETTE_STORAGE_KEY) || currentPalette);
+  } catch {
+    return currentPalette;
+  }
+}
+function applyPalette(mode) {
+  currentPalette = normalizePalette(mode);
+  document.documentElement.dataset.palette = currentPalette;
+  try { localStorage.setItem(PALETTE_STORAGE_KEY, currentPalette); }
+  catch { /* Appearance still applies when storage is unavailable. */ }
+  applyAccent();
+}
+
 // `hex: null` is the brand green — no override at all. The swatch colour shown
 // for it is the stylesheet's light-theme fill.
 const ACCENT_BRAND_SWATCH = "#0b6b53";
@@ -305,8 +347,9 @@ function deriveAccent(hex, surface, dark) {
   return { accent: fill, text: "#ffffff", ink };
 }
 function accentColor() {
+  if (presetAccent) return paletteAccent(paletteMode(), document.documentElement.dataset.theme);
   try {
-    return normalizeHex(localStorage.getItem(ACCENT_STORAGE_KEY));
+    return normalizeHex(localStorage.getItem(ACCENT_STORAGE_KEY)) || freshAccent;
   } catch (e) {
     return null;
   }
@@ -315,10 +358,8 @@ function accentColor() {
 // stored colour) just clears the override so the stylesheet's own palette shows.
 function applyAccent() {
   stampAccent();
-  // Anything that paints with a theme colour outside CSS — the player's
-  // waveform reads --accent at draw time — repaints on this, so it does not sit
-  // on the old colour until its next tick (#433). Also fires on a theme change,
-  // since that re-derives the accent.
+  // Notify theme-aware integrations after updating the CSS colour tokens.
+  // A theme change also re-derives the accent.
   document.dispatchEvent(new CustomEvent("tagrex:appearance"));
 }
 function stampAccent() {
@@ -331,13 +372,21 @@ function stampAccent() {
   const dark = root.dataset.theme === "dark";
   const surface = normalizeHex(getComputedStyle(root).getPropertyValue("--bg")) || (dark ? "#16181d" : "#ffffff");
   const { accent, text, ink } = deriveAccent(hex, surface, dark);
+  // Links and tabs also sit on the shell. Keep the existing fill derivation,
+  // and give small accent text the same AA floor on both palette surfaces.
+  const panel = normalizeHex(getComputedStyle(root).getPropertyValue("--panel")) || surface;
+  const readableInk = shiftToContrast(ink, panel, dark ? 1 : -1, ACCENT_MIN_CONTRAST);
   root.style.setProperty("--accent", accent);
   root.style.setProperty("--accent-text", text);
-  root.style.setProperty("--accent-ink", ink);
+  root.style.setProperty("--accent-ink", readableInk);
 }
 // `null` goes back to the brand green.
 function saveAccent(hex) {
+  // Retained for compatibility; the Settings UI now chooses complete presets.
+  presetAccent = false;
+  try { localStorage.setItem('tagrex.themeAccent', 'custom'); } catch { /* Memory fallback. */ }
   const value = normalizeHex(hex);
+  freshAccent = null;
   try {
     if (value) localStorage.setItem(ACCENT_STORAGE_KEY, value);
     else localStorage.removeItem(ACCENT_STORAGE_KEY);
@@ -371,7 +420,8 @@ function applyTheme(mode) {
     localStorage.setItem(THEME_STORAGE_KEY, mode);
   } catch (e) {
     /* localStorage unavailable — preference just won't persist */
-  }  applyAccent();
+  }
+  applyAccent();
 }
 // Follow OS changes only while in Auto.
 prefersDarkMq.addEventListener("change", () => {
@@ -380,6 +430,8 @@ prefersDarkMq.addEventListener("change", () => {
     applyAccent();
   }
 });
+// Apply surfaces before deriving the accent against them.
+document.documentElement.dataset.palette = paletteMode();
 // Apply as early as app.js runs, before the settings sheet is ever opened.
 applyTheme(themeMode());
 
@@ -451,6 +503,8 @@ function saveGroupBy(value) {
 }
 
 export {
+  showOldValues,
+  saveShowOldValues,
   clampTableFont,
   clampTracklistFont,
   valueFont,
@@ -478,6 +532,9 @@ export {
   applyBadgeFont,
   BADGE_FONTS,
   VALUE_FONTS,
+  paletteMode,
+  applyPalette,
+  applyThemePreset,
   THEME_MODES,
   themeMode,
   LANG_MODES,

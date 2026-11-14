@@ -1,0 +1,60 @@
+/* Hallmark · app screen · TagRex brand retained · component migration and hierarchy polish.
+ * Critique: reduce repeated rules and nested outlines; retain selection, focus and table structure.
+ * Scope: dense desktop editor, existing content and workflows preserved. */
+:root {
+  --ui-menu-shadow: 0 8px 24px rgb(0 0 0 / .24);
+  --ui-muted-border: color-mix(in srgb, var(--border) 65%, transparent);
+}
+html, body { overflow-x: clip; }
+.tb-div, .topbar-div, .field-sep, .aw-tool-divider { display:none; }
+.subtabs, .online-head, .release-toolbar, .release-actions, .editor-actions, .from-name-actions,
+.mode-panel .panel-block, .settings-head, .settings-foot { border:0; }
+.mode-panel .panel-block + .panel-block { padding-top:20px; }
+body .release-tracklist :is(tr, td, th), .release-import-row { border-bottom:0; }
+.release-tracklist tbody tr:hover { background:var(--row-hover); }
+.release-card { border-color:var(--ui-muted-border); }
+body :is(.mode-tab, .subtab, .panel-block h2, .settings-group h3, #tracks th, .settings-sub, .field-group-head) { text-transform:none; letter-spacing:normal; }
+body :is(.app-select-menu, [data-slot='dropdown-menu-content'], [data-slot='context-menu-content'], [data-slot='popover-content']) { box-shadow:var(--ui-menu-shadow); }
+body :is(.app-select-menu, [data-slot='dropdown-menu-content'], [data-slot='context-menu-content']) [role='separator'] { background:var(--ui-muted-border); margin-block:5px; }
+body :is([data-slot='select-content'], [data-slot='dropdown-menu-content'], [data-slot='context-menu-content'], [data-slot='popover-content']) { transition-property:opacity,transform; }
+@media(prefers-reduced-motion:reduce) { body * { scroll-behavior:auto; } }
+.controller-tabs-layout, .controller-tabs-root { display:contents; }
+body .mode-tabs[data-slot='tabs-list'], body .subtabs[data-slot='tabs-list'] { height:auto; }
+
+.col-splitter:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; border-radius:999px; }
+#tracks [data-slot='table-header'] { border-bottom:1px solid var(--border); }
+
+button.col-splitter { padding:0; min-width:0; height:auto; border:0; border-radius:0; }
+
+/* A Tabs.Content is a flex item: its automatic minimum otherwise grows to the
+ * full Generator/Renamer content height in short panes. Keep one bounded
+ * scrolling surface per tool; Tagger retains its own pinned head/footer. */
+@media (max-width: 760px), (max-height: 520px) {
+  .mode-col { overflow: hidden; }
+  .mode-col > .mode-panel[data-slot='tabs-content'] {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+  .mode-col > #panel-tagger[data-slot='tabs-content'] { min-height: 0; overflow: hidden; }
+  .mode-panel > .panel-block { flex-shrink: 0; }
+  #panel-renamer .panel-actions, #panel-exporter .panel-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    background: var(--bg);
+    padding-block: 7px;
+    margin-bottom: -7px;
+  }
+}
+
+body .release-tracklist tbody tr:not(.tk-section) td { border-top:0; }
+body button.fe-group-head { display:flex; justify-content:flex-start; width:100%; height:auto; padding:8px 0; background:transparent; border:0; border-radius:8px; font:inherit; text-align:left; }
+body button.fe-group-head .fe-group-caret { margin-left:auto; }
+body .release-toolbar label:has(#import-vinyl-disc) { display:inline-flex; align-items:center; gap:6px; }
+
+.boot-failure { position:fixed; inset:0; z-index:1000; display:grid; align-content:center; justify-items:start; gap:14px; padding:clamp(20px,8vw,100px); background:var(--bg); color:var(--text); overflow:auto; }
+.boot-failure h1 { font-size:22px; font-weight:600; }
+.boot-failure details { max-width:100%; color:var(--muted); }
+.boot-failure pre { max-width:100%; white-space:pre-wrap; overflow-wrap:anywhere; margin-top:10px; }

@@ -1,0 +1,4 @@
+# Vite owns frontend updates; only native sources should restart the shell.
+/ui/
+/dist/
+/gen/

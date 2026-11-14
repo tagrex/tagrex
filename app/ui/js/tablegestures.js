@@ -1,3 +1,4 @@
+import "./horizontal-scroll.js";
 // Table gestures done by hand (#76, #143 split them out of app.js).
 //
 // The panel splitter and the column resize both drag with plain mouse events
@@ -29,9 +30,33 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
   function syncPanelWidthVar() {
     const w = Math.round(modeCol.getBoundingClientRect().width);
     document.documentElement.style.setProperty("--panel-col-width", `${w}px`);
+    splitter.setAttribute("aria-valuenow", String(w));
+    splitter.setAttribute("aria-valuemin", "240");
+    splitter.setAttribute("aria-valuemax", String(Math.max(240, Math.round(workarea.getBoundingClientRect().width - 360))));
   }
 
+  // The dock workspace owns sizing; keep status alignment without restoring a
+  // legacy pixel basis onto a module that can now live in any dock area.
+  if (workarea.querySelector('.dock-frame')) {
+    new ResizeObserver(syncPanelWidthVar).observe(modeCol);
+    syncPanelWidthVar();
+    return;
+  }
+
+  splitter.addEventListener("keydown", (e) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
+    e.preventDefault();
+    const max = Math.max(240, workarea.getBoundingClientRect().width - 360);
+    const current = modeCol.getBoundingClientRect().width;
+    const next = e.key === "Home" ? 240 : e.key === "End" ? max : current + (e.key === "ArrowLeft" ? 1 : -1) * (e.shiftKey ? 64 : 16);
+    lastWidth = Math.round(Math.min(max, Math.max(240, next)));
+    modeCol.style.flexBasis = `${lastWidth}px`;
+    syncPanelWidthVar();
+    try { localStorage.setItem(PANEL_WIDTH_KEY, String(lastWidth)); } catch { /* unavailable */ }
+  });
+
   splitter.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     dragging = true;
     document.body.classList.add("resizing");

@@ -7,6 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- File and library commands no longer run on the interface thread: they go to a background worker, so the window keeps responding while a long one runs. Each online source keeps its own queue, and quick successive clicks on field locks are applied in the order they were made ([#737](https://github.com/tagrex/tagrex/pull/737)).
+- The Undo history list reads only each batch's description and file paths, not the full tag, artwork and block snapshots behind it, so it opens quickly even with a long history. The snapshots are loaded when a batch is actually undone ([#739](https://github.com/tagrex/tagrex/pull/739)).
+- The README's screenshots and demo animation show the mode switcher as the segmented pill the app now opens with, in both the light and the dark theme ([#754](https://github.com/tagrex/tagrex/issues/754)).
+- Online sources reuse their connection between requests instead of building a new client for each one; a changed token or proxy setting still takes effect at once. Finding duplicates by content reads each file through a small buffer instead of loading the whole file into memory ([#740](https://github.com/tagrex/tagrex/pull/740)).
+- Rename, move and file-name cleanup previews list each folder once to find the companion files that travel with a track, instead of once per track, and check a file's type only for names that match. A preview over 2000 tracks in 20 folders went from about a second to about a tenth of one; the plans are the same ([#751](https://github.com/tagrex/tagrex/pull/751)).
+- Putting files in folder order compares the numbers in their names without copying them first, so sorting a large folder is about a quarter faster; the order is the same ([#750](https://github.com/tagrex/tagrex/pull/750)).
+- Tags read for the table are kept in memory and reused by previews and column renders until the file changes on disk, so a second listing or a preview over 2000 files takes milliseconds instead of re-reading every file. Writes and Undo clear the memory, and the check before a write still reads each file afresh ([#741](https://github.com/tagrex/tagrex/pull/741)).
+
+### Fixed
+
+- When a write fails and the rollback cannot restore every file, the batch's record is kept, marked as interrupted, instead of being deleted, so the files that were changed can still be found and undone. The check that runs before a write also reports its progress and can be cancelled ([#738](https://github.com/tagrex/tagrex/pull/738)).
+- Dependency update proposals no longer offer a `windows-future` bump on its own: its newer releases need a `windows` crate that has not been published yet, so it is now updated by hand together with that crate ([#756](https://github.com/tagrex/tagrex/issues/756)).
+- Dependency update proposals no longer offer a new major version of `zbus` on its own: it stays on the major version the single-instance plugin builds, so the Linux build carries one copy of it ([#759](https://github.com/tagrex/tagrex/issues/759)).
+- On a FAT or exFAT volume such as a USB stick, the hidden `._` companion files macOS writes next to every file are no longer listed as extra, unreadable tracks ([#755](https://github.com/tagrex/tagrex/issues/755)).
+- The Linux build keeps moving files to the Trash with the 5.3 release of the trash library, which made its Linux backend a feature of its own; without it the build failed ([#760](https://github.com/tagrex/tagrex/issues/760)).
+- An Ogg file holding FLAC instead of Vorbis is listed as an unsupported format and never written. It used to be taken for AAC: its tags did not show, and a tag edit put an ID3v2 tag in front of the Ogg stream. A file already damaged that way is refused too ([#762](https://github.com/tagrex/tagrex/issues/762)).
+
+## [1.5.0] - 2026-11-13
+
+A release about the online sources and the top bar. MusicBrainz release
+cards now show their cover without being expanded, large Cover Art Archive
+originals download instead of failing, covers no longer hold up searches,
+and a short rate-limit refusal is retried once instead of failing the
+request. The mode tabs become one segmented pill, and the earlier
+underlined tabs stay one click away in Settings.
+
+### Added
+
+- A setting for how the mode switcher in the top bar looks, in Settings › General: the segmented pill or the earlier underlined tabs, each shown as a small drawing beside its radio button. The top bar follows the choice at once, and resetting the group brings back the pill ([#753](https://github.com/tagrex/tagrex/issues/753)).
+
+### Changed
+
+- The mode tabs in the top bar are one segmented control: a rounded track holding the five modes, the active one a soft pill in the accent colour instead of an underline. The segments line up with the buttons beside them and the path field below, and turn into round icon-only buttons when the window gets narrow ([#752](https://github.com/tagrex/tagrex/issues/752)).
+
+### Fixed
+
+- A cover image larger than 10 MB downloads instead of failing with "the response body is larger than request limit". Cover Art Archive originals are often bigger, so such a MusicBrainz release card showed no cover and the image could not be embedded or saved. Images are now accepted up to 64 MB ([#746](https://github.com/tagrex/tagrex/issues/746)).
+- A search, release or cover request that a provider turns away with a short rate-limit wait is tried once more after that wait, instead of failing at once. MusicBrainz does this whenever it is shedding load, answering part of its requests with a refusal that the same request a second later gets past. A longer stated wait, such as a minute from Discogs, is still reported straight away ([#747](https://github.com/tagrex/tagrex/issues/747)).
+- MusicBrainz release cards show a cover thumbnail without being expanded. A MusicBrainz search says nothing about cover art, so a card now loads the archive's small 250 px front image once the release lookup the picker already runs confirms there is one; releases without art cost no extra request. A release that has no front cover also no longer offers a cover link that could only fail ([#748](https://github.com/tagrex/tagrex/issues/748)).
+- Cover images download alongside searches and release lookups instead of holding them up. Every provider request used to wait for the image in front of it, so cover thumbnails slowed the track counts on the release cards, and expanding a card with a large cover stalled the picker until it had arrived. MusicBrainz covers also no longer wait out the MusicBrainz request spacing, which does not apply to the Cover Art Archive. Up to six images download at once ([#749](https://github.com/tagrex/tagrex/issues/749)).
+
+## [1.4.0] - 2026-11-12
+
+A release about the file table. A new Cover column shows at a glance which
+files have embedded cover art and which do not, and sorts the ones without
+together; switched on, it stands first, in front of File. Files can now be
+selected by dragging over the table. The app also gets a redrawn icon, which
+no longer sits on a grey plate on macOS 26.
+
+### Added
+
+- A Cover column for the file table: a glyph for a file with embedded cover art, a red struck-through one for a file without, and sorting that brings the files without a cover together. Turn it on from the Columns menu ([#730](https://github.com/tagrex/tagrex/issues/730)).
+- The Cover column appears first, in front of File, when it is switched on, and can be dragged anywhere from there. It is the only column that may stand in front of File ([#733](https://github.com/tagrex/tagrex/issues/733)).
+- Select files by dragging over the table: press a tag cell and drag to select every row from there to the pointer, with ⌘/Ctrl to add them to the selection. The table scrolls on its own near its edges, and dragging the file name still reorders rows ([#731](https://github.com/tagrex/tagrex/issues/731)).
+
+### Changed
+
+- A redrawn app icon: a tag on the diagonal with an eyelet and an upright note, in soft gradients. On Windows and Linux the tag itself is the icon; on macOS it sits on a rounded tile with the standard margin, so macOS 26 no longer frames it on a grey plate and it is no longer drawn larger than its Dock neighbours. The 16 and 24 px sizes use a simplified drawing so the note stays legible, and `assets/build-icons.py` regenerates every icon file from the SVG masters ([#735](https://github.com/tagrex/tagrex/issues/735)).
+- The logo at the top of the README matches the new app icon: the same diagonal tag, gradient and note, without the shadow so it stays crisp on both the light and the dark theme ([#736](https://github.com/tagrex/tagrex/issues/736)).
+
 ## [1.3.4] - 2026-11-10
 
 A security update. The undo journal moves to SQLite 3.54.1, which fixes a flaw

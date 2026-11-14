@@ -2,3 +2,8 @@
 .DS_Store
 # Tauri-generated ACL schemas (regenerated from tauri.conf.json + capabilities)
 /app/gen
+/node_modules
+/app/dist
+/test-results
+/playwright-report
+/.test-dist

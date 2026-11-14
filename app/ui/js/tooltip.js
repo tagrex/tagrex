@@ -1,125 +1,71 @@
-// The app's own tooltip (#230).
-//
-// Written for the controls that carry no label at all. The platform bubble a
-// `title` attribute produces takes about a second to appear, is drawn by the
-// OS, and looks like a visitor from another program — tolerable behind a
-// control that already says what it does in words, useless behind a bare glyph.
-// This shows the same text, in the app's chrome, after a short delay.
-//
-// It reads the `title` and takes it OFF the element while the pointer is there,
-// putting it back on the way out. That is the only way to keep the platform
-// bubble from turning up underneath ours; the attribute is present at every
-// other moment, so the accessible name and every existing `btn.title = …` in
-// the code carry on working untouched.
-//
-// Deliberately scoped to the chrome — the bars, the mode tabs and the panels —
-// and never the table: a cell's title is data-ish, follows the pointer across
-// hundreds of rows, and the native bubble is the right weight for it.
-import { el } from "./dom.js";
-import { shortcutHint } from "./shortcuts.js";
+// Hover hints are deliberately disabled: even a delayed title bubble can cover
+// the query suggestions or the next control. Keep title text available to
+// assistive technology without asking the browser to draw a floating bubble.
+const descriptions = new WeakMap();
+const labels = new WeakMap();
+let initialized = false;
 
-// Long enough not to fire while the pointer crosses a row of buttons on its way
-// somewhere, short enough to feel like an answer rather than a wait.
-const DELAY = 400;
-
-// Where a title belongs to a control rather than to content.
-const SCOPE =
-  "header.topbar, .view-tabs, footer.statusbar, .mode-panel, .diff-actionbar";
-
-let timer = 0;
-let anchor = null;
-
-function box() {
-  return el("tooltip");
-}
-
-// Centred under the anchor, flipped above when there is no room below, and
-// clamped to the window either way — the same treatment the menus get, minus
-// the scrolling they need and this does not.
-function place(tip, target) {
-  const rect = target.getBoundingClientRect();
-  const gap = 6;
-  tip.hidden = false;
-  const { offsetWidth: w, offsetHeight: h } = tip;
-  const left = rect.left + rect.width / 2 - w / 2;
-  tip.style.left = `${Math.min(Math.max(6, left), Math.max(6, window.innerWidth - w - 6))}px`;
-  const below = rect.bottom + gap;
-  tip.style.top = below + h + 6 <= window.innerHeight ? `${below}px` : `${rect.top - gap - h}px`;
-}
-
-// The control's own text, then its keyboard shortcut (#432) — read from the
-// registry on every show, so a rebinding is in the very next tooltip.
-function show(target) {
-  const text = target.dataset.tipText || "";
-  const hint = shortcutHint(target);
-  if (!text && !hint) return;
-  const tip = box();
-  tip.textContent = "";
-  // The text in an element of its own: `.tip-kbd:first-child` would otherwise
-  // match the hint whenever the text is a bare text node, and drop its gap (#465).
+function suppressTitle(target) {
+  if (!(target instanceof Element) || !target.hasAttribute("title")) return;
+  const text = target.getAttribute("title").trim();
   if (text) {
-    const label = document.createElement("span");
-    label.textContent = text;
-    tip.append(label);
+    const previousDescription = descriptions.get(target);
+    const description = target.getAttribute("aria-description");
+    if (!description || description === previousDescription) {
+      target.setAttribute("aria-description", text);
+      descriptions.set(target, text);
+    }
+
+    // Some legacy icon buttons use title as their only accessible name. Give
+    // those a durable name, without replacing visible labels or explicit ARIA.
+    const previousLabel = labels.get(target);
+    const label = target.getAttribute("aria-label");
+    if (!target.hasAttribute("aria-labelledby") &&
+        ((!label && !target.textContent.trim() &&
+          target.matches('button, a[href], [role="button"], input[type="button"], input[type="submit"], input[type="reset"]')) ||
+          (previousLabel && label === previousLabel))) {
+      target.setAttribute("aria-label", text);
+      labels.set(target, text);
+    }
+  } else if (target.getAttribute("aria-description") === descriptions.get(target)) {
+    // Validation and progress controls clear their explanatory text explicitly.
+    target.removeAttribute("aria-description");
+    descriptions.delete(target);
   }
-  if (hint) {
-    const kbd = document.createElement("kbd");
-    kbd.className = "tip-kbd";
-    kbd.textContent = hint;
-    tip.append(kbd);
-  }
-  place(tip, target);
+  target.removeAttribute("title");
 }
 
+function suppressTitles(root) {
+  if (!(root instanceof Element)) return;
+  suppressTitle(root);
+  for (const target of root.querySelectorAll("[title]")) suppressTitle(target);
+}
+
+// Retain the controller API used when menus open; it never restores a title.
 export function hideTooltip() {
-  clearTimeout(timer);
-  timer = 0;
-  if (anchor) {
-    // Give the attribute back, unless something changed it while it was away —
-    // `updateLibAction` rewrites the title on the button under the pointer.
-    if (!anchor.hasAttribute("title") && anchor.dataset.tipText) {
-      anchor.setAttribute("title", anchor.dataset.tipText);
-    }
-    delete anchor.dataset.tipText;
-    anchor = null;
-  }
-  const tip = box();
+  const tip = document.getElementById("tooltip");
   if (tip) tip.hidden = true;
 }
 
-function arm(target) {
-  hideTooltip();
-  const text = target.getAttribute("title") || "";
-  // A labelled button with a shortcut (Apply, Discard) has no title, only the
-  // hint to show.
-  if (!text && !target.dataset.shortcut) return;
-  anchor = target;
-  target.dataset.tipText = text;
-  if (text) target.removeAttribute("title");
-  timer = setTimeout(() => show(target), DELAY);
-}
-
-// One tooltip element, one set of listeners, however many controls there are.
 export function initTooltips() {
-  if (!box()) return;
-  document.addEventListener("pointerover", (e) => {
-    if (e.pointerType && e.pointerType !== "mouse") return;
-    const target = e.target.closest?.("[title], [data-shortcut]");
-    if (!target || !target.closest(SCOPE)) {
-      if (anchor && !anchor.contains(e.target)) hideTooltip();
-      return;
+  if (initialized) return;
+  initialized = true;
+  hideTooltip();
+  suppressTitles(document.documentElement);
+
+  // Menus, virtual rows, translations and button states all create or rewrite
+  // titles after startup. Observe only titles and inserted nodes; no hover
+  // timer, pointermove work or change to click/focus behavior is needed.
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === "attributes") suppressTitle(record.target);
+      else for (const node of record.addedNodes) suppressTitles(node);
     }
-    if (target !== anchor) arm(target);
   });
-  document.addEventListener("pointerout", (e) => {
-    if (anchor && !anchor.contains(e.relatedTarget)) hideTooltip();
-  });
-  // A tooltip that outlives what it points at is worse than none: a click opens
-  // a menu over it, a scroll moves the anchor out from under it.
-  document.addEventListener("pointerdown", hideTooltip, true);
-  document.addEventListener("scroll", hideTooltip, true);
-  window.addEventListener("blur", hideTooltip);
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") hideTooltip();
+  observer.observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: ["title"],
   });
 }

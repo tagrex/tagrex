@@ -1,0 +1,71 @@
+@font-face {
+  font-family: "TagRex Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/tagrex-inter.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "TagRex Inter";
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/tagrex-inter-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "TagRex Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/tagrex-sans.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "TagRex Sans";
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/tagrex-sans-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "TagRex Source Sans";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/tagrex-source-sans.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "TagRex Source Sans";
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/tagrex-source-sans-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "TagRex Mono";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/tagrex-mono.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "TagRex Mono";
+  font-style: italic;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("assets/tagrex-mono-italic.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "TagRex Condensed";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("assets/tagrex-ui-condensed.woff2") format("woff2");
+}

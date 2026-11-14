@@ -1,0 +1,28 @@
+/* Cell interaction state is independent from file selection and preview scope. */
+#spreadsheet-tools { display:contents; }
+#spreadsheet-tools[hidden] { display: none; }
+.spreadsheet-context-anchor { position: fixed; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+.spreadsheet-menu { width: max-content !important; min-width: 220px; max-width: calc(100vw - 16px); z-index: 1300; }
+.spreadsheet-menu [data-slot="dropdown-menu-item"] { gap: 8px; cursor: default; }
+.spreadsheet-menu [data-slot="dropdown-menu-shortcut"] { margin-left: auto; padding-left: 16px; font-size: 10px; color: var(--muted); }
+#tracks td.sheet-cell { position: relative; outline: none; }
+#tracks td.sheet-range { background-color: color-mix(in srgb, var(--accent) 15%, var(--bg)); }
+#tracks tr.selected td.sheet-range { background-color: color-mix(in srgb, var(--accent) 29%, var(--bg)); }
+#tracks td.dirty::after { content: ''; position: absolute; top: 2px; right: 2px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); pointer-events: none; }
+/* Only the small selection/artwork bands stay pinned horizontally. */
+#tracks th.sel, #tracks td.sel { position: sticky; left: 0; background-color: var(--bg); z-index: 5; }
+#tracks th.sel { background-color: var(--panel); z-index: 9; }
+#tracks tr.selected td.sel { background-color: var(--row-sel); }
+#tracks tr:hover td.sel { background-color: var(--row-hover); }
+#tracks tr.selected:hover td.sel { background-color: var(--row-sel-hover); }
+#tracks th[data-sort="file"] { position:sticky; left:auto; background-color:var(--panel); }
+#tracks td.file { position:relative; left:auto; background-color:var(--bg); }
+#tracks td.file { z-index:auto; box-shadow:none; }
+#tracks tr.selected td.file { background-color: var(--row-sel); }
+#tracks tr:hover td.file { background-color: var(--row-hover, var(--bg)); }
+#tracks tr.selected:hover td.file { background-color: var(--row-sel-hover); }
+#tracks td.file.sheet-range { background-color: color-mix(in srgb, var(--accent) 15%, var(--bg)); }
+#tracks th[data-sort="file"] { z-index: 8; background-color: var(--panel); }
+@media (prefers-reduced-motion: reduce) {
+  .spreadsheet-menu { animation-duration: 0.01ms !important; }
+}

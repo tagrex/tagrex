@@ -15,10 +15,12 @@ tagrex-providers-musicbrainz = { path = "../providers-musicbrainz" }
 tagrex-providers-beatport = { path = "../providers-beatport" }
 tagrex-providers-bandcamp = { path = "../providers-bandcamp" }
 tagrex-providers-soundeo = { path = "../providers-soundeo" }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 thiserror.workspace = true
 base64 = "0.23.1"
+# Request-local artwork content keys; already present transitively in Cargo.lock.
+sha2 = "0.10.9"
 # Reading the shape of a pasted tracklist to suggest a FROM TEXT mask (#522).
 # The same regex the core's mask engine is built on.
 regex = "1.13.1"
@@ -28,7 +30,17 @@ regex = "1.13.1"
 # already in the trash — something nothing here does. It also drops the COM
 # apartment mode, which is not optional: on Windows the crate fails to compile
 # unless one is named (#222), so the default one is asked for by name. Inert on
-# the other platforms.
-trash = { version = "5.2.6", default-features = false, features = [
+# the other platforms. Since 5.3 the Linux backend (the freedesktop trash spec)
+# is a feature of its own too, so without `freedesktop` the crate does not
+# build on Linux (#760). Inert on macOS and Windows.
+trash = { version = "5.3.0", default-features = false, features = [
     "coinit_apartmentthreaded",
+    "freedesktop",
 ] }
+
+[target.'cfg(unix)'.dependencies]
+# Directory-relative atomic outputs: pin parents and never follow target links.
+rustix = { version = "1.1.5", features = ["fs"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }

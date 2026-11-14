@@ -1,0 +1,19 @@
+.genre-picker-host, .genre-native { display:block; min-width:0; width:100%; }
+.genre-combobox { position:relative; display:block; min-width:0; width:100%; }
+body .mode-col .genre-combobox .field-input { padding-right:30px; }
+body .mode-col button.genre-toggle { position:absolute; inset:0 0 0 auto; display:grid; place-items:center; width:30px; height:32px; min-height:0; padding:6px; border:0; border-radius:0 var(--r-control) var(--r-control) 0; box-shadow:none; background:transparent; color:var(--muted); }
+.genre-toggle svg { width:14px; height:14px; }
+body .mode-col button.genre-toggle:hover:not(:disabled) { color:var(--text); background:var(--row-hover); }
+[data-slot='popover-content'].genre-options { width:var(--bits-popover-anchor-width); min-width:140px; max-width:calc(100vw - 24px); max-height:min(280px,var(--bits-popover-content-available-height)); overflow:auto; padding:7px; gap:0; border:1px solid var(--border); border-radius:var(--r-menu); color:var(--text); background:var(--panel); box-shadow:var(--ui-menu-shadow); }
+body button.genre-option { display:block; width:100%; min-height:var(--ctl-h); height:auto; padding:var(--sp-1) var(--sp-2); line-height:1.5; border:0; border-radius:var(--r-menu-item); background:transparent; box-shadow:none; color:var(--text); font-size:var(--type-body-size); text-align:left; white-space:normal; overflow-wrap:anywhere; }
+body button.genre-option:hover, body button.genre-option.active { background:var(--sel-tint); }
+.genre-no-results { padding:var(--sp-1) var(--sp-2); line-height:1.5; color:var(--muted); font-size:var(--type-help-size); }
+@media(prefers-reduced-motion:reduce) { [data-slot='popover-content'].genre-options { animation:none!important; transition:none!important; } }
+
+/* One compound focus edge, shared by text entry and its arrow; no clipping. */
+.genre-combobox { border-radius: var(--r-control); }
+.genre-combobox:focus-within { box-shadow: var(--ring); }
+.genre-combobox:has([aria-invalid='true']):focus-within { box-shadow: 0 0 0 2px var(--del); }
+body .mode-col .genre-combobox .field-input:focus,
+body .mode-col .genre-combobox .field-input:focus-visible,
+body .mode-col button.genre-toggle:focus-visible { outline: none; box-shadow: none; }

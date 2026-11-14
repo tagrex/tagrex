@@ -81,6 +81,19 @@ function readByJob() {
 
 // Null until the one-time carry-over has run (see migrateChains).
 let active = readByJob();
+function unifyTaggerPresets() {
+  if (!active) return;
+  try {
+    if (localStorage.getItem('tagrex.liveTaggerPresets.v1')) return;
+    localStorage.setItem('tagrex.presetsBeforeLivePreview', JSON.stringify(active));
+    // Preserve the default Online job's checked chain if present; otherwise
+    // retain the Editor/Generator chain. Never merge/reorder two rule chains.
+    active.generator = [...(active.online?.length ? active.online : active.generator || [])];
+    localStorage.setItem('tagrex.liveTaggerPresets.v1', '1');
+    persistActive();
+  } catch { /* optional persistence */ }
+}
+unifyTaggerPresets();
 
 function persistActive() {
   try {
@@ -91,11 +104,13 @@ function persistActive() {
 }
 
 function isPresetActive(group, context) {
+  if (context === 'online' || context === 'fromname') context = 'generator';
   return (active?.[context] || []).includes(presetKey(group));
 }
 
 function setPresetActive(group, on, context) {
   if (!active) return;
+  if (context === 'online' || context === 'fromname') context = 'generator';
   const key = presetKey(group);
   const rest = (active[context] || []).filter((k) => k !== key);
   active[context] = on ? [...rest, key] : rest;
@@ -138,12 +153,12 @@ function rulesFor(group, context) {
     .filter((r) => contextTakes(context, r.scope));
 }
 
-// The ticked presets as the groups a run takes, cut down to what `context`
-// acts on; a preset with nothing left for it is left out.
-function presetsFor(context) {
+// Normal job chains take only their output scopes. The independent selection
+// preview can explicitly take every scope of the same visibly checked groups.
+function presetsFor(context, { allScopes = false } = {}) {
   return allPresets()
     .filter((g) => isPresetActive(g, context))
-    .map((g) => ({ name: g.name, scope: "tags", rules: rulesFor(g, context) }))
+    .map((g) => ({ name: g.name, scope: "tags", rules: rulesFor(g, allScopes ? 'generator' : context) }))
     .filter((g) => g.rules.length);
 }
 
@@ -214,7 +229,7 @@ async function runChainOverPlan(plan, context) {
 // before it did. Runs after the saved presets are loaded, and does nothing once
 // the set exists.
 function migrateChains() {
-  if (active !== null) return;
+  if (active !== null) { unifyTaggerPresets(); return; }
   // The shared list from before #555 seeds every job's set, each keeping only
   // the presets that have something for it, so the first run after the change
   // does what the last one before it did.
@@ -269,6 +284,7 @@ function seedJobs(keys) {
       keys.filter((key) => byKey.has(key) && presetAppliesTo(byKey.get(key), context)),
     ])
   );
+  unifyTaggerPresets();
   persistActive();
   renderAllGroupsMenus();
   notifyChainChanged();

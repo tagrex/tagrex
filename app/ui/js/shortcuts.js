@@ -73,6 +73,11 @@ const ACTIONS = [
     combo: "Mod+KeyF",
     typing: true,
     run: () => {
+      const panel = el("filter-panel");
+      if (panel) {
+        document.dispatchEvent(new Event("tagrex:focus-filter"));
+        return;
+      }
       const input = el("filter");
       if (!input || input.offsetParent === null) return;
       input.focus();
@@ -83,8 +88,8 @@ const ACTIONS = [
   {
     id: "playPause",
     combo: IS_MAC ? "Alt+Space" : "Mod+Shift+Space",
-    buttons: ["pl-toggle", "sb-play"],
-    run: () => press("pl-toggle", "sb-play"),
+    buttons: ["pl-toggle"],
+    run: () => press("pl-toggle"),
   },
   { id: "prev", combo: "Mod+ArrowLeft", buttons: ["pl-prev"], run: () => press("pl-prev") },
   { id: "next", combo: "Mod+ArrowRight", buttons: ["pl-next"], run: () => press("pl-next") },
@@ -254,7 +259,7 @@ function typingIn(node) {
 // Settings, a dialog or the preset editor owns the keyboard while it is open.
 function modalOpen() {
   if (el("settings") && !el("settings").hidden) return true;
-  return !!document.querySelector(".modal-backdrop:not([hidden])");
+  return [...document.querySelectorAll(".modal-backdrop")].some((root) => !root.hidden);
 }
 
 const handlers = new Map(); // id → function, for actions with no button to press

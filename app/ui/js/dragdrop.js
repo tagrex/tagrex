@@ -74,10 +74,14 @@ function isImagePath(p) {
 async function openHandedOverPaths() {
   try {
     const paths = await invoke("take_launch_paths");
-    if (paths && paths.length) await hooks.openDrop(paths);
+    if (paths && paths.length) {
+      await hooks.openDrop(paths);
+      return true;
+    }
   } catch {
     // Nothing was waiting, or there is no backend to ask (browser dev).
   }
+  return false;
 }
 
 // Called once from the startup sequence, after `hooks.openDrop` is wired. The
@@ -87,5 +91,5 @@ async function openHandedOverPaths() {
 export async function initLaunchOpen() {
   const event = window.__TAURI__ && window.__TAURI__.event;
   if (event) await event.listen("tagrex://open-paths", openHandedOverPaths);
-  await openHandedOverPaths();
+  return await openHandedOverPaths();
 }

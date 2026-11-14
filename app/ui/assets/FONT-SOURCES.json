@@ -1,0 +1,125 @@
+{
+  "repository": "https://github.com/google/fonts",
+  "commit": "29b4ec6df2522a8aee279414b78a07910b065874",
+  "files": [
+    {
+      "path": "ofl/inter/Inter-Italic[opsz,wght].ttf",
+      "sha256": "acd98e64795781b2058f07b18475e0ecee2a0fe2b42a49e2f9e37d0d6bf66ce6",
+      "bytes": 906596
+    },
+    {
+      "path": "ofl/inter/Inter[opsz,wght].ttf",
+      "sha256": "29160a80ff49ddcab2c97711247e08b1fab27a484a329ce8b813d820dc559031",
+      "bytes": 876576
+    },
+    {
+      "path": "ofl/inter/METADATA.pb",
+      "sha256": "79e4721ef4f72251c6080a40dfd9efb6728b4df1fc690f0c70eb4b1b5303a5b0",
+      "bytes": 1342
+    },
+    {
+      "path": "ofl/inter/OFL.txt",
+      "sha256": "5b9321a4298cfeb6b34354164a1c3afc3db114569984c502b9b35d988fd58c57",
+      "bytes": 4377
+    },
+    {
+      "path": "ofl/ibmplexsans/IBMPlexSans-Italic[wdth,wght].ttf",
+      "sha256": "0b94c5e981993764db32bf9c610ecc60cbd34ad77ec2f10ba03c64ab75124d8e",
+      "bytes": 599624
+    },
+    {
+      "path": "ofl/ibmplexsans/IBMPlexSans[wdth,wght].ttf",
+      "sha256": "3b031aa4216174205bd8471f88a49b91f093169e9e87bd5262242bc5967fe2e3",
+      "bytes": 537244
+    },
+    {
+      "path": "ofl/ibmplexsans/METADATA.pb",
+      "sha256": "85f7e73668461cfacc4d9ecf94a7b67dd14dc24a71c0ae2cecd36215f0ca856c",
+      "bytes": 1554
+    },
+    {
+      "path": "ofl/ibmplexsans/OFL.txt",
+      "sha256": "7e6b2818edbd8f6a01ae80641cc8f16a51080d08fb4e532be3a0b6f74adb07da",
+      "bytes": 4456
+    },
+    {
+      "path": "ofl/sourcesans3/METADATA.pb",
+      "sha256": "f855c7833e0c780c90e5a797a003f86e1201990c0af65b9c75d0a04c9be05ed7",
+      "bytes": 995
+    },
+    {
+      "path": "ofl/sourcesans3/OFL.txt",
+      "sha256": "09746787287a289323b0ec3cff4d1a4a801331b82b7207c1e186f5d26619a392",
+      "bytes": 4579
+    },
+    {
+      "path": "ofl/sourcesans3/SourceSans3-Italic[wght].ttf",
+      "sha256": "39e3ab05ccd7cb94907c31005bb5bec1d5432f0b096a2b782976e217a540eb6c",
+      "bytes": 395372
+    },
+    {
+      "path": "ofl/sourcesans3/SourceSans3[wght].ttf",
+      "sha256": "042fe2cc0b933e328410d7acbd0aa6a1873dca5aef81875f4bc214b08825c7b9",
+      "bytes": 646340
+    },
+    {
+      "path": "ofl/jetbrainsmono/JetBrainsMono-Italic[wght].ttf",
+      "sha256": "c5c2a1d29297d2a40ec4a0114447c6b7a1477678ab2d9aa4b755356e1a02cead",
+      "bytes": 308832,
+      "url": "https://raw.githubusercontent.com/JetBrains/JetBrainsMono/19371302b95d218af43299bce79ddbddd0bc364d/fonts/variable/JetBrainsMono-Italic%5Bwght%5D.ttf"
+    },
+    {
+      "path": "ofl/jetbrainsmono/JetBrainsMono[wght].ttf",
+      "sha256": "3cfafa86e28b87184d592fef82846e8c10cb48653c62efcda34f082da225ec34",
+      "bytes": 300144,
+      "url": "https://raw.githubusercontent.com/JetBrains/JetBrainsMono/19371302b95d218af43299bce79ddbddd0bc364d/fonts/variable/JetBrainsMono%5Bwght%5D.ttf"
+    },
+    {
+      "path": "ofl/jetbrainsmono/OFL.txt",
+      "sha256": "a76abf002c49097d146e86740a3105a5d00450b1592e820a1109a8c5680cd697",
+      "bytes": 4399,
+      "url": "https://raw.githubusercontent.com/JetBrains/JetBrainsMono/19371302b95d218af43299bce79ddbddd0bc364d/OFL.txt"
+    }
+  ],
+  "condensed": {
+    "commit": "2eff3ae677cc17845afe5f7a09b048bcf55a4918",
+    "path": "app/ui/assets/tagrex-ui-condensed.woff2",
+    "bytes": 45864,
+    "sha256": "22117aa1694ff02b91b2ec7773e8e57dc7a9dc08a027ea05e67ba42770ca0c91",
+    "upstream": {
+      "repository": "https://github.com/IBM/plex",
+      "commit": "34cadd4234d443b041e7e109a4699ed508fd2b9d",
+      "path": "packages/plex-sans-condensed/fonts/complete/ttf/IBMPlexSansCondensed-Regular.ttf",
+      "sha256": "87aaee6ba9d2f80b8a3c1f6669e8c3d478b28b482f1d804917b3894694ccc12b",
+      "bytes": 200448
+    },
+    "portable_source": {
+      "path": "tools/font-sources/tagrex-condensed-subset.woff2",
+      "sha256": "4586a0ef95cf92d02718f772b60d70c7c5842274b92847156eee212f3913b2e7",
+      "description": "Renamed preserved subset, canonical regeneration input; outlines and metrics verified against pinned IBM upstream"
+    }
+  },
+  "baseline": {
+    "tagrex-sans-bold.woff2": {
+      "bytes": 44312,
+      "sha256": "c4a4debb7ac5d9b969ad5369e55f64651315f4df768c6362bf93f1084dfe4950"
+    },
+    "tagrex-ui-condensed.woff2": {
+      "bytes": 45864,
+      "sha256": "22117aa1694ff02b91b2ec7773e8e57dc7a9dc08a027ea05e67ba42770ca0c91"
+    },
+    "tagrex-sans-medium.woff2": {
+      "bytes": 47404,
+      "sha256": "621ce65d2f2bfa2a76dd76cb88e31aa1bce798c72c9c0284114b4bed68cdbd99"
+    },
+    "tagrex-sans.woff2": {
+      "bytes": 44644,
+      "sha256": "34f06c74c320d5f6ae592e8918ef0c85c6e638327b7026b9d1bb83a9db62260a"
+    },
+    "tagrex-mono.woff2": {
+      "bytes": 25076,
+      "sha256": "52cc513516d71b2f433c864d8115a4f8843853f8a5db33b2a9e3de0e916b8912"
+    }
+  },
+  "jetbrains_upstream_commit": "19371302b95d218af43299bce79ddbddd0bc364d"
+}

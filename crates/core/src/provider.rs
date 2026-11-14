@@ -44,9 +44,15 @@ pub const HTTP_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_
 /// How long a provider waits for a response to start once the request is sent.
 pub const HTTP_RESPONSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// The most one request may take altogether, the body included: an image of
-/// the 10 MB the client accepts at most, on a slow line, comes in well under it.
+/// The most one request may take altogether, the body included: a 13 MB
+/// archive scan, on a slow line, comes in well under it.
 pub const HTTP_TOTAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// The largest image body a provider downloads (#746). The HTTP client's own
+/// default is 10 MiB, and Cover Art Archive originals regularly exceed it, so
+/// those covers could be neither shown nor embedded. Still bounded, so a server
+/// sending an endless body can't make the app allocate without limit.
+pub const MAX_IMAGE_BYTES: u64 = 64 * 1024 * 1024;
 
 /// What the user is searching for. All fields optional; providers use what
 /// they support.
@@ -196,6 +202,21 @@ pub struct Release {
     /// images to disk. `cover_image_url` is the first entry's URL; this exposes
     /// the rest, plus each image's dimensions when the provider states them.
     pub images: Vec<ReleaseImage>,
+    /// Named artist and label identities for inspecting the provider's pages.
+    pub links: Vec<ReleaseLink>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReleaseLinkKind {
+    Artist,
+    Label,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseLink {
+    pub name: String,
+    pub kind: ReleaseLinkKind,
+    pub id: String,
 }
 
 /// One image of a release: a download handle plus its pixel dimensions when the

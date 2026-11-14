@@ -1,6 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TagRex app icon (small)">
-  <rect width="512" height="512" rx="115" fill="#085041"/>
-  <g transform="translate(74,126) scale(2.6)">
-    <path d="M4,14 Q4,6 12,6 L92,6 L128,42 Q136,50 128,58 L92,94 L12,94 Q4,94 4,86 Z M39,50 A9,9 0 1 0 21,50 A9,9 0 1 0 39,50 Z" fill="#E1F5EE" fill-rule="evenodd"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="1024" height="1024" role="img" aria-label="TagRex app icon (small sizes)">
+<defs>
+  <linearGradient id="front" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#3FD3A3"/>
+    <stop offset="1" stop-color="#0B7D5C"/>
+  </linearGradient>
+</defs>
+<path d="M18.61,118.77 L108.79,28.58 A24.605053750332747,24.605053750332747 0 0 1 123.96,21.48 L221.52,12.61 A20.13140761390861,20.13140761390861 0 0 1 243.39,34.48 L234.52,132.04 A24.605053750332747,24.605053750332747 0 0 1 227.42,147.21 L137.23,237.39 A38.02599215960515,38.02599215960515 0 0 1 83.46,237.39 L18.61,172.54 A38.02599215960515,38.02599215960515 0 0 1 18.61,118.77 Z" fill="url(#front)" fill-rule="evenodd" /><g transform="translate(112.72,143.28) scale(1.342) translate(-15.17,35.02)" fill="#FFFFFF" ><ellipse cx="0" cy="0" rx="23" ry="17" transform="rotate(-22)"/><path d="M11,-4 L11,-82 Q11,-88 17,-88 L18,-88 Q22,-88 22,-84 C24,-70 34,-64 42,-56 C52,-46 54,-30 46,-18 Q44,-15 42,-18 C46,-32 40,-44 22,-52 L22,-4 Z"/></g>
 </svg>

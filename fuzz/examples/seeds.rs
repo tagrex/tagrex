@@ -71,7 +71,7 @@ fn main() {
         }
         let cover = CoverArt {
             mime: "image/png".to_string(),
-            data: PIXEL_PNG.to_vec(),
+            data: PIXEL_PNG.into(),
             ..CoverArt::default()
         };
         if let Err(err) = TagEngine::write_covers(&work, &[cover]) {

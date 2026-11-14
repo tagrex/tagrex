@@ -12,6 +12,11 @@
 //! than core types, so `tagrex-core` stays serialization-agnostic. Tag map
 //! keys use [`TagField`]'s lossless storage-key codec.
 
+mod cover_encoding;
+mod output;
+mod read_cache;
+mod sidecars;
+
 use std::path::{Component, Path, PathBuf};
 
 use std::cell::{Cell, RefCell};
@@ -24,7 +29,7 @@ use thiserror::Error;
 
 use base64::Engine as _;
 use tagrex_core::export::{self, CueTrack, PlaylistTrack};
-use tagrex_core::journal::{BatchId, SqliteJournal, UndoJournal};
+use tagrex_core::journal::{BatchHeader, BatchId, SqliteJournal};
 use tagrex_core::mask::{portable_file_name, FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{
@@ -69,6 +74,9 @@ pub struct TrackDto {
     /// that genuinely has no tags at all — which is itself worth seeing.
     #[serde(default)]
     pub tag_blocks: Vec<TagBlockDto>,
+    /// The native compilation flag's storage key, when its tag block supports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compilation_field: Option<String>,
     /// Whether any tag block carries a picture (#447), from the same probe. Only
     /// a file that was read says `false`; one whose cover is not known (an
     /// unreadable file, a conversion from tags alone) says `true`, so it is never
@@ -122,6 +130,7 @@ impl TrackDto {
             unreadable: true,
             duration_secs: None,
             tag_blocks: Vec::new(),
+            compilation_field: None,
             has_cover: true,
         }
     }
@@ -242,6 +251,19 @@ fn settle_number_pair(
     if number_at.is_none() && total_at.is_none() {
         return;
     }
+    // A number the change itself states is the whole pair: it needs no total
+    // beside it, and no value on disk can change that answer, so the file is
+    // not read for it. Reading here was the only reason a bulk "number these
+    // tracks" edit parsed every file on every keystroke, and again when the
+    // cleaned plan passed through this gate a second time.
+    if number_at.is_some_and(|at| {
+        change.tag_changes[at]
+            .new
+            .as_deref()
+            .is_some_and(|new| !new.is_empty())
+    }) {
+        return;
+    }
     let Ok(file) = TagEngine::read(path) else {
         return;
     };
@@ -345,7 +367,12 @@ pub struct TextProbeDto {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub struct CoverArtDto {
     pub mime: String,
-    pub data_base64: String,
+    #[serde(default)]
+    pub data_base64: std::sync::Arc<str>,
+    /// Index into the enclosing plan's shared base64 pool. Standalone images
+    /// remain inline; kind/description always belong to each individual image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_ref: Option<usize>,
     /// A [`CoverKind`] storage key (`front`, `back`, `media`, …). Absent or
     /// unknown reads as the front cover, which is what an image picked, dropped
     /// or fetched without saying otherwise is meant as.
@@ -1018,6 +1045,8 @@ fn error_message(error: &AppError) -> MessageDto {
 /// A previewable plan, ready to render as a "current -> new" diff.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlanDto {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cover_assets: Vec<std::sync::Arc<str>>,
     /// The English sentence, composed the way it always was. Still here as what
     /// a language with no entry for `message` falls back to, as what a journal
     /// row written before #268 holds, and as what the tests read.
@@ -1085,6 +1114,13 @@ pub struct TagEditDto {
     /// Storage key (see [`TagField::to_storage_key`]).
     pub field: String,
     pub value: Option<String>,
+}
+
+/// An import artwork candidate and the files whose pending import owns it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct LiveCoverAssignmentDto {
+    pub cover: CoverArtDto,
+    pub paths: Vec<String>,
 }
 
 /// Result of exporting embedded covers to disk: the image files written, and
@@ -1472,6 +1508,15 @@ pub struct ReleaseDto {
     /// resolution + count display and the save-to-disk actions.
     #[serde(default)]
     pub images: Vec<ReleaseImageDto>,
+    #[serde(default)]
+    pub links: Vec<ReleaseLinkDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReleaseLinkDto {
+    pub name: String,
+    pub kind: String,
+    pub id: String,
 }
 
 /// One release image: a fetch handle plus its dimensions (`0` = unknown) (#102).
@@ -1753,6 +1798,12 @@ fn common_ancestor(paths: &[PathBuf]) -> Option<PathBuf> {
 /// the four commands that talk to a provider.
 #[derive(Default)]
 pub struct ProviderHub {
+    discogs: RefCell<Option<(String, DiscogsProvider)>>,
+    musicbrainz: RefCell<Option<MusicBrainzProvider>>,
+    beatport: RefCell<Option<(String, BeatportProvider)>>,
+    bandcamp: RefCell<Option<BandcampProvider>>,
+    soundeo: RefCell<Option<SoundeoProvider>>,
+
     /// Live proxy URL (None = direct), from settings.
     proxy: RefCell<Option<String>>,
     /// Minimum spacing between requests (None = no throttle), from the
@@ -1788,6 +1839,14 @@ impl ProviderHub {
     /// across libraries (#166).
     pub fn apply_settings(&self, settings: &SettingsDto) {
         let proxy = settings.proxy.trim();
+        let next_proxy = (!proxy.is_empty()).then(|| proxy.to_string());
+        if *self.proxy.borrow() != next_proxy {
+            self.discogs.borrow_mut().take();
+            self.musicbrainz.borrow_mut().take();
+            self.beatport.borrow_mut().take();
+            self.bandcamp.borrow_mut().take();
+            self.soundeo.borrow_mut().take();
+        }
         *self.proxy.borrow_mut() = (!proxy.is_empty()).then(|| proxy.to_string());
         self.min_interval.set(
             (settings.rate_limit_per_min > 0)
@@ -1797,19 +1856,26 @@ impl ProviderHub {
 
     /// Build a Discogs provider using the current proxy setting.
     fn discogs_provider(&self, token: &str) -> Result<DiscogsProvider, AppError> {
-        Ok(DiscogsProvider::with_proxy(
-            token,
-            self.proxy.borrow().as_deref(),
-        )?)
+        if let Some((key, provider)) = self.discogs.borrow().as_ref() {
+            if key == token {
+                return Ok(provider.clone());
+            }
+        }
+        let provider = DiscogsProvider::with_proxy(token, self.proxy.borrow().as_deref())?;
+        *self.discogs.borrow_mut() = Some((token.to_string(), provider.clone()));
+        Ok(provider)
     }
 
     /// Build a MusicBrainz provider using the current proxy setting (#33). No
     /// token — MusicBrainz is unauthenticated. Reuses the same network proxy the
     /// Discogs provider uses.
     fn musicbrainz_provider(&self) -> Result<MusicBrainzProvider, AppError> {
-        Ok(MusicBrainzProvider::with_proxy(
-            self.proxy.borrow().as_deref(),
-        )?)
+        if let Some(provider) = self.musicbrainz.borrow().as_ref() {
+            return Ok(provider.clone());
+        }
+        let provider = MusicBrainzProvider::with_proxy(self.proxy.borrow().as_deref())?;
+        *self.musicbrainz.borrow_mut() = Some(provider.clone());
+        Ok(provider)
     }
 
     /// Build a Beatport provider (#162). The "token" is the OAuth access token
@@ -1817,24 +1883,36 @@ impl ProviderHub {
     /// the credential behind it is a different animal. Reuses the same network
     /// proxy as the other two.
     fn beatport_provider(&self, access_token: &str) -> Result<BeatportProvider, AppError> {
-        Ok(BeatportProvider::with_proxy(
-            access_token,
-            self.proxy.borrow().as_deref(),
-        )?)
+        if let Some((key, provider)) = self.beatport.borrow().as_ref() {
+            if key == access_token {
+                return Ok(provider.clone());
+            }
+        }
+        let provider = BeatportProvider::with_proxy(access_token, self.proxy.borrow().as_deref())?;
+        *self.beatport.borrow_mut() = Some((access_token.to_string(), provider.clone()));
+        Ok(provider)
     }
 
     /// Build a Bandcamp provider. No token — Bandcamp needs none. Reuses the same
     /// network proxy as the others.
     fn bandcamp_provider(&self) -> Result<BandcampProvider, AppError> {
-        Ok(BandcampProvider::with_proxy(
-            self.proxy.borrow().as_deref(),
-        )?)
+        if let Some(provider) = self.bandcamp.borrow().as_ref() {
+            return Ok(provider.clone());
+        }
+        let provider = BandcampProvider::with_proxy(self.proxy.borrow().as_deref())?;
+        *self.bandcamp.borrow_mut() = Some(provider.clone());
+        Ok(provider)
     }
 
     /// Build a Soundeo provider. No token — Soundeo's pages are anonymous.
     /// Reuses the same network proxy as the others.
     fn soundeo_provider(&self) -> Result<SoundeoProvider, AppError> {
-        Ok(SoundeoProvider::with_proxy(self.proxy.borrow().as_deref())?)
+        if let Some(provider) = self.soundeo.borrow().as_ref() {
+            return Ok(provider.clone());
+        }
+        let provider = SoundeoProvider::with_proxy(self.proxy.borrow().as_deref())?;
+        *self.soundeo.borrow_mut() = Some(provider.clone());
+        Ok(provider)
     }
 
     /// Throttle the next provider request for `source`.
@@ -1952,15 +2030,16 @@ impl ProviderHub {
         token: &str,
         query: &SearchQueryDto,
     ) -> Result<Vec<CandidateDto>, AppError> {
-        self.throttle(source);
         let search = query.to_search_query();
-        let candidates = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
-            "beatport" => self.beatport_provider(token)?.search(&search)?,
-            "bandcamp" => self.bandcamp_provider()?.search(&search)?,
-            "soundeo" => self.soundeo_provider()?.search(&search)?,
-            _ => self.discogs_provider(token)?.search(&search)?,
-        };
+        let candidates = self.with_retry(source, || {
+            Ok(match source {
+                "musicbrainz" => self.musicbrainz_provider()?.search(&search)?,
+                "beatport" => self.beatport_provider(token)?.search(&search)?,
+                "bandcamp" => self.bandcamp_provider()?.search(&search)?,
+                "soundeo" => self.soundeo_provider()?.search(&search)?,
+                _ => self.discogs_provider(token)?.search(&search)?,
+            })
+        })?;
         let mut results: Vec<CandidateDto> = candidates.iter().map(CandidateDto::from).collect();
 
         let wanted = [
@@ -1989,15 +2068,16 @@ impl ProviderHub {
         token: &str,
         id: &str,
     ) -> Result<ReleaseDto, AppError> {
-        self.throttle(source);
         let rid = ReleaseId(id.to_string());
-        let release = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
-            "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
-            "bandcamp" => self.bandcamp_provider()?.fetch_release(&rid)?,
-            "soundeo" => self.soundeo_provider()?.fetch_release(&rid)?,
-            _ => self.discogs_provider(token)?.fetch_release(&rid)?,
-        };
+        let release = self.with_retry(source, || {
+            Ok(match source {
+                "musicbrainz" => self.musicbrainz_provider()?.fetch_release(&rid)?,
+                "beatport" => self.beatport_provider(token)?.fetch_release(&rid)?,
+                "bandcamp" => self.bandcamp_provider()?.fetch_release(&rid)?,
+                "soundeo" => self.soundeo_provider()?.fetch_release(&rid)?,
+                _ => self.discogs_provider(token)?.fetch_release(&rid)?,
+            })
+        })?;
         Ok(ReleaseDto::from(&release))
     }
 
@@ -2013,17 +2093,13 @@ impl ProviderHub {
         token: &str,
         url: &str,
     ) -> Result<CoverArtDto, AppError> {
-        self.throttle(source);
-        let image = match source {
-            "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
-            "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
-            "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
-            "soundeo" => self.soundeo_provider()?.fetch_image(url)?,
-            _ => self.discogs_provider(token)?.fetch_image(url)?,
-        };
+        let image = self.fetch_image_bytes(source, token, url)?;
         Ok(CoverArtDto {
+            data_ref: None,
             mime: display_safe_mime(&image.mime, &image.data),
-            data_base64: base64::engine::general_purpose::STANDARD.encode(&image.data),
+            data_base64: base64::engine::general_purpose::STANDARD
+                .encode(&image.data)
+                .into(),
             ..CoverArtDto::default()
         })
     }
@@ -2038,13 +2114,157 @@ impl ProviderHub {
         token: &str,
         url: &str,
     ) -> Result<FetchedImage, AppError> {
+        self.with_retry(source, || {
+            Ok(match source {
+                "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
+                "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
+                "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
+                "soundeo" => self.soundeo_provider()?.fetch_image(url)?,
+                _ => self.discogs_provider(token)?.fetch_image(url)?,
+            })
+        })
+    }
+
+    /// Run one provider request, spaced by [`throttle`](Self::throttle), and
+    /// try it once more after a short rate-limit refusal (#747). A provider
+    /// shedding load (MusicBrainz answers `503` with `Retry-After: 0`) usually
+    /// serves the same request a second later. A longer stated wait is reported
+    /// at once, so the interface's own pause-and-resume handling stays in charge.
+    fn with_retry<T>(
+        &self,
+        source: &str,
+        request: impl FnMut() -> Result<T, AppError>,
+    ) -> Result<T, AppError> {
         self.throttle(source);
-        Ok(match source {
-            "musicbrainz" => self.musicbrainz_provider()?.fetch_image(url)?,
-            "beatport" => self.beatport_provider(token)?.fetch_image(url)?,
-            "bandcamp" => self.bandcamp_provider()?.fetch_image(url)?,
-            "soundeo" => self.soundeo_provider()?.fetch_image(url)?,
-            _ => self.discogs_provider(token)?.fetch_image(url)?,
+        retry_after_short_limit(request, || self.throttle(source))
+    }
+
+    /// Take an image download out of the hub (#749). Building the fetcher is
+    /// all that needs the hub, and it takes an instant; the caller runs the
+    /// download without holding the provider lock, so a slow image no longer
+    /// holds up every search, lookup and other image behind it.
+    ///
+    /// MusicBrainz images come from the Cover Art Archive, which the
+    /// MusicBrainz API spacing does not cover, so they are not throttled. Every
+    /// other source keeps its spacing, taken here before the fetcher is handed
+    /// out.
+    pub fn image_fetch(&self, source: &str, token: &str) -> Result<ImageFetch, AppError> {
+        if source != "musicbrainz" {
+            self.throttle(source);
+        }
+        Ok(ImageFetch(match source {
+            "musicbrainz" => ImageProvider::MusicBrainz(self.musicbrainz_provider()?),
+            "beatport" => ImageProvider::Beatport(self.beatport_provider(token)?),
+            "bandcamp" => ImageProvider::Bandcamp(self.bandcamp_provider()?),
+            "soundeo" => ImageProvider::Soundeo(self.soundeo_provider()?),
+            _ => ImageProvider::Discogs(self.discogs_provider(token)?),
+        }))
+    }
+}
+
+/// Run a provider request and try it once more after a short rate-limit
+/// refusal (#747): wait what the provider asked (at least a second), call
+/// `before_retry` (the throttle, for an API request), then send it again. A
+/// longer stated wait goes back to the caller at once.
+fn retry_after_short_limit<T>(
+    mut request: impl FnMut() -> Result<T, AppError>,
+    before_retry: impl FnOnce(),
+) -> Result<T, AppError> {
+    match request() {
+        Err(AppError::Provider(tagrex_core::provider::ProviderError::RateLimited {
+            retry_after_secs,
+        })) if retry_after_secs <= SHORT_RATE_LIMIT_SECS => {
+            std::thread::sleep(Duration::from_secs(retry_after_secs.max(1)));
+            before_retry();
+            request()
+        }
+        other => other,
+    }
+}
+
+/// The longest stated rate-limit wait a provider request is retried after
+/// (#747); anything longer goes back to the caller as it always did.
+const SHORT_RATE_LIMIT_SECS: u64 = 5;
+
+/// One provider's image download, taken out of the [`ProviderHub`] by
+/// [`ProviderHub::image_fetch`] so it can run without the provider lock (#749).
+pub struct ImageFetch(ImageProvider);
+
+enum ImageProvider {
+    MusicBrainz(MusicBrainzProvider),
+    Beatport(BeatportProvider),
+    Bandcamp(BandcampProvider),
+    Soundeo(SoundeoProvider),
+    Discogs(DiscogsProvider),
+}
+
+/// How many image downloads may run at once (#749). Out of the provider lock
+/// they would otherwise all go together: a page of Discogs cards asks for its
+/// thumbnails at once, and two dozen simultaneous requests to one image host
+/// is a good way to get refused. Six is what browsers allow per host.
+const MAX_IMAGE_DOWNLOADS: usize = 6;
+static IMAGE_DOWNLOADS: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+static IMAGE_DOWNLOAD_FREED: std::sync::Condvar = std::sync::Condvar::new();
+
+/// A held image-download slot; dropping it frees the slot for the next one.
+struct ImageDownloadSlot;
+
+impl ImageDownloadSlot {
+    /// Wait for a free slot. Blocking, like the download it guards, so call it
+    /// off the async runtime.
+    fn acquire() -> Self {
+        let mut running = IMAGE_DOWNLOADS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        while *running >= MAX_IMAGE_DOWNLOADS {
+            running = IMAGE_DOWNLOAD_FREED
+                .wait(running)
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+        }
+        *running += 1;
+        ImageDownloadSlot
+    }
+}
+
+impl Drop for ImageDownloadSlot {
+    fn drop(&mut self) {
+        let mut running = IMAGE_DOWNLOADS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *running -= 1;
+        IMAGE_DOWNLOAD_FREED.notify_one();
+    }
+}
+
+impl ImageFetch {
+    /// Download the image as raw bytes, retrying once after a short rate-limit
+    /// refusal (#747). Blocking: run it off the async runtime.
+    pub fn fetch_bytes(&self, url: &str) -> Result<FetchedImage, AppError> {
+        let _slot = ImageDownloadSlot::acquire();
+        retry_after_short_limit(
+            || {
+                Ok(match &self.0 {
+                    ImageProvider::MusicBrainz(provider) => provider.fetch_image(url)?,
+                    ImageProvider::Beatport(provider) => provider.fetch_image(url)?,
+                    ImageProvider::Bandcamp(provider) => provider.fetch_image(url)?,
+                    ImageProvider::Soundeo(provider) => provider.fetch_image(url)?,
+                    ImageProvider::Discogs(provider) => provider.fetch_image(url)?,
+                })
+            },
+            || {},
+        )
+    }
+
+    /// Download the image as the cover DTO the cover well and the release
+    /// cards take, like [`ProviderHub::provider_fetch_image`].
+    pub fn fetch_cover(&self, url: &str) -> Result<CoverArtDto, AppError> {
+        let image = self.fetch_bytes(url)?;
+        Ok(CoverArtDto {
+            mime: display_safe_mime(&image.mime, &image.data),
+            data_base64: base64::engine::general_purpose::STANDARD
+                .encode(&image.data)
+                .into(),
+            ..CoverArtDto::default()
         })
     }
 }
@@ -2053,6 +2273,7 @@ impl ProviderHub {
 /// [`Executor`] `allowed_root`, so every write is confined to the opened
 /// library.
 pub struct App {
+    read_cache: RefCell<read_cache::ReadCache>,
     library_root: PathBuf,
     /// When set, the session operates on this explicit list of files (a
     /// drag-and-drop of files and/or several folders, #127) instead of scanning
@@ -2130,6 +2351,7 @@ impl App {
         }
         let (journal, journal_set_aside) = SqliteJournal::open_or_recover(journal_path)?;
         Ok(Self {
+            read_cache: RefCell::default(),
             library_root,
             file_filter: None,
             journal,
@@ -2148,6 +2370,63 @@ impl App {
             locked_fields: RefCell::new(HashSet::new()),
             extra_roots: RefCell::new(Vec::new()),
         })
+    }
+
+    /// Read tags, audio properties and tag-block metadata from one validated
+    /// display snapshot. Executor preflight deliberately reads independently.
+    fn read_snapshot(
+        &self,
+        path: &Path,
+    ) -> Result<tagrex_core::model::TrackRead, tagrex_core::model::TagIoError> {
+        self.read_cache.borrow_mut().read(path)
+    }
+
+    /// Read only the tag-file view of the same cached snapshot.
+    fn read_cached(
+        &self,
+        path: &Path,
+    ) -> Result<tagrex_core::model::TrackFile, tagrex_core::model::TagIoError> {
+        self.read_snapshot(path).map(|read| read.file)
+    }
+
+    /// Build a table row from one probe: tags, playing time (#172) and tag
+    /// blocks (#47). Length and Tags columns must reuse that read, so they
+    /// remain free rather than probing the file again.
+    fn track_dto(&self, path: &Path) -> TrackDto {
+        match self.read_snapshot(path) {
+            Ok(read) => TrackDto {
+                duration_secs: Some(read.props.duration_secs),
+                tag_blocks: read.blocks.iter().map(TagBlockDto::from).collect(),
+                compilation_field: read.compilation_field().map(|field| field.to_storage_key()),
+                has_cover: read.has_cover,
+                ..TrackDto::from(read.file)
+            },
+            Err(_) => TrackDto::unreadable(path),
+        }
+    }
+
+    /// Gather only the file properties a mask needs, reusing cached audio
+    /// properties while reading filesystem size/date freshly when requested.
+    fn file_context<'a>(
+        &self,
+        mask: &Mask,
+        track: &'a tagrex_core::model::TrackFile,
+    ) -> FileContext<'a> {
+        let metadata = mask
+            .needs_metadata()
+            .then(|| std::fs::metadata(&track.path).ok())
+            .flatten();
+        FileContext {
+            path: Some(&track.path),
+            format: Some(track.format),
+            props: if mask.needs_audio_props() {
+                self.read_snapshot(&track.path).ok().map(|read| read.props)
+            } else {
+                None
+            },
+            size_bytes: metadata.as_ref().map(|m| m.len()),
+            modified: metadata.and_then(|m| m.modified().ok()),
+        }
     }
 
     /// Open a file-set session (#127): the session lists and operates on exactly
@@ -2218,6 +2497,7 @@ impl App {
     /// here — they belong to [`ProviderHub`], which outlives any open library
     /// (#166).
     pub fn apply_settings(&self, settings: &SettingsDto) {
+        self.read_cache.borrow_mut().clear();
         tagrex_core::model::set_write_id3v23(settings.id3_v23);
         tagrex_core::model::set_read_priority(&settings.read_priority);
         tagrex_core::model::set_multi_value_separator(&settings.multi_value_separator);
@@ -2302,11 +2582,12 @@ impl App {
     fn cleaned_up_plan(&self, previous: &PlanDto, changes: Vec<FileChangeDto>) -> PlanDto {
         // A move asked to tidy up the folders it empties still does after a
         // cleanup (#383).
-        let mut plan = self.plan(
+        let mut plan = self.plan_with_assets(
             PlanMessage::CleanedUp,
             Vec::new(),
             changes,
             previous.prune_empty_dirs,
+            previous.cover_assets.clone(),
         );
         let already_cleaned = previous
             .notes
@@ -2330,6 +2611,17 @@ impl App {
         notes: Vec<PlanMessage>,
         changes: Vec<FileChangeDto>,
         prune_empty_dirs: bool,
+    ) -> PlanDto {
+        self.plan_with_assets(message, notes, changes, prune_empty_dirs, Vec::new())
+    }
+
+    fn plan_with_assets(
+        &self,
+        message: PlanMessage,
+        notes: Vec<PlanMessage>,
+        changes: Vec<FileChangeDto>,
+        prune_empty_dirs: bool,
+        cover_assets: Vec<std::sync::Arc<str>>,
     ) -> PlanDto {
         let locked = self.locked_fields.borrow();
         let mut skipped: Vec<LockedSkipDto> = Vec::new();
@@ -2396,7 +2688,8 @@ impl App {
             .chain(notes.iter().map(PlanMessage::english))
             .collect::<Vec<_>>()
             .join(" · ");
-        PlanDto {
+        let mut plan = PlanDto {
+            cover_assets,
             description,
             message: Some(MessageDto::from(&message)),
             notes: notes.iter().map(MessageDto::from).collect(),
@@ -2404,7 +2697,9 @@ impl App {
             prune_empty_dirs,
             locked_skipped: skipped,
             unrendered: Vec::new(),
-        }
+        };
+        plan.compact_cover_assets();
+        plan
     }
 
     /// Scan the library and read each file's tags. A file whose tags can't be
@@ -2419,21 +2714,55 @@ impl App {
         let mut tracks: Vec<TrackDto> = self
             .source_paths()
             .into_iter()
-            .map(|path| match TagEngine::read_with_props(&path) {
-                // One probe gives the tags, the playing time (#172) and which
-                // tag blocks the file carries (#47); the Length and Tags columns
-                // are free as long as they are taken from here.
-                Ok(read) => TrackDto {
-                    duration_secs: Some(read.props.duration_secs),
-                    tag_blocks: read.blocks.iter().map(TagBlockDto::from).collect(),
-                    has_cover: read.has_cover,
-                    ..TrackDto::from(read.file)
-                },
-                Err(_) => TrackDto::unreadable(&path),
-            })
+            .map(|path| self.track_dto(&path))
             .collect();
         tracks.sort_by(|a, b| natural_cmp(&a.path, &b.path));
         tracks
+    }
+
+    /// Refresh one source file without rescanning or parsing its neighbours.
+    /// Returns the same complete row as [`App::list_tracks`]. File-set sessions
+    /// require exact membership; directory sessions use the scanner's supported
+    /// regular-file boundary, with no symlink traversal below the chosen root.
+    pub fn read_track(&self, path: &Path) -> Result<TrackDto, AppError> {
+        self.read_track_rows(std::slice::from_ref(&path.to_path_buf()))
+            .map(|mut rows| rows.remove(0))
+    }
+
+    /// Refresh a known set of rows without scanning or parsing their neighbours.
+    /// Validate the entire request first; one root lookup and one membership
+    /// index serve the batch, including explicit file-set sessions.
+    pub fn read_track_rows(&self, paths: &[PathBuf]) -> Result<Vec<TrackDto>, AppError> {
+        let root = std::fs::canonicalize(&self.library_root)?;
+        let files = self
+            .file_filter
+            .as_ref()
+            .map(|files| files.iter().collect::<HashSet<_>>());
+        for path in paths {
+            let outside = || AppError::OutsideRoot(path.to_string_lossy().into_owned());
+            if !scanner::is_supported_audio(path)
+                || files.as_ref().is_some_and(|files| !files.contains(path))
+            {
+                return Err(outside());
+            }
+            let resolved = std::fs::canonicalize(path)?;
+            if !resolved.is_file() || !resolved.starts_with(&root) {
+                return Err(outside());
+            }
+            if self.file_filter.is_none() {
+                let relative = path
+                    .strip_prefix(&self.library_root)
+                    .map_err(|_| outside())?;
+                if relative
+                    .components()
+                    .any(|part| !matches!(part, Component::Normal(_)))
+                    || resolved != root.join(relative)
+                {
+                    return Err(outside());
+                }
+            }
+        }
+        Ok(paths.iter().map(|path| self.track_dto(path)).collect())
     }
 
     /// Find likely duplicate files across the opened library (#40), by
@@ -2451,7 +2780,7 @@ impl App {
 
         for path in self.source_paths() {
             // One parse for the tags and the audio properties: two read every file twice.
-            let Ok(read) = TagEngine::read_with_props(&path) else {
+            let Ok(read) = self.read_snapshot(&path) else {
                 continue;
             };
             let track = read.file;
@@ -2479,14 +2808,26 @@ impl App {
                     (duration > 0).then(|| (format!("duration:{duration}"), format!("{duration}s")))
                 }
                 "size" => (size > 0).then(|| (format!("size:{size}"), format!("{size} bytes"))),
-                "hash" => std::fs::read(&path).ok().map(|bytes| {
+                "hash" => (|| -> std::io::Result<_> {
+                    use std::io::Read;
+                    let mut file = std::fs::File::open(&path)?;
                     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    bytes.hash(&mut hasher);
-                    (
+                    let length = file.metadata()?.len();
+                    length.hash(&mut hasher);
+                    let mut buffer = [0u8; 64 * 1024];
+                    loop {
+                        let read = file.read(&mut buffer)?;
+                        if read == 0 {
+                            break;
+                        }
+                        hasher.write(&buffer[..read]);
+                    }
+                    Ok((
                         format!("hash:{:016x}", hasher.finish()),
                         "identical bytes".to_string(),
-                    )
-                }),
+                    ))
+                })()
+                .ok(),
                 // default: artist + title
                 _ => {
                     let (a, t) = (norm_key(&artist), norm_key(&title));
@@ -2632,69 +2973,46 @@ impl App {
         carried
     }
 
+    /// The sidecar pairs that a rename from `src` to `dst` should carry (#58):
+    /// matching-stem files in `src`'s folder whose extension is in the
+    /// configured set, retargeted to `dst`. No-op when the feature is off, the
+    /// set is empty, or `src` and `dst` are the same path (nothing is moving,
+    /// so nothing travels).
+    ///
+    /// `scan` is the preview's own one-ask view of the source folders; the scan
+    /// itself decides what "matching" means (see [`sidecars::SidecarScan`]).
+    /// Every public preview builds one and threads it through its call sites,
+    /// so the same folder is listed once per preview instead of once per file,
+    /// while a *new* preview always re-reads the disk.
+    fn sidecar_pairs(
+        &self,
+        scan: &mut sidecars::SidecarScan,
+        src: &Path,
+        dst: &Path,
+    ) -> Option<Vec<(String, String)>> {
+        if !self.carry_sidecars.get() || src == dst {
+            return None;
+        }
+        let exts = self.sidecar_extensions.borrow();
+        if exts.is_empty() {
+            return None;
+        }
+        scan.pairs(src, dst, &exts)
+    }
+
     /// Detect sidecar files that should travel with `change`'s rename/move (#58)
     /// and record them on it. A sidecar is a file in the source directory whose
     /// stem matches the audio file's and whose extension is in the configured
     /// set; its target keeps the destination directory and the new stem. No-op
     /// when the feature is off or the change carries no real rename.
-    fn attach_sidecars(&self, change: &mut FileChangeDto) {
-        if !self.carry_sidecars.get() {
-            return;
-        }
+    fn attach_sidecars(&self, change: &mut FileChangeDto, scan: &mut sidecars::SidecarScan) {
         let Some(rename_to) = change.rename_to.as_deref() else {
             return;
         };
-        let src = Path::new(&change.path);
-        let dst = Path::new(rename_to);
-        if src == dst {
-            return;
+        if let Some(pairs) = self.sidecar_pairs(scan, Path::new(&change.path), Path::new(rename_to))
+        {
+            change.sidecar_renames = pairs;
         }
-        let (Some(src_dir), Some(src_stem)) =
-            (src.parent(), src.file_stem().and_then(|s| s.to_str()))
-        else {
-            return;
-        };
-        let (Some(dst_dir), Some(dst_stem)) =
-            (dst.parent(), dst.file_stem().and_then(|s| s.to_str()))
-        else {
-            return;
-        };
-        let exts = self.sidecar_extensions.borrow();
-        if exts.is_empty() {
-            return;
-        }
-        let Ok(entries) = std::fs::read_dir(src_dir) else {
-            return;
-        };
-        let mut pairs = Vec::new();
-        for entry in entries.flatten() {
-            let path = entry.path();
-            // Never the audio file itself, and only real files.
-            if path == *src || !path.is_file() {
-                continue;
-            }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            if stem != src_stem {
-                continue;
-            }
-            let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-                continue; // an extension-less file can't match the set
-            };
-            if !exts.iter().any(|e| e.eq_ignore_ascii_case(ext)) {
-                continue;
-            }
-            let from = path.to_string_lossy().into_owned();
-            let to = dst_dir
-                .join(format!("{dst_stem}.{ext}"))
-                .to_string_lossy()
-                .into_owned();
-            pairs.push((from, to));
-        }
-        // Deterministic order so preview and journal read consistently.
-        pairs.sort();
-        change.sidecar_renames = pairs;
     }
 
     /// Render `mask` against `path`'s own tags and turn the result into a
@@ -2718,9 +3036,9 @@ impl App {
         path: &Path,
         root: &Path,
     ) -> Result<PathBuf, Option<String>> {
-        let track = TagEngine::read(path).map_err(|_| None)?;
+        let track = self.read_cached(path).map_err(|_| None)?;
         let rendered = mask
-            .render_with(&track.tags, &FileContext::read(mask, &track))
+            .render_with(&track.tags, &self.file_context(mask, &track))
             .map_err(|err| match err {
                 MaskError::MissingTag(field) => Some(field),
                 _ => None,
@@ -2774,9 +3092,13 @@ impl App {
         mask_pattern: &str,
         paths: &[PathBuf],
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let mask = Mask::parse(mask_pattern)?;
         let mut changes = Vec::new();
         let mut unrendered = Vec::new();
+        // One listing per source folder for this preview (#58); a later
+        // preview builds its own and sees the disk as it is then.
+        let mut scan = sidecars::SidecarScan::default();
         for path in paths {
             let root = path.parent().unwrap_or(path);
             let target = match self.render_target_under(&mask, path, root) {
@@ -2802,7 +3124,7 @@ impl App {
                 creates_folder: creates_folder(&target),
                 folder_extras: Vec::new(),
             };
-            self.attach_sidecars(&mut change);
+            self.attach_sidecars(&mut change, &mut scan);
             changes.push(change);
         }
         let mut plan = self.plan(
@@ -2843,6 +3165,7 @@ impl App {
         mask_pattern: &str,
         paths: &[PathBuf],
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         // The mask engine sees one separator; the user may type either (#71).
         let normalized = mask_pattern.replace('\\', "/");
         let mask = Mask::parse(&normalized)?;
@@ -2850,7 +3173,7 @@ impl App {
 
         let mut changes = Vec::new();
         for path in paths {
-            let Ok(track) = TagEngine::read(path) else {
+            let Ok(track) = self.read_cached(path) else {
                 continue;
             };
             let Some(subject) = name_subject(path, depth) else {
@@ -2988,11 +3311,12 @@ impl App {
         text: &str,
         paths: &[PathBuf],
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let mask = Mask::parse(&text_list_mask(mask_pattern))?;
         let (tracks, _) = text_list_tracks(&mask, text)?;
         let mut changes = Vec::new();
         for (path, (_, extracted)) in paths.iter().zip(tracks) {
-            let Ok(track) = TagEngine::read(path) else {
+            let Ok(track) = self.read_cached(path) else {
                 continue;
             };
 
@@ -3143,11 +3467,14 @@ impl App {
         rules: &[TransformRuleDto],
         scope: &str,
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let chain = build_chain(rules)?;
         let mut changes = Vec::new();
+        // One listing per source folder for this preview (#58).
+        let mut scan = sidecars::SidecarScan::default();
 
         for path in paths {
-            let Ok(track) = TagEngine::read(path) else {
+            let Ok(track) = self.read_cached(path) else {
                 continue;
             };
 
@@ -3188,7 +3515,7 @@ impl App {
                     creates_folder: false,
                     folder_extras: Vec::new(),
                 };
-                self.attach_sidecars(&mut change);
+                self.attach_sidecars(&mut change, &mut scan);
                 changes.push(change);
                 continue;
             }
@@ -3235,7 +3562,7 @@ impl App {
                     creates_folder: false,
                     folder_extras: Vec::new(),
                 };
-                self.attach_sidecars(&mut change);
+                self.attach_sidecars(&mut change, &mut scan);
                 changes.push(change);
                 continue;
             }
@@ -3299,6 +3626,7 @@ impl App {
         paths: &[PathBuf],
         groups: &[ActionGroupDto],
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         // Build every chain up front: a malformed rule should be an error before
         // anything is previewed, not halfway through the file list.
         let chains = groups
@@ -3310,8 +3638,10 @@ impl App {
             .collect::<Vec<_>>();
 
         let mut changes = Vec::new();
+        // One listing per source folder for this preview (#58).
+        let mut scan = sidecars::SidecarScan::default();
         for path in paths {
-            let Ok(track) = TagEngine::read(path) else {
+            let Ok(track) = self.read_cached(path) else {
                 continue;
             };
 
@@ -3392,7 +3722,7 @@ impl App {
                 folder_extras: Vec::new(),
             };
             if renamed {
-                self.attach_sidecars(&mut change);
+                self.attach_sidecars(&mut change, &mut scan);
             }
             changes.push(change);
         }
@@ -3433,6 +3763,8 @@ impl App {
         plan: &PlanDto,
         groups: &[ActionGroupDto],
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
+        plan.validate_cover_assets()?;
         // Same as the on-disk runner: build every chain up front so a malformed
         // rule is an error before anything is revised.
         let chains = groups
@@ -3444,6 +3776,8 @@ impl App {
             .collect::<Vec<_>>();
 
         let mut changes = Vec::new();
+        // One listing per source folder for this preview (#58).
+        let mut scan = sidecars::SidecarScan::default();
         for change in &plan.changes {
             let path = Path::new(&change.path);
 
@@ -3576,26 +3910,6 @@ impl App {
             if tag_changes.is_empty() && !renamed && change.cover_change.is_none() {
                 continue;
             }
-            // Folder extras (#161) ride on a change as sidecar pairs that do not
-            // follow the stem. They go where the folder goes — re-based from the
-            // folder as staged onto the folder as cleaned (#384) — while only the
-            // stem sidecars are recomputed below. Which pairs are stem sidecars
-            // is asked of the same code that attached them, against the change
-            // as it arrived.
-            let mut as_staged = change.clone();
-            self.attach_sidecars(&mut as_staged);
-            let extras: Vec<(String, String)> = change
-                .sidecar_renames
-                .iter()
-                .filter(|(from, _)| !as_staged.sidecar_renames.iter().any(|(own, _)| own == from))
-                .map(|(from, to)| {
-                    let to = match Path::new(to).strip_prefix(&proposed_dir) {
-                        Ok(rest) => target_dir.join(rest).to_string_lossy().into_owned(),
-                        Err(_) => to.clone(),
-                    };
-                    (from.clone(), to)
-                })
-                .collect();
             let mut revised = FileChangeDto {
                 path: change.path.clone(),
                 rename_to: renamed.then(|| target.to_string_lossy().into_owned()),
@@ -3615,7 +3929,43 @@ impl App {
                 folder_extras: Vec::new(),
             };
             if renamed {
-                self.attach_sidecars(&mut revised);
+                // Only a change that still moves has sidecars to work out, and
+                // only a move can carry a folder's extras: everything below is
+                // invisible to the plan when nothing is renamed, so a tag-only
+                // cleanup (every live edit) pays none of it.
+                //
+                // Folder extras (#161) ride on a change as sidecar pairs that do
+                // not follow the stem. They go where the folder goes — re-based
+                // from the folder as staged onto the folder as cleaned (#384) —
+                // while only the stem sidecars are recomputed below. Which pairs
+                // are stem sidecars is asked of the same code that attached
+                // them, against the change as it arrived.
+                let src = Path::new(&change.path);
+                let staged_pairs = self.sidecar_pairs(&mut scan, src, proposed);
+                // A no-op/failed scan used to leave the clone's original pairs
+                // intact. Preserve that classification without cloning the DTO.
+                let own_pairs = staged_pairs.as_deref().unwrap_or(&change.sidecar_renames);
+                let extras: Vec<(String, String)> = change
+                    .sidecar_renames
+                    .iter()
+                    .filter(|(from, _)| !own_pairs.iter().any(|(own, _)| own == from))
+                    .map(|(from, to)| {
+                        let to = match Path::new(to).strip_prefix(&proposed_dir) {
+                            Ok(rest) => target_dir.join(rest).to_string_lossy().into_owned(),
+                            Err(_) => to.clone(),
+                        };
+                        (from.clone(), to)
+                    })
+                    .collect();
+                // A chain that leaves the name alone lands on the pairs the
+                // staged rename already had, so the same listing answers the
+                // revised change too — only a changed name needs a second pass.
+                revised.sidecar_renames = if target.as_path() == proposed {
+                    staged_pairs.unwrap_or_default()
+                } else {
+                    self.sidecar_pairs(&mut scan, src, &target)
+                        .unwrap_or_default()
+                };
                 revised.sidecar_renames.extend(extras);
                 // Still the folder's, not the track's (#403): the marker is by
                 // source path, which the re-basing above leaves unchanged.
@@ -3653,6 +4003,7 @@ impl App {
         copy: bool,
         prune_empty_dirs: bool,
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let mask = Mask::parse(mask_pattern)?;
         let root = match destination {
             Some(destination) => {
@@ -3669,6 +4020,8 @@ impl App {
         };
         let mut changes = Vec::new();
         let mut unrendered = Vec::new();
+        // One listing per source folder for this preview (#58).
+        let mut scan = sidecars::SidecarScan::default();
         for path in paths {
             let target = match self.render_target_under(&mask, path, &root) {
                 Ok(target) => target,
@@ -3693,7 +4046,7 @@ impl App {
                 creates_folder: creates_folder(&target),
                 folder_extras: Vec::new(),
             };
-            self.attach_sidecars(&mut change);
+            self.attach_sidecars(&mut change, &mut scan);
             changes.push(change);
         }
         // Whatever else lives in a folder every track is leaving (#161). Said in
@@ -3723,7 +4076,273 @@ impl App {
     /// real diff and the executor's staleness check is accurate) and drops
     /// no-op edits. An empty requested value clears the field.
     pub fn preview_tag_edits(&self, edits: &[TagEditDto]) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         self.preview_tag_edits_with_cover(edits, None)
+    }
+
+    /// Compose the live Editor/import buffer, then transform its proposed values.
+    ///
+    /// Every request starts from cached, fingerprint-validated disk metadata, never
+    /// the preceding preview. `paths` is the explicit transformation scope; edits
+    /// outside it remain pending without receiving this scope's transformations.
+    /// A captured import cover applies only to `cover_paths`, including files
+    /// whose text tags already match. All effects remain an ordinary preview.
+    pub fn preview_live_edits(
+        &self,
+        edits: &[TagEditDto],
+        paths: &[PathBuf],
+        groups: &[ActionGroupDto],
+        cover: Option<&CoverArtDto>,
+        cover_paths: &[PathBuf],
+    ) -> Result<PlanDto, AppError> {
+        let covers = cover
+            .map(|cover| LiveCoverAssignmentDto {
+                cover: cover.clone(),
+                paths: cover_paths
+                    .iter()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .collect(),
+            })
+            .into_iter()
+            .collect::<Vec<_>>();
+        self.preview_live_edits_with_covers(edits, paths, groups, &covers)
+    }
+
+    /// The same composition with independent artwork candidates for disjoint
+    /// pending import scopes. Later assignments win for overlapping paths.
+    pub fn preview_live_edits_with_covers(
+        &self,
+        edits: &[TagEditDto],
+        paths: &[PathBuf],
+        groups: &[ActionGroupDto],
+        covers: &[LiveCoverAssignmentDto],
+    ) -> Result<PlanDto, AppError> {
+        self.preview_live_edits_with_base(edits, paths, groups, covers, None)
+    }
+
+    /// Manual artwork is the last artwork choice for each pending file. Its
+    /// pool is resolved independently before joining imported cover assets;
+    /// neither an asset index nor a stale `old` image crosses between pools.
+    pub fn preview_live_edits_with_base(
+        &self,
+        edits: &[TagEditDto],
+        paths: &[PathBuf],
+        groups: &[ActionGroupDto],
+        covers: &[LiveCoverAssignmentDto],
+        base_plan: Option<&PlanDto>,
+    ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
+        let mut manual_covers = BTreeMap::new();
+        if let Some(base) = base_plan {
+            base.validate_cover_assets()?;
+            // Validation runs before decoding; each pooled payload is decoded
+            // once, then every assigned file shares the immutable bytes.
+            let decoded: Vec<std::sync::Arc<[u8]>> = base
+                .cover_assets
+                .iter()
+                .map(|data| {
+                    base64::engine::general_purpose::STANDARD
+                        .decode(data.as_bytes())
+                        .map(std::sync::Arc::from)
+                        .map_err(|_| {
+                            AppError::Io(std::io::Error::new(
+                                std::io::ErrorKind::InvalidInput,
+                                "invalid artwork data in plan",
+                            ))
+                        })
+                })
+                .collect::<Result<_, _>>()?;
+            let inline = InlineArtworkPool::default();
+            for change in &base.changes {
+                if let Some(cover) = &change.cover_change {
+                    // Keep explicit empty sets: they suppress an incoming
+                    // import even when the file itself has no artwork yet.
+                    manual_covers.insert(
+                        PathBuf::from(&change.path),
+                        base.resolve_covers(&cover.new, &decoded, &inline),
+                    );
+                }
+            }
+        }
+        // The scope is asked of the caller's own paths, not a second copy of
+        // them: one allocation per file per keystroke is one too many here.
+        let scope: HashSet<&Path> = if groups.is_empty() {
+            HashSet::new()
+        } else {
+            paths.iter().map(PathBuf::as_path).collect()
+        };
+        let mut by_path: BTreeMap<PathBuf, BTreeMap<String, Option<String>>> = BTreeMap::new();
+        for edit in edits {
+            by_path
+                .entry(PathBuf::from(&edit.path))
+                .or_default()
+                .insert(
+                    edit.field.clone(),
+                    edit.value.clone().filter(|value| !value.is_empty()),
+                );
+        }
+        // No-op fields seed the transformation scope. Without them a preset
+        // could only clean the few fields the user happened to type. Only the
+        // fields a segment can still rewrite are seeded: every other one would
+        // be dropped as a no-op by the cleanup, so seeding it only costs.
+        let seed = live_seed(groups);
+        if !groups.is_empty() {
+            for path in &scope {
+                by_path.entry(path.to_path_buf()).or_default();
+            }
+        }
+        for path in manual_covers.keys() {
+            by_path.entry(path.clone()).or_default();
+        }
+        let mode = self.import_cover.get();
+        let import_art: Vec<Option<CoverArt>> = covers
+            .iter()
+            .map(|assignment| match mode {
+                ImportCover::IfMissing | ImportCover::Always => cover_dto_to_art(&assignment.cover)
+                    .map(|art| {
+                        tagrex_core::cover::resize_cover(
+                            &art,
+                            self.cover_max_px.get(),
+                            self.cover_quality.get(),
+                        )
+                    }),
+                ImportCover::Never => None,
+            })
+            .collect();
+        let mut cover_by_path = HashMap::new();
+        for (index, assignment) in covers.iter().enumerate() {
+            if import_art[index].is_none() {
+                continue;
+            }
+            for path in &assignment.paths {
+                let path = PathBuf::from(path);
+                by_path.entry(path.clone()).or_default();
+                cover_by_path.insert(path, index);
+            }
+        }
+        let mut used_covers = HashSet::new();
+        let mut transformed = Vec::new();
+        let mut untouched = Vec::new();
+        let mut with_cover = 0;
+        for (path, requested) in by_path {
+            let track = self.read_cached(&path)?;
+            let in_scope = !groups.is_empty() && scope.contains(path.as_path());
+            let mut fields: BTreeMap<String, FieldChangeDto> = if in_scope {
+                track
+                    .tags
+                    .iter()
+                    .filter(|entry| seed.seeds(entry.0))
+                    .map(|(field, value)| {
+                        let key = field.to_storage_key();
+                        (
+                            key.clone(),
+                            FieldChangeDto::new(key, Some(value.clone()), Some(value.clone())),
+                        )
+                    })
+                    .collect()
+            } else {
+                BTreeMap::new()
+            };
+            for (key, new) in requested {
+                let old = track.tags.get(&TagField::from_storage_key(&key)).cloned();
+                if in_scope || old != new {
+                    fields.insert(key.clone(), FieldChangeDto::new(key, old, new));
+                }
+            }
+            let cover_change = if let Some(new) = manual_covers.get(&path) {
+                // The current disk set supplies accurate staleness/Undo bytes.
+                // Compare only after choosing the explicit override, otherwise
+                // an empty-to-empty removal could let import artwork back in.
+                let old = TagEngine::read_covers(&path)?;
+                (old != *new).then(|| CoverChangeDto {
+                    old: cover_arts_to_dto(&old),
+                    new: cover_arts_to_dto(new),
+                })
+            } else {
+                match cover_by_path.get(&path) {
+                    Some(index) => {
+                        let change = import_cover_change(
+                            &path,
+                            import_art[*index]
+                                .as_ref()
+                                .expect("assigned artwork was decoded"),
+                            mode,
+                        )?;
+                        if change.is_some() {
+                            used_covers.insert(*index);
+                        }
+                        change
+                    }
+                    None => None,
+                }
+            };
+            with_cover += usize::from(cover_change.is_some());
+            let change = FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes: fields.into_values().collect(),
+                cover_change,
+                sidecar_renames: Vec::new(),
+                block_changes: Vec::new(),
+                copy: false,
+                rename_root: None,
+                creates_folder: false,
+                folder_extras: Vec::new(),
+            };
+            if in_scope {
+                transformed.push(change);
+            } else {
+                untouched.push(change);
+            }
+        }
+        let message = if with_cover > 0 {
+            PlanMessage::EditTagsWithCover { files: with_cover }
+        } else {
+            PlanMessage::EditTags
+        };
+        let notes = self.unshrunk_cover_notes(
+            used_covers
+                .iter()
+                .filter_map(|index| import_art[*index].as_ref()),
+        );
+        if groups.is_empty() {
+            return Ok(self.plan(message, notes, untouched, false));
+        }
+        // Do not run the seeded values through plan() first: that would remove
+        // locked requested edits before the final lock accounting and settle
+        // number pairs before transformations have produced their final values.
+        let seed = PlanDto {
+            cover_assets: Vec::new(),
+            description: message.english(),
+            message: Some(MessageDto::from(&message)),
+            notes: Vec::new(),
+            changes: transformed,
+            prune_empty_dirs: false,
+            locked_skipped: Vec::new(),
+            unrendered: Vec::new(),
+        };
+        let cleaned = self.preview_transform_over_plan(&seed, groups)?;
+        untouched.extend(cleaned.changes);
+        let mut plan =
+            self.plan_with_assets(message, notes, untouched, false, cleaned.cover_assets);
+        // The transformed and untouched partitions are disjoint paths, so their
+        // field-lock counts add without reporting one file twice.
+        for skip in cleaned.locked_skipped {
+            if let Some(existing) = plan
+                .locked_skipped
+                .iter_mut()
+                .find(|item| item.field == skip.field)
+            {
+                existing.files += skip.files;
+            } else {
+                plan.locked_skipped.push(skip);
+            }
+        }
+        plan.locked_skipped
+            .sort_by(|a, b| b.files.cmp(&a.files).then_with(|| a.field.cmp(&b.field)));
+        plan.notes.push(MessageDto::from(&PlanMessage::CleanedUp));
+        plan.description = cleaned_up_description(&plan.description);
+        Ok(plan)
     }
 
     /// The same, plus the release cover an online import brought with it (#207).
@@ -3741,6 +4360,7 @@ impl App {
         edits: &[TagEditDto],
         cover: Option<&CoverArtDto>,
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         // Group edits by file so each file is read once and becomes one change.
         let mut by_path: std::collections::BTreeMap<&str, Vec<&TagEditDto>> =
             std::collections::BTreeMap::new();
@@ -3766,7 +4386,7 @@ impl App {
         let mut changes = Vec::new();
         let mut with_cover = 0;
         for (path, group) in by_path {
-            let track = TagEngine::read(Path::new(path))?;
+            let track = self.read_cached(Path::new(path))?;
             let mut tag_changes = Vec::new();
             for edit in group {
                 let field = TagField::from_storage_key(&edit.field);
@@ -3877,9 +4497,10 @@ impl App {
     /// the cover well's Remove to drop the cover as well. Files that already have
     /// no modeled tags are skipped.
     pub fn preview_clear_tags(&self, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let mut changes = Vec::new();
         for path in paths {
-            let track = TagEngine::read(path)?;
+            let track = self.read_cached(path)?;
             // One clearing change per field the file actually carries, so the
             // preview diff and the undo journal record the real old values.
             let tag_changes: Vec<FieldChangeDto> = track
@@ -3915,10 +4536,11 @@ impl App {
     /// the field is written. A file that already holds that number (`128.0` is
     /// 128) is left out, and so is a path that has gone since it was measured.
     pub fn preview_bpm(&self, detected: &[(PathBuf, f64)]) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let floor = self.bpm_floor.get();
         let mut changes = Vec::new();
         for (path, raw) in detected {
-            let Ok(track) = TagEngine::read(path) else {
+            let Ok(track) = self.read_cached(path) else {
                 continue;
             };
             let bpm = bpm_in_range(*raw, floor);
@@ -3959,6 +4581,8 @@ impl App {
         paths: &[PathBuf],
         cover: &CoverArtDto,
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
+        validate_inline_covers(std::slice::from_ref(cover))?;
         // Resize/recompress once, up front (#41), so every file embeds the same
         // trimmed image and the preview shows exactly what will be written.
         let new_art = cover_dto_to_art(cover).map(|art| {
@@ -4024,6 +4648,8 @@ impl App {
         paths: &[PathBuf],
         covers: &[CoverArtDto],
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
+        validate_inline_covers(covers)?;
         // Resize once, up front (#41), so every file gets the same trimmed
         // images and the preview shows what will really be written.
         let new: Vec<CoverArt> = cover_dtos_to_art(covers)
@@ -4081,50 +4707,41 @@ impl App {
     /// they all share (#56) or a small fan of distinct front covers when they
     /// don't.
     pub fn read_cover_summary(&self, paths: &[PathBuf]) -> Result<CoverSummaryDto, AppError> {
-        let mut sets: Vec<Vec<CoverArt>> = Vec::with_capacity(paths.len());
+        let _encoding_scope = cover_encoding::Scope::new();
+        // Keep one reference set and at most three display samples. Comparing
+        // each set only with the first is sufficient to establish whether the
+        // complete selection is shared; collecting every unique set was O(N²).
+        let mut first: Option<Vec<CoverArt>> = None;
+        let mut with_cover = 0;
+        let mut distinct = false;
+        let mut sample_arts: Vec<CoverArt> = Vec::new();
         for path in paths {
-            sets.push(TagEngine::read_covers(path)?);
-        }
-        let total = sets.len();
-        let with_cover = sets.iter().filter(|set| !set.is_empty()).count();
-
-        // Distinct unless the whole selection carries one identical image SET —
-        // same images, same types, same order. Anything less is not a set the
-        // panel could offer to edit as one.
-        let mut unique: Vec<&Vec<CoverArt>> = Vec::new();
-        for set in &sets {
-            if !unique.contains(&set) {
-                unique.push(set);
+            let set = TagEngine::read_covers(path)?;
+            with_cover += usize::from(!set.is_empty());
+            if sample_arts.len() < 3 {
+                if let Some(front) = set
+                    .iter()
+                    .find(|c| c.kind == CoverKind::Front)
+                    .or_else(|| set.first())
+                {
+                    if !sample_arts.contains(front) {
+                        sample_arts.push(front.clone());
+                    }
+                }
+            }
+            if let Some(reference) = &first {
+                distinct |= reference != &set;
+            } else {
+                first = Some(set);
             }
         }
-        let distinct = unique.len() > 1;
         let shared_set = if distinct {
             Vec::new()
         } else {
-            sets.first()
-                .map(|set| cover_arts_to_dto(set))
-                .unwrap_or_default()
+            first.as_deref().map(cover_arts_to_dto).unwrap_or_default()
         };
-
-        // Up to three distinct front covers, for the mixed fan. `read_cover`'s
-        // rule (the front one, else the first) is what "the cover" means here.
-        let mut samples: Vec<CoverArtDto> = Vec::new();
-        for set in &sets {
-            let Some(front) = set
-                .iter()
-                .find(|c| c.kind == CoverKind::Front)
-                .or_else(|| set.first())
-            else {
-                continue;
-            };
-            let dto = cover_art_to_dto(front);
-            if !samples.contains(&dto) {
-                samples.push(dto);
-                if samples.len() == 3 {
-                    break;
-                }
-            }
-        }
+        let samples = cover_arts_to_dto(&sample_arts);
+        let total = paths.len();
 
         Ok(CoverSummaryDto {
             total,
@@ -4142,9 +4759,10 @@ impl App {
     pub fn read_external_cover(&self, paths: &[PathBuf]) -> Result<Option<CoverArtDto>, AppError> {
         // Distinct parent directories, in selection order.
         let mut dirs: Vec<&Path> = Vec::new();
+        let mut seen_dirs = HashSet::new();
         for path in paths {
             if let Some(dir) = path.parent() {
-                if !dirs.contains(&dir) {
+                if seen_dirs.insert(dir) {
                     dirs.push(dir);
                 }
             }
@@ -4153,8 +4771,11 @@ impl App {
             if let Some(found) = external_cover_in(dir) {
                 let data = std::fs::read(&found).map_err(AppError::Io)?;
                 return Ok(Some(CoverArtDto {
+                    data_ref: None,
                     mime: mime_for_cover_path(&found).to_string(),
-                    data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
+                    data_base64: base64::engine::general_purpose::STANDARD
+                        .encode(&data)
+                        .into(),
                     ..CoverArtDto::default()
                 }));
             }
@@ -4166,6 +4787,7 @@ impl App {
     /// through the normal preview/apply/undo path (files without a cover are
     /// skipped).
     pub fn preview_cover_remove(&self, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let mut changes = Vec::new();
         for path in paths {
             // Every image, not just the front one (#56) — this is the panel's
@@ -4206,6 +4828,7 @@ impl App {
         paths: &[PathBuf],
         kind: &str,
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let block_kind = TagBlockKind::from_storage_key(kind)
             .ok_or_else(|| AppError::UnknownTagBlock(kind.to_string()))?;
         let mut changes = Vec::new();
@@ -4256,6 +4879,7 @@ impl App {
     /// gets an ID3v2 tag with its text, which is the one place that text can go, and
     /// undoing that takes the new tag away.
     pub fn preview_fix_encoding(&self, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let kind = TagBlockKind::Id3v2;
         let mut changes = Vec::new();
         for path in paths {
@@ -4278,7 +4902,7 @@ impl App {
                     text_to_unicode: true,
                 }
             } else if TagEngine::has_legacy_id3v1_text_only(path)? {
-                let format = TagEngine::read(path)?.format;
+                let format = self.read_cached(path)?.format;
                 let Some(content) = TagEngine::read_block(path, TagBlockKind::Id3v1)? else {
                     continue;
                 };
@@ -4327,7 +4951,7 @@ impl App {
     pub fn tag_block_targets(&self, paths: &[PathBuf]) -> Result<BlockTargetsDto, AppError> {
         let mut shared: Option<Vec<TagBlockKind>> = None;
         for path in paths {
-            let format = TagEngine::read(path)?.format;
+            let format = self.read_cached(path)?.format;
             let writable = TagBlockKind::writable_for(format);
             shared = Some(match shared {
                 None => writable,
@@ -4375,6 +4999,7 @@ impl App {
         to: &str,
         revision: Option<&str>,
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let source = TagBlockKind::from_storage_key(from)
             .ok_or_else(|| AppError::UnknownTagBlock(from.to_string()))?;
         let target = TagBlockKind::from_storage_key(to)
@@ -4392,7 +5017,7 @@ impl App {
             let Some(content) = TagEngine::read_block(path, source)? else {
                 continue;
             };
-            let format = TagEngine::read(path)?.format;
+            let format = self.read_cached(path)?.format;
             if !TagBlockKind::writable_for(format).contains(&target) {
                 return Err(AppError::BlockNotWritable {
                     kind: target.name().to_string(),
@@ -4522,7 +5147,7 @@ impl App {
                     if !seen_targets.insert(canonical_target) {
                         continue;
                     }
-                    std::fs::write(&target, &cover.data)?;
+                    self.write_output(&target, &cover.data)?;
                     written.push(target.to_string_lossy().into_owned());
                 }
                 None => skipped_no_cover.push(path.to_string_lossy().into_owned()),
@@ -4543,6 +5168,17 @@ impl App {
             return Err(AppError::InvalidFileName(file_name.to_string()));
         }
         Ok(self.library_root.join(name))
+    }
+
+    /// Stage and replace one export beneath the library root through the
+    /// confined output publisher. Separate calls are separate transactions.
+    fn write_output(&self, target: &Path, bytes: &[u8]) -> Result<(), AppError> {
+        output::write_batch(
+            &self.library_root,
+            &[(target.to_path_buf(), bytes.to_vec())],
+            true,
+        )?;
+        Ok(())
     }
 
     /// How an exported file refers to a track: relative to the library root when
@@ -4581,17 +5217,17 @@ impl App {
     pub fn export_playlist(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
         let target = self.export_target(file_name)?;
         let root = std::fs::canonicalize(&self.library_root)?;
-        let entries = Self::playlist_entries(&root, paths);
-        std::fs::write(&target, export::m3u(&entries))?;
+        let entries = self.playlist_entries(&root, paths);
+        self.write_output(&target, export::m3u(&entries).as_bytes())?;
         Ok(target.to_string_lossy().into_owned())
     }
 
     /// The playlist entries for `paths`, in the order given.
-    fn playlist_entries(root: &Path, paths: &[PathBuf]) -> Vec<PlaylistTrack> {
+    fn playlist_entries(&self, root: &Path, paths: &[PathBuf]) -> Vec<PlaylistTrack> {
         paths
             .iter()
             .filter_map(|path| {
-                let track = TagEngine::read(path).ok()?;
+                let track = self.read_cached(path).ok()?;
                 let duration = TagEngine::read_duration(path).unwrap_or_default();
                 let display = Self::path_from_export(root, path);
                 let file_stem = path
@@ -4653,7 +5289,7 @@ impl App {
         let mut order: Vec<String> = Vec::new();
         let mut groups: HashMap<String, Vec<PathBuf>> = HashMap::new();
         for path in paths {
-            let Ok(track) = TagEngine::read(path) else {
+            let Ok(track) = self.read_cached(path) else {
                 continue;
             };
             let key = if by_album {
@@ -4679,8 +5315,8 @@ impl App {
             let members = &groups[&key];
             let name = self.playlist_name(&mask, &members[0], &mut taken)?;
             let target = self.export_target(&name)?;
-            let entries = Self::playlist_entries(&root, members);
-            std::fs::write(&target, export::m3u(&entries))?;
+            let entries = self.playlist_entries(&root, members);
+            self.write_output(&target, export::m3u(&entries).as_bytes())?;
             written.push(target.to_string_lossy().into_owned());
         }
         Ok(written)
@@ -4703,7 +5339,7 @@ impl App {
     ) -> Result<String, AppError> {
         let rendered = match TagEngine::read(first) {
             Ok(track) => {
-                let file = FileContext::read(mask, &track);
+                let file = self.file_context(mask, &track);
                 mask.render_with(&export::lenient_tags(&track.tags), &file)
                     .unwrap_or_default()
             }
@@ -4745,14 +5381,14 @@ impl App {
         let entries: Vec<CueTrack> = paths
             .iter()
             .filter_map(|path| {
-                let track = TagEngine::read(path).ok()?;
+                let track = self.read_cached(path).ok()?;
                 Some(CueTrack {
                     path: Self::path_from_export(&root, path),
                     tags: track.tags,
                 })
             })
             .collect();
-        std::fs::write(&target, export::cue(&entries))?;
+        self.write_output(&target, export::cue(&entries).as_bytes())?;
         Ok(target.to_string_lossy().into_owned())
     }
 
@@ -4760,7 +5396,7 @@ impl App {
     pub fn export_csv(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
         let target = self.export_target(file_name)?;
         let tracks = read_tracks(paths);
-        std::fs::write(&target, export::csv(&tracks))?;
+        self.write_output(&target, export::csv(&tracks).as_bytes())?;
         Ok(target.to_string_lossy().into_owned())
     }
 
@@ -4768,7 +5404,7 @@ impl App {
     pub fn export_html(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
         let target = self.export_target(file_name)?;
         let tracks = read_tracks(paths);
-        std::fs::write(&target, export::html(&tracks))?;
+        self.write_output(&target, export::html(&tracks).as_bytes())?;
         Ok(target.to_string_lossy().into_owned())
     }
 
@@ -4776,7 +5412,7 @@ impl App {
     pub fn export_xml(&self, paths: &[PathBuf], file_name: &str) -> Result<String, AppError> {
         let target = self.export_target(file_name)?;
         let tracks = read_tracks(paths);
-        std::fs::write(&target, export::xml(&tracks))?;
+        self.write_output(&target, export::xml(&tracks).as_bytes())?;
         Ok(target.to_string_lossy().into_owned())
     }
 
@@ -4791,7 +5427,7 @@ impl App {
         let target = self.export_target(file_name)?;
         let mask = Mask::parse(mask_pattern)?;
         let tracks = read_tracks(paths);
-        std::fs::write(&target, export::report(&tracks, &mask))?;
+        self.write_output(&target, export::report(&tracks, &mask).as_bytes())?;
         Ok(target.to_string_lossy().into_owned())
     }
 
@@ -4863,6 +5499,8 @@ impl App {
 
     /// Apply a previewed plan to disk and record it for undo.
     pub fn apply(&mut self, plan: &PlanDto) -> Result<BatchDto, AppError> {
+        self.read_cache.borrow_mut().clear();
+        plan.validate_cover_assets()?;
         let change_plan = plan.to_change_plan();
         let roots = self.allowed_roots();
         let batch = Executor::apply(&change_plan, &mut self.journal, &roots)?;
@@ -4878,6 +5516,8 @@ impl App {
         progress: &mut dyn FnMut(&ApplyProgress),
         cancel: &AtomicBool,
     ) -> Result<BatchDto, AppError> {
+        self.read_cache.borrow_mut().clear();
+        plan.validate_cover_assets()?;
         let change_plan = plan.to_change_plan();
         let roots = self.allowed_roots();
         let batch =
@@ -4919,6 +5559,7 @@ impl App {
         progress: &mut dyn FnMut(&ApplyProgress),
     ) -> Result<UndoReportDto, AppError> {
         let roots = self.allowed_roots();
+        self.read_cache.borrow_mut().clear();
         let report =
             Executor::undo_with_mode(&mut self.journal, BatchId(batch_id), &roots, mode, progress)?;
         Ok(UndoReportDto::from(&report))
@@ -4941,22 +5582,10 @@ impl App {
                 roots.push(canon);
             }
         }
-        let under_root = |path: &std::path::Path| roots.iter().any(|r| path.starts_with(r));
         Ok(self
             .journal
-            .batches()?
+            .headers(&roots)?
             .iter()
-            // Judged by where the files CAME FROM, not where they went (#153):
-            // a reorganize can now file them into a folder outside the library,
-            // and testing the destination would hide exactly the batch the user
-            // is most likely to want back.
-            .filter(|batch| {
-                batch
-                    .plan
-                    .changes
-                    .iter()
-                    .all(|change| under_root(&change.path))
-            })
             .map(BatchDto::from)
             .collect())
     }
@@ -4981,38 +5610,75 @@ impl App {
         urls: &[String],
         overwrite: bool,
     ) -> Result<SaveImagesDto, AppError> {
+        self.validate_image_target(track)?;
+        let images = urls
+            .iter()
+            .map(|url| providers.fetch_image_bytes(source, token, url))
+            .collect::<Result<Vec<_>, _>>()?;
+        self.save_fetched_release_images(track, &images, overwrite)
+    }
+
+    /// Validate the destination before starting network work. Repeated when
+    /// publishing downloaded images; callers must also preserve session identity.
+    pub fn validate_image_target(&self, track: &Path) -> Result<PathBuf, AppError> {
         let root = std::fs::canonicalize(&self.library_root)?;
         let dir = track.parent().unwrap_or(Path::new("."));
-        let canonical_dir = std::fs::canonicalize(dir)?;
-        if !canonical_dir.starts_with(&root) {
+        let canonical = std::fs::canonicalize(dir)?;
+        if !canonical.starts_with(&root) {
             return Err(AppError::OutsideRoot(track.to_string_lossy().into_owned()));
         }
-        let mut planned: Vec<(PathBuf, Vec<u8>)> = Vec::new();
-        for (index, url) in urls.iter().enumerate() {
-            let image = providers.fetch_image_bytes(source, token, url)?;
-            let ext = extension_for_mime(&image.mime);
-            let name = format!("{}.{ext}", image_basename(index));
-            planned.push((canonical_dir.join(name), image.data));
-        }
-        let conflicts: Vec<String> = planned
+        Ok(canonical)
+    }
+
+    /// Publish already-fetched images without holding the session during HTTP.
+    pub fn save_fetched_release_images(
+        &self,
+        track: &Path,
+        images: &[FetchedImage],
+        overwrite: bool,
+    ) -> Result<SaveImagesDto, AppError> {
+        let dir = self.validate_image_target(track)?;
+        let planned: Vec<_> = images
             .iter()
-            .filter(|(target, _)| target.exists())
-            .filter_map(|(target, _)| target.file_name())
-            .map(|name| name.to_string_lossy().into_owned())
+            .enumerate()
+            .map(|(index, image)| {
+                let name = format!(
+                    "{}.{}",
+                    image_basename(index),
+                    extension_for_mime(&image.mime)
+                );
+                (dir.join(name), image.data.clone())
+            })
             .collect();
+        let mut conflicts = Vec::new();
+        for (target, _) in &planned {
+            match std::fs::symlink_metadata(target) {
+                Ok(metadata) => {
+                    if !metadata.is_file() || metadata.file_type().is_symlink() {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "image output target is not a regular file",
+                        )
+                        .into());
+                    }
+                    conflicts.push(target.file_name().unwrap().to_string_lossy().into_owned());
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e.into()),
+            }
+        }
         if !conflicts.is_empty() && !overwrite {
             return Ok(SaveImagesDto {
                 written: Vec::new(),
                 conflicts,
             });
         }
-        let mut written = Vec::new();
-        for (target, data) in &planned {
-            std::fs::write(target, data)?;
-            written.push(target.to_string_lossy().into_owned());
-        }
+        output::write_batch(&self.library_root, &planned, overwrite)?;
         Ok(SaveImagesDto {
-            written,
+            written: planned
+                .iter()
+                .map(|(p, _)| p.to_string_lossy().into_owned())
+                .collect(),
             conflicts: Vec::new(),
         })
     }
@@ -5034,7 +5700,7 @@ impl App {
         let locals: Vec<(String, String, Option<u64>, Option<String>)> = paths
             .iter()
             .map(|path| {
-                let track = TagEngine::read(path).ok();
+                let track = self.read_cached(path).ok();
                 let title = track
                     .as_ref()
                     .and_then(|track| track.tags.get(&TagField::Title).cloned())
@@ -5137,14 +5803,59 @@ impl App {
         Ok(paths
             .iter()
             .map(|path| {
-                let Ok(track) = TagEngine::read(path) else {
+                let Ok(track) = self.read_cached(path) else {
                     return String::new();
                 };
-                let file = FileContext::read(&mask, &track);
+                let file = self.file_context(&mask, &track);
                 mask.render_with(&export::lenient_tags(&track.tags), &file)
                     .unwrap_or_default()
             })
             .collect())
+    }
+
+    /// Render all visible custom columns with one validated metadata snapshot
+    /// per file. An invalid mask affects only its own column (`None`).
+    pub fn render_columns(
+        &self,
+        patterns: &[String],
+        paths: &[PathBuf],
+    ) -> Result<Vec<Option<Vec<String>>>, AppError> {
+        let masks: Vec<_> = patterns
+            .iter()
+            .map(|pattern| Mask::parse(pattern).ok())
+            .collect();
+        let mut columns: Vec<_> = masks
+            .iter()
+            .map(|mask| mask.as_ref().map(|_| Vec::with_capacity(paths.len())))
+            .collect();
+        let needs_metadata = masks.iter().flatten().any(Mask::needs_metadata);
+        for path in paths {
+            let read = self.read_snapshot(path).ok();
+            let metadata = needs_metadata
+                .then(|| std::fs::metadata(path).ok())
+                .flatten();
+            let file = read.as_ref().map(|read| FileContext {
+                path: Some(&read.file.path),
+                format: Some(read.file.format),
+                props: Some(read.props),
+                size_bytes: metadata.as_ref().map(|m| m.len()),
+                modified: metadata.as_ref().and_then(|m| m.modified().ok()),
+            });
+            let tags = read
+                .as_ref()
+                .map(|read| export::lenient_tags(&read.file.tags));
+            for (mask, column) in masks.iter().zip(&mut columns) {
+                if let (Some(mask), Some(column)) = (mask, column) {
+                    column.push(match (&tags, &file) {
+                        (Some(tags), Some(file)) => {
+                            mask.render_with(tags, file).unwrap_or_default()
+                        }
+                        _ => String::new(),
+                    });
+                }
+            }
+        }
+        Ok(columns)
     }
 
     /// Preview importing a user-resolved release selection onto `paths`,
@@ -5163,6 +5874,7 @@ impl App {
         selection: &ImportSelectionDto,
         vinyl_sides_to_disc: bool,
     ) -> Result<PlanDto, AppError> {
+        let _encoding_scope = cover_encoding::Scope::new();
         let mut changes = Vec::new();
         // Per-side running track number, used only for vinyl positions that carry
         // a side but no digit ("B" = the single track on side B): each side (disc)
@@ -5170,7 +5882,7 @@ impl App {
         let mut side_track_counters: std::collections::HashMap<u32, u32> =
             std::collections::HashMap::new();
         for (index, path) in paths.iter().enumerate() {
-            let current = TagEngine::read(path)?;
+            let current = self.read_cached(path)?;
 
             // (field, desired new value) — album-level first, then per-track.
             let mut desired: Vec<(TagField, Option<String>)> = vec![
@@ -5729,8 +6441,11 @@ pub fn read_cover_image(path: &Path) -> Result<CoverArtDto, AppError> {
         .ok_or_else(|| AppError::NotAnImage(path.display().to_string()))?;
     let data = std::fs::read(path)?;
     Ok(CoverArtDto {
+        data_ref: None,
         mime: mime.to_string(),
-        data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
+        data_base64: base64::engine::general_purpose::STANDARD
+            .encode(&data)
+            .into(),
         ..CoverArtDto::default()
     })
 }
@@ -6044,21 +6759,22 @@ fn fill_by_length(aligned: &mut [Option<usize>], locals: &[TrackRef], candidates
 /// the order is total and stable.
 pub fn natural_cmp(a: &str, b: &str) -> std::cmp::Ordering {
     use std::cmp::Ordering;
-    let (mut left, mut right) = (a.chars().peekable(), b.chars().peekable());
+    let (mut left, mut right) = (a.chars(), b.chars());
     loop {
-        match (left.peek().copied(), right.peek().copied()) {
+        match (left.clone().next(), right.clone().next()) {
             (None, None) => return a.cmp(b),
             (None, Some(_)) => return Ordering::Less,
             (Some(_), None) => return Ordering::Greater,
             (Some(l), Some(r)) if l.is_ascii_digit() && r.is_ascii_digit() => {
-                let take = |chars: &mut std::iter::Peekable<std::str::Chars>| {
-                    let mut digits = String::new();
-                    while let Some(c) = chars.peek().copied().filter(char::is_ascii_digit) {
-                        digits.push(c);
-                        chars.next();
-                    }
+                // Borrow the digit run from the original UTF-8 string. ASCII
+                // digits are one byte, so the boundary is also a char boundary.
+                fn take<'a>(chars: &mut std::str::Chars<'a>) -> &'a str {
+                    let suffix = chars.as_str();
+                    let len = suffix.bytes().take_while(u8::is_ascii_digit).count();
+                    let (digits, rest) = suffix.split_at(len);
+                    *chars = rest.chars();
                     digits
-                };
+                }
                 let (l, r) = (take(&mut left), take(&mut right));
                 let (l_value, r_value) = (l.trim_start_matches('0'), r.trim_start_matches('0'));
                 let by_value = l_value
@@ -6447,6 +7163,64 @@ fn build_segments(group: &ActionGroupDto) -> Result<Vec<(String, TransformChain)
         .collect()
 }
 
+/// The tag fields a live preview's presets can still rewrite in one in-scope
+/// file (#58 follow-up).
+///
+/// A segment only rewrites a field when its scope is `tags` or the field's own
+/// storage key (`preview_transform_over_plan`), and a seeded field that no
+/// segment targets keeps `old == new` and is dropped there as a no-op. Seeding
+/// it was therefore work whose result was always discarded: a key plus two
+/// value clones for every tag of every in-scope file, cloned again by the
+/// cleanup, on every keystroke of a bulk edit. Only the scopes matter here, so
+/// this mirrors `build_segments` without compiling a chain — a malformed rule
+/// is still reported later, by the same call that reported it before.
+///
+/// The comparison is deliberately the storage-key string the cleanup compares,
+/// not a parsed [`TagField`]: `from_storage_key("mood")` is `Custom("mood")`,
+/// whose key is `custom:mood`, and the cleanup would not have rewritten a
+/// field for that scope either.
+enum LiveSeed<'a> {
+    /// No preset, or only filename/fileext scopes: no tag field can change.
+    None,
+    /// A `tags`-scoped segment: every field the file carries.
+    All,
+    /// The storage keys named by field-scoped segments.
+    Fields(HashSet<&'a str>),
+}
+
+impl LiveSeed<'_> {
+    /// Whether a field of the file being previewed is worth seeding.
+    fn seeds(&self, field: &TagField) -> bool {
+        match self {
+            Self::All => true,
+            Self::None => false,
+            Self::Fields(wanted) => wanted.contains(field.to_storage_key().as_str()),
+        }
+    }
+}
+
+/// The scopes the given groups run as, asked without building their chains.
+fn live_seed(groups: &[ActionGroupDto]) -> LiveSeed<'_> {
+    let mut fields = HashSet::new();
+    for group in groups {
+        for rule in &group.rules {
+            match rule.scope.as_deref().unwrap_or(group.scope.as_str()) {
+                "tags" => return LiveSeed::All,
+                // A file-scoped segment rewrites the name, never a tag.
+                "filename" | "fileext" => {}
+                field => {
+                    fields.insert(field);
+                }
+            }
+        }
+    }
+    if fields.is_empty() {
+        LiveSeed::None
+    } else {
+        LiveSeed::Fields(fields)
+    }
+}
+
 fn build_chain(rules: &[TransformRuleDto]) -> Result<TransformChain, AppError> {
     let mut chain = TransformChain::default();
     for rule in rules {
@@ -6547,7 +7321,7 @@ fn cover_dto_to_art(dto: &CoverArtDto) -> Option<CoverArt> {
         .ok()?;
     Some(CoverArt {
         mime: dto.mime.clone(),
-        data,
+        data: data.into(),
         kind: CoverKind::from_storage_key(&dto.kind),
         description: dto.description.clone(),
     })
@@ -6582,8 +7356,9 @@ fn display_safe_mime(mime: &str, data: &[u8]) -> String {
 
 fn cover_art_to_dto(art: &CoverArt) -> CoverArtDto {
     CoverArtDto {
+        data_ref: None,
         mime: display_safe_mime(&art.mime, &art.data),
-        data_base64: base64::engine::general_purpose::STANDARD.encode(&art.data),
+        data_base64: cover_encoding::encode(&art.data),
         kind: art.kind.to_storage_key().to_string(),
         description: art.description.clone(),
     }
@@ -6619,18 +7394,6 @@ fn id3v2_revision_key(path: &Path, kind: TagBlockKind) -> Result<Option<String>,
     Ok(TagEngine::id3v2_revision(path)?.map(|r| r.to_storage_key().to_string()))
 }
 
-/// One side of a block change, coming in from the UI.
-fn block_content_from_dto(dto: &BlockContentDto) -> TagBlockContent {
-    TagBlockContent {
-        tags: dto
-            .tags
-            .iter()
-            .map(|(field, value)| (TagField::from_storage_key(field), value.clone()))
-            .collect(),
-        covers: cover_dtos_to_art(&dto.covers),
-    }
-}
-
 /// One side of a block change, going out to the UI.
 fn block_content_to_dto(content: &TagBlockContent) -> BlockContentDto {
     BlockContentDto {
@@ -6641,6 +7404,24 @@ fn block_content_to_dto(content: &TagBlockContent) -> BlockContentDto {
             .collect(),
         covers: cover_arts_to_dto(&content.covers),
     }
+}
+
+fn validate_inline_covers(covers: &[CoverArtDto]) -> Result<(), AppError> {
+    for image in covers {
+        if image.data_ref.is_some() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "standalone artwork requires inline data",
+            )
+            .into());
+        }
+        base64::engine::general_purpose::STANDARD
+            .decode(image.data_base64.as_bytes())
+            .map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid artwork data")
+            })?;
+    }
+    Ok(())
 }
 
 fn cover_arts_to_dto(arts: &[CoverArt]) -> Vec<CoverArtDto> {
@@ -6663,13 +7444,167 @@ impl From<tagrex_core::model::TrackFile> for TrackDto {
             // nor which blocks the file carries.
             duration_secs: None,
             tag_blocks: Vec::new(),
+            compilation_field: None,
             has_cover: true,
         }
     }
 }
 
+type InlineArtworkPool = RefCell<HashMap<std::sync::Arc<str>, std::sync::Arc<[u8]>>>;
+
 impl PlanDto {
+    fn for_each_cover(&self, mut visit: impl FnMut(&CoverArtDto)) {
+        for change in &self.changes {
+            if let Some(c) = &change.cover_change {
+                for image in c.old.iter().chain(&c.new) {
+                    visit(image);
+                }
+            }
+            for block in &change.block_changes {
+                for content in block.old.iter().chain(&block.new) {
+                    for image in &content.covers {
+                        visit(image);
+                    }
+                }
+            }
+        }
+    }
+    /// Replace repeated inline image strings with indices into the plan pool.
+    fn compact_cover_assets(&mut self) {
+        let mut assets = std::mem::take(&mut self.cover_assets);
+        let mut pool: HashMap<std::sync::Arc<str>, usize> = assets
+            .iter()
+            .enumerate()
+            .map(|(i, b)| (b.clone(), i))
+            .collect();
+        let mut identities: HashMap<(*const u8, usize), usize> = assets
+            .iter()
+            .enumerate()
+            .map(|(i, bytes)| ((bytes.as_ptr(), bytes.len()), i))
+            .collect();
+        let mut intern = |image: &mut CoverArtDto| {
+            if image.data_base64.is_empty() {
+                return;
+            }
+            let bytes = std::mem::take(&mut image.data_base64);
+            let identity = (bytes.as_ptr(), bytes.len());
+            image.data_ref = Some(if let Some(index) = identities.get(&identity) {
+                *index
+            } else if let Some(index) = pool.get(&bytes) {
+                *index
+            } else {
+                let index = assets.len();
+                pool.insert(bytes.clone(), index);
+                identities.insert(identity, index);
+                assets.push(bytes);
+                index
+            });
+        };
+        for change in &mut self.changes {
+            if let Some(c) = &mut change.cover_change {
+                for image in c.old.iter_mut().chain(&mut c.new) {
+                    intern(image);
+                }
+            }
+            for block in &mut change.block_changes {
+                for content in block.old.iter_mut().chain(&mut block.new) {
+                    for image in &mut content.covers {
+                        intern(image);
+                    }
+                }
+            }
+        }
+        self.cover_assets = assets;
+    }
+    /// Reject malformed base64 or unresolved image references before applying.
+    fn validate_cover_assets(&self) -> Result<(), AppError> {
+        let mut valid = true;
+        self.for_each_cover(|image| {
+            if let Some(index) = image.data_ref {
+                valid &= image.data_base64.is_empty() && self.cover_assets.get(index).is_some();
+            } else {
+                valid &= base64::engine::general_purpose::STANDARD
+                    .decode(image.data_base64.as_bytes())
+                    .is_ok();
+            }
+        });
+        if !valid {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid artwork reference in plan",
+            )
+            .into());
+        }
+        for data in &self.cover_assets {
+            base64::engine::general_purpose::STANDARD
+                .decode(data.as_bytes())
+                .map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::InvalidInput,
+                        "invalid artwork data in plan",
+                    )
+                })?;
+        }
+        Ok(())
+    }
+    /// Restore shared native image bytes from validated pooled or inline DTOs.
+    fn resolve_covers(
+        &self,
+        covers: &[CoverArtDto],
+        decoded: &[std::sync::Arc<[u8]>],
+        inline: &InlineArtworkPool,
+    ) -> Vec<CoverArt> {
+        covers
+            .iter()
+            .map(|c| CoverArt {
+                mime: c.mime.clone(),
+                data: c
+                    .data_ref
+                    .and_then(|index| decoded.get(index).cloned())
+                    .unwrap_or_else(|| {
+                        let mut inline = inline.borrow_mut();
+                        if let Some(bytes) = inline.get(&c.data_base64) {
+                            return bytes.clone();
+                        }
+                        let bytes: std::sync::Arc<[u8]> = base64::engine::general_purpose::STANDARD
+                            .decode(c.data_base64.as_bytes())
+                            .unwrap_or_default()
+                            .into();
+                        inline.insert(c.data_base64.clone(), bytes.clone());
+                        bytes
+                    }),
+                kind: CoverKind::from_storage_key(&c.kind),
+                description: c.description.clone(),
+            })
+            .collect()
+    }
+    fn resolve_block(
+        &self,
+        block: &BlockContentDto,
+        decoded: &[std::sync::Arc<[u8]>],
+        inline: &InlineArtworkPool,
+    ) -> TagBlockContent {
+        TagBlockContent {
+            tags: block
+                .tags
+                .iter()
+                .map(|(key, value)| (TagField::from_storage_key(key), value.clone()))
+                .collect(),
+            covers: self.resolve_covers(&block.covers, decoded, inline),
+        }
+    }
     fn to_change_plan(&self) -> ChangePlan {
+        let inline = InlineArtworkPool::default();
+        let decoded: Vec<std::sync::Arc<[u8]>> = self
+            .cover_assets
+            .iter()
+            .map(|data| {
+                base64::engine::general_purpose::STANDARD
+                    .decode(data.as_bytes())
+                    .unwrap_or_default()
+                    .into()
+            })
+            .collect();
         ChangePlan {
             description: self.description.clone(),
             // The journal keeps this so History can be re-rendered in whatever
@@ -6697,8 +7632,8 @@ impl PlanDto {
                         })
                         .collect(),
                     cover_change: change.cover_change.as_ref().map(|c| CoverChange {
-                        old: cover_dtos_to_art(&c.old),
-                        new: cover_dtos_to_art(&c.new),
+                        old: self.resolve_covers(&c.old, &decoded, &inline),
+                        new: self.resolve_covers(&c.new, &decoded, &inline),
                     }),
                     sidecar_renames: change
                         .sidecar_renames
@@ -6729,8 +7664,14 @@ impl PlanDto {
                                             .ok()
                                     },
                                 ),
-                                old: block_change.old.as_ref().map(block_content_from_dto),
-                                new: block_change.new.as_ref().map(block_content_from_dto),
+                                old: block_change
+                                    .old
+                                    .as_ref()
+                                    .map(|b| self.resolve_block(b, &decoded, &inline)),
+                                new: block_change
+                                    .new
+                                    .as_ref()
+                                    .map(|b| self.resolve_block(b, &decoded, &inline)),
                                 text_to_unicode: block_change.text_to_unicode,
                             })
                         })
@@ -6743,6 +7684,19 @@ impl PlanDto {
 
 impl From<&tagrex_core::journal::AppliedBatch> for BatchDto {
     fn from(batch: &tagrex_core::journal::AppliedBatch) -> Self {
+        Self::from(&BatchHeader {
+            id: batch.id,
+            description: batch.description.clone(),
+            message: batch.message.clone(),
+            applied_at: batch.applied_at,
+            interrupted: batch.interrupted,
+            paths: Vec::new(),
+        })
+    }
+}
+
+impl From<&BatchHeader> for BatchDto {
+    fn from(batch: &BatchHeader) -> Self {
         let stored = decode_plan_message(batch.message.as_deref());
         let mut notes = stored.as_ref().map(|s| s.notes.clone()).unwrap_or_default();
         let mut description = batch.description.clone();
@@ -6797,6 +7751,19 @@ impl From<&tagrex_core::provider::ReleaseCandidate> for CandidateDto {
 impl From<&tagrex_core::provider::Release> for ReleaseDto {
     fn from(release: &tagrex_core::provider::Release) -> Self {
         Self {
+            links: release
+                .links
+                .iter()
+                .map(|link| ReleaseLinkDto {
+                    name: link.name.clone(),
+                    kind: match link.kind {
+                        tagrex_core::provider::ReleaseLinkKind::Artist => "artist",
+                        tagrex_core::provider::ReleaseLinkKind::Label => "label",
+                    }
+                    .to_string(),
+                    id: link.id.clone(),
+                })
+                .collect(),
             id: release.id.0.clone(),
             artist: release.artist.clone(),
             title: release.title.clone(),
@@ -6926,6 +7893,189 @@ mod tests {
         assert_eq!(
             dto.description,
             "Edit tags · interrupted before it finished"
+        );
+    }
+
+    #[test]
+    fn batched_columns_preserve_order_properties_invalid_and_unreadable_columns() {
+        let dir = TempDir::new("column-batch");
+        let path = dir.tagged_flac("track.flac", "Artist", "Title");
+        let app = App::open(&dir.0, &dir.0.join("journal.sqlite")).unwrap();
+        let patterns =
+            ["%artist%", "%title%", "%length%", "%skip%", "%invalid"].map(str::to_string);
+        let paths = [path, dir.0.join("missing.flac")];
+        let columns = app.render_columns(&patterns, &paths).unwrap();
+        for (index, pattern) in patterns.iter().enumerate() {
+            match app.render_column(pattern, &paths) {
+                Ok(values) => assert_eq!(columns[index], Some(values)),
+                Err(_) => assert_eq!(columns[index], None),
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn confined_exports_never_follow_existing_or_dangling_links() {
+        let dir = TempDir::new("confined-exports");
+        let library = dir.0.join("library");
+        std::fs::create_dir(&library).unwrap();
+        let outside = dir.0.join("outside.txt");
+        std::fs::write(&outside, b"original").unwrap();
+        let app = App::open(&library, &dir.0.join("journal.sqlite")).unwrap();
+        std::os::unix::fs::symlink(&outside, library.join("list.m3u")).unwrap();
+        assert!(app.export_playlist(&[], "list.m3u").is_err());
+        assert_eq!(std::fs::read(&outside).unwrap(), b"original");
+        std::fs::remove_file(library.join("list.m3u")).unwrap();
+        std::fs::remove_file(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, library.join("list.m3u")).unwrap();
+        assert!(app.export_playlist(&[], "list.m3u").is_err());
+        assert!(!outside.exists());
+    }
+
+    #[test]
+    fn fetched_image_batch_refuses_special_targets_without_partial_outputs() {
+        let dir = TempDir::new("images-atomic");
+        let app = App::open(&dir.0, &dir.0.join("journal.sqlite")).unwrap();
+        std::fs::write(dir.0.join("folder.jpg"), b"original").unwrap();
+        std::fs::create_dir(dir.0.join("cover.jpg")).unwrap();
+        let image = || FetchedImage {
+            mime: "image/jpeg".into(),
+            data: vec![1, 2, 3],
+        };
+        assert!(app
+            .save_fetched_release_images(&dir.0.join("track.flac"), &[image(), image()], true)
+            .is_err());
+        assert_eq!(
+            std::fs::read(dir.0.join("folder.jpg")).unwrap(),
+            b"original"
+        );
+    }
+
+    #[test]
+    fn shared_artwork_pool_roundtrips_exactly_and_rejects_invalid_references() {
+        let dir = TempDir::new("cover-pool");
+        let a = dir.tagged_flac("a.flac", "A", "First");
+        let b = dir.tagged_flac("b.flac", "B", "Second");
+        let mut app = App::open(&dir.0, &dir.0.join("journal.sqlite")).unwrap();
+        let art = CoverArtDto {
+            mime: "image/jpeg".into(),
+            data_base64: base64::engine::general_purpose::STANDARD
+                .encode([0xff, 0xd8, 1, 2, 3])
+                .into(),
+            kind: "back".into(),
+            description: "Back sleeve".into(),
+            data_ref: None,
+        };
+        let images = vec![
+            art.clone(),
+            CoverArtDto {
+                kind: "front".into(),
+                description: "Front sleeve".into(),
+                ..art.clone()
+            },
+        ];
+        let plan = app
+            .preview_cover_set(&[a.clone(), b.clone()], &images)
+            .unwrap();
+        assert_eq!(plan.cover_assets.len(), 1);
+        for change in &plan.changes {
+            let image = &change.cover_change.as_ref().unwrap().new[0];
+            assert_eq!(image.data_ref, Some(0));
+            assert!(image.data_base64.is_empty());
+        }
+        let wire = serde_json::to_vec(&plan).unwrap();
+        let received: PlanDto = serde_json::from_slice(&wire).unwrap();
+        let native = received.to_change_plan();
+        let native_clone = native.clone();
+        let payload = &native.changes[0].cover_change.as_ref().unwrap().new[0].data;
+        assert_eq!(
+            payload.as_ptr(),
+            native.changes[1].cover_change.as_ref().unwrap().new[0]
+                .data
+                .as_ptr()
+        );
+        assert_eq!(
+            payload.as_ptr(),
+            native_clone.changes[0].cover_change.as_ref().unwrap().new[0]
+                .data
+                .as_ptr()
+        );
+        // Inline clients retain compatibility and also share decoded bytes.
+        let mut inline_plan = received.clone();
+        for change in &mut inline_plan.changes {
+            for image in &mut change.cover_change.as_mut().unwrap().new {
+                image.data_base64 =
+                    inline_plan.cover_assets[image.data_ref.take().unwrap()].clone();
+            }
+        }
+        inline_plan.cover_assets.clear();
+        let decoded_inline = inline_plan.to_change_plan();
+        assert_eq!(
+            decoded_inline.changes[0].cover_change.as_ref().unwrap().new[0]
+                .data
+                .as_ptr(),
+            decoded_inline.changes[1].cover_change.as_ref().unwrap().new[1]
+                .data
+                .as_ptr()
+        );
+        let composed = app.preview_transform_over_plan(&received, &[]).unwrap();
+        assert_eq!(composed.cover_assets, received.cover_assets);
+        assert!(app
+            .preview_cover_set(
+                std::slice::from_ref(&a),
+                &[composed.changes[0].cover_change.as_ref().unwrap().new[0].clone()]
+            )
+            .is_err());
+        let applied = app.apply(&composed).unwrap();
+        for path in [&a, &b] {
+            let actual = TagEngine::read_covers(path).unwrap();
+            assert_eq!(actual, cover_dtos_to_art(&images));
+        }
+        app.undo(applied.id).unwrap();
+        assert!(TagEngine::read_covers(&a).unwrap().is_empty());
+        let mut invalid = received;
+        invalid.changes[0].cover_change.as_mut().unwrap().new[0].data_ref = Some(99);
+        assert!(app.apply(&invalid).is_err());
+        assert!(app.preview_transform_over_plan(&invalid, &[]).is_err());
+        assert!(TagEngine::read_covers(&a).unwrap().is_empty());
+    }
+
+    #[test]
+    fn cached_reads_refresh_after_external_write_apply_and_undo() {
+        let dir = TempDir::new("cache-invalidation");
+        let path = dir.tagged_flac("track.flac", "Before", "Title");
+        let mut app = App::open(&dir.0, &dir.0.join("journal.sqlite")).unwrap();
+        assert_eq!(
+            app.render_column("%artist%", std::slice::from_ref(&path))
+                .unwrap(),
+            ["Before"]
+        );
+        let mut track = TagEngine::read(&path).unwrap();
+        track.tags.insert(TagField::Artist, "External".into());
+        TagEngine::write(&track).unwrap();
+        assert_eq!(
+            app.render_column("%artist%", std::slice::from_ref(&path))
+                .unwrap(),
+            ["External"]
+        );
+        let plan = app
+            .preview_tag_edits(&[TagEditDto {
+                path: path.to_string_lossy().into_owned(),
+                field: "artist".into(),
+                value: Some("Applied".into()),
+            }])
+            .unwrap();
+        let batch = app.apply(&plan).unwrap();
+        assert_eq!(
+            app.render_column("%artist%", std::slice::from_ref(&path))
+                .unwrap(),
+            ["Applied"]
+        );
+        app.undo(batch.id).unwrap();
+        assert_eq!(
+            app.render_column("%artist%", std::slice::from_ref(&path))
+                .unwrap(),
+            ["External"]
         );
     }
 
@@ -7153,6 +8303,937 @@ mod tests {
         );
     }
 
+    fn live_field<'a>(plan: &'a PlanDto, path: &Path, field: &str) -> Option<&'a FieldChangeDto> {
+        plan.changes
+            .iter()
+            .find(|change| change.path == path.to_string_lossy())
+            .and_then(|change| {
+                change
+                    .tag_changes
+                    .iter()
+                    .find(|change| change.field == field)
+            })
+    }
+
+    /// The composition `preview_live_edits_with_base` had before the seed
+    /// narrowing, kept only as the oracle for the differential test below: it
+    /// seeds *every* tag of every in-scope file, then runs the same cleanup and
+    /// the same final gate. Artwork and `base_plan` are left out because the
+    /// seeding change cannot reach them; both sides of the comparison below
+    /// carry none.
+    fn live_plan_with_full_seeds(
+        app: &App,
+        edits: &[TagEditDto],
+        paths: &[PathBuf],
+        groups: &[ActionGroupDto],
+    ) -> PlanDto {
+        let scope: HashSet<PathBuf> = if groups.is_empty() {
+            HashSet::new()
+        } else {
+            paths.iter().cloned().collect()
+        };
+        let mut by_path: BTreeMap<PathBuf, BTreeMap<String, Option<String>>> = BTreeMap::new();
+        for edit in edits {
+            by_path
+                .entry(PathBuf::from(&edit.path))
+                .or_default()
+                .insert(
+                    edit.field.clone(),
+                    edit.value.clone().filter(|value| !value.is_empty()),
+                );
+        }
+        if !groups.is_empty() {
+            for path in &scope {
+                by_path.entry(path.clone()).or_default();
+            }
+        }
+        let mut transformed = Vec::new();
+        let mut untouched = Vec::new();
+        for (path, requested) in by_path {
+            let track = app.read_cached(&path).unwrap();
+            let in_scope = !groups.is_empty() && scope.contains(&path);
+            let mut fields: BTreeMap<String, FieldChangeDto> = if in_scope {
+                track
+                    .tags
+                    .iter()
+                    .map(|(field, value)| {
+                        let key = field.to_storage_key();
+                        (
+                            key.clone(),
+                            FieldChangeDto::new(key, Some(value.clone()), Some(value.clone())),
+                        )
+                    })
+                    .collect()
+            } else {
+                BTreeMap::new()
+            };
+            for (key, new) in requested {
+                let old = track.tags.get(&TagField::from_storage_key(&key)).cloned();
+                if in_scope || old != new {
+                    fields.insert(key.clone(), FieldChangeDto::new(key, old, new));
+                }
+            }
+            let change = FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: None,
+                tag_changes: fields.into_values().collect(),
+                cover_change: None,
+                sidecar_renames: Vec::new(),
+                block_changes: Vec::new(),
+                copy: false,
+                rename_root: None,
+                creates_folder: false,
+                folder_extras: Vec::new(),
+            };
+            if in_scope {
+                transformed.push(change);
+            } else {
+                untouched.push(change);
+            }
+        }
+        let message = PlanMessage::EditTags;
+        if groups.is_empty() {
+            return app.plan(message, Vec::new(), untouched, false);
+        }
+        let seed = PlanDto {
+            cover_assets: Vec::new(),
+            description: message.english(),
+            message: Some(MessageDto::from(&message)),
+            notes: Vec::new(),
+            changes: transformed,
+            prune_empty_dirs: false,
+            locked_skipped: Vec::new(),
+            unrendered: Vec::new(),
+        };
+        let cleaned = app.preview_transform_over_plan(&seed, groups).unwrap();
+        untouched.extend(cleaned.changes);
+        let mut plan =
+            app.plan_with_assets(message, Vec::new(), untouched, false, cleaned.cover_assets);
+        for skip in cleaned.locked_skipped {
+            if let Some(existing) = plan
+                .locked_skipped
+                .iter_mut()
+                .find(|item| item.field == skip.field)
+            {
+                existing.files += skip.files;
+            } else {
+                plan.locked_skipped.push(skip);
+            }
+        }
+        plan.locked_skipped
+            .sort_by(|a, b| b.files.cmp(&a.files).then_with(|| a.field.cmp(&b.field)));
+        plan.notes.push(MessageDto::from(&PlanMessage::CleanedUp));
+        plan.description = cleaned_up_description(&plan.description);
+        plan
+    }
+
+    /// The seeds a live preview writes are only the fields its presets can
+    /// still rewrite. The full-output oracle above seeds every tag, as the
+    /// preview used to; every combination must return the same serialized
+    /// `PlanDto` — tags, invalid markers, `locked_skipped`, notes, description —
+    /// so the narrowing is provably invisible.
+    #[test]
+    fn live_preview_seeds_only_the_fields_a_chain_can_still_change() {
+        let dir = TempDir::new("live-seed-diff");
+        let first = dir.tagged_flac("one.flac", "Disk_Artist", "Disk_Title");
+        let second = dir.tagged_flac("two.flac", "Other_Artist", "Other_Title");
+        let mut custom = TagEngine::read(&second).unwrap();
+        custom
+            .tags
+            .insert(TagField::Custom("MOOD".into()), "dark".into());
+        TagEngine::write(&custom).unwrap();
+        let app = open_app(&dir);
+        let paths = [first.clone(), second.clone()];
+        let edit = |path: &Path, field: &str, value: &str| TagEditDto {
+            path: path.to_string_lossy().into_owned(),
+            field: field.to_string(),
+            value: Some(value.to_string()),
+        };
+        let group = |scope: &str, rules: Vec<TransformRuleDto>| ActionGroupDto {
+            name: scope.to_string(),
+            scope: scope.to_string(),
+            rules,
+            note: String::new(),
+        };
+        let scoped = |scope: &str, mut rule: TransformRuleDto| {
+            rule.scope = Some(scope.to_string());
+            rule
+        };
+
+        let cases: Vec<(&str, Vec<TagEditDto>, Vec<ActionGroupDto>)> = vec![
+            (
+                "field scope alone",
+                vec![],
+                vec![group("title", vec![case_rule("upper")])],
+            ),
+            (
+                "field scope beside a typed field",
+                vec![edit(&first, "artist", "typed_artist")],
+                vec![group("title", vec![case_rule("upper")])],
+            ),
+            (
+                "field scope on the typed field",
+                vec![edit(&first, "title", "typed_title")],
+                vec![group("title", vec![replace_rule("_", " ")])],
+            ),
+            (
+                "tags scope",
+                vec![edit(&first, "artist", "typed_artist")],
+                vec![group("tags", vec![replace_rule("_", " ")])],
+            ),
+            (
+                "per-rule scopes in one group",
+                vec![],
+                vec![group(
+                    "title",
+                    vec![scoped("artist", case_rule("upper")), case_rule("lower")],
+                )],
+            ),
+            (
+                "disabled field rule",
+                vec![],
+                vec![group(
+                    "artist",
+                    vec![{
+                        let mut rule = case_rule("upper");
+                        rule.enabled = false;
+                        rule
+                    }],
+                )],
+            ),
+            (
+                "filename scope",
+                vec![edit(&first, "artist", "typed_artist")],
+                vec![group("filename", vec![replace_rule(" ", "_")])],
+            ),
+            (
+                "fileext scope",
+                vec![],
+                vec![group("fileext", vec![case_rule("upper")])],
+            ),
+            (
+                "bare custom name",
+                vec![],
+                vec![group("MOOD", vec![case_rule("upper")])],
+            ),
+            (
+                "prefixed custom name",
+                vec![],
+                vec![group("custom:MOOD", vec![case_rule("upper")])],
+            ),
+            (
+                "no preset",
+                vec![edit(&first, "artist", "typed_artist")],
+                vec![],
+            ),
+        ];
+
+        let mut plans = std::collections::BTreeMap::new();
+        for (name, edits, groups) in cases {
+            let narrowed = app
+                .preview_live_edits(&edits, &paths, &groups, None, &[])
+                .unwrap();
+            let oracle = live_plan_with_full_seeds(&app, &edits, &paths, &groups);
+            assert_eq!(
+                serde_json::to_string(&narrowed).unwrap(),
+                serde_json::to_string(&oracle).unwrap(),
+                "the narrowed seeds changed the plan for: {name}"
+            );
+            plans.insert(name, narrowed);
+        }
+
+        // What the narrowing must keep: an untyped field inside a field-scoped
+        // preset is still cleaned, and nothing outside the scope is seeded.
+        let plan = &plans["field scope alone"];
+        assert_eq!(
+            live_field(plan, &first, "title").unwrap().new.as_deref(),
+            Some("DISK_TITLE")
+        );
+        assert_eq!(
+            live_field(plan, &second, "title").unwrap().new.as_deref(),
+            Some("OTHER_TITLE")
+        );
+        assert!(live_field(plan, &first, "artist").is_none());
+        assert_eq!(
+            live_field(&plans["field scope on the typed field"], &first, "title")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("typed title")
+        );
+        assert_eq!(
+            live_field(&plans["per-rule scopes in one group"], &first, "artist")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("DISK_ARTIST")
+        );
+        assert_eq!(
+            live_field(&plans["per-rule scopes in one group"], &first, "title")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("disk_title")
+        );
+        // A filename-only preset seeds no tag field at all: the typed edit is
+        // the whole plan.
+        let plan = &plans["filename scope"];
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(
+            live_field(plan, &first, "artist").unwrap().new.as_deref(),
+            Some("typed_artist")
+        );
+        assert!(live_field(plan, &first, "title").is_none());
+        // A scope is compared as the cleanup compares it: `custom:MOOD` names
+        // the custom field, a bare `MOOD` names nothing.
+        assert_eq!(
+            live_field(&plans["prefixed custom name"], &second, "custom:MOOD")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("DARK")
+        );
+        assert!(plans["bare custom name"].changes.is_empty());
+        assert!(plans["disabled field rule"].changes.is_empty());
+        assert_eq!(
+            live_field(&plans["tags scope"], &first, "artist")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("typed artist")
+        );
+
+        // A locked targeted field is dropped and counted the same either way.
+        app.set_locked_fields(&["title".to_string()]);
+        let groups = vec![group("title", vec![case_rule("upper")])];
+        let narrowed = app
+            .preview_live_edits(&[], &paths, &groups, None, &[])
+            .unwrap();
+        let oracle = live_plan_with_full_seeds(&app, &[], &paths, &groups);
+        assert_eq!(
+            serde_json::to_string(&narrowed).unwrap(),
+            serde_json::to_string(&oracle).unwrap(),
+            "a locked field must be accounted for identically"
+        );
+        assert_eq!(narrowed.locked_skipped.len(), 1);
+        assert_eq!(narrowed.locked_skipped[0].field, "title");
+        assert_eq!(narrowed.locked_skipped[0].files, 2);
+        assert!(narrowed.changes.is_empty());
+        app.set_locked_fields(&[]);
+    }
+
+    #[test]
+    fn live_preview_edits_then_transforms_all_scoped_fields_and_keeps_other_pending_values() {
+        let dir = TempDir::new("live-order");
+        let edited = dir.tagged_flac("one.flac", "Disk Artist", "first_title");
+        let untouched = dir.tagged_flac("two.flac", "Second Artist", "second_title");
+        let outside = dir.tagged_flac("three.flac", "Third Artist", "third_title");
+        let app = open_app(&dir);
+        let edits = [
+            TagEditDto {
+                path: edited.to_string_lossy().into_owned(),
+                field: "artist".into(),
+                value: Some("editor_artist".into()),
+            },
+            TagEditDto {
+                path: outside.to_string_lossy().into_owned(),
+                field: "artist".into(),
+                value: Some("outside_artist".into()),
+            },
+        ];
+        let groups = [
+            ActionGroupDto {
+                name: "spaces".into(),
+                scope: "tags".into(),
+                rules: vec![replace_rule("_", " ")],
+                note: String::new(),
+            },
+            ActionGroupDto {
+                name: "upper".into(),
+                scope: "artist".into(),
+                rules: vec![case_rule("upper")],
+                note: String::new(),
+            },
+        ];
+        let plan = app
+            .preview_live_edits(
+                &edits,
+                &[edited.clone(), untouched.clone()],
+                &groups,
+                None,
+                &[],
+            )
+            .unwrap();
+        let artist = live_field(&plan, &edited, "artist").unwrap();
+        assert_eq!(artist.old.as_deref(), Some("Disk Artist"));
+        assert_eq!(artist.new.as_deref(), Some("EDITOR ARTIST"));
+        assert_eq!(
+            live_field(&plan, &edited, "title").unwrap().new.as_deref(),
+            Some("first title")
+        );
+        assert_eq!(
+            live_field(&plan, &untouched, "title")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("second title")
+        );
+        assert_eq!(
+            live_field(&plan, &outside, "artist")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("outside_artist")
+        );
+        assert!(live_field(&plan, &outside, "title").is_none());
+        assert_eq!(
+            TagEngine::read(&edited)
+                .unwrap()
+                .tags
+                .get(&TagField::Artist)
+                .map(String::as_str),
+            Some("Disk Artist")
+        );
+    }
+
+    #[test]
+    fn live_preview_repeated_requests_do_not_compound_and_unchanged_edits_still_transform() {
+        let dir = TempDir::new("live-repeat");
+        let path = dir.tagged_flac("one.flac", "a", "Title");
+        let app = open_app(&dir);
+        let edit = TagEditDto {
+            path: path.to_string_lossy().into_owned(),
+            field: "artist".into(),
+            value: Some("a".into()),
+        };
+        let group = ActionGroupDto {
+            name: "expand".into(),
+            scope: "artist".into(),
+            rules: vec![replace_rule("a", "aa")],
+            note: String::new(),
+        };
+        let preview = || {
+            app.preview_live_edits(
+                std::slice::from_ref(&edit),
+                std::slice::from_ref(&path),
+                std::slice::from_ref(&group),
+                None,
+                &[],
+            )
+            .unwrap()
+        };
+        let first = preview();
+        assert_eq!(first, preview());
+        assert_eq!(
+            live_field(&first, &path, "artist").unwrap().new.as_deref(),
+            Some("aa")
+        );
+        let plain = app
+            .preview_live_edits(&[edit], std::slice::from_ref(&path), &[], None, &[])
+            .unwrap();
+        assert!(plain.changes.is_empty());
+    }
+
+    #[test]
+    fn live_preview_retains_invalid_markers_and_filters_locked_values_once() {
+        let dir = TempDir::new("live-validation");
+        let path = dir.tagged_flac("one.flac", "Old", "Title");
+        let app = open_app(&dir);
+        app.set_locked_fields(&["artist".into()]);
+        let edits = [
+            TagEditDto {
+                path: path.to_string_lossy().into_owned(),
+                field: "artist".into(),
+                value: Some("requested".into()),
+            },
+            TagEditDto {
+                path: path.to_string_lossy().into_owned(),
+                field: "year".into(),
+                value: Some("invalid-year".into()),
+            },
+            TagEditDto {
+                path: path.to_string_lossy().into_owned(),
+                field: "title".into(),
+                value: Some("Requested Title".into()),
+            },
+        ];
+        let group = ActionGroupDto {
+            name: "upper".into(),
+            scope: "tags".into(),
+            rules: vec![case_rule("upper")],
+            note: String::new(),
+        };
+        let plan = app
+            .preview_live_edits(&edits, std::slice::from_ref(&path), &[group], None, &[])
+            .unwrap();
+        assert!(live_field(&plan, &path, "year").unwrap().invalid);
+        assert!(live_field(&plan, &path, "artist").is_none());
+        assert_eq!(
+            plan.locked_skipped
+                .iter()
+                .find(|skip| skip.field == "artist")
+                .unwrap()
+                .files,
+            1
+        );
+        assert_eq!(
+            live_field(&plan, &path, "title").unwrap().new.as_deref(),
+            Some("REQUESTED TITLE")
+        );
+        assert_eq!(
+            TagEngine::read(&path)
+                .unwrap()
+                .tags
+                .get(&TagField::Title)
+                .map(String::as_str),
+            Some("Title")
+        );
+    }
+
+    #[test]
+    fn live_preview_artwork_only_import_uses_its_captured_scope_and_cover_policy() {
+        let dir = TempDir::new("live-cover");
+        let first = dir.tagged_flac("one.flac", "Artist", "Title");
+        let second = dir.tagged_flac("two.flac", "Artist", "Other");
+        let app = open_app(&dir);
+        let cover = cover_art_to_dto(&CoverArt {
+            mime: "image/png".into(),
+            data: vec![0x89, 0x50, 1].into(),
+            ..CoverArt::default()
+        });
+        let paths = [first.clone(), second.clone()];
+        let preview = || {
+            app.preview_live_edits(&[], &paths, &[], Some(&cover), std::slice::from_ref(&first))
+                .unwrap()
+        };
+        let plan = preview();
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(plan.changes[0].path, first.to_string_lossy());
+        assert!(plan.changes[0].cover_change.is_some());
+        assert!(plan.changes[0].tag_changes.is_empty());
+        app.import_cover.set(ImportCover::Never);
+        assert!(preview().changes.is_empty());
+        app.import_cover.set(ImportCover::IfMissing);
+        TagEngine::write_covers(
+            &first,
+            &[CoverArt {
+                mime: "image/png".into(),
+                data: vec![2].into(),
+                ..CoverArt::default()
+            }],
+        )
+        .unwrap();
+        assert!(preview().changes.is_empty());
+        let group = ActionGroupDto {
+            name: "upper".into(),
+            scope: "title".into(),
+            rules: vec![case_rule("upper")],
+            note: String::new(),
+        };
+        app.import_cover.set(ImportCover::Always);
+        let transformed = app
+            .preview_live_edits(
+                &[],
+                &paths,
+                &[group],
+                Some(&cover),
+                std::slice::from_ref(&first),
+            )
+            .unwrap();
+        assert_eq!(
+            transformed
+                .changes
+                .iter()
+                .filter(|change| change.cover_change.is_some())
+                .count(),
+            1
+        );
+        assert_eq!(
+            live_field(&transformed, &second, "title")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("OTHER")
+        );
+    }
+
+    #[test]
+    fn live_preview_retains_disjoint_import_covers_and_latest_overlap_wins() {
+        let dir = TempDir::new("live-multiple-covers");
+        let first = dir.tagged_flac("one.flac", "Artist", "Title");
+        let second = dir.tagged_flac("two.flac", "Artist", "Other");
+        let mut app = open_app(&dir);
+        app.import_cover.set(ImportCover::Always);
+        let image = |byte| CoverArt {
+            mime: "image/png".into(),
+            data: vec![0x89, 0x50, byte].into(),
+            ..CoverArt::default()
+        };
+        let assignments = vec![
+            LiveCoverAssignmentDto {
+                cover: cover_art_to_dto(&image(1)),
+                paths: vec![
+                    first.to_string_lossy().into_owned(),
+                    second.to_string_lossy().into_owned(),
+                ],
+            },
+            LiveCoverAssignmentDto {
+                cover: cover_art_to_dto(&image(2)),
+                paths: vec![second.to_string_lossy().into_owned()],
+            },
+        ];
+        let group = ActionGroupDto {
+            name: "upper".into(),
+            scope: "title".into(),
+            rules: vec![case_rule("upper")],
+            note: String::new(),
+        };
+        let paths = vec![first.clone(), second.clone()];
+        let plan = app
+            .preview_live_edits_with_covers(&[], &paths, &[group], &assignments)
+            .unwrap();
+        assert_eq!(plan.changes.len(), 2);
+        assert_eq!(
+            plan.cover_assets.len(),
+            2,
+            "each distinct image is encoded once"
+        );
+        let batch = app.apply(&plan).unwrap();
+        assert_eq!(TagEngine::read_covers(&first).unwrap(), vec![image(1)]);
+        assert_eq!(TagEngine::read_covers(&second).unwrap(), vec![image(2)]);
+        app.undo(batch.id).unwrap();
+        assert!(TagEngine::read_covers(&first).unwrap().is_empty());
+        assert!(TagEngine::read_covers(&second).unwrap().is_empty());
+    }
+
+    #[test]
+    fn live_preview_manual_cover_replaces_import_and_joins_transformed_tags_in_one_undo() {
+        let dir = TempDir::new("live-manual-cover");
+        let path = dir.tagged_flac("one.flac", "Artist", "Old Title");
+        let art = |byte, kind, description: &str| CoverArt {
+            mime: "image/png".into(),
+            data: vec![0x89, 0x50, byte].into(),
+            kind,
+            description: description.into(),
+        };
+        let original = vec![
+            art(1, CoverKind::Front, "Original front"),
+            art(2, CoverKind::Back, "Back sleeve"),
+        ];
+        TagEngine::write_covers(&path, &original).unwrap();
+        let mut app = open_app(&dir);
+        app.import_cover.set(ImportCover::Always);
+        let manual = art(9, CoverKind::Front, "Manual front");
+        let base = app
+            .preview_cover_embed(std::slice::from_ref(&path), &cover_art_to_dto(&manual))
+            .unwrap();
+        let incoming = vec![LiveCoverAssignmentDto {
+            cover: cover_art_to_dto(&art(7, CoverKind::Front, "Imported front")),
+            paths: vec![path.to_string_lossy().into_owned()],
+        }];
+        let edits = [TagEditDto {
+            path: path.to_string_lossy().into_owned(),
+            field: "title".into(),
+            value: Some("editor_title".into()),
+        }];
+        let groups = [ActionGroupDto {
+            name: "spaces".into(),
+            scope: "title".into(),
+            rules: vec![replace_rule("_", " ")],
+            note: String::new(),
+        }];
+        let plan = app
+            .preview_live_edits_with_base(
+                &edits,
+                std::slice::from_ref(&path),
+                &groups,
+                &incoming,
+                Some(&base),
+            )
+            .unwrap();
+        assert_eq!(
+            live_field(&plan, &path, "title").unwrap().new.as_deref(),
+            Some("editor title")
+        );
+        let native = plan.to_change_plan();
+        assert_eq!(
+            native.changes[0].cover_change.as_ref().unwrap().old,
+            original
+        );
+        assert_eq!(
+            native.changes[0].cover_change.as_ref().unwrap().new,
+            vec![manual.clone(), original[1].clone()]
+        );
+        let batch = app.apply(&plan).unwrap();
+        assert_eq!(
+            TagEngine::read_covers(&path).unwrap(),
+            vec![manual, original[1].clone()]
+        );
+        assert_eq!(
+            TagEngine::read(&path)
+                .unwrap()
+                .tags
+                .get(&TagField::Title)
+                .map(String::as_str),
+            Some("editor title")
+        );
+        app.undo(batch.id).unwrap();
+        assert_eq!(TagEngine::read_covers(&path).unwrap(), original);
+        assert_eq!(
+            TagEngine::read(&path)
+                .unwrap()
+                .tags
+                .get(&TagField::Title)
+                .map(String::as_str),
+            Some("Old Title")
+        );
+    }
+
+    #[test]
+    fn live_preview_manual_cover_removal_ignores_import_policy_and_uses_fresh_undo_images() {
+        let dir = TempDir::new("live-manual-remove");
+        let path = dir.tagged_flac("one.flac", "Artist", "Old Title");
+        let art = |byte| CoverArt {
+            mime: "image/png".into(),
+            data: vec![0x89, 0x50, byte].into(),
+            kind: CoverKind::Back,
+            description: "Keep exact back artwork".into(),
+        };
+        TagEngine::write_covers(&path, &[art(1)]).unwrap();
+        let mut app = open_app(&dir);
+        let base = app
+            .preview_cover_remove(std::slice::from_ref(&path))
+            .unwrap();
+        // A cached manual candidate must not make Undo restore stale old bytes.
+        TagEngine::write_covers(&path, &[art(2)]).unwrap();
+        app.import_cover.set(ImportCover::Never);
+        let edits = [TagEditDto {
+            path: path.to_string_lossy().into_owned(),
+            field: "title".into(),
+            value: Some("new_title".into()),
+        }];
+        let groups = [ActionGroupDto {
+            name: "spaces".into(),
+            scope: "title".into(),
+            rules: vec![replace_rule("_", " ")],
+            note: String::new(),
+        }];
+        let plan = app
+            .preview_live_edits_with_base(
+                &edits,
+                std::slice::from_ref(&path),
+                &groups,
+                &[],
+                Some(&base),
+            )
+            .unwrap();
+        let native = plan.to_change_plan();
+        assert_eq!(
+            native.changes[0].cover_change.as_ref().unwrap().old,
+            vec![art(2)]
+        );
+        assert!(native.changes[0]
+            .cover_change
+            .as_ref()
+            .unwrap()
+            .new
+            .is_empty());
+        let batch = app.apply(&plan).unwrap();
+        assert!(TagEngine::read_covers(&path).unwrap().is_empty());
+        app.undo(batch.id).unwrap();
+        assert_eq!(TagEngine::read_covers(&path).unwrap(), vec![art(2)]);
+    }
+
+    #[test]
+    fn live_preview_empty_manual_cover_override_suppresses_pending_import_before_noop_filter() {
+        let dir = TempDir::new("live-suppress-import");
+        let path = dir.tagged_flac("one.flac", "Artist", "Old Title");
+        let mut app = open_app(&dir);
+        app.import_cover.set(ImportCover::Always);
+        let mut base = app
+            .preview_cover_remove(std::slice::from_ref(&path))
+            .unwrap();
+        assert!(base.changes.is_empty());
+        base.changes.push(FileChangeDto {
+            path: path.to_string_lossy().into_owned(),
+            rename_to: None,
+            copy: false,
+            tag_changes: Vec::new(),
+            cover_change: Some(CoverChangeDto {
+                old: Vec::new(),
+                new: Vec::new(),
+            }),
+            sidecar_renames: Vec::new(),
+            block_changes: Vec::new(),
+            rename_root: None,
+            creates_folder: false,
+            folder_extras: Vec::new(),
+        });
+        let incoming = [LiveCoverAssignmentDto {
+            cover: cover_art_to_dto(&CoverArt {
+                mime: "image/png".into(),
+                data: vec![9].into(),
+                ..CoverArt::default()
+            }),
+            paths: vec![path.to_string_lossy().into_owned()],
+        }];
+        let edits = [TagEditDto {
+            path: path.to_string_lossy().into_owned(),
+            field: "title".into(),
+            value: Some("new_title".into()),
+        }];
+        let groups = [ActionGroupDto {
+            name: "spaces".into(),
+            scope: "title".into(),
+            rules: vec![replace_rule("_", " ")],
+            note: String::new(),
+        }];
+        let plan = app
+            .preview_live_edits_with_base(
+                &edits,
+                std::slice::from_ref(&path),
+                &groups,
+                &incoming,
+                Some(&base),
+            )
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        assert!(plan.changes[0].cover_change.is_none());
+        assert!(plan.cover_assets.is_empty());
+        assert_eq!(
+            live_field(&plan, &path, "title").unwrap().new.as_deref(),
+            Some("new title")
+        );
+        app.apply(&plan).unwrap();
+        assert!(TagEngine::read_covers(&path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn live_preview_manual_and_import_cover_pools_do_not_alias_their_zero_indices() {
+        let dir = TempDir::new("live-independent-cover-pools");
+        let first = dir.tagged_flac("one.flac", "Artist", "One");
+        let second = dir.tagged_flac("two.flac", "Artist", "Two");
+        let mut app = open_app(&dir);
+        app.import_cover.set(ImportCover::Always);
+        let art = |byte| CoverArt {
+            mime: "image/png".into(),
+            data: vec![0x89, 0x50, byte].into(),
+            ..CoverArt::default()
+        };
+        let base = app
+            .preview_cover_embed(std::slice::from_ref(&first), &cover_art_to_dto(&art(1)))
+            .unwrap();
+        assert_eq!(
+            base.changes[0].cover_change.as_ref().unwrap().new[0].data_ref,
+            Some(0)
+        );
+        let imports = [LiveCoverAssignmentDto {
+            cover: cover_art_to_dto(&art(2)),
+            paths: vec![second.to_string_lossy().into_owned()],
+        }];
+        let paths = [first.clone(), second.clone()];
+        let plan = app
+            .preview_live_edits_with_base(&[], &paths, &[], &imports, Some(&base))
+            .unwrap();
+        assert_eq!(plan.cover_assets.len(), 2);
+        let batch = app.apply(&plan).unwrap();
+        assert_eq!(TagEngine::read_covers(&first).unwrap(), vec![art(1)]);
+        assert_eq!(TagEngine::read_covers(&second).unwrap(), vec![art(2)]);
+        app.undo(batch.id).unwrap();
+        assert!(TagEngine::read_covers(&first).unwrap().is_empty());
+        assert!(TagEngine::read_covers(&second).unwrap().is_empty());
+    }
+
+    #[test]
+    fn live_preview_manual_cover_pool_is_validated_before_combining_other_assets() {
+        let dir = TempDir::new("live-manual-pool");
+        let path = dir.tagged_flac("one.flac", "Artist", "Title");
+        let app = open_app(&dir);
+        let image = cover_art_to_dto(&CoverArt {
+            mime: "image/png".into(),
+            data: vec![9].into(),
+            ..CoverArt::default()
+        });
+        let mut base = app
+            .preview_cover_embed(std::slice::from_ref(&path), &image)
+            .unwrap();
+        base.changes[0].cover_change.as_mut().unwrap().new[0].data_ref = Some(999);
+        let incoming = [LiveCoverAssignmentDto {
+            cover: image,
+            paths: vec![path.to_string_lossy().into_owned()],
+        }];
+        assert!(app
+            .preview_live_edits_with_base(
+                &[],
+                std::slice::from_ref(&path),
+                &[],
+                &incoming,
+                Some(&base)
+            )
+            .is_err());
+        assert!(TagEngine::read_covers(&path).unwrap().is_empty());
+    }
+
+    #[test]
+    fn live_preview_apply_is_one_undo_batch_and_stale_files_are_rejected() {
+        let dir = TempDir::new("live-apply");
+        let path = dir.tagged_flac("one.flac", "Old Artist", "Old Title");
+        let mut app = open_app(&dir);
+        let edits = [TagEditDto {
+            path: path.to_string_lossy().into_owned(),
+            field: "title".into(),
+            value: Some("new_title".into()),
+        }];
+        let groups = [ActionGroupDto {
+            name: "spaces".into(),
+            scope: "title".into(),
+            rules: vec![replace_rule("_", " ")],
+            note: String::new(),
+        }];
+        let plan = app
+            .preview_live_edits(&edits, std::slice::from_ref(&path), &groups, None, &[])
+            .unwrap();
+        let batch = app.apply(&plan).unwrap();
+        assert_eq!(
+            TagEngine::read(&path)
+                .unwrap()
+                .tags
+                .get(&TagField::Title)
+                .map(String::as_str),
+            Some("new title")
+        );
+        app.undo(batch.id).unwrap();
+        assert_eq!(
+            TagEngine::read(&path)
+                .unwrap()
+                .tags
+                .get(&TagField::Title)
+                .map(String::as_str),
+            Some("Old Title")
+        );
+        let mut external = TagEngine::read(&path).unwrap();
+        external
+            .tags
+            .insert(TagField::Title, "External Title".into());
+        TagEngine::write(&external).unwrap();
+        assert!(app.apply(&plan).is_err());
+        assert_eq!(
+            TagEngine::read(&path)
+                .unwrap()
+                .tags
+                .get(&TagField::Title)
+                .map(String::as_str),
+            Some("External Title")
+        );
+        let fresh = app
+            .preview_live_edits(&edits, std::slice::from_ref(&path), &groups, None, &[])
+            .unwrap();
+        assert_eq!(
+            live_field(&fresh, &path, "title").unwrap().old.as_deref(),
+            Some("External Title")
+        );
+    }
+
     // #142: a cleanup chain over a STAGED plan cleans the values the plan
     // proposes, not the ones on disk. This is the case that could not be done
     // at all before — the extracted values exist nowhere yet, so a chain run
@@ -7309,6 +9390,86 @@ mod tests {
         );
     }
 
+    // #142/#58: a cleanup that lands back on the file's own name is not a
+    // rename any more, so it must not carry the staged rename's sidecars on
+    // their own — a sidecar pair outliving its rename would move the `.lrc`
+    // while the audio stayed. The change stays for what it still does.
+    #[test]
+    fn a_cleanup_that_reverts_the_name_drops_the_rename_and_its_sidecars() {
+        let dir = TempDir::new("plan-cleanup-renameback");
+        let track = dir.tagged_flac("original.flac", "Artist", "Title");
+        std::fs::write(dir.0.join("original.lrc"), b"lyrics").unwrap();
+        let mut app = open_app(&dir);
+        let staged = app
+            .preview_transform_groups(
+                std::slice::from_ref(&track),
+                &[
+                    ActionGroupDto {
+                        name: "shout".into(),
+                        scope: "filename".into(),
+                        rules: vec![replace_rule("original", "ORIGINAL")],
+                        note: String::new(),
+                    },
+                    ActionGroupDto {
+                        name: "upper".into(),
+                        scope: "title".into(),
+                        rules: vec![case_rule("upper")],
+                        note: String::new(),
+                    },
+                ],
+            )
+            .unwrap();
+        assert_eq!(staged.changes.len(), 1);
+        assert!(staged.changes[0].rename_to.is_some());
+        assert_eq!(staged.changes[0].sidecar_renames.len(), 1);
+
+        let cleaned = app
+            .preview_transform_over_plan(
+                &staged,
+                &[ActionGroupDto {
+                    name: "lower".into(),
+                    scope: "filename".into(),
+                    rules: vec![case_rule("lower")],
+                    note: String::new(),
+                }],
+            )
+            .unwrap();
+        assert_eq!(cleaned.changes.len(), 1, "the tag edit still has work");
+        assert_eq!(cleaned.changes[0].rename_to, None);
+        assert!(cleaned.changes[0].sidecar_renames.is_empty());
+        assert!(cleaned.changes[0].folder_extras.is_empty());
+        assert_eq!(
+            live_field(&cleaned, &track, "title")
+                .unwrap()
+                .new
+                .as_deref(),
+            Some("TITLE")
+        );
+
+        // Apply leaves the audio and its sidecar exactly where they are.
+        let batch = app.apply(&cleaned).unwrap();
+        assert!(track.exists());
+        assert!(dir.0.join("original.lrc").exists());
+        // Case-insensitive filesystems resolve ORIGINAL.lrc to original.lrc.
+        // Inspect directory-entry spelling to prove no case-only rename occurred.
+        let names: Vec<_> = std::fs::read_dir(&dir.0)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert!(names.iter().any(|name| name == "original.lrc"));
+        assert!(!names.iter().any(|name| name == "ORIGINAL.lrc"));
+        let title = || {
+            TagEngine::read(&track)
+                .unwrap()
+                .tags
+                .get(&TagField::Title)
+                .cloned()
+        };
+        assert_eq!(title().as_deref(), Some("TITLE"));
+        app.undo(batch.id).unwrap();
+        assert_eq!(title().as_deref(), Some("Title"));
+    }
+
     // #383: a chain cleans the proposed NAME and keeps the proposed FOLDER. The
     // case that surfaced it: a file already named the way the chain writes
     // names (lower case, underscores). Restructuring it into a subfolder and
@@ -7455,6 +9616,7 @@ mod tests {
 
         // A hand-built plan aimed outside, as a crafted mask would produce.
         let plan = PlanDto {
+            cover_assets: Vec::new(),
             description: "sneaky".into(),
             message: None,
             notes: Vec::new(),
@@ -7586,7 +9748,7 @@ mod tests {
         let track = dir.tagged_flac("x.flac", "Autechre", "Gantz Graf");
         let image = |kind: CoverKind, byte: u8| CoverArt {
             mime: "image/png".to_string(),
-            data: vec![0x89, 0x50, byte],
+            data: vec![0x89, 0x50, byte].into(),
             kind,
             description: String::new(),
         };
@@ -7626,7 +9788,7 @@ mod tests {
         let track = dir.tagged_flac("x.flac", "Autechre", "Gantz Graf");
         let cover = cover_art_to_dto(&CoverArt {
             mime: "image/png".to_string(),
-            data: TOO_LARGE.to_vec(),
+            data: TOO_LARGE.to_vec().into(),
             kind: CoverKind::Front,
             description: String::new(),
         });
@@ -7727,7 +9889,7 @@ mod tests {
         let track = dir.tagged_flac("x.flac", "Autechre", "Gantz Graf");
         let image = |kind: CoverKind, byte: u8| CoverArt {
             mime: "image/png".to_string(),
-            data: vec![0x89, 0x50, byte],
+            data: vec![0x89, 0x50, byte].into(),
             kind,
             description: String::new(),
         };
@@ -7771,7 +9933,7 @@ mod tests {
         let b = dir.tagged_flac("b.flac", "Autechre", "B");
         let image = |kind: CoverKind, byte: u8| CoverArt {
             mime: "image/png".to_string(),
-            data: vec![0x89, 0x50, byte],
+            data: vec![0x89, 0x50, byte].into(),
             kind,
             description: String::new(),
         };
@@ -7858,6 +10020,107 @@ mod tests {
         hub.apply_settings(&SettingsDto::default());
         assert!(hub.proxy.borrow().is_none());
         assert!(hub.min_interval.get().is_none());
+    }
+
+    /// A short rate-limit refusal is waited out and the request tried once more;
+    /// a long stated wait goes straight back to the caller (#747).
+    #[test]
+    fn a_musicbrainz_image_fetch_does_not_spend_the_api_spacing() {
+        // Cover Art Archive images are not MusicBrainz API requests (#749).
+        let hub = ProviderHub::default();
+        hub.image_fetch("musicbrainz", "").unwrap();
+        assert!(hub.last_musicbrainz_request.get().is_none());
+        // Any other source keeps its spacing.
+        hub.image_fetch("bandcamp", "").unwrap();
+        assert!(hub.last_bandcamp_request.get().is_some());
+    }
+
+    #[test]
+    fn no_more_than_six_image_downloads_run_at_once() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::Arc;
+        let running = Arc::new(AtomicUsize::new(0));
+        let most = Arc::new(AtomicUsize::new(0));
+        let workers: Vec<_> = (0..MAX_IMAGE_DOWNLOADS * 2)
+            .map(|_| {
+                let (running, most) = (Arc::clone(&running), Arc::clone(&most));
+                std::thread::spawn(move || {
+                    let _slot = ImageDownloadSlot::acquire();
+                    let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+                    most.fetch_max(now, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(200));
+                    running.fetch_sub(1, Ordering::SeqCst);
+                })
+            })
+            .collect();
+        for worker in workers {
+            worker.join().unwrap();
+        }
+        // Capped, but still in parallel up to the cap (#749).
+        assert_eq!(most.load(Ordering::SeqCst), MAX_IMAGE_DOWNLOADS);
+        assert_eq!(*IMAGE_DOWNLOADS.lock().unwrap(), 0);
+    }
+
+    #[test]
+    fn a_short_rate_limit_is_retried_once_and_a_long_one_is_reported() {
+        use tagrex_core::provider::ProviderError;
+        let limited = |secs| {
+            Err::<u32, _>(AppError::Provider(ProviderError::RateLimited {
+                retry_after_secs: secs,
+            }))
+        };
+        let hub = ProviderHub::default();
+
+        // Refused once with `Retry-After: 0`, then served: one retry, after at
+        // least a second.
+        let calls = Cell::new(0);
+        let started = Instant::now();
+        let result = hub.with_retry("discogs", || {
+            calls.set(calls.get() + 1);
+            if calls.get() == 1 {
+                limited(0)
+            } else {
+                Ok(7)
+            }
+        });
+        assert_eq!(result.unwrap(), 7);
+        assert_eq!(calls.get(), 2);
+        assert!(started.elapsed() >= Duration::from_secs(1));
+
+        // Refused twice: only one retry, then the refusal is reported.
+        let calls = Cell::new(0);
+        let result = hub.with_retry("discogs", || {
+            calls.set(calls.get() + 1);
+            limited(0)
+        });
+        assert!(matches!(
+            result,
+            Err(AppError::Provider(ProviderError::RateLimited { .. }))
+        ));
+        assert_eq!(calls.get(), 2);
+
+        // A minute's wait is not sat out here: the caller decides.
+        let calls = Cell::new(0);
+        let result = hub.with_retry("discogs", || {
+            calls.set(calls.get() + 1);
+            limited(60)
+        });
+        assert!(matches!(
+            result,
+            Err(AppError::Provider(ProviderError::RateLimited {
+                retry_after_secs: 60
+            }))
+        ));
+        assert_eq!(calls.get(), 1);
+
+        // Any other failure is never retried.
+        let calls = Cell::new(0);
+        let result = hub.with_retry("discogs", || {
+            calls.set(calls.get() + 1);
+            Err::<u32, _>(AppError::Provider(ProviderError::NotFound))
+        });
+        assert!(result.is_err());
+        assert_eq!(calls.get(), 1);
     }
 
     #[test]
@@ -8088,6 +10351,22 @@ mod tests {
     }
 
     #[test]
+    fn cached_rows_keep_the_native_compilation_field() {
+        let dir = TempDir::new("compilation-metadata-cache");
+        dir.tagged_flac("track.flac", "Artist", "Title");
+        let app = open_app(&dir);
+        for _ in 0..2 {
+            let rows = app.list_tracks();
+            assert_eq!(rows.len(), 1);
+            assert!(!rows[0].unreadable);
+            assert_eq!(
+                rows[0].compilation_field.as_deref(),
+                Some("custom:COMPILATION")
+            );
+        }
+    }
+
+    #[test]
     fn lists_tagged_tracks() {
         let dir = TempDir::new("list");
         dir.tagged_flac("x.flac", "Boards of Canada", "Roygbiv");
@@ -8100,6 +10379,145 @@ mod tests {
             Some("Boards of Canada")
         );
         assert_eq!(tracks[0].format, "Flac");
+    }
+
+    #[test]
+    fn read_track_refreshes_the_complete_row_after_a_write() {
+        let dir = TempDir::new("read-one-track");
+        let path = dir.tagged_flac_at("album/target.flac", "Artist", "Before");
+        dir.tagged_flac("neighbour.flac", "Other artist", "Unchanged");
+        let app = open_app(&dir);
+        let before = app.read_track(&path).unwrap();
+        assert_eq!(before.duration_secs, Some(0));
+        assert!(!before.tag_blocks.is_empty());
+        assert!(!before.has_cover);
+
+        let mut file = TagEngine::read(&path).unwrap();
+        file.tags.insert(TagField::Title, "After".to_string());
+        TagEngine::write(&file).unwrap();
+        TagEngine::write_covers(
+            &path,
+            &[CoverArt {
+                mime: "image/png".to_string(),
+                data: vec![0x89, 0x50, 0x4e, 0x47].into(),
+                kind: CoverKind::Front,
+                description: String::new(),
+            }],
+        )
+        .unwrap();
+
+        let refreshed = app.read_track(&path).unwrap();
+        assert_eq!(
+            refreshed.tags.get("title").map(String::as_str),
+            Some("After")
+        );
+        assert!(refreshed.has_cover);
+        assert_eq!(refreshed.duration_secs, before.duration_secs);
+        assert_eq!(
+            refreshed,
+            app.list_tracks()
+                .into_iter()
+                .find(|row| row.path == path.to_string_lossy())
+                .unwrap(),
+            "a targeted refresh must include the same properties as a full listing"
+        );
+    }
+
+    #[test]
+    fn read_track_requires_explicit_file_set_membership() {
+        let dir = TempDir::new("read-one-fileset");
+        let selected = dir.tagged_flac("selected.flac", "Artist", "Selected");
+        let unselected = dir.tagged_flac("unselected.flac", "Artist", "Unselected");
+        let app = App::open_file_set(
+            dir.0.clone(),
+            vec![selected.clone()],
+            &dir.0.join("journal.sqlite"),
+        )
+        .unwrap();
+        assert_eq!(app.read_track(&selected).unwrap(), app.list_tracks()[0]);
+        assert!(matches!(
+            app.read_track(&unselected),
+            Err(AppError::OutsideRoot(_))
+        ));
+    }
+
+    #[test]
+    fn read_track_rejects_paths_the_library_scanner_would_not_list() {
+        let dir = TempDir::new("read-one-boundary");
+        let outside = TempDir::new("read-one-outside");
+        let external = outside.tagged_flac("outside.flac", "External", "Not authorized");
+        let track = dir.tagged_flac_at("album/inside.flac", "Artist", "Inside");
+        std::fs::write(dir.0.join("notes.txt"), MINIMAL_FLAC).unwrap();
+        std::fs::create_dir(dir.0.join("directory.flac")).unwrap();
+        let app = open_app(&dir);
+        for path in [
+            external,
+            dir.0.join("notes.txt"),
+            dir.0.join("directory.flac"),
+            dir.0.join("album/../album/inside.flac"),
+        ] {
+            assert!(
+                matches!(app.read_track(&path), Err(AppError::OutsideRoot(_))),
+                "{path:?}"
+            );
+        }
+        assert_eq!(
+            app.read_track(&track)
+                .unwrap()
+                .tags
+                .get("title")
+                .map(String::as_str),
+            Some("Inside")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_track_does_not_follow_unlisted_symlinks_below_the_root() {
+        use std::os::unix::fs::symlink;
+        let dir = TempDir::new("read-one-symlink");
+        let outside = TempDir::new("read-one-symlink-outside");
+        let inside = dir.tagged_flac_at("album/inside.flac", "Artist", "Inside");
+        let external = outside.tagged_flac("outside.flac", "External", "Outside");
+        symlink(&inside, dir.0.join("alias.flac")).unwrap();
+        symlink(&external, dir.0.join("escape.flac")).unwrap();
+        symlink(dir.0.join("album"), dir.0.join("alias-album")).unwrap();
+        let app = open_app(&dir);
+        for path in [
+            dir.0.join("alias.flac"),
+            dir.0.join("escape.flac"),
+            dir.0.join("alias-album/inside.flac"),
+        ] {
+            assert!(
+                matches!(app.read_track(&path), Err(AppError::OutsideRoot(_))),
+                "{path:?}"
+            );
+        }
+        assert_eq!(
+            app.read_track(&inside)
+                .unwrap()
+                .tags
+                .get("title")
+                .map(String::as_str),
+            Some("Inside")
+        );
+    }
+
+    #[test]
+    fn read_track_preserves_the_unreadable_placeholder_contract() {
+        let dir = TempDir::new("read-one-unreadable");
+        let path = dir.0.join("broken.flac");
+        std::fs::write(&path, b"not a real flac file").unwrap();
+        let app = open_app(&dir);
+        let row = app.read_track(&path).unwrap();
+        assert!(row.unreadable);
+        assert_eq!(row.duration_secs, None);
+        assert_eq!(row, app.list_tracks()[0]);
+        std::fs::remove_file(&path).unwrap();
+        assert!(
+            app.read_track(&path).is_err(),
+            "a disappeared source cannot be refreshed"
+        );
     }
 
     #[test]
@@ -8599,6 +11017,26 @@ mod tests {
     }
 
     #[test]
+    fn natural_cmp_handles_digit_boundaries_and_unicode() {
+        use std::cmp::Ordering::{Greater, Less};
+        assert_eq!(natural_cmp("音楽2🎵", "音楽10🎵"), Less);
+        assert_eq!(natural_cmp("é0002a", "É2b"), Less);
+        assert_eq!(natural_cmp("x000", "x0"), "x000".cmp("x0"));
+        assert_eq!(natural_cmp("a٢", "a10"), Greater);
+        assert_eq!(natural_cmp("İ02", "i2"), Greater);
+        assert_eq!(natural_cmp("🎵", "🎵0"), Less);
+        let long = "9".repeat(500);
+        assert_eq!(
+            natural_cmp(&format!("音{long}"), &format!("音1{long}")),
+            Less
+        );
+        assert_eq!(
+            natural_cmp(&format!("音00{long}"), &format!("音{long}")),
+            format!("音00{long}").cmp(&format!("音{long}"))
+        );
+    }
+
+    #[test]
     fn read_text_list_decodes_utf8_and_utf16_and_refuses_binary() {
         let dir = TempDir::new("fromtext-read");
         let file = |name: &str, bytes: &[u8]| {
@@ -9062,6 +11500,365 @@ mod tests {
     }
 
     #[test]
+    fn sidecar_candidates_keep_file_and_extension_rules() {
+        let dir = TempDir::new("sidecar-candidates");
+        let track = dir.tagged_flac("original.flac", "Artist", "Title");
+        let cue = dir.0.join("original.CUE");
+        std::fs::write(&cue, b"cue").unwrap();
+        std::fs::write(dir.0.join("original.zzz"), b"unlisted").unwrap();
+        std::fs::write(dir.0.join("different.lrc"), b"other stem").unwrap();
+        std::fs::write(dir.0.join("original"), b"extensionless").unwrap();
+        std::fs::create_dir(dir.0.join("original.lrc")).unwrap();
+        let app = open_app(&dir);
+        let plan = app
+            .preview_rename("renamed", std::slice::from_ref(&track))
+            .unwrap();
+        assert_eq!(
+            plan.changes[0].sidecar_renames,
+            vec![(
+                cue.to_string_lossy().into_owned(),
+                dir.0.join("renamed.CUE").to_string_lossy().into_owned(),
+            )]
+        );
+        #[cfg(unix)]
+        {
+            let linked = dir.0.join("original.txt");
+            std::os::unix::fs::symlink(&cue, &linked).unwrap();
+            std::os::unix::fs::symlink(dir.0.join("missing"), dir.0.join("original.jpg")).unwrap();
+            let plan = app
+                .preview_rename("renamed", std::slice::from_ref(&track))
+                .unwrap();
+            let froms: Vec<_> = plan.changes[0]
+                .sidecar_renames
+                .iter()
+                .map(|(from, _)| from.as_str())
+                .collect();
+            assert_eq!(
+                froms.len(),
+                2,
+                "file symlink included, broken symlink excluded"
+            );
+            assert!(froms.contains(&linked.to_string_lossy().as_ref()));
+        }
+    }
+
+    // #58: one preview lists each source folder once, but the pairs are still
+    // taken per file — same stem in two folders, a subfolder that is not the
+    // file's own, a directory named like a sidecar, a live symlink and a
+    // dangling one are all judged exactly as the per-file walk judged them.
+    #[test]
+    fn each_files_sidecars_come_from_its_own_folder() {
+        let dir = TempDir::new("sidecar-per-folder");
+        let first = dir.tagged_flac_at("a/x.flac", "Artist", "First");
+        let second = dir.tagged_flac_at("b/x.flac", "Artist", "Second");
+        std::fs::write(dir.0.join("a").join("x.lrc"), b"a lyrics").unwrap();
+        std::fs::write(dir.0.join("b").join("x.lrc"), b"b lyrics").unwrap();
+        // A same-stem sidecar below the file's own folder is not the folder's.
+        std::fs::create_dir_all(dir.0.join("a").join("Nested")).unwrap();
+        std::fs::write(dir.0.join("a").join("Nested/x.lrc"), b"nested").unwrap();
+        // A directory that looks like a sidecar is not a file.
+        std::fs::create_dir(dir.0.join("a").join("x.cue")).unwrap();
+        // A live symlink to a file travels; a dangling one does not.
+        std::fs::write(dir.0.join("outside.txt"), b"outside").unwrap();
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink("../outside.txt", dir.0.join("a").join("x.txt")).unwrap();
+            std::os::unix::fs::symlink(dir.0.join("missing"), dir.0.join("a").join("x.jpg"))
+                .unwrap();
+        }
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_rename("%title%", &[first.clone(), second.clone()])
+            .unwrap();
+        assert_eq!(plan.changes.len(), 2);
+        let position = |path: &Path| {
+            plan.changes
+                .iter()
+                .position(|change| change.path == path.to_string_lossy().as_ref())
+                .unwrap()
+        };
+        let first_change = &plan.changes[position(&first)];
+        #[allow(unused_mut)]
+        let mut expected = vec![(
+            dir.0.join("a").join("x.lrc").to_string_lossy().into_owned(),
+            dir.0
+                .join("a")
+                .join("First.lrc")
+                .to_string_lossy()
+                .into_owned(),
+        )];
+        #[cfg(unix)]
+        expected.push((
+            dir.0.join("a").join("x.txt").to_string_lossy().into_owned(),
+            dir.0
+                .join("a")
+                .join("First.txt")
+                .to_string_lossy()
+                .into_owned(),
+        ));
+        expected.sort();
+        assert_eq!(first_change.sidecar_renames, expected);
+        // The other folder's sidecar is not this file's.
+        assert_eq!(
+            plan.changes[position(&second)].sidecar_renames,
+            vec![(
+                dir.0.join("b").join("x.lrc").to_string_lossy().into_owned(),
+                dir.0
+                    .join("b")
+                    .join("Second.lrc")
+                    .to_string_lossy()
+                    .into_owned(),
+            )]
+        );
+
+        let batch = app.apply(&plan).unwrap();
+        assert!(dir.0.join("a").join("First.flac").exists());
+        assert!(dir.0.join("a").join("First.lrc").exists());
+        assert!(!dir.0.join("a").join("x.lrc").exists());
+        assert!(dir.0.join("b").join("Second.flac").exists());
+        assert!(dir.0.join("b").join("Second.lrc").exists());
+        assert!(
+            dir.0.join("a").join("Nested/x.lrc").exists(),
+            "a subfolder's file never travels"
+        );
+        assert!(
+            dir.0.join("a").join("x.cue").is_dir(),
+            "a directory is not carried"
+        );
+        #[cfg(unix)]
+        assert!(
+            std::fs::read_link(dir.0.join("a").join("First.txt")).unwrap()
+                == Path::new("../outside.txt"),
+            "the live symlink travelled as itself"
+        );
+
+        app.undo(batch.id).unwrap();
+        assert!(dir.0.join("a").join("x.flac").exists());
+        assert!(dir.0.join("a").join("x.lrc").exists());
+        assert!(dir.0.join("b").join("x.lrc").exists());
+        assert!(!dir.0.join("a").join("First.lrc").exists());
+    }
+
+    // #58: the listing is the preview's, not the session's — each new preview
+    // re-reads the disk, so a sidecar added, renamed or removed in between is
+    // exactly what the next preview carries.
+    #[test]
+    fn a_second_preview_sees_a_sidecar_added_renamed_or_removed() {
+        let dir = TempDir::new("sidecar-fresh-preview");
+        let track = dir.tagged_flac("track.flac", "Artist", "Title");
+        let app = open_app(&dir);
+        let sidecars = |app: &App| {
+            app.preview_rename("Renamed", std::slice::from_ref(&track))
+                .unwrap()
+                .changes[0]
+                .sidecar_renames
+                .clone()
+        };
+        assert!(sidecars(&app).is_empty());
+
+        std::fs::write(dir.0.join("track.lrc"), b"lyrics").unwrap();
+        assert_eq!(sidecars(&app).len(), 1);
+
+        // Renamed away from the stem: no longer this track's sidecar.
+        std::fs::rename(dir.0.join("track.lrc"), dir.0.join("other.lrc")).unwrap();
+        assert!(sidecars(&app).is_empty());
+
+        std::fs::remove_file(dir.0.join("other.lrc")).unwrap();
+        std::fs::write(dir.0.join("track.lrc"), b"again").unwrap();
+        assert_eq!(sidecars(&app).len(), 1);
+    }
+
+    // #58: the settings gate every preview, not only the first one — and the
+    // set is matched case-insensitively while the destination keeps the
+    // spelling the file on disk has.
+    #[test]
+    fn every_preview_reads_the_sidecar_settings_again() {
+        let dir = TempDir::new("sidecar-settings-preview");
+        let track = dir.tagged_flac("track.flac", "Artist", "Title");
+        std::fs::write(dir.0.join("track.lrc"), b"lyrics").unwrap();
+        std::fs::write(dir.0.join("track.jpg"), b"art").unwrap();
+        let app = open_app(&dir);
+        let sidecars = |app: &App| {
+            app.preview_rename("Renamed", std::slice::from_ref(&track))
+                .unwrap()
+                .changes[0]
+                .sidecar_renames
+                .clone()
+        };
+        assert_eq!(sidecars(&app).len(), 2);
+
+        app.apply_settings(&SettingsDto {
+            carry_sidecars: false,
+            ..SettingsDto::default()
+        });
+        assert!(sidecars(&app).is_empty());
+
+        app.apply_settings(&SettingsDto {
+            sidecar_extensions: vec!["LRC".into()],
+            ..SettingsDto::default()
+        });
+        let pairs = sidecars(&app);
+        assert_eq!(pairs.len(), 1);
+        assert!(pairs[0].1.ends_with("Renamed.lrc"), "{}", pairs[0].1);
+
+        app.apply_settings(&SettingsDto {
+            sidecar_extensions: Vec::new(),
+            ..SettingsDto::default()
+        });
+        assert!(sidecars(&app).is_empty());
+    }
+
+    #[test]
+    fn staged_cleanup_respects_disabled_or_empty_sidecar_settings() {
+        let dir = TempDir::new("sidecar-disabled-staged");
+        let track = dir.tagged_flac("original.flac", "Artist", "Title");
+        std::fs::write(dir.0.join("original.lrc"), b"lyrics").unwrap();
+        for settings in [
+            SettingsDto {
+                carry_sidecars: false,
+                ..SettingsDto::default()
+            },
+            SettingsDto {
+                sidecar_extensions: Vec::new(),
+                ..SettingsDto::default()
+            },
+        ] {
+            let app = open_app(&dir);
+            let staged = app
+                .preview_rename("Renamed", std::slice::from_ref(&track))
+                .unwrap();
+            assert_eq!(staged.changes[0].sidecar_renames.len(), 1);
+            app.apply_settings(&settings);
+            let cleaned = app
+                .preview_transform_over_plan(
+                    &staged,
+                    &[ActionGroupDto {
+                        name: "lower".into(),
+                        scope: "filename".into(),
+                        rules: vec![case_rule("lower")],
+                        note: String::new(),
+                    }],
+                )
+                .unwrap();
+            assert!(cleaned
+                .changes
+                .iter()
+                .all(|change| change.sidecar_renames.is_empty()));
+        }
+    }
+
+    // #142/#58: a cleanup over a staged plan keeps one pair per sidecar — the
+    // staged rename's own pairs are recognised as stem sidecars from the same
+    // listing, not recomputed into duplicates — and a tag-only cleanup has no
+    // sidecar work at all.
+    #[test]
+    fn a_cleanup_over_a_move_keeps_each_folders_sidecars_once() {
+        let dir = TempDir::new("sidecar-over-plan");
+        let first = dir.tagged_flac_at("box/One.flac", "Artist", "One");
+        let second = dir.tagged_flac_at("box/Two.flac", "Artist", "Two");
+        std::fs::write(dir.0.join("box/One.lrc"), b"one").unwrap();
+        std::fs::write(dir.0.join("box/Two.lrc"), b"two").unwrap();
+        let mut app = open_app(&dir);
+
+        let staged = app
+            .preview_move(
+                "%artist%/%title%",
+                &[first.clone(), second.clone()],
+                None,
+                false,
+                false,
+            )
+            .unwrap();
+        assert_eq!(staged.changes.len(), 2);
+        for change in &staged.changes {
+            assert_eq!(
+                change.sidecar_renames.len(),
+                1,
+                "each track carries its own .lrc only: {:?}",
+                change.sidecar_renames
+            );
+        }
+
+        let cleaned = app
+            .preview_transform_over_plan(
+                &staged,
+                &[ActionGroupDto {
+                    name: "lower".into(),
+                    scope: "filename".into(),
+                    rules: vec![case_rule("lower")],
+                    note: String::new(),
+                }],
+            )
+            .unwrap();
+        assert_eq!(cleaned.changes.len(), 2);
+        let mut targets: Vec<String> = cleaned
+            .changes
+            .iter()
+            .flat_map(|change| change.sidecar_renames.iter().map(|(_, to)| to.clone()))
+            .collect();
+        targets.sort();
+        assert_eq!(targets.len(), 2, "no duplicate pairs: {targets:?}");
+        assert!(targets[0].ends_with("one.lrc"), "{}", targets[0]);
+        assert!(targets[1].ends_with("two.lrc"), "{}", targets[1]);
+        assert!(cleaned
+            .changes
+            .iter()
+            .all(|change| change.folder_extras.is_empty()));
+
+        let batch = app.apply(&cleaned).unwrap();
+        assert!(dir.0.join("artist/one.flac").exists());
+        assert!(dir.0.join("artist/one.lrc").exists());
+        assert!(dir.0.join("artist/two.flac").exists());
+        assert!(dir.0.join("artist/two.lrc").exists());
+        app.undo(batch.id).unwrap();
+        assert!(dir.0.join("box/One.lrc").exists());
+        assert!(dir.0.join("box/Two.lrc").exists());
+
+        // A cleanup that only touches tags proposes no sidecar pairs, because
+        // nothing is being renamed — the same plan the per-file walk produced.
+        let edits = app
+            .preview_tag_edits(&[TagEditDto {
+                path: first.to_string_lossy().into_owned(),
+                field: "title".into(),
+                value: Some("Renamed".into()),
+            }])
+            .unwrap();
+        let cleaned = app.preview_transform_over_plan(&edits, &[]).unwrap();
+        assert_eq!(cleaned.changes.len(), 1);
+        assert!(cleaned.changes[0].rename_to.is_none());
+        assert!(cleaned.changes[0].sidecar_renames.is_empty());
+    }
+
+    // #58: a sidecar target that is already taken is refused by the executor's
+    // preflight, and nothing moves — the preview lists the pair, Apply says no.
+    #[test]
+    fn a_carried_sidecar_that_would_overwrite_a_file_stops_the_apply() {
+        let dir = TempDir::new("sidecar-collision-preview");
+        let track = dir.tagged_flac("one.flac", "Artist", "Title");
+        let lrc = dir.0.join("one.lrc");
+        std::fs::write(&lrc, b"mine").unwrap();
+        let occupied = dir.0.join("Renamed.lrc");
+        std::fs::write(&occupied, b"someone else").unwrap();
+        let mut app = open_app(&dir);
+
+        let plan = app
+            .preview_rename("Renamed", std::slice::from_ref(&track))
+            .unwrap();
+        assert_eq!(
+            plan.changes[0].sidecar_renames,
+            vec![(
+                lrc.to_string_lossy().into_owned(),
+                occupied.to_string_lossy().into_owned(),
+            )]
+        );
+        assert!(app.apply(&plan).is_err());
+        assert!(track.exists() && lrc.exists());
+        assert_eq!(std::fs::read(&occupied).unwrap(), b"someone else");
+        assert!(!dir.0.join("Renamed.flac").exists());
+    }
+
+    #[test]
     fn edit_tags_preview_apply_undo_round_trip() {
         let dir = TempDir::new("edit");
         let track = dir.tagged_flac("x.flac", "Old Artist", "Title");
@@ -9122,7 +11919,7 @@ mod tests {
         // Give it a cover so we can prove clearing text tags leaves it intact.
         let art = CoverArt {
             mime: "image/png".to_string(),
-            data: vec![1, 2, 3, 4],
+            data: vec![1, 2, 3, 4].into(),
             ..CoverArt::default()
         };
         TagEngine::write_covers(&track, std::slice::from_ref(&art)).unwrap();
@@ -9349,15 +12146,18 @@ mod tests {
         let has_art = dir.tagged_flac("art.flac", "Artist", "Has Art");
         let existing = CoverArt {
             mime: "image/png".to_string(),
-            data: vec![1, 2, 3, 4],
+            data: vec![1, 2, 3, 4].into(),
             ..CoverArt::default()
         };
         TagEngine::write_covers(&has_art, std::slice::from_ref(&existing)).unwrap();
 
         let mut app = open_app(&dir);
         let release_cover = CoverArtDto {
+            data_ref: None,
             mime: "image/png".to_string(),
-            data_base64: base64::engine::general_purpose::STANDARD.encode([9, 9, 9, 9]),
+            data_base64: base64::engine::general_purpose::STANDARD
+                .encode([9, 9, 9, 9])
+                .into(),
             ..CoverArtDto::default()
         };
         let edits = |path: &PathBuf| TagEditDto {
@@ -9386,7 +12186,7 @@ mod tests {
         app.apply(&plan).unwrap();
         assert_eq!(
             TagEngine::read_cover(&bare).unwrap().map(|c| c.data),
-            Some(vec![9, 9, 9, 9]),
+            Some(vec![9, 9, 9, 9].into()),
             "the file with no artwork should have got the release cover"
         );
         assert_eq!(
@@ -9406,7 +12206,7 @@ mod tests {
             &track,
             &[CoverArt {
                 mime: "image/png".to_string(),
-                data: vec![1, 1, 1],
+                data: vec![1, 1, 1].into(),
                 ..CoverArt::default()
             }],
         )
@@ -9414,8 +12214,11 @@ mod tests {
 
         let app = open_app(&dir);
         let release_cover = CoverArtDto {
+            data_ref: None,
             mime: "image/png".to_string(),
-            data_base64: base64::engine::general_purpose::STANDARD.encode([7, 7, 7]),
+            data_base64: base64::engine::general_purpose::STANDARD
+                .encode([7, 7, 7])
+                .into(),
             ..CoverArtDto::default()
         };
         let list = vec![TagEditDto {
@@ -9668,6 +12471,36 @@ mod tests {
         assert!(!field_value_invalid("artist", Some("19x6")));
         assert!(!field_value_invalid("title", Some("A1")));
         assert!(!field_value_invalid("comment", Some("anything at all")));
+    }
+
+    #[test]
+    fn imported_semicolon_genres_apply_read_back_and_undo_without_splitting_slashes() {
+        let dir = TempDir::new("import-semicolon-genres");
+        let path = dir.tagged_flac("genres.flac", "Original Artist", "Original Title");
+        let mut app = open_app(&dir);
+        let genres = "Hardcore; Happy Hardcore; Pop/Rock";
+        let selection = ImportSelectionDto {
+            genre: Some(genres.to_string()),
+            ..ImportSelectionDto::default()
+        };
+        let plan = app
+            .preview_import(std::slice::from_ref(&path), &selection, false)
+            .unwrap();
+        let change = plan.changes[0]
+            .tag_changes
+            .iter()
+            .find(|change| change.field == "genre")
+            .expect("genre is previewed");
+        assert_eq!(change.new.as_deref(), Some(genres));
+        let batch = app.apply(&plan).unwrap();
+        let after = app.read_track(&path).unwrap();
+        assert_eq!(after.tags.get("genre").map(String::as_str), Some(genres));
+        assert_eq!(
+            after.tags.get("artist").map(String::as_str),
+            Some("Original Artist")
+        );
+        app.undo(batch.id).unwrap();
+        assert!(!app.read_track(&path).unwrap().tags.contains_key("genre"));
     }
 
     #[test]
@@ -11259,7 +14092,7 @@ mod tests {
         // Embed a distinctively-typed cover into the first file only.
         let art = CoverArt {
             mime: "image/png".to_string(),
-            data: vec![1, 2, 3, 4, 5],
+            data: vec![1, 2, 3, 4, 5].into(),
             ..CoverArt::default()
         };
         TagEngine::write_covers(&with_cover, std::slice::from_ref(&art)).unwrap();
@@ -11273,7 +14106,10 @@ mod tests {
         assert_eq!(result.written.len(), 1);
         let expected = dir.0.join("cover.png");
         assert_eq!(result.written[0], expected.to_string_lossy());
-        assert_eq!(std::fs::read(&expected).unwrap(), art.data);
+        assert_eq!(
+            std::fs::read(&expected).unwrap().as_slice(),
+            art.data.as_ref()
+        );
         // The audio files themselves were not modified (read-only, no journal).
         assert!(app.history().unwrap().is_empty());
         // The cover-less file is reported as skipped, not an error.
@@ -11299,7 +14135,7 @@ mod tests {
         // `cover.jpg` wins over `folder.png`.
         assert_eq!(found.mime, "image/jpeg");
         let bytes = base64::engine::general_purpose::STANDARD
-            .decode(&found.data_base64)
+            .decode(found.data_base64.as_bytes())
             .unwrap();
         assert_eq!(bytes, vec![1, 2, 3]);
     }
@@ -11310,6 +14146,79 @@ mod tests {
         let a = dir.tagged_flac("a.flac", "Artist", "Title");
         let app = open_app(&dir);
         assert!(app.read_external_cover(&[a]).unwrap().is_none());
+    }
+
+    #[test]
+    fn provider_clients_are_retained_and_invalidated_by_connection_settings() {
+        let hub = ProviderHub::default();
+        hub.discogs_provider("first-token").unwrap();
+        hub.musicbrainz_provider().unwrap();
+        hub.beatport_provider("access-token").unwrap();
+        hub.bandcamp_provider().unwrap();
+        hub.soundeo_provider().unwrap();
+        assert!(hub.discogs.borrow().is_some());
+        assert!(hub.musicbrainz.borrow().is_some());
+        assert!(hub.beatport.borrow().is_some());
+        assert!(hub.bandcamp.borrow().is_some());
+        assert!(hub.soundeo.borrow().is_some());
+        hub.apply_settings(&SettingsDto {
+            rate_limit_per_min: 30,
+            ..Default::default()
+        });
+        assert!(
+            hub.musicbrainz.borrow().is_some(),
+            "rate changes keep the client"
+        );
+        hub.discogs_provider("replacement-token").unwrap();
+        assert_eq!(
+            hub.discogs.borrow().as_ref().unwrap().0,
+            "replacement-token"
+        );
+        hub.apply_settings(&SettingsDto {
+            proxy: "http://localhost:3128".into(),
+            ..Default::default()
+        });
+        assert!(hub.discogs.borrow().is_none());
+        assert!(hub.musicbrainz.borrow().is_none());
+        assert!(hub.beatport.borrow().is_none());
+        assert!(hub.bandcamp.borrow().is_none());
+        assert!(hub.soundeo.borrow().is_none());
+        hub.musicbrainz_provider().unwrap();
+        assert!(hub.musicbrainz.borrow().is_some());
+    }
+
+    #[test]
+    fn streaming_hash_groups_identical_files_across_buffer_boundaries() {
+        let dir = TempDir::new("streaming-hash");
+        let a = dir.tagged_flac("a.flac", "Artist", "Title");
+        let b = dir.0.join("b.flac");
+        let c = dir.0.join("c.flac");
+        use std::io::Write;
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&a)
+            .unwrap()
+            .write_all(&vec![7; 192 * 1024 + 17])
+            .unwrap();
+        std::fs::copy(&a, &b).unwrap();
+        std::fs::copy(&a, &c).unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&c)
+            .unwrap()
+            .write_all(&[8])
+            .unwrap();
+        let app = open_app(&dir);
+        let groups = app.find_duplicates("hash").unwrap();
+        assert_eq!(groups.len(), 1);
+        let paths: std::collections::HashSet<_> =
+            groups[0].files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            [a.to_str().unwrap(), b.to_str().unwrap()]
+                .into_iter()
+                .collect()
+        );
     }
 
     #[test]
@@ -11339,7 +14248,7 @@ mod tests {
         let b = dir.tagged_flac("b.flac", "Artist", "B");
         let art = CoverArt {
             mime: "image/jpeg".to_string(),
-            data: vec![9, 8, 7],
+            data: vec![9, 8, 7].into(),
             ..CoverArt::default()
         };
         TagEngine::write_covers(&a, std::slice::from_ref(&art)).unwrap();
@@ -11849,7 +14758,7 @@ mod tests {
     fn cover_dto_mime_is_display_safe() {
         let art = CoverArt {
             mime: "image/png\" onload=\"x".to_string(),
-            data: vec![0x89, b'P', b'N', b'G', 1, 2],
+            data: vec![0x89, b'P', b'N', b'G', 1, 2].into(),
             kind: CoverKind::Front,
             description: String::new(),
         };

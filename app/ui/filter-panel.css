@@ -1,0 +1,252 @@
+/* The filter dock is part of the file table's bottom edge — the same surface,
+ * no shell, no divider — and its expanded tools float over the lower rows
+ * instead of pushing a second box into the table. Controller-owned field ids
+ * (#filter, .filter-ctl, chips, presets) are unchanged.
+ *
+ * Geometry roles: 28px for the rail's controls (--ctl-h-sm), 24px hit boxes for
+ * the in-field flags, --input-radius for the compound filter field and its
+ * input (flush: the field is the focus owner), --r-compact for chips, and the
+ * shared --sp scale for spacing (4 inside a chip/field, 8 between controls,
+ * 12 for the builder's rows). The panel is a single instance, so its rules are
+ * scoped by its own id to stay authoritative without a specificity race.
+ */
+body .files-col > #filter-panel {
+  flex: none;
+  min-width: 0;
+  padding: 0 var(--sp-2) var(--sp-1);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+body #filter-panel .filter-panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  min-height: var(--ctl-h-sm);
+  padding: 0;
+}
+body #filter-panel button[data-slot='button'] {
+  border: 0;
+  border-radius: var(--r-compact);
+  box-shadow: none;
+  background: transparent;
+}
+body #filter-panel #filter-panel-toggle {
+  border: 0;
+  border-radius: var(--r-compact);
+  background: transparent;
+  box-shadow: none;
+  flex: none;
+  height: var(--ctl-h-sm);
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--sp-2);
+  gap: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--type-help-size);
+  font-weight: var(--fw-medium);
+}
+body #filter-panel #filter-panel-toggle:hover {
+  background: var(--row-hover);
+  color: var(--text);
+}
+body #filter-panel .filter-panel-icon { width: 16px; height: 16px; }
+body #filter-panel .filter-panel-caret { width: 11px; height: 11px; transform: rotate(0deg); transition: transform 120ms ease-out; }
+body #filter-panel #filter-panel-toggle[aria-expanded='true'] .filter-panel-caret { transform: rotate(180deg); }
+body #filter-panel .filter-panel-active {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: var(--r-circle);
+  background: var(--accent);
+}
+body #filter-panel .filter-panel-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--type-help-size);
+  color: var(--muted);
+}
+body #filter-panel :is(#filter-panel-clear, #presets-btn, #filter-add) {
+  border: 0;
+  border-radius: var(--r-compact);
+  background: transparent;
+  box-shadow: none;
+  flex: none;
+  height: var(--ctl-h-sm);
+  min-height: var(--ctl-h-sm);
+  padding: 0 var(--sp-2);
+  color: var(--muted);
+  font-size: var(--type-help-size);
+  font-weight: var(--fw-regular);
+}
+body #filter-panel :is(#filter-panel-clear, #presets-btn, #filter-add):hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+body #filter-panel :is(#filter-panel-toggle, #presets-btn, #filter-add, #filter-panel-clear):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+  box-shadow: none;
+}
+
+/* Expand/collapse keeps the height-agnostic grid trick; only the inner padding
+   changes between states, so the table never resizes mid-edit. */
+body #filter-panel .filter-panel-content {
+  display: grid;
+  grid-template-rows: 1fr;
+  visibility: visible;
+  transition: grid-template-rows 120ms ease-out, visibility 0s;
+}
+body #filter-panel .filter-panel-content[data-state='closed'] {
+  grid-template-rows: 0fr;
+  visibility: hidden;
+  transition: grid-template-rows 120ms ease-out, visibility 0s 120ms;
+}
+body #filter-panel .filter-panel-inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 0;
+  overflow: hidden;
+  padding-inline: var(--sp-2);
+}
+body #filter-panel .filter-panel-content[data-state='open'] .filter-panel-inner {
+  padding-block: var(--sp-1) var(--sp-2);
+  overflow: visible;
+}
+
+/* One compound control: the field owns the contour and the focus edge, the
+   input sits flush inside it. */
+body #filter-panel .filter-ctl {
+  flex: 1 1 220px;
+  min-width: 0;
+  height: var(--ctl-h-sm);
+  min-height: var(--ctl-h-sm);
+  border-radius: var(--input-radius);
+}
+body #filter-panel .filter-ctl:not(.has-error) {
+  border-color: transparent;
+  background: var(--panel);
+}
+body #filter-panel .filter-ctl.has-error {
+  background: var(--error-tint);
+}
+body #filter-panel .filter-ctl.has-error:has(:focus-visible) {
+  outline: 2px solid var(--del);
+  outline-offset: 0;
+  border-color: transparent;
+  box-shadow: none;
+}
+body #filter-panel .filter-ctl input[data-slot='input'] {
+  height: 100%;
+  min-height: 0;
+  padding: 0 var(--sp-3);
+  border-radius: var(--input-radius);
+  background: transparent;
+  font-size: var(--type-body-size);
+}
+body #filter-panel .filter-ctl .field-tools {
+  gap: 0;
+  height: 100%;
+  padding-inline-end: 2px;
+}
+body #filter-panel .filter-ctl .field-tools button {
+  min-width: var(--ctl-hit);
+  height: var(--ctl-hit);
+  min-height: var(--ctl-hit);
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-compact);
+  font-size: var(--type-help-size);
+}
+body #filter-panel .filter-presets { flex: none; }
+
+/* Condition chips: one 24px row, clipped to the chip's own contour so the
+   edit/remove halves never show two radii. */
+body #filter-panel .filter-condition-controls { flex: none; }
+body #filter-panel .filter-condition-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  flex-basis: 100%;
+}
+body #filter-panel .filter-condition-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--r-compact);
+  background: var(--panel);
+}
+body #filter-panel .filter-condition-chip button[data-slot='button'] {
+  height: var(--ctl-hit);
+  min-height: var(--ctl-hit);
+  padding: 0 var(--sp-2);
+  border-radius: 0;
+  font-size: var(--type-help-size);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body #filter-panel .filter-condition-chip button[data-slot='button']:hover {
+  background: var(--row-hover);
+}
+body #filter-panel .filter-condition-chip > button:first-child { min-width: 0; flex: 1 1 auto; }
+body #filter-panel .filter-condition-chip > button:last-child { flex: none; }
+body #filter-panel .filter-combination {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  font-size: var(--type-help-size);
+  color: var(--muted);
+}
+body #filter-panel .filter-combination select { width: auto; }
+body #filter-panel .filter-feedback {
+  flex-basis: 100%;
+  font-size: var(--type-help-size);
+  color: var(--muted);
+}
+body #filter-panel .filter-feedback:empty { display: none; }
+body #filter-panel .filter-feedback span { display: block; }
+body #filter-panel .filter-error { color: var(--del); }
+
+/* The builder popover's own shell belongs to the overlay layer; only its inner
+   form and controls are owned here, using the shared control roles. */
+body .filter-builder {
+  max-width: min(320px, calc(100dvw - var(--sp-4)));
+}
+body .filter-builder form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+body .filter-builder label,
+body .filter-hint {
+  font-size: var(--type-help-size);
+  color: var(--label);
+}
+body .filter-builder :is(select, input) {
+  width: 100%;
+  min-height: var(--ctl-h);
+  border-color: transparent;
+  border-radius: var(--input-radius);
+  background: var(--panel);
+  color: var(--text);
+}
+body .filter-builder .app-select { width: 100%; }
+body .filter-builder-actions {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+  margin-top: var(--sp-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body #filter-panel .filter-panel-content,
+  body #filter-panel .filter-panel-caret { transition: none; }
+}

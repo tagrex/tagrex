@@ -1,3 +1,5 @@
+import { beginLiveImport, finishLiveImport, isLiveImportCurrent, replaceLiveImport, adoptLiveCoverPlan } from "./live-preview.js";
+import { createComponentElement, upgradeComponentMarkup } from "../lib/component-elements.js";
 // The ONLINE sub-tab of TAGGER (#27, #143 split it out of app.js).
 //
 // A metadata source: the provider search, its paging and the interruptible
@@ -7,8 +9,8 @@
 // stages goes through the ordinary preview/apply/undo path.
 import { confirmDialog, el, escapeHtml, fileName, ico, placeFloating, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
+import { chooseArtwork } from "./artworkpicker.js";
 import { invoke } from "./invoke.js";
-import { runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
 import { fmtTime } from "./player.js";
 import { refreshFieldEditor } from "./editor.js";
@@ -17,7 +19,10 @@ import { MEDIA_GLYPH_SETS } from "./mediaglyphs.js";
 import { mediaGlyphSet } from "./prefs.js";
 import {
   edits,
+  captureSelection,
+  isSelectionCurrent,
   previewPlan,
+  savedSettings,
   selectedPaths,
   selection,
   setManualOrder,
@@ -41,6 +46,10 @@ let releaseCandidates = []; // last search results (CandidateDto[])
 // changes the Source dropdown afterward.
 let releaseSource = "discogs";
 const releaseCache = new Map(); // releaseId -> fetched ReleaseDto (with tracks)
+const artworkImages = new Map(); // releaseId -> URL -> fetched image promise
+const artworkRotations = new Map(); // releaseId -> committed image orientations
+const artworkChoices = new Map(); // releaseId -> chosen image index
+let artworkPickerOpen = false;
 const coverCache = new Map(); // releaseId -> CoverArtDto (full cover, for embed)
 // Fetched images as data URIs, so re-rendering (layout toggle) never re-fetches.
 const imageCache = new Map(); // releaseId -> { thumb?, cover? }
@@ -65,6 +74,7 @@ let searchPerPage = searchPerPagePref();
 let searchPage = 0; // last page fetched (0 = none yet)
 let searchHasMore = false; // provider likely has another page
 let searchGen = 0; // generation token
+let searchFailed = false;
 let loadingResults = false; // a page fetch is in flight
 let prefetching = false; // the background per-release detail sweep is running
 
@@ -136,6 +146,9 @@ async function runSearch(reset) {
     releaseCandidates = [];
     releaseCache.clear();
     coverCache.clear();
+    artworkChoices.clear();
+    artworkRotations.clear();
+    artworkImages.clear();
     imageCache.clear();
     expandedIds.clear();
     searchGen++;
@@ -143,6 +156,7 @@ async function runSearch(reset) {
   const gen = searchGen;
   const page = searchPage + 1;
   loadingResults = true;
+  searchFailed = false;
   updateLoadMoreUi();
   try {
     const hits = await invoke("provider_search", {
@@ -161,6 +175,8 @@ async function runSearch(reset) {
     renderReleaseList();
     prefetchReleaseCounts(added, gen); // count only the newly added page
   } catch (e) {
+    if (gen !== searchGen) return;
+    searchFailed = true;
     toast(String(e), true);
   } finally {
     if (gen === searchGen) {
@@ -173,6 +189,15 @@ async function runSearch(reset) {
 // Show/hide the Load more / Stop footer to match the current loading state.
 function updateLoadMoreUi() {
   const busy = searchBusy();
+  const empty = el("discogs-empty");
+  const heading = el("online-empty-heading");
+  const state = loadingResults ? "searching" : searchFailed ? "searchError" : searchPage ? "searchNone" : "searchEmpty";
+  empty.hidden = releaseCandidates.length > 0;
+  const messageKey = state === "searchEmpty" ? "online.empty" : `inspector.${state}`;
+  empty.dataset.i18n = messageKey;
+  empty.textContent = t(messageKey);
+  heading.dataset.i18n = `inspector.${state}Heading`;
+  heading.textContent = t(heading.dataset.i18n);
   // The search button is one toggling slot (#111): magnifier ⇄ Stop square.
   const btn = el("discogs-search");
   btn.classList.toggle("busy", busy);
@@ -338,6 +363,9 @@ function renderReleaseList() {
   for (const c of releaseCandidates) {
     list.insertAdjacentHTML("beforeend", cardMarkup(c));
   }
+  // Keep the artwork tile's dedicated native hit surface; normal actions are
+  // mounted components before any controller reads or binds their nodes.
+  upgradeComponentMarkup(list, { exclude: '.release-cover' });
   // Restore images (from cache) and any expanded tracklists after the re-render.
   for (const c of releaseCandidates) {
     applyImage(c);
@@ -454,7 +482,7 @@ function toggleQueryPresets() {
     menu.appendChild(empty);
   }
   for (const offer of offers) {
-    const row = document.createElement("button");
+    const row = createComponentElement("button");
     row.type = "button";
     row.className = "col-menu-row tk-menu-item query-row";
     row.innerHTML =
@@ -489,19 +517,15 @@ window.addEventListener("resize", () => {
   if (!el("query-preset-menu").hidden) placeQueryPresets();
 });
 
-// The catalogue-number + track-count match key as one segmented badge (#124):
-// a single unified border wraps both, the catalogue segment accent-filled and
-// the count segment neutral, split by a divider in the same border colour. The
-// catalogue segment is omitted when the release has no catalogue number; the
-// count segment keeps the `tk-count` class so prefetchReleaseCounts can fill it
-// in once the release is fetched.
+// Plain catalogue/count facts. Keep the provider-link and async count hooks,
+// with no badge chrome or invented catalogue placeholder.
 function releaseBadge(c) {
-  // The catalogue segment doubles as a link to the release's provider page (#92);
-  // the click is caught in the release-list handler, which reads the card's id.
-  const catno = c.catalog_number
-    ? `<span class="rb-catno" title="${escapeHtml(t("online.openRelease"))}">${escapeHtml(c.catalog_number)}</span>`
+  const catalogue = String(c.catalog_number || "").trim();
+  const catno = catalogue && catalogue.toLowerCase() !== "none"
+    ? `<span class="rb-catno" title="${escapeHtml(t("online.openRelease"))}">${escapeHtml(catalogue)}</span>`
     : "";
-  return `<span class="rel-badge">${catno}<span class="rb-count tk-count">${escapeHtml(countLabel(c.id))}</span></span>`;
+  const counts = releaseCache.has(c.id) ? countLabel(c.id) : "";
+  return `<span class="release-facts">${catno}<span class="rb-count tk-count">${escapeHtml(counts)}</span></span>`;
 }
 
 // Open a candidate's provider release page (#92). Source is the committed search
@@ -515,22 +539,22 @@ async function openReleasePage(id) {
 }
 
 function cardMarkup(c) {
-  // Four lines, top to bottom (#98): (1) the catalogue-no. + track-count match
-  // key (one segmented badge, #124), (2) album artist, (3) album title, (4) the
-  // rest (country · year · format). The cover fills the header's full height, so
-  // it spans all four lines.
+  // Title leads, followed by artist and quiet factual metadata. Keep the full
+  // provider format/edition wording available without filling the result row.
   const artist = c.artist ? `<span class="release-artist" title="${escapeHtml(c.artist)}">${escapeHtml(c.artist)}</span>` : "";
-  const meta = candidateMeta(c);
-  const metaLine = meta ? `<span class="release-meta">${escapeHtml(meta)}</span>` : "";
+  const fullMeta = candidateMeta(c);
+  const medium = String(c.format || "").split(",")[0].trim();
+  const meta = [c.year, c.country, medium].filter(Boolean).join(" · ");
+  const metaLine = meta ? `<span class="release-meta" title="${escapeHtml(fullMeta)}">${escapeHtml(meta)}</span>` : "";
   return `
     <article class="release-card" data-id="${escapeHtml(c.id)}" aria-expanded="false">
       <div class="release-header-row">
+        <button class="release-cover" type="button" data-act="artwork" title="${escapeHtml(t("artwork.title"))}" aria-label="${escapeHtml(t("artwork.forRelease", { title: c.title }))}">${mediaBadgeMarkup(c)}</button>
         <button class="release-head" type="button">
-          <span class="release-cover">${mediaBadgeMarkup(c)}</span>
           <span class="release-info">
-            <span class="release-line1">${releaseBadge(c)}</span>
-            ${artist}
             <span class="release-title" title="${escapeHtml(c.title)}">${escapeHtml(c.title)}</span>
+            ${artist}
+            ${releaseBadge(c)}
             ${metaLine}
           </span>
           <span class="release-caret" aria-hidden="true">${ico("chevron-right")}</span>
@@ -632,27 +656,52 @@ function roundArtInset(img) {
   return inset / n;
 }
 
+// Sources whose search hits cannot say whether a release has cover art (#748).
+// Their thumbnail URL is only where the art would be, so a card loads it once
+// the release lookup (the count sweep runs one per card) confirms a front cover;
+// a release without art then costs no request that could only answer 404.
+const THUMB_AFTER_LOOKUP = new Set(["musicbrainz"]);
+
 // Show the release's cover thumbnail, fetching + caching it once. Cached data
 // URIs are reused, so a re-render never re-hits Discogs.
 async function applyImage(c) {
+  const selectedCover = coverCache.get(c.id);
+  if (selectedCover) {
+    const cover = coverElOf(c.id);
+    if (cover) setCoverImage(cover, `data:${selectedCover.mime};base64,${selectedCover.data_base64}`);
+    return;
+  }
+  const gen = searchGen;
+  const source = releaseSource;
   const kind = "thumb";
   const url = c.thumb_url || c.cover_url;
   if (!url) return;
   const cached = imageCache.get(c.id) || {};
   let dataUri = cached[kind];
+  if (!dataUri && THUMB_AFTER_LOOKUP.has(source)) {
+    const release = releaseCache.get(c.id);
+    if (!release || !release.cover_image_url) return;
+  }
   if (!dataUri) {
-    const token = await providerToken(releaseSource);
+    const token = await providerToken(source);
+    if (gen !== searchGen) return;
     try {
-      const img = await invoke("provider_fetch_image", { source: releaseSource, token, url });
+      const img = await invoke("provider_fetch_image", { source, token, url });
+      if (gen !== searchGen) return;
       dataUri = `data:${img.mime};base64,${img.data_base64}`;
       cached[kind] = dataUri;
       imageCache.set(c.id, cached);
     } catch (e) {
       return; // leave the striped placeholder
     }
+    // A thumbnail that arrives after the card was expanded must not cover up
+    // the full-size image that came in first (#748 loads thumbnails later).
+    if (coverCache.has(c.id)) return;
   }
+  if (gen !== searchGen) return;
+  const chosen = coverCache.get(c.id);
   const cover = coverElOf(c.id);
-  if (cover) setCoverImage(cover, dataUri);
+  if (cover) setCoverImage(cover, chosen ? `data:${chosen.mime};base64,${chosen.data_base64}` : dataUri);
 }
 
 // Fetch each release once, in the background, to fill the track/disc count on
@@ -685,7 +734,9 @@ function rateLimitPauseMs(e) {
 }
 
 async function prefetchReleaseCounts(items, gen) {
-  const token = await providerToken(releaseSource);
+  const source = releaseSource;
+  const token = await providerToken(source);
+  if (gen !== undefined && gen !== searchGen) return;
   const queue = (items || releaseCandidates).filter((c) => !releaseCache.has(c.id));
   if (queue.length === 0) return;
   // The sweep is interruptible background work — show Stop while it runs (#108).
@@ -707,10 +758,13 @@ async function prefetchReleaseCounts(items, gen) {
       const c = queue.shift();
       if (!c || releaseCache.has(c.id)) continue;
       try {
-        releaseCache.set(c.id, await invoke("provider_fetch_release", { source: releaseSource, token, releaseId: c.id }));
+        const release = await invoke("provider_fetch_release", { source, token, releaseId: c.id });
+        if (gen !== undefined && gen !== searchGen) return;
+        releaseCache.set(c.id, release);
         const pill = countPillOf(c.id);
         if (pill) pill.textContent = countLabel(c.id);
         updateMediaBadge(c); // fill the badge's ×N now that disc count is known
+        applyImage(c); // a thumbnail that waited for this lookup (#748)
         limitsInARow = 0;
       } catch (e) {
         // A rate limit pauses the sweep and retries this release after it.
@@ -1265,7 +1319,8 @@ function renderTracklist(card, release) {
   const res = primary && primary.width && primary.height ? `${primary.width}×${primary.height}` : "";
   // The resolution describes the PRIMARY image specifically — provider.rs orders
   // `images` primary-first and `cover_image_url` is that first entry, so it's the
-  // exact file "Save as folder.jpg" writes and "Embed cover" embeds. It used to
+  // exact file "Save as folder.jpg" writes. Embedding uses the image chosen
+  // through the artwork browser, or this primary image by default. It used to
   // sit in the row as "600×594 · 12 images", where it read as a property of the
   // whole set; it now hangs off the action it actually qualifies (and the button
   // tooltip), which also frees the row of a text block.
@@ -1304,6 +1359,7 @@ function renderTracklist(card, release) {
         <th class="tk-selcount muted" colspan="2"><span class="tk-readout"><span class="tk-fit" title="${escapeHtml(t("online.fitTitle"))}"></span><span class="tk-tally"></span></span></th>
       </tr></thead>
       <tbody></tbody></table></div>`;
+  upgradeComponentMarkup(card.querySelector('.release-tracklist'));
   // The import action moved to a header icon button (shown once loaded + expanded).
   card.classList.add("tracklist-loaded");
   renderWindow(card, true);
@@ -1362,9 +1418,12 @@ function enabledTracksOf(card) {
 // Fetch the full-size cover once (for embedding) and upgrade the card thumbnail.
 async function loadFullCover(id, url, card) {
   if (!url || coverCache.has(id)) return;
-  const token = await providerToken(releaseSource);
+  const source = releaseSource;
+  const gen = searchGen;
+  const token = await providerToken(source);
   try {
-    const cover = await invoke("provider_fetch_image", { source: releaseSource, token, url });
+    const cover = await invoke("provider_fetch_image", { source, token, url });
+    if (gen !== searchGen || coverCache.has(id)) return;
     coverCache.set(id, cover);
     const coverEl = card.querySelector(".release-cover");
     // Swap in the full-res cover without wiping the media badge (#98).
@@ -1694,24 +1753,99 @@ async function autoMatchToRelease(card) {
   }
 }
 
+// Artwork is a separate button beside the expand button: valid keyboard
+// navigation without nesting one interactive control inside another.
+async function pickReleaseArtwork(card) {
+  if (artworkPickerOpen) return;
+  artworkPickerOpen = true;
+  const id = card.dataset.id;
+  const source = releaseSource;
+  const gen = searchGen;
+  const trigger = card.querySelector(".release-cover");
+  trigger.setAttribute("aria-busy", "true");
+  try {
+    const token = await providerToken(source);
+    let release = releaseCache.get(id);
+    if (!release) {
+      release = await invoke("provider_fetch_release", { source, token, releaseId: id });
+      if (gen !== searchGen) return;
+      releaseCache.set(id, release);
+    }
+    const images = release.images?.length ? release.images :
+      (release.cover_image_url ? [{ url: release.cover_image_url }] : []);
+    if (!images.length) { toast(t("toast.online.noImages"), true); return; }
+    let cache = artworkImages.get(id);
+    if (!cache) artworkImages.set(id, (cache = new Map()));
+    const canOpen = ["discogs", "musicbrainz", "beatport"].includes(source);
+    const releaseUrl = canOpen ? (release.url || (source === "discogs" ? `https://www.discogs.com/release/${id}` : "")) : "";
+    const releaseLink = (name) => ({ name, entity: "release", id, url: releaseUrl });
+    const identities = (release.links || []).map((link) => ({
+      name: link.name, entity: link.kind, id: link.id,
+      url: `https://www.discogs.com/${link.kind}/${link.id}`,
+    }));
+    const artists = identities.filter((link) => link.entity === "artist");
+    const labels = release.labels || [];
+    const labelIndex = Number(card.querySelector(".label-picker")?.value || 0);
+    const label = labels[labelIndex] || labels[0];
+    const labelLink = label && (identities.find((link) => link.entity === "label" && link.name === label.name) || releaseLink(label.name));
+    const artistLink = artists.length === 1 ? { ...artists[0], name: release.artist } : releaseLink(release.artist);
+    const releaseName = label?.catalog_number ? `${label.catalog_number} — ${release.title}` : release.title;
+    const links = releaseUrl ? [labelLink, artistLink, releaseLink(releaseName)].filter(Boolean) : [];
+    const result = await chooseArtwork({
+      title: `${release.artist} — ${release.title}`,
+      links,
+      openLink: async (link) => {
+        try { await invoke("open_provider_page", { source, entity: link.entity, id: link.id }); }
+        catch (error) { toast(String(error), true); }
+      },
+      images,
+      selected: artworkChoices.get(id) || 0,
+      rotations: artworkRotations.get(id) || {},
+      fetchImage: (url) => {
+        if (!cache.has(url)) cache.set(url,
+          invoke("provider_fetch_image", { source, token, url }).catch((error) => {
+            cache.delete(url);
+            throw error;
+          }));
+        return cache.get(url);
+      },
+    });
+    if (!result || gen !== searchGen) return;
+    artworkChoices.set(id, result.index);
+    artworkRotations.set(id, { ...(artworkRotations.get(id) || {}), [result.index]: result.rotation || 0 });
+    coverCache.set(id, result.cover);
+    const cover = coverElOf(id);
+    if (cover) setCoverImage(cover, `data:${result.cover.mime};base64,${result.cover.data_base64}`);
+    toast(t("artwork.chosen", { number: result.index + 1 }));
+  } catch (error) {
+    toast(String(error), true);
+  } finally {
+    trigger.removeAttribute("aria-busy");
+    artworkPickerOpen = false;
+  }
+}
+
 async function embedCoverFrom(card) {
+  const subject = captureSelection();
+  const paths = subject.paths;
+  const release = releaseCache.get(card.dataset.id);
+  await loadFullCover(card.dataset.id, release?.cover_image_url, card);
   const cover = coverCache.get(card.dataset.id);
   if (!cover) {
     toast(t("toast.online.noCover"), true);
     return;
   }
-  const paths = selectedPaths();
   if (paths.length === 0) {
     toast(t("toast.cover.selectEmbed"), true);
     return;
   }
   try {
-    setPreviewPlan(await invoke("preview_cover_embed", { paths, cover }));
-    setPreviewSource("cover");
-    hooks.renderPreview(previewPlan);
+    const plan = await invoke("preview_cover_embed", { paths, cover });
+    if (!isSelectionCurrent(subject)) return;
+    adoptLiveCoverPlan(plan, paths);
     toast(
-      previewPlan.changes.length
-        ? t("toast.online.previewCover", { files: tn("unit.file", previewPlan.changes.length) })
+      plan.changes.length
+        ? t("toast.online.previewCover", { files: tn("unit.file", plan.changes.length) })
         : t("toast.cover.sameCover"),
     );
   } catch (e) {
@@ -1755,16 +1889,39 @@ async function saveReleaseImages(card, all) {
   }
 }
 
+let importPreviewActive = false;
+let waitingImportPreview = null;
+async function requestImportPreview(args, version, subject) {
+  if (importPreviewActive) {
+    const proceed = await new Promise(resolve => {
+      waitingImportPreview?.(false);
+      waitingImportPreview = resolve;
+    });
+    if (!proceed) return null;
+  }
+  if (!isLiveImportCurrent(version) || !isSelectionCurrent(subject)) return null;
+  importPreviewActive = true;
+  try { return await invoke('preview_import', args); }
+  finally {
+    importPreviewActive = false;
+    const next = waitingImportPreview; waitingImportPreview = null; next?.(true);
+  }
+}
+
 async function importRelease(card) {
-  const paths = selectedPaths();
+  const subject = captureSelection();
+  const paths = subject.paths;
   if (paths.length === 0) {
     toast(t("toast.online.selectImport"), true);
     return;
   }
+  const version = beginLiveImport();
   const release = releaseCache.get(card.dataset.id);
-  // Prefer Discogs "styles" over the coarse "genres" for the genre tag (#26),
-  // joined with "/" to match the user's library convention.
+  // Prefer Discogs styles over coarse genres. Use the writer's multi-value
+  // codec (default "; ") so these stay separate native values, while a slash
+  // inside one provider genre (e.g. Pop/Rock) remains part of that value.
   const genreValues = release.styles.length ? release.styles : release.genres;
+  const genreSeparator = savedSettings.multi_value_separator || "; ";
   // The chosen label / catalogue-number pair (#90): the picker's selection, or
   // the first pair when there's no picker (0 or 1 label).
   const labels = release.labels || [];
@@ -1774,7 +1931,7 @@ async function importRelease(card) {
     album: release.title,
     album_artist: release.artist,
     year: release.year ? String(release.year) : null,
-    genre: genreValues.join("/") || null,
+    genre: genreValues.join(genreSeparator) || null,
     tracks: enabledTracksOf(card),
     // Store the release id so the table can group by release (#20).
     release_id: release.id || null,
@@ -1794,30 +1951,12 @@ async function importRelease(card) {
     media_type: mediaTagValue(release.format),
   };
   try {
-    const imported = await invoke("preview_import", {
+    const imported = await requestImportPreview({
       paths,
       selection,
       vinylSidesToDisc: el("import-vinyl-disc").checked,
-    });
-    // ONLINE's chain runs on what the provider gave, before any of it reaches
-    // the edit buffer (#237). This is where the shipped "Discogs cleanup" group
-    // was always meant to be used: trusting a source is not the same as taking
-    // its disambiguators verbatim.
-    const plan = await runChainOverPlan(imported, "online");
-    // Merge into the pending-edits buffer; a field the user already edited by
-    // hand wins (we don't overwrite an existing entry).
-    let merged = 0;
-    for (const change of plan.changes) {
-      if (!edits.has(change.path)) edits.set(change.path, new Map());
-      const fields = edits.get(change.path);
-      for (const tc of change.tag_changes) {
-        if (!fields.has(tc.field)) {
-          fields.set(tc.field, tc.new ?? "");
-          merged += 1;
-        }
-      }
-      if (fields.size === 0) edits.delete(change.path);
-    }
+    }, version, subject);
+    if (!imported || !isSelectionCurrent(subject) || !isLiveImportCurrent(version)) return;
     // Hand the release's cover to the staging step (#207) so the tags and the
     // artwork become ONE plan — one Apply, one undo. Whether any of it is
     // written is the backend's call: the import-cover setting decides, per
@@ -1827,29 +1966,13 @@ async function importRelease(card) {
     // importing straight after expanding would otherwise race it and drop the
     // artwork silently, which is the one failure this feature must not have.
     await loadFullCover(card.dataset.id, release.cover_image_url, card);
-    setPendingImportCover(coverCache.get(card.dataset.id) || null);
-    // No plain render here: `previewEdits` stages the plan and repaints the
-    // table as a diff a moment later, so rendering first only builds a few
-    // thousand rows to throw them away (#186).
-    refreshFieldEditor();
+    if (!isSelectionCurrent(subject) || !isLiveImportCurrent(version)) return;
+    if (!replaceLiveImport(imported, coverCache.get(card.dataset.id) || null, paths, version)) return;
+    refreshFieldEditor({force:true});
     await hooks.previewEdits();
-    // The cover has to be named. The table shows changes per column and
-    // artwork has none, so a file that only gains a cover is a staged row that
-    // says nothing — this line is the only place a few hundred KB about to be
-    // written gets announced (#207).
-    const covered = (previewPlan?.changes || []).filter((c) => c.cover_change).length;
-    const coverNote = covered ? ", " + t("import.coverOn", { files: tn("unit.file", covered) }) : "";
-    toast(
-      merged || covered
-        ? t("toast.import.merged", {
-            changes: tn("unit.fieldChange", merged),
-            cover: coverNote,
-          })
-        : t("toast.import.nothingNew"),
-    );
   } catch (e) {
-    toast(String(e), true);
-  }
+    if (isLiveImportCurrent(version)) toast(String(e), true);
+  } finally { finishLiveImport(version); }
 }
 
 // ---- wire up ----
@@ -1901,14 +2024,25 @@ el("release-list").addEventListener("click", (e) => {
   const card = e.target.closest(".release-card");
   if (!card) return;
   const act = e.target.closest("[data-act]")?.dataset.act;
-  if (act === "save-menu") {
+  if (act === "artwork") {
+    pickReleaseArtwork(card);
+  } else if (act === "save-menu") {
     // Split-button caret: toggle this card's save menu, closing any other.
     const menu = card.querySelector(".tk-save-menu");
+    const anchor = e.target.closest('[data-act="save-menu"]');
     e.stopPropagation();
     document.querySelectorAll(".tk-save-menu").forEach((m) => {
       if (m !== menu) m.hidden = true;
     });
-    if (menu) menu.hidden = !menu.hidden;
+    if (menu) {
+      menu.hidden = !menu.hidden;
+      anchor.setAttribute("aria-expanded", String(!menu.hidden));
+      if (!menu.hidden) {
+        menu.classList.add("floating");
+        placeFloating(menu, anchor);
+        queueMicrotask(() => menu.querySelector('button:not(:disabled)')?.focus({ preventScroll: true }));
+      }
+    }
   } else if (act === "automatch") {
     // One button, two rules (#191), alternating (#199): the label is the rule
     // the next press will use, and each press offers the other one back.
@@ -1952,6 +2086,12 @@ document.addEventListener("click", (e) => {
   document.querySelectorAll(".tk-save-menu:not([hidden])").forEach((menu) => {
     if (!menu.contains(e.target) && !e.target.closest('[data-act="save-menu"]')) menu.hidden = true;
   });
+});
+
+// A family can change width without changing row height. Re-measure only the
+// expanded release cards after the interface face changes/finishes loading.
+document.addEventListener("tagrex:interfacefont", () => {
+  for (const card of releaseList().querySelectorAll('.release-card[aria-expanded="true"]')) fixTrackColumnWidth(card);
 });
 
 // A language switch: the cards and their open tracklists are built at run time, so

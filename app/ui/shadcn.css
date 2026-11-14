@@ -1,0 +1,39 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "tw-animate-css";
+@source "./components";
+@source "./lib";
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+:root {
+  --foreground: var(--text);
+  --secondary: var(--panel);
+}
+
+/* The existing TagRex palette remains the colour source for every component. */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--panel);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--bg);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--accent-text);
+  --color-secondary: var(--panel);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--panel);
+  --color-muted-foreground: var(--muted);
+  --color-accent: var(--row-hover);
+  --color-accent-foreground: var(--accent-ink);
+  --color-destructive: var(--del);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+  --radius-sm: var(--r-compact);
+  --radius-md: var(--r-control);
+  --radius-lg: var(--r-inset);
+  --radius-xl: var(--r-dialog);
+  --font-sans: var(--font-ui);
+}

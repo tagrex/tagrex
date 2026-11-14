@@ -1,0 +1,145 @@
+/* Shared workbench language: quiet surfaces, clear hierarchy and one focus edge.
+   Keep controller-owned nodes and the virtual table's geometry/state intact. */
+:root {
+  --workbench-chrome: var(--panel);
+  --workbench-surface: var(--panel);
+  --workbench-seam: color-mix(in srgb,var(--border) 35%,transparent);
+}
+:root[data-palette] {
+  --row-sel:color-mix(in srgb,var(--accent) 18%,var(--bg));
+  --row-sel-hover:color-mix(in srgb,var(--accent) 26%,var(--bg));
+}
+body .topbar { padding:var(--sp-3) var(--sp-4) var(--sp-2); gap:var(--sp-2); background:var(--panel); }
+body .topbar-main { align-items:center; gap:var(--sp-3); min-height:var(--ctl-h); flex-wrap:nowrap; }
+body .brand { margin-right:0; }
+body .brand svg { height:20px; }
+body .mode-tabs { gap:2px; border:0; border-radius:0; padding:0; background:transparent; }
+body button[data-slot='button'].mode-tab { min-height:32px; padding:7px 10px; border-radius:var(--r-compact); font-size:var(--text-sm); letter-spacing:0; font-weight:var(--fw-medium); text-transform:none; }
+body button[data-slot='button'].mode-tab .ico { display:inline-block; width:17px; height:17px; }
+body .topbar .ico { width:17px; height:17px; }
+body button[data-slot='button'].mode-tab.active { background:var(--sel-tint); color:var(--accent-ink); }
+body .topbar-main > .view-tabs { display:flex; align-items:center; height:32px; margin:0; padding:0; background:transparent; position:relative; }
+body .topbar-main .toolbar-trigger, body .command-toolbar .toolbar-trigger { height:32px; min-height:32px; padding:6px 9px; border-radius:var(--r-compact); font-size:var(--text-sm); background:transparent; border-color:transparent; }
+body .topbar-main .toolbar-trigger > span { display:inline; }
+body .topbar-main > button.icon { width:32px; height:32px; border-radius:var(--r-compact); }
+body .topbar-div { display:none; }
+body .command-toolbar { display:flex; align-items:center; gap:var(--sp-2); min-height:var(--ctl-h); position:relative; }
+body .command-toolbar > button { min-height:var(--ctl-h); border-radius:var(--r-compact); padding:6px 9px; gap:6px; color:var(--muted); font-size:var(--text-sm); background:transparent; border-color:transparent; }
+body .command-toolbar > button:hover:not(:disabled) { color:var(--text); background:var(--row-hover); }
+body .command-toolbar > #undo { width:var(--ctl-h); padding:6px; }
+body .command-toolbar > #status-sel { margin-left:auto; color:var(--muted); font-size:var(--text-xs); white-space:nowrap; }
+.toolbar-overflow { position:relative; }
+body .toolbar-panel { background:var(--bg); border:1px solid color-mix(in srgb,var(--border) 70%,transparent); border-radius:var(--r-menu); padding:var(--menu-inset); box-shadow:0 8px 24px rgb(0 0 0 / .24); }
+body .toolbar-panel .tray-action { min-height:32px; border-radius:var(--r-compact); text-align:left; justify-content:flex-start; }
+body .workarea { padding:0 var(--sp-3); gap:0; background:var(--panel); }
+body .dock-middle { column-gap:5px; }
+body .dock-area { background:var(--panel); }
+body .dock-module-body > .files-col { border:0; border-radius:var(--r-inset); background:var(--bg); overflow:hidden; }
+body .dock-module-body > .mode-col { border:0; border-radius:0; background:var(--panel); }
+body .dock-column-splitter { margin-inline:3px; }
+body .dock-workspace button.dock-splitter::after, body .dock-workspace button.dock-module-splitter::after { background:var(--workbench-seam); }
+body .dock-workspace button.dock-splitter:hover::after, body .dock-workspace button.dock-splitter:focus-visible::after,
+body .dock-workspace button.dock-module-splitter:hover::after, body .dock-workspace button.dock-module-splitter:focus-visible::after { background:var(--accent); }
+.library-header { display:flex; flex:none; padding:0 0 var(--sp-2); min-width:0; background:var(--panel); }
+body .library-header .lib { display:flex; flex:1 1 auto; align-items:center; gap:0; padding:0; width:100%; min-width:0; max-width:none; }
+body .topbar-main button[data-slot='button'].toolbar-trigger,
+body .command-toolbar button[data-slot='button'].toolbar-trigger { border:0; border-radius:var(--r-compact); background:transparent; }
+body .topbar-main button[data-slot='button'].toolbar-trigger:hover,
+body .command-toolbar button[data-slot='button'].toolbar-trigger:hover { background:var(--row-hover); }
+body .library-header #lib-action { width:28px; height:28px; min-width:28px; min-height:28px; padding:4px; border:0; border-radius:var(--r-compact); align-self:center; }
+body .library-header #root-field { flex:1; min-width:0; height:38px; border:0; border-radius:var(--r-control); background:var(--bg); box-shadow:none; padding:0 4px 0 7px; }
+body .library-header .path { display:flex; flex:1; min-width:0; }
+body .library-header .path-open { min-width:0; height:36px; justify-content:flex-start; padding:5px 6px; border:0; border-radius:var(--r-compact); background:transparent; }
+body .library-header .path-open .path-parent { color:var(--muted); }
+body .library-header .path-open .path-name { font-weight:var(--fw-medium); }
+body .library-header .field-tools { align-items:center; gap:2px; flex:none; }
+body .library-header .field-tools button { width:28px; height:28px; min-height:28px; min-width:28px; border-radius:var(--r-compact); }
+body .library-header .field-sep { display:none; }
+body #files-view { background:var(--bg); border:0; border-radius:0; }
+body #tracks thead th, body #tracks thead th[data-sort], body #tracks thead th.artwork-col { height:28px; font-size:var(--text-xs); font-weight:400; color:var(--label); background:var(--bg); border:0; }
+body #tracks [data-slot='table-header'], body #tracks thead tr { border:0; }
+body #tracks .col-resize::after { background:transparent; }
+body #tracks .col-resize:hover::after, body.resizing-col #tracks .col-resize::after { background:var(--border); }
+body #tracks tbody td { border:0; }
+body #tracks tbody tr[data-path]:not(.selected):not(:hover):is([aria-rowindex$='0'],[aria-rowindex$='2'],[aria-rowindex$='4'],[aria-rowindex$='6'],[aria-rowindex$='8']) td:not(.dirty):not(.error):not(.sheet-range) { background:var(--row-stripe,color-mix(in srgb,var(--text) 3%,var(--bg))); }
+body #tracks td.group-cell { background:color-mix(in srgb,var(--panel) 74%,var(--bg)); border:0; padding-block:4px; font-weight:var(--fw-medium); }
+body #tracks .group-label { font-weight:var(--fw-medium); }
+body #tracks .group-caret { color:var(--muted); }
+body #tracks .track-artwork { color:var(--muted); }
+body #tracks .track-artwork, body #tracks .track-artwork .ico { width:14px; height:14px; }
+body #tracks .track-artwork[data-cover-state='missing'] { color:var(--accent-ink); opacity:.85; }
+body #tracks .track-artwork[data-cover-state='unknown'] { color:var(--muted); opacity:.45; }
+body #tracks :is(th,td).artwork-col { border:0; }
+/* Inspector and filter geometry live in their component owners. */
+body .dock-module-chrome #presets-edit { background:transparent; border-color:transparent; color:var(--muted); }
+body .arranging-workspace .dock-module:not([data-collapsible='true']) > .dock-module-chrome { height:30px; margin-bottom:3px; padding:4px 8px; border-radius:var(--r-compact); background:var(--sel-tint); color:var(--accent-ink); cursor:grab; }
+body .arranging-workspace .dock-module:not([data-collapsible='true']) > .dock-module-chrome::before { content:'⠿'; font-size:15px; line-height:1; margin-right:4px; }
+body .statusbar { display:grid; grid-template-columns:var(--player-offset,12px) minmax(0,var(--player-width,calc(100% - 24px))) minmax(0,1fr); border:0; min-height:44px; padding:var(--sp-1) 0 var(--sp-2); background:var(--panel); gap:0; }
+body .statusbar .sb-left { grid-column:2; min-width:0; padding-inline:3px; }
+body .statusbar .sb-right { position:relative; grid-column:3; min-width:0; max-width:none; padding-inline:9px 12px; flex-direction:column; align-items:stretch; justify-content:center; min-height:var(--ctl-h); gap:var(--sp-1); container-type:inline-size; }
+/* A compact action rail may extend upward into the inspector, never resize
+   the table/player grid when a draft becomes actionable. */
+body .statusbar.narrow-actions .diff-actionbar { position:absolute; inset:auto var(--sp-3) 0 var(--sp-2); width:auto; }
+/* A scan can coexist with a staged draft: leave its Stop rail below the edit
+   controls instead of painting the absolute actionbar over it. */
+body .statusbar.narrow-actions .sb-right:has(#busy-pill:not([hidden])) .diff-actionbar { bottom:calc(100% + var(--sp-2)); }
+body:has(.statusbar.narrow-actions #busy-pill:not([hidden])):has(.statusbar.narrow-actions #diff-actionbar:not([hidden])) .mode-col { padding-bottom:calc(var(--sp-7) * 2); }
+
+body .statusbar.narrow-actions:has(#diff-actionbar:not([hidden])) .footer-feedback { bottom:calc(100% + var(--sp-7)); }
+/* Scope and lock feedback must not resize the table during a live cell edit. */
+body .statusbar .footer-feedback { position:absolute; left:9px; right:12px; bottom:calc(100% + 3px); display:flex; flex-direction:column; background:var(--panel); }
+body .statusbar .footer-feedback > span { padding:2px 0; font-size:var(--text-xs); }
+body .statusbar .footer-feedback .ab-locked { color:var(--muted); }
+body .statusbar .footer-feedback > [hidden] { display:none; }
+body .statusbar .sb-right:has(#diff-actionbar[hidden]) #ab-locked { display:none; }
+body .statusbar .sb-right:has(#diff-actionbar:not([hidden])) #status-transform-scope[data-detail='false'] { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+body .statusbar .sb-right:not(:has(#diff-actionbar:not([hidden]),#busy-pill:not([hidden]),#status-transform-scope:not([hidden]))) { display:none; }
+body .statusbar.player-full-width .sb-right { grid-column:2; grid-row:1; padding:3px; }
+body .statusbar.player-full-width .sb-left { grid-row:2; }
+body #player { gap:var(--sp-3); }
+body #player .pl-transport { gap:1px; }
+body #player .pl-transport button { width:var(--ctl-h-sm); height:var(--ctl-h-sm); border-radius:var(--r-compact); }
+body #player .icon > svg { width:16px; height:16px; }
+body #pl-toggle { color:var(--accent-ink); }
+body #player .pl-main { min-width:100px; }
+body #player .pl-line { gap:12px; }
+body #pl-title { font-family:var(--font-ui); font-size:var(--text-xs); }
+body #player .pl-vol { gap:var(--sp-2); }
+/* Permanent action rail beneath the inspector. The controller still owns the
+   original controls and state; no viewport-dependent DOM reparenting is needed. */
+body .statusbar .diff-actionbar { position:static; inset:auto; transform:none; display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; width:100%; min-width:0; max-width:none; border:0; border-radius:0; background:transparent; box-shadow:none; padding:0; margin:0; gap:4px 12px; }
+body .statusbar .diff-actionbar[hidden] { display:none; }
+body .statusbar .diff-actionbar .btn { height:var(--ctl-h); min-height:var(--ctl-h); padding:var(--sp-1) var(--sp-3); border-radius:var(--r-compact); font-size:var(--text-xs); }
+body .statusbar #diff-preview { grid-column:2; border:0; background:var(--bg); color:var(--text); }
+body .statusbar .diff-actionbar.applying #diff-preview { display:none; }
+body .statusbar #diff-apply { gap:var(--sp-2); padding-inline:var(--sp-4); border-radius:var(--r-pill); max-width:100%; min-width:0; height:auto; min-height:var(--ctl-h); white-space:normal; line-height:1.3; text-align:center; }
+body .statusbar #diff-cancel-apply { grid-column:3; }
+body .statusbar .diff-actionbar.applying .toggle-old { display:none; }
+body .statusbar .diff-actionbar.applying .ab-progress { grid-column:1 / 3; min-width:0; width:100%; gap:8px; }
+body .statusbar .diff-actionbar .ab-bar { width:60px; max-width:24%; }
+body .statusbar .diff-actionbar .ab-file { max-width:none; flex:1; }
+@container (max-width:280px) {
+  body .statusbar .diff-actionbar { grid-template-columns:minmax(0,1fr) auto; gap:4px; }
+  body .statusbar .diff-actionbar .btn { padding-inline:8px; }
+  body .statusbar #diff-apply { grid-column:2; justify-self:end; }
+  body .statusbar #diff-preview { grid-column:1; justify-self:end; }
+  body .statusbar #diff-cancel-apply { grid-column:2; }
+  body .statusbar .diff-actionbar.applying .ab-progress { grid-column:1; }
+}
+@media (max-width:900px) {
+  body .topbar-main { gap:7px; }
+  body .topbar-main > .spacer { display:block; min-width:0; flex:1; }
+  body button[data-slot='button'].mode-tab { padding-inline:8px; }
+}
+@media (max-width:650px) {
+  body .topbar { padding:var(--sp-2); }
+  body .topbar-main { flex-wrap:wrap; gap:5px; }
+  body .mode-tabs { order:10; flex:1 0 100%; width:100%; flex-wrap:wrap; overflow:visible; justify-content:flex-start; }
+  body .mode-tab .lbl, body.compact-tabs .mode-tab .lbl { display:inline; }
+  body button[data-slot='button'].mode-tab { flex:0 0 auto; padding:6px 8px; font-size:var(--text-xs); }
+  body .command-toolbar { flex-wrap:wrap; gap:2px; }
+  body .command-toolbar > #status-sel { margin-left:auto; font-size:var(--text-xs); }
+  body .workarea { padding-inline:var(--sp-2); }
+  body .library-header #root-field { height:36px; }
+  body .library-header .path-open { height:34px; }
+}

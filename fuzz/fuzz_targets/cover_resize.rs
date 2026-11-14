@@ -14,7 +14,7 @@ fuzz_target!(|data: &[u8]| tagrex_fuzz::run(|| {
     let max_px = u32::from(size % 64) + 1;
     let art = CoverArt {
         mime: "image/jpeg".to_string(),
-        data: image.to_vec(),
+        data: image.into(),
         ..CoverArt::default()
     };
     let resized = resize_cover(&art, max_px, 90);

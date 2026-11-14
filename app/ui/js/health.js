@@ -1,3 +1,4 @@
+import { createComponentElement } from "../lib/component-elements.js";
 // The library health menu (#436): ready-made checks that narrow the table to the
 // files that need a look. The checks themselves are in healthchecks.js; this is
 // the menu, the one active check and the filter it contributes.
@@ -80,7 +81,7 @@ function row(label, count, id, detail) {
   const item = document.createElement("div");
   item.className = "health-item";
   if (detail) {
-    const more = document.createElement("button");
+    const more = createComponentElement("button");
     more.type = "button";
     more.className = "icon health-more";
     more.innerHTML = '<svg class="ico"><use href="#i-chevron-right"/></svg>';
@@ -102,7 +103,7 @@ function row(label, count, id, detail) {
   } else {
     item.appendChild(document.createElement("span"));
   }
-  const button = document.createElement("button");
+  const button = createComponentElement("button");
   button.type = "button";
   button.className = "col-menu-row health-row";
   button.classList.toggle("on", id === activeId);
@@ -212,7 +213,7 @@ function renderMenu() {
   if (flagged.size) summary.append(...withBold(t("health.summary", { n: MARK, total: tracks.length }), flagged.size));
   else summary.textContent = t("health.allClear");
   if (activeId) {
-    const clear = document.createElement("button");
+    const clear = createComponentElement("button");
     clear.type = "button";
     clear.className = "health-clear";
     clear.textContent = t("health.clear");

@@ -18,6 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:unit
+      - run: npm run build
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -42,17 +51,30 @@ jobs:
             patchelf \
             dbus
 
+      - name: Install browser for UI tests
+        run: npx playwright install --with-deps chromium
+      - name: Artwork picker UI tests
+        run: npm run test:ui
+
       - name: Check formatting
         run: cargo fmt --all --check
 
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Standalone ES-module checks; no npm install or frontend build.
+      - name: Check artwork plan transport
+        run: node --test tests/unit/plan-codec.test.js
+
       - name: Build
         run: cargo build --workspace
 
       - name: Test
         run: cargo test --workspace
+
+      # A standalone ES-module regression, with no npm install or frontend build.
+      - name: Check field-lock submission order
+        run: node --test tests/unit/field-lock-order.test.js
 
       # The Linux media session (#516) exports MPRIS on the session bus; its
       # tests are ignored by default because a plain `cargo test` has no bus.
@@ -71,6 +93,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -94,6 +124,14 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run build
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

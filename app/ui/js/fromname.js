@@ -9,13 +9,15 @@
 // plan (#142), which is the one mechanism every producer of values shares, so
 // the values here come out as the name spells them and are tidied up on the
 // preview bar like everything else.
-import { el, escapeHtml, toast } from "./dom.js";
+import { el, toast } from "./dom.js";
 import { t } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { chainHasRules, onChainChanged, runChainOverPlan } from "./chains.js";
 import { hooks } from "./hooks.js";
-import { columnLabel } from "./columns.js";
+import { probeMessage, renderProbeTracks } from "./probe-view.js";
 import {
+  captureSelection,
+  isSelectionCurrent,
   previewPlan,
   previewSource,
   selectedPaths,
@@ -101,46 +103,39 @@ async function throughChain(path, fields) {
   return changed ? changed.map((t) => [t.field, t.new ?? ""]) : fields;
 }
 
-// The live read-out under the pattern box: what the mask pulls out of the first
-// selected file, tags-on-disk irrelevant. Extraction stays in Rust — one
-// grammar, one implementation (mask.rs) — so this is a per-keystroke round trip,
-// debounced by its caller.
+// The sample is bounded; the full Preview action still covers the selection.
+// Bind every await to both the pattern and selection revision (including A→B→A).
+let nameProbeGeneration = 0;
 async function refreshNameProbe() {
   const box = el("from-name-probe");
   if (!box) return;
-  const path = selectedPaths()[0];
-  if (!path) {
-    box.innerHTML = `<div class="probe-fields"><div class="probe-miss">${escapeHtml(t("fromname.probeSelect"))}</div></div>`;
+  const generation = ++nameProbeGeneration;
+  const subject = captureSelection();
+  const mask = el("from-name-mask").value;
+  const current = () => generation === nameProbeGeneration && isSelectionCurrent(subject) && mask === el("from-name-mask").value;
+  const paths = subject.paths.slice(0, 3);
+  if (!paths.length) {
+    probeMessage(box, t("fromname.probeSelect"));
     return;
   }
   try {
-    const probe = await invoke("probe_tags_from_name", {
-      mask: el("from-name-mask").value,
-      path,
-    });
-    // The name being read sits in a field of its own, above the values (#249):
-    // it is the SUBJECT of the operation, not one of its results, and inside
-    // the same list it read as the longest and least structured result there.
-    const subject = `<div class="probe-subject">${escapeHtml(probe.subject)}</div>`;
-    if (!probe.matched || probe.fields.length === 0) {
-      box.innerHTML = `${subject}<div class="probe-fields"><div class="probe-miss">${escapeHtml(t("fromname.probeNoMatch"))}</div></div>`;
-      return;
+    const result = await invoke("probe_tags_from_names", { mask, paths });
+    if (!current()) return;
+    const samples = [];
+    for (const [index, probe] of result.files.entries()) {
+      const fields = probe.matched ? await throughChain(paths[index], probe.fields) : [];
+      if (!current()) return;
+      samples.push({ probe, fields, path: paths[index] });
     }
-    const rows = (await throughChain(path, probe.fields))
-      .map(
-        ([field, value]) =>
-          `<div class="probe-row"><span class="probe-field">${escapeHtml(columnLabel(field))}</span><span class="probe-value">${escapeHtml(value)}</span></div>`,
-      )
-      .join("");
-    box.innerHTML = `${subject}<div class="probe-fields">${rows}</div>`;
+    renderProbeTracks(box, samples, { name: true });
   } catch (e) {
-    // A pattern that can't parse at all — say so where the result would be.
-    box.innerHTML = `<div class="probe-fields"><div class="probe-miss">${escapeHtml(String(e))}</div></div>`;
+    if (current()) probeMessage(box, String(e));
   }
 }
 
 let nameProbeTimer = null;
 function scheduleNameProbe() {
+  nameProbeGeneration++;
   if (el("subtab-filename").hidden) return;
   clearTimeout(nameProbeTimer);
   nameProbeTimer = setTimeout(refreshNameProbe, 180);

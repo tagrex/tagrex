@@ -12,6 +12,16 @@ updates:
     ignore:
       - dependency-name: "rten"
       - dependency-name: "rten-tensor"
+      # windows-future 0.100 already belongs to the next windows-rs generation
+      # while the windows crate (used by the app, tao and cpal) has no matching
+      # release yet, so the group below would offer it alone and it would not
+      # compile (#756). Bump it by hand together with the windows crate.
+      - dependency-name: "windows-future"
+      # zbus is zbus 5 because tauri-plugin-single-instance builds zbus 5; a
+      # major bump alone would put two zbus versions in the Linux build (#759).
+      # Move to the next major together with the plugin.
+      - dependency-name: "zbus"
+        update-types: ["version-update:semver-major"]
     groups:
       # windows-future must match the windows crate's core types, so a bump of
       # either one alone does not compile (#716). Listed first because a

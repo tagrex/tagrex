@@ -11,6 +11,7 @@ picking rows; what the modes then *do* with them is on their own pages.
 | Click a row | Select just that row |
 | ⌘/Ctrl-click | Add or remove one row, keeping the rest |
 | Shift-click | Select the range from the last-clicked row, keeping what a ⌘/Ctrl-click left selected |
+| Drag over the tag cells | Select every row from the one you pressed to the one under the pointer; with ⌘/Ctrl held, add them to the selection. Near the top or bottom edge the table scrolls on its own |
 | ⌘/Ctrl-A | Select every row the table lists |
 | Click below the rows | Clear the selection |
 | ↑ / ↓ | Move to the previous/next row |
@@ -154,8 +155,17 @@ bottom of the menu. A footer resets the whole thing — set, order, visibility a
 widths — to the defaults.
 
 **File** is marked *always shown* and its tick is disabled: it is structural
-rather than a tag column, and it stays first. Everything else is yours to
-arrange.
+rather than a tag column, and no tag column goes in front of it. Everything
+else is yours to arrange. The one exception is **Cover**: switched on, it
+appears first, in front of File, and from there it can be dragged anywhere,
+including back in front of File.
+
+A few columns are read from the file rather than from a tag, and can't be edited:
+**Position** (the vinyl side and track, such as `A1`), **Length**, **Tag types**
+(which tag blocks the file carries) and **Cover**. Cover shows a picture glyph
+for a file with embedded cover art and a struck-through one, in red, for a file
+without; sorting by it puts the files without a cover first. A file whose tags
+could not be read is never counted as missing a cover.
 
 ### A column of your own
 

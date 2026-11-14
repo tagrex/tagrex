@@ -7,13 +7,13 @@
 // in Rust, as it is for FROM NAME; this module only stages the plan it returns,
 // and the chain FROM NAME runs over its values runs over these too.
 import { el, escapeHtml, toast } from "./dom.js";
-import { t } from "./i18n.js";
+import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { onChainChanged, runChainOverPlan } from "./chains.js";
 import { throughChain } from "./fromname.js";
 import { hooks } from "./hooks.js";
-import { columnLabel } from "./columns.js";
-import { previewPlan, previewSource, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
+import { probeMessage, renderProbeTracks } from "./probe-view.js";
+import { captureSelection, isSelectionCurrent, previewPlan, previewSource, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
 
 // The pattern is panel state, like FROM NAME's, and kept apart from it: a
 // tracklist line ("01. Artist - Title") rarely looks like a file name.
@@ -46,16 +46,13 @@ function hasText() {
 // extra tracks or extra files are left out, and lines the pattern doesn't fit
 // are skipped — none of which should be a surprise, so all of it is said.
 function renderCount(tracks, files, skipped) {
-  let text = "";
-  if (tracks && files) {
-    if (tracks === files) text = t("fromText.countMatch", { tracks, files });
-    else if (tracks > files) text = t("fromText.countMoreLines", { tracks, files });
-    else text = t("fromText.countMoreFiles", { tracks, files });
-  } else if (tracks || skipped) {
-    text = t("fromText.countLines", { tracks });
-  }
-  if (skipped) text += t("fromText.countSkipped", { skipped });
-  el("from-text-count").textContent = text;
+  const parts = [];
+  if (tracks) parts.push(tn("inspector.matchCount", Math.min(tracks, files) || tracks));
+  if (tracks && !files) parts.push(t("inspector.noFiles"));
+  if (files && tracks && files > tracks) parts.push(tn("inspector.unmatchedFiles", files - tracks));
+  if (files && tracks > files) parts.push(tn("inspector.extraLines", tracks - files));
+  if (skipped) parts.push(tn("inspector.skippedLines", skipped));
+  el("from-text-count").textContent = parts.join(" · ");
 }
 
 async function previewTagsFromText() {
@@ -131,50 +128,84 @@ function visibleSubject(text) {
   return html;
 }
 
-// The live read-out: how many tracks the pattern finds, and what it pulls out
-// of the first one — the track the first selected file gets.
+// Totals use the full backend probe. Only a small window starting at its
+// first matching line is returned as per-line data, avoiding a library-sized
+// IPC payload on every keystroke. Sparse lists may show fewer sample tracks.
+function sampleTextWindow(text, firstSubject) {
+  let start = 0;
+  while (start < text.length) {
+    const newline = text.indexOf("\n", start);
+    const end = newline < 0 ? text.length : newline;
+    if (text.slice(start, end).trim() === firstSubject) {
+      let limit = start;
+      for (let line = 0; line < 64; line++) {
+        const next = text.indexOf("\n", limit);
+        if (next < 0) return text.slice(start);
+        limit = next + 1;
+      }
+      return text.slice(start, limit);
+    }
+    if (newline < 0) break;
+    start = newline + 1;
+  }
+  return null;
+}
+
+let textProbeGeneration = 0;
 async function refreshTextProbe() {
   const box = el("from-text-probe");
   if (!box) return;
-  const paths = selectedPaths();
-  if (!hasText()) {
+  const generation = ++textProbeGeneration;
+  const subject = captureSelection();
+  const paths = subject.paths;
+  const mask = el("from-text-mask").value;
+  const text = el("from-text-lines").value;
+  const current = () => generation === textProbeGeneration && isSelectionCurrent(subject) && mask === el("from-text-mask").value && text === el("from-text-lines").value;
+  if (!text.trim()) {
     renderCount(0, paths.length, 0);
     box.innerHTML = "";
     return;
   }
   try {
-    const result = await invoke("probe_tags_from_text", {
-      mask: el("from-text-mask").value,
-      text: el("from-text-lines").value,
-    });
-    renderCount(result.tracks, paths.length, result.skipped);
-    const probe = result.first;
-    const subject = `<div class="probe-subject">${visibleSubject(probe.subject)}</div>`;
-    if (!probe.matched || probe.fields.length === 0) {
-      // A list in columns that no line fits is almost always a mask written
-      // with spaces where the list has tabs; say what to write instead.
-      const mask = el("from-text-mask").value;
-      const tabs = !result.tracks && probe.subject.includes("\t") && !mask.includes("\\t");
-      const tip = tabs ? `<div class="probe-miss">${escapeHtml(t("fromText.tabHint"))}</div>` : "";
-      box.innerHTML = `${subject}<div class="probe-fields"><div class="probe-miss">${escapeHtml(t("fromText.probeNoMatch"))}</div>${tip}</div>`;
+    const result = await invoke("probe_tags_from_text", { mask, text });
+    if (!current()) return;
+    const first = result.first;
+    if (!first.matched || !first.fields.length) {
+      renderCount(result.tracks, paths.length, result.skipped);
+      const tabs = !result.tracks && first.subject.includes("\t") && !mask.includes("\\t");
+      box.innerHTML = `<div class="probe-source"><div class="probe-subject">${visibleSubject(first.subject)}</div></div><p class="probe-miss">${escapeHtml(t("fromText.probeNoMatch"))}</p>${tabs ? `<p class="probe-miss">${escapeHtml(t("fromText.tabHint"))}</p>` : ""}`;
       return;
     }
-    const fields = paths[0] ? await throughChain(paths[0], probe.fields) : probe.fields;
-    const rows = fields
-      .map(
-        ([field, value]) =>
-          `<div class="probe-row"><span class="probe-field">${escapeHtml(columnLabel(field))}</span><span class="probe-value">${escapeHtml(value)}</span></div>`,
-      )
-      .join("");
-    box.innerHTML = `${subject}<div class="probe-fields">${rows}</div>`;
+    let probes = [{ probe: first, path: paths[0] }];
+    // Match whole trimmed lines, not substrings of skipped lines. The backend
+    // remains the authority on matches and the nth-match → nth-file mapping.
+    if (result.tracks > 1 && paths.length > 1) {
+      const window = sampleTextWindow(text, first.subject);
+      if (window !== null) {
+        const sample = await invoke("probe_text_lines", { mask, text: window, paths: paths.slice(0, 3) });
+        if (!current()) return;
+        const matches = sample.lines.filter(line => line.matched && line.path).slice(0, 3);
+        if (matches[0]?.line === first.subject) probes = matches.map(line => ({ probe: { ...line, subject: line.line }, path: line.path }));
+      }
+    }
+    const samples = [];
+    for (const { probe, path } of probes) {
+      const fields = path ? await throughChain(path, probe.fields) : probe.fields;
+      if (!current()) return;
+      samples.push({ probe, fields, path });
+    }
+    renderCount(result.tracks, paths.length, result.skipped);
+    renderProbeTracks(box, samples, { subjectHtml: visibleSubject });
   } catch (e) {
+    if (!current()) return;
     renderCount(0, paths.length, 0);
-    box.innerHTML = `<div class="probe-fields"><div class="probe-miss">${escapeHtml(String(e))}</div></div>`;
+    probeMessage(box, String(e));
   }
 }
 
 let textProbeTimer = null;
 function scheduleTextProbe() {
+  textProbeGeneration++;
   if (el("subtab-fromtext").hidden) return;
   clearTimeout(textProbeTimer);
   textProbeTimer = setTimeout(refreshTextProbe, 180);

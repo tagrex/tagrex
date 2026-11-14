@@ -17,16 +17,25 @@
 // that once per selected path and again per field, and a single row click cost a
 // quarter of a second.
 export let tracks = [];
+export let contentRevision = 0;
+export function invalidateTrackContent() { contentRevision++; }
 let trackIndex = new Map();
+let trackOrder = new Map();
 export function setTracks(value) {
   tracks = value;
+  invalidateTrackContent();
   reindexTracks();
 }
 
 // Rebuild the index after the list is reordered in place (the drag reorder does
 // that) — the entries are the same, but their order is what the table shows.
 export function reindexTracks() {
-  trackIndex = new Map(tracks.map((t) => [t.path, t]));
+  trackIndex = new Map();
+  trackOrder = new Map();
+  tracks.forEach((track, index) => {
+    trackIndex.set(track.path, track);
+    trackOrder.set(track.path, index);
+  });
 }
 
 // The staged ChangePlan, and what produced it — apply() uses the source to
@@ -73,22 +82,57 @@ export const edits = new Map();
 // The set of selected file paths — the single source of truth for what every
 // mode operates on. Kept here (not in the DOM) so a re-render (sort, reorder,
 // auto-match, staging edits) never silently wipes or widens the selection.
-export const selection = new Set();
+let selectionRevision = 0;
+export function selectionVersion() { return selectionRevision; }
+class SelectionSet extends Set {
+  add(path) { if (!this.has(path)) selectionRevision++; return super.add(path); }
+  delete(path) { const removed = super.delete(path); if (removed) selectionRevision++; return removed; }
+  clear() { if (this.size) selectionRevision++; super.clear(); }
+}
+export const selection = new SelectionSet();
+let selectedSnapshot = null;
+
+// All async consumers bind both their source data and destination paths to this
+// revision. A -> B -> A is still a new subject; a late response cannot revive it.
+export function captureSelection() {
+  return { paths: selectedPaths(), selectionRevision, contentRevision, library: tracks };
+}
+export function isSelectionCurrent(subject) {
+  return !!subject && subject.selectionRevision === selectionRevision &&
+    subject.contentRevision === contentRevision && subject.library === tracks;
+}
 
 // Selected paths in `tracks` (mapping) order — NOT the visual/DOM order. This
 // keeps position-based mapping (rename masks, Discogs import) tied to the real
 // file order even when the view is grouped (#20). Reads the `selection` set, so
 // it survives re-renders.
 export function selectedPaths() {
-  // In mapping order, which is what every operation downstream assumes — so
-  // this walks the list rather than the selection. Cheap next to what it used
-  // to sit in front of (#184), and skipped outright when nothing is selected.
+  if (selectedSnapshot?.revision === selectionRevision && selectedSnapshot.order === trackOrder) return selectedSnapshot.paths;
+  const paths = orderedSelectedPaths();
+  selectedSnapshot = { revision: selectionRevision, order: trackOrder, paths };
+  return paths;
+}
+function orderedSelectedPaths() {
   if (selection.size === 0) return [];
-  return tracks.filter((t) => selection.has(t.path)).map((t) => t.path);
+  // Row clicks usually select a handful out of a large library. Resolve that
+  // small set through the existing path index, retaining mapping order rather
+  // than paying for a full-library scan in each selection-dependent panel.
+  if (selection.size < tracks.length / 4) {
+    return [...selection].filter((path) => trackIndex.has(path))
+      .sort((a, b) => trackOrder.get(a) - trackOrder.get(b));
+  }
+  // A broad range/select-all is already O(library); a linear walk beats sorting.
+  const paths = [];
+  for (const track of tracks) if (selection.has(track.path)) paths.push(track.path);
+  return paths;
 }
 
 // The file table's columns are user-configurable (#43): "file" (always first,
 // structural) followed by any modeled tag field, in a persisted order.
+// Selection and artwork precede that logical list in the DOM. Keep this shared
+// offset for row/header spans, grid coordinates and virtual measurement rows.
+export const TABLE_DATA_COLUMN_OFFSET = 2;
+export const ARTWORK_COLUMN_WIDTH = 24;
 // The columns a fresh library starts with (#173). A chosen set is persisted and
 // wins over this, so changing it never rearranges anyone's table.
 export const DEFAULT_COLUMNS = ["file", "artist", "title", "album", "year", "length"];

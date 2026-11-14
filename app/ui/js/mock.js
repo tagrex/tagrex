@@ -19,7 +19,7 @@ let mockBpmCancel = false;
 function plan(description, message, changes, notes = []) {
   return { description, message: { args: {}, count: null, ...message }, notes, changes };
 }
-import { parseVinylPosition } from "./vinyl.js";
+import { parseVinylPosition, sideLetterOf } from "./vinyl.js";
 
 // A group as the sequence of scoped chains it runs as, mirroring the backend's
 // `build_segments` (#250): a rule may name its own target, and consecutive rules
@@ -218,9 +218,16 @@ function mockApplyRules(value, rules) {
   for (const rule of rules || []) {
     if (rule.enabled === false) continue; // disabled step (#57)
     if (rule.kind === "replace" && rule.from) {
-      out = rule.regex
-        ? out.replace(new RegExp(rule.from, rule.case_sensitive ? "g" : "gi"), rule.to)
-        : out.split(rule.from).join(rule.to);
+      if (rule.regex) {
+        out = out.replace(new RegExp(rule.from, rule.case_sensitive ? "g" : "gi"), rule.to);
+      } else {
+        const escaped = rule.from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const flags = rule.case_sensitive ? "gu" : "giu";
+        if (rule.whole_word) {
+          const pattern = "(^|[^\\p{L}\\p{N}_])(" + escaped + ")(?=$|[^\\p{L}\\p{N}_])";
+          out = out.replace(new RegExp(pattern, flags), (_, prefix) => prefix + rule.to);
+        } else out = out.replace(new RegExp(escaped, flags), () => rule.to);
+      }
     } else if (rule.kind === "case" && rule.style === "title") {
       const small = new Set(rule.small_words || []);
       const words = [...out.matchAll(/[\p{L}\p{N}']+/gu)];
@@ -282,6 +289,41 @@ function mockKeyNotation(value, style) {
 // Locked fields (#48), held for the page's life the way the session holds them.
 let mockLockedFields = new Set();
 
+function renderMockColumn(args, tracks) {
+  // The real backend parses the mask first, so an unknown placeholder is an
+  // error before any file is touched — the editor relies on that to reject a
+  // typo once instead of blanking the column on every repaint. Model it, or
+  // the dev path silently accepts patterns the app would refuse.
+  const known = [
+    "artist", "title", "album", "albumartist", "track", "tracktotal", "disc",
+    "disctotal", "year", "genre", "comment", "composer", "publisher", "bpm",
+    "isrc", "key", "catalognumber", "url", "media", "side", "skip",
+    "filename", "fileext", "filenameext", "filepath", "foldername",
+    "foldername2", "foldername3", "_length", "_length_sec", "_bitrate",
+    "_samplerate", "_channels", "_codec", "_filesize", "_filesize_bytes",
+    "_filedate",
+  ];
+  for (const [, name] of String(args.pattern || "").matchAll(/%([a-z_0-9]+?)(?::\d+)?%/gi)) {
+    if (!known.includes(name.toLowerCase())) {
+      return Promise.reject(`unknown placeholder: ${name}`);
+    }
+  }
+  return Promise.resolve(
+    (args.paths || []).map((path) => {
+      const t = (tracks || []).find((x) => x.path === path);
+      return String(args.pattern || "").replace(/%([a-z_]+)(?::(\d+))?%/gi, (_, name, width) => {
+        const key = name.toLowerCase();
+        if (key === "filename") return fileName(path).replace(/\.[^.]*$/, "");
+        if (key === "_codec") return "MP3";
+        if (key === "side") return sideLetterOf(t?.tags.media, t?.tags.disc) || "";
+        const value = (t && t.tags && t.tags[key]) || "";
+        return width && /^\d+$/.test(value) ? String(value).padStart(Number(width), "0") : value;
+      });
+    })
+  );
+
+}
+
 function mockInvoke(cmd, args) {
   mockInvoke.state = mockInvoke.state || {
     tracks: [
@@ -289,9 +331,9 @@ function mockInvoke(cmd, args) {
       // so the Tag types column and the editor's line have something to show.
       // The first carries a `cover` so the editor's cover well and the player's
       // now-playing thumbnail (#275) both have embedded art to show in browser-dev.
-      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", duration_secs: 278, cover: "#2f6f4f", has_cover: true, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }], tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
-      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", duration_secs: 142, has_cover: false, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "ID3v1", kind: "id3v1", read_from: false }], tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
-      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", duration_secs: 605, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "APE", kind: "ape", read_from: false }], tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996", bpm: "128", isrc: "BEA509600123" } },
+      { path: "/music/01 - the x factor - desert rain.mp3", format: "Mp3", compilation_field: "custom:TCMP", duration_secs: 278, cover: "#2f6f4f", has_cover: true, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }], tags: { artist: "The X Factor", title: "Desert Rain", album: "La Bush", year: "1996" } },
+      { path: "/music/02 - wish mountain - radio.mp3", format: "Mp3", compilation_field: "custom:TCMP", duration_secs: 142, has_cover: false, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "ID3v1", kind: "id3v1", read_from: false }], tags: { artist: "Wish Mountain", title: "Radio", album: "La Bush", year: "1996" } },
+      { path: "/music/03 - u-hi - feel it.mp3", format: "Mp3", compilation_field: "custom:TCMP", duration_secs: 605, tag_blocks: [{ label: "ID3v2", kind: "id3v2", read_from: true }, { label: "APE", kind: "ape", read_from: false }], tags: { artist: "U-Hi?", title: "Feel It", album: "La Bush", year: "1996", bpm: "128", isrc: "BEA509600123" } },
     ],
     history: [],
   };
@@ -349,20 +391,6 @@ function mockInvoke(cmd, args) {
     // Moving files to the Trash (#213). The browser has no trash and no files,
     // so the mock answers with what it was asked to remove — enough to drive
     // the confirmation, the rows leaving and the toast.
-    // The waveform behind the seek bar (#101). No decoder in the browser, so
-    // this is a made-up envelope — enough to drive the canvas, the played/unplayed
-    // split and the playhead. The real one is decoded in player.rs.
-    case "waveform": {
-      const peaks = [];
-      for (let i = 0; i < 1000; i += 1) {
-        const t = i / 1000;
-        const body = t < 0.08 ? t / 0.08 : t > 0.92 ? (1 - t) / 0.08 : 1;
-        const swell = 0.55 + 0.45 * Math.abs(Math.sin(t * Math.PI * 5));
-        const grain = 0.85 + 0.15 * Math.abs(Math.sin(t * 220));
-        peaks.push(Math.round(255 * body * swell * grain));
-      }
-      return new Promise((resolve) => setTimeout(() => resolve(peaks), 400));
-    }
     case "trash_files":
       return Promise.resolve([...(args.paths || [])]);
     case "set_locked_fields":
@@ -412,6 +440,7 @@ function mockInvoke(cmd, args) {
       const mk = (path, artist, title) => ({
         path,
         format: "Mp3",
+        compilation_field: "custom:TCMP",
         tags: { artist, title, album: "Dropped", year: "2020" },
       });
       if (dirs.length === 1 && files.length === 0) {
@@ -456,6 +485,17 @@ function mockInvoke(cmd, args) {
       if (conflicts.length) return Promise.resolve({ written: [], conflicts });
       names.forEach((n) => s.savedImages.add(n));
       return Promise.resolve({ written: names.map((n) => `/music/${n}`), conflicts: [] });
+    }
+    case "read_track": {
+      const track = findTrack(args.path);
+      return track ? Promise.resolve(structuredClone(track)) : Promise.reject("File not in the open library");
+    }
+    case "read_track_rows": {
+      const indexed = new Map(s.tracks.map(track => [track.path, track]));
+      const selected = args.paths.map(path => indexed.get(path));
+      return selected.every(Boolean)
+        ? Promise.resolve(structuredClone(selected))
+        : Promise.reject("File not in the open library");
     }
     case "list_tracks":
       return Promise.resolve(s.tracks);
@@ -766,6 +806,34 @@ function mockInvoke(cmd, args) {
         unrendered: tallyMissing(args.mask, args.paths),
       });
     }
+    case "preview_live_edits": {
+      const all = new Set([...(args.paths || []), ...(args.edits || []).map(edit => edit.path), ...(args.coverPaths || []), ...(args.covers || []).flatMap(item => item.paths), ...(args.basePlan?.changes || []).map(change=>change.path)]);
+      const changes = [];
+      const skipped = new Map();
+      for (const path of all) {
+        const track = findTrack(path); if (!track) continue;
+        const tags = {...track.tags};
+        for (const edit of args.edits || []) if (edit.path === path && !mockLockedFields.has(edit.field)) tags[edit.field] = edit.value || '';
+        let name = path.slice(path.lastIndexOf('/')+1,path.lastIndexOf('.'));
+        let ext = path.slice(path.lastIndexOf('.')+1);
+        if ((args.paths || []).includes(path)) for (const group of args.groups || []) for (const segment of mockSegments(group)) {
+          if (segment.scope === 'filename') name = mockApplyRules(name,segment.rules) || name;
+          else if (segment.scope === 'fileext') ext = mockApplyRules(ext,segment.rules) || ext;
+          else for (const field of Object.keys(tags)) {
+            if (segment.scope !== 'tags' && segment.scope !== field) continue;
+            if (mockLockedFields.has(field)) { skipped.set(field,(skipped.get(field)||0)+1); continue; }
+            tags[field] = mockApplyRules(tags[field],segment.rules);
+          }
+        }
+        const tag_changes = Object.entries(tags).filter(([field,value]) => (value||null)!==(track.tags[field]||null)).map(([field,value]) => ({field,old:track.tags[field]||null,new:value||null,invalid:field==='year' && value && !/^\d{4}(?:-|$)/.test(value)}));
+        const next = path.slice(0,path.lastIndexOf('/')+1)+name+'.'+ext;
+        let image = (args.coverPaths || []).includes(path) ? args.cover : null;
+        for (const assignment of args.covers || []) if (assignment.paths.includes(path)) image=assignment.cover;
+        const cover_change = args.basePlan?.changes?.find(change=>change.path===path)?.cover_change ?? (image && !track.cover ? {old:[],new:[image]} : null);
+        if(tag_changes.length || next!==path || cover_change) changes.push({path,rename_to:next!==path?next:null,tag_changes,cover_change});
+      }
+      return Promise.resolve({description:(args.edits || []).length || (args.covers || []).length ? 'Edit tags' : 'Transform',changes,locked_skipped:[...skipped].map(([field,files])=>({field,files}))});
+    }
     case "preview_tag_edits": {
       const byPath = {};
       for (const e of args.edits) {
@@ -877,7 +945,7 @@ function mockInvoke(cmd, args) {
         path: p,
         rename_to: null,
         tag_changes: [],
-        cover_change: { old: null, new: args.cover },
+        cover_change: { old: [], new: [{ ...args.cover, kind: "front", description: args.cover.description || "" }] },
       }));
       return Promise.resolve(plan("Embed cover art", { code: "plan.embedCover" }, changes));
     }
@@ -938,7 +1006,7 @@ function mockInvoke(cmd, args) {
         .map((p) => {
           const t = findTrack(p);
           if (!t || !t.cover) return null;
-          return { path: p, rename_to: null, tag_changes: [], cover_change: { old: { mime: "image/svg+xml", data_base64: "" }, new: null } };
+          return { path: p, rename_to: null, tag_changes: [], cover_change: { old: [mockCoverImage(t.cover, "front")], new: [] } };
         })
         .filter(Boolean);
       return Promise.resolve(plan("Remove cover art", { code: "plan.removeCover" }, changes));
@@ -1186,10 +1254,10 @@ function mockInvoke(cmd, args) {
           // Functions (#73) are written `$name(…)`, not `%name%`, and one that
           // takes several arguments arrives with a slot per argument — both
           // shapes are here so the popover's insertion is exercised.
-          ["upper", "$upper(x) — UPPER CASE", "Functions", true, false, "$upper()"],
+          ["upper", "$upper(x): UPPER CASE", "Functions", true, false, "$upper()"],
           [
             "substr",
-            "$substr(x,from,to) — characters from..to, 1-based",
+            "$substr(x,from,to): characters from..to, counting from 1",
             "Functions",
             true,
             false,
@@ -1197,8 +1265,8 @@ function mockInvoke(cmd, args) {
           ],
           // A group's rows have to stay together: the popover groups by
           // consecutive runs, so splitting them draws the heading twice (#202).
-          ["if2", "$if2(x,fallback) — x, or fallback when x is empty", "Logic", true, false, "$if2(,)"],
-          ["div", "$div(a,b) — a divided by b, empty when b is 0", "Math", true, false, "$div(,)"],
+          ["if2", "$if2(x,fallback): x, or fallback when x is empty", "Logic", true, false, "$if2(,)"],
+          ["div", "$div(a,b): a divided by b, empty when b is 0", "Math", true, false, "$div(,)"],
         ].map(([name, description, group, render, extract, token]) => {
           // The backend sends the catalogue keys beside the English (#268); the
           // mock builds them the same way so the popover's translated path is
@@ -1229,37 +1297,11 @@ function mockInvoke(cmd, args) {
     // Mask-defined columns (#150). The dev mock renders a couple of plain
     // placeholders so the column can be seen filling in; the real grammar is
     // mask.rs and this is not a second implementation of it.
-    case "render_column": {
-      // The real backend parses the mask first, so an unknown placeholder is an
-      // error before any file is touched — the editor relies on that to reject a
-      // typo once instead of blanking the column on every repaint. Model it, or
-      // the dev path silently accepts patterns the app would refuse.
-      const known = [
-        "artist", "title", "album", "albumartist", "track", "tracktotal", "disc",
-        "disctotal", "year", "genre", "comment", "composer", "publisher", "bpm",
-        "isrc", "key", "catalognumber", "url", "media", "side", "skip",
-        "filename", "fileext", "filenameext", "filepath", "foldername",
-        "foldername2", "foldername3", "_length", "_length_sec", "_bitrate",
-        "_samplerate", "_channels", "_codec", "_filesize", "_filesize_bytes",
-        "_filedate",
-      ];
-      for (const [, name] of String(args.pattern || "").matchAll(/%([a-z_0-9]+?)(?::\d+)?%/gi)) {
-        if (!known.includes(name.toLowerCase())) {
-          return Promise.reject(`unknown placeholder: ${name}`);
-        }
-      }
-      return Promise.resolve(
-        (args.paths || []).map((path) => {
-          const t = (s.tracks || []).find((x) => x.path === path);
-          return String(args.pattern || "").replace(/%([a-z_]+)%/gi, (_, name) => {
-            const key = name.toLowerCase();
-            if (key === "filename") return fileName(path).replace(/\.[^.]*$/, "");
-            if (key === "_codec") return "MP3";
-            return (t && t.tags && t.tags[key]) || "";
-          });
-        })
-      );
-    }
+    case "render_columns":
+      return Promise.all((args.patterns || []).map((pattern) =>
+        renderMockColumn({ pattern, paths: args.paths }, s.tracks).catch(() => null)));
+    case "render_column":
+      return renderMockColumn(args, s.tracks);
     case "import_fields":
       return Promise.resolve([
         { keys: ["title"], label: "Title", code: "importField.title" },
@@ -1371,6 +1413,8 @@ function mockInvoke(cmd, args) {
       mockInvoke.state = mockInvoke.state || {};
       mockInvoke.state.settings = args.settings;
       return Promise.resolve();
+    case "open_provider_page":
+      return Promise.resolve();
     case "provider_search":
       // MusicBrainz hits carry no cover in search and use MBID string ids (#33).
       if (args.source === "musicbrainz") {
@@ -1431,6 +1475,7 @@ function mockInvoke(cmd, args) {
       }
       return Promise.resolve({
         id: args.releaseId,
+        links: [ { name: "Various", kind: "artist", id: "194" }, { name: "Antler-Subway", kind: "label", id: "123" } ],
         artist: "Various",
         title: "La Bush - Music From The Temple Of House",
         year: 1996,

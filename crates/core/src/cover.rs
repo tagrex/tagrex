@@ -59,7 +59,7 @@ pub fn resize_cover(art: &CoverArt, max_px: u32, quality: u8) -> CoverArt {
     }
     CoverArt {
         mime: "image/jpeg".to_string(),
-        data,
+        data: data.into(),
         // Only the bytes change; what the image depicts does not (#56).
         kind: art.kind,
         description: art.description.clone(),
@@ -177,7 +177,7 @@ mod tests {
     fn downscales_oversized_art_and_reencodes_jpeg() {
         let art = CoverArt {
             mime: "image/png".into(),
-            data: png(2000, 1000),
+            data: png(2000, 1000).into(),
             ..CoverArt::default()
         };
         let out = resize_cover(&art, 500, 85);
@@ -192,7 +192,7 @@ mod tests {
     fn leaves_small_or_disabled_or_undecodable_art_untouched() {
         let small = CoverArt {
             mime: "image/png".into(),
-            data: png(300, 300),
+            data: png(300, 300).into(),
             ..CoverArt::default()
         };
         // Already within bounds -> unchanged.
@@ -200,14 +200,14 @@ mod tests {
         // Disabled (max_px == 0) -> unchanged even when oversized.
         let big = CoverArt {
             mime: "image/png".into(),
-            data: png(2000, 2000),
+            data: png(2000, 2000).into(),
             ..CoverArt::default()
         };
         assert_eq!(resize_cover(&big, 0, 85), big);
         // Undecodable bytes -> unchanged, never an error.
         let junk = CoverArt {
             mime: "image/jpeg".into(),
-            data: vec![1, 2, 3, 4],
+            data: vec![1, 2, 3, 4].into(),
             ..CoverArt::default()
         };
         assert_eq!(resize_cover(&junk, 500, 85), junk);
@@ -231,7 +231,7 @@ mod tests {
         drop(writer);
         let art = CoverArt {
             mime: "image/png".into(),
-            data,
+            data: data.into(),
             ..CoverArt::default()
         };
         let out = resize_cover(&art, 500, 85);
@@ -301,7 +301,7 @@ mod tests {
     fn a_huge_png_cover_is_resized() {
         let art = CoverArt {
             mime: "image/png".into(),
-            data: png(4100, 4000),
+            data: png(4100, 4000).into(),
             ..CoverArt::default()
         };
         let out = resize_cover(&art, 500, 95);

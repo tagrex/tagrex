@@ -1,3 +1,4 @@
+import { createComponentElement } from "../lib/component-elements.js";
 // Value auto-complete for the table's editable cells (#63).
 //
 // Typing an album artist that eleven other files in the library already carry
@@ -62,19 +63,23 @@ let applying = false;
 // thing that knows what the other four thousand say.
 function collectValues(field) {
   const counts = new Map();
+  // A library with nothing staged is the common case, so do not pay for a
+  // pending-edit lookup per file then. Behaviours are otherwise identical.
+  const hasPending = edits.size !== 0;
   for (const track of tracks) {
-    const pending = edits.get(track.path);
+    const pending = hasPending ? edits.get(track.path) : undefined;
     const value = pending && pending.has(field) ? pending.get(field) : tag(track, field);
     const trimmed = value.trim();
     if (!trimmed) continue;
     counts.set(trimmed, (counts.get(trimmed) || 0) + 1);
   }
-  return [...counts.entries()]
-    .map(([value, files]) => ({ value, files }))
-    // How many files agree first — that is the spelling an album has settled
-    // on — and alphabetically among equals so the order is stable rather than
-    // whatever the scan happened to produce.
-    .sort((a, b) => b.files - a.files || a.value.localeCompare(b.value));
+  const entries = [];
+  for (const [value, files] of counts) entries.push({ value, files, folded: value.toLowerCase() });
+  // How many files agree first, then the same default-locale tie order.
+  // Prepare each distinct spelling once when the edit opens, keeping case
+  // conversion and cache writes out of the first and later keystrokes.
+  entries.sort((a, b) => b.files - a.files || a.value.localeCompare(b.value));
+  return entries;
 }
 
 // The rows for what has been typed: what starts with it first, then what merely
@@ -86,34 +91,87 @@ function matches(typed) {
   const starting = [];
   const containing = [];
   for (const entry of values) {
-    const at = entry.value.toLowerCase().indexOf(needle);
-    if (at === 0) starting.push({ ...entry, at });
-    else if (at > 0) containing.push({ ...entry, at });
+    const at = entry.folded.indexOf(needle);
+    if (at === 0) {
+      starting.push({ ...entry, at });
+      // Later matches cannot displace these first eight prefix matches.
+      if (starting.length === MAX_ROWS) return starting;
+    } else if (at > 0 && containing.length < MAX_ROWS) {
+      containing.push({ ...entry, at });
+    }
   }
   return [...starting, ...containing].slice(0, MAX_ROWS);
 }
 
 // The value with the typed part marked, so it is clear why a row is in the list
 // — particularly for the ones matching in the middle.
-function markMatch(entry, typed) {
-  const length = typed.trim().length;
+//
+// The position comes from the lowercased spelling, and lowercasing is not
+// length-preserving for every character ("İ" folds to "i" + U+0307), so that
+// position can point past the characters it meant. While the two lengths agree
+// — every ASCII value, and nearly every other one — the position is used as it
+// is; otherwise the span is mapped back through the original spelling, which
+// keeps the bold on the characters that actually matched instead of a neighbour.
+function markMatch(entry, typed, length = typed.trim().toLowerCase().length) {
   if (!length || entry.at === undefined || entry.at < 0) return escapeHtml(entry.value);
-  const head = entry.value.slice(0, entry.at);
-  const hit = entry.value.slice(entry.at, entry.at + length);
-  const tail = entry.value.slice(entry.at + length);
+  let start = entry.at;
+  let end = entry.at + length;
+  if ((entry.folded ?? entry.value.toLowerCase()).length !== entry.value.length) {
+    [start, end] = originalSpan(entry.value, entry.at, length);
+  }
+  const head = entry.value.slice(0, start);
+  const hit = entry.value.slice(start, end);
+  const tail = entry.value.slice(end);
   return `${escapeHtml(head)}<b>${escapeHtml(hit)}</b>${escapeHtml(tail)}`;
 }
 
+// The original spelling's [start, end) for a match at folded offset `at` of
+// `length` code units: the first character whose fold covers the match start,
+// and the first character whose fold ends at or after the match end. Only run
+// for the few spellings whose lowercase form is a different length.
+function originalSpan(value, at, length) {
+  let folded = 0;
+  let start = -1;
+  let end = -1;
+  for (let index = 0; index < value.length; index++) {
+    const width = value[index].toLowerCase().length || 1;
+    if (start < 0 && folded + width > at) start = index;
+    folded += width;
+    if (start >= 0 && folded >= at + length) {
+      end = index + 1;
+      break;
+    }
+  }
+  if (start < 0) start = value.length;
+  if (end < 0) end = value.length;
+  return [start, end];
+}
+
+// Keep the small component pool alive while typing. Updating a match only
+// changes its label and count, rather than mounting a new Button per keypress.
+// Each pooled entry remembers its two children so a repaint does not have to
+// search for them again: eight rows times two queries per keystroke.
+const suggestionRows = [];
 function paint(typed) {
-  menu.innerHTML = shown
-    .map(
-      (entry, index) => `<button type="button" class="sg-row${index === active ? " active" : ""}"
-        data-index="${index}">
-        <span class="sg-value">${markMatch(entry, typed)}</span>
-        <span class="sg-count">${entry.files}</span>
-      </button>`,
-    )
-    .join("");
+  const matchLength = typed.trim().toLowerCase().length;
+  shown.forEach((entry, index) => {
+    let row = suggestionRows[index];
+    if (!row) {
+      const button = createComponentElement('button');
+      button.type = 'button';
+      button.className = 'sg-row';
+      button.dataset.index = String(index);
+      button.innerHTML = '<span class="sg-value"></span><span class="sg-count"></span>';
+      menu.append(button);
+      row = { button, value: button.firstElementChild, count: button.lastElementChild };
+      suggestionRows.push(row);
+    }
+    row.button.hidden = false;
+    row.button.classList.toggle('active', index === active);
+    row.value.innerHTML = markMatch(entry, typed, matchLength);
+    row.count.textContent = String(entry.files);
+  });
+  suggestionRows.slice(shown.length).forEach((row) => { row.button.hidden = true; });
 }
 
 function place() {
@@ -125,9 +183,15 @@ function place() {
 }
 
 export function closeCellSuggest() {
-  menu.hidden = true;
-  menu.innerHTML = "";
-  shown = [];
+  // Called from every scroll and resize event, whether or not a list is up:
+  // hiding an already hidden menu and rebuilding nothing is the whole job then.
+  if (!menu.hidden) menu.hidden = true;
+  if (suggestionRows.length) {
+    // Use the controller content setter; replaceChildren removes its popover shell.
+    menu.innerHTML = "";
+    suggestionRows.length = 0;
+  }
+  if (shown.length) shown.length = 0;
   active = -1;
 }
 

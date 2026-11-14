@@ -13,7 +13,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.3.4"
+version = "1.5.0"
 edition = "2021"
 license = "GPL-3.0-only"
 repository = "https://github.com/tagrex/tagrex"
@@ -30,7 +30,7 @@ tagrex-core = { path = "crates/core" }
 
 # Dependencies are optimised even in a debug build — our own crates are not, so
 # they stay debuggable and quick to rebuild. Audio decoding is why (#101): a
-# waveform for a six-minute track took 26 s unoptimised against 0.5 s optimised,
+# decoding a six-minute track took 26 s unoptimised against 0.5 s optimised,
 # and the debug bundle is what gets run all day. Dependencies compile once, so
 # the cost is one slower first build.
 [profile.dev.package."*"]

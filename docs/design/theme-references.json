@@ -1,0 +1,151 @@
+{
+  "notes": "Official backgrounds and primary seed colours; semantic UI foregrounds are minimally adjusted for contrast. Navy, Graphite and Cupertino are app-owned presets. Nord light is a Snow Storm-based UI adaptation. Legacy forest/plum IDs map to Everforest/Rosé Pine.",
+  "sources": {
+    "catppuccin": {
+      "url": "https://raw.githubusercontent.com/catppuccin/palette/main/palette.json",
+      "sha256": "4bc114bb6b3c9a9c9e156564aa84625aef32c5da514d9dd431cf1fcad433a05f"
+    },
+    "tokyonight-day": {
+      "url": "https://raw.githubusercontent.com/folke/tokyonight.nvim/main/extras/alacritty/tokyonight_day.toml",
+      "sha256": "f590d760c2214e8f3266aa6b12518900bf6c6783c6ae2814ffae58664b8db37c"
+    },
+    "tokyonight-storm": {
+      "url": "https://raw.githubusercontent.com/folke/tokyonight.nvim/main/lua/tokyonight/colors/storm.lua",
+      "sha256": "a96775b3b2bae3da751322806f7daaf2f8c9242cf4b52493732c62dc45c8894c"
+    },
+    "rosepine": {
+      "url": "https://raw.githubusercontent.com/rose-pine/neovim/main/lua/rose-pine/palette.lua",
+      "sha256": "b0b59c541255f25e3558aa7789dc7ff002ea4fd5b762f0ff341d349a077c914a"
+    },
+    "gruvbox": {
+      "url": "https://raw.githubusercontent.com/morhetz/gruvbox/master/colors/gruvbox.vim",
+      "sha256": "55116926ba2b625837d9ae89349a5688d60d0b32acdbd8887e1c0d225f079c3d"
+    },
+    "everforest": {
+      "url": "https://raw.githubusercontent.com/sainnhe/everforest/master/autoload/everforest.vim",
+      "sha256": "4ddab3c8d96e29310a21441a797e69a2c520ec074db9c20a7eaea866d8b5a8c4"
+    },
+    "nord": {
+      "url": "https://raw.githubusercontent.com/nordtheme/nord/develop/src/nord.css",
+      "sha256": "b931ac3732582b2066b2d6cadec02d9820ba7081e6e3e404c31cb62d9315a962"
+    },
+    "solarized": {
+      "url": "https://raw.githubusercontent.com/altercation/solarized/master/README.md",
+      "sha256": "f10571c994648365faab9c4f83bdd7699aa2cd056f111af5e29099c2673c5bc1"
+    }
+  },
+  "anchors": {
+    "catppuccin": {
+      "dark": {
+        "panel": "#1e1e2e",
+        "bg": "#313244",
+        "primary": "#cba6f7",
+        "referenceText": "#cdd6f4",
+        "adaptedText": "#cdd6f4"
+      },
+      "light": {
+        "panel": "#e6e9ef",
+        "bg": "#eff1f5",
+        "primary": "#8839ef",
+        "referenceText": "#4c4f69",
+        "adaptedText": "#474a63"
+      }
+    },
+    "nord": {
+      "dark": {
+        "panel": "#2e3440",
+        "bg": "#3b4252",
+        "primary": "#88c0d0",
+        "referenceText": "#eceff4",
+        "adaptedText": "#eceff4"
+      },
+      "light": {
+        "panel": "#e5e9f0",
+        "bg": "#eceff4",
+        "primary": "#5e81ac",
+        "referenceText": "#2e3440",
+        "adaptedText": "#2e3440"
+      }
+    },
+    "tokyonight": {
+      "dark": {
+        "panel": "#1f2335",
+        "bg": "#24283b",
+        "primary": "#7aa2f7",
+        "referenceText": "#c0caf5",
+        "adaptedText": "#c0caf5"
+      },
+      "light": {
+        "panel": "#d0d5e3",
+        "bg": "#e1e2e7",
+        "primary": "#2e7de9",
+        "referenceText": "#3760bf",
+        "adaptedText": "#233d7a"
+      }
+    },
+    "plum": {
+      "dark": {
+        "panel": "#191724",
+        "bg": "#1f1d2e",
+        "primary": "#c4a7e7",
+        "referenceText": "#e0def4",
+        "adaptedText": "#e0def4"
+      },
+      "light": {
+        "panel": "#faf4ed",
+        "bg": "#fffaf3",
+        "primary": "#907aa9",
+        "referenceText": "#464261",
+        "adaptedText": "#464261"
+      }
+    },
+    "gruvbox": {
+      "dark": {
+        "panel": "#282828",
+        "bg": "#3c3836",
+        "primary": "#fabd2f",
+        "referenceText": "#ebdbb2",
+        "adaptedText": "#ebdbb2"
+      },
+      "light": {
+        "panel": "#ebdbb2",
+        "bg": "#fbf1c7",
+        "primary": "#b57614",
+        "referenceText": "#282828",
+        "adaptedText": "#282828"
+      }
+    },
+    "solarized": {
+      "dark": {
+        "panel": "#002b36",
+        "bg": "#073642",
+        "primary": "#2aa198",
+        "referenceText": "#93a1a1",
+        "adaptedText": "#bfc8c8"
+      },
+      "light": {
+        "panel": "#eee8d5",
+        "bg": "#fdf6e3",
+        "primary": "#2aa198",
+        "referenceText": "#586e75",
+        "adaptedText": "#3e4e53"
+      }
+    },
+    "forest": {
+      "dark": {
+        "panel": "#232a2e",
+        "bg": "#2d353b",
+        "primary": "#a7c080",
+        "referenceText": "#d3c6aa",
+        "adaptedText": "#d8cdb4"
+      },
+      "light": {
+        "panel": "#f4f0d9",
+        "bg": "#fdf6e3",
+        "primary": "#8da101",
+        "referenceText": "#5c6a72",
+        "adaptedText": "#465157"
+      }
+    }
+  }
+}

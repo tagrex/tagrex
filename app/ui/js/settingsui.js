@@ -1,3 +1,4 @@
+import { createComponentElement } from "../lib/component-elements.js";
 // What Settings offers beyond its own controls (#438, #439): a Reset to defaults
 // per group, and a search across all of them.
 //
@@ -28,7 +29,7 @@ export function initGroupResets(defs) {
   groups = defs;
   for (const group of groups) {
     const host = groupElement(group.id);
-    const button = document.createElement("button");
+    const button = createComponentElement("button");
     button.type = "button";
     button.className = "group-reset text-btn";
     button.dataset.i18n = "settings.resetGroup";
@@ -45,9 +46,13 @@ export function initGroupResets(defs) {
   // Any control in the sheet may have moved a group off its default; look again
   // once the control's own handler has run.
   const body = document.querySelector(".settings-body");
-  for (const type of ["input", "change", "click"]) {
-    body.addEventListener(type, () => setTimeout(refreshGroupResets, 0));
-  }
+  let resetsQueued = false;
+  const scheduleResets = () => {
+    if (resetsQueued) return;
+    resetsQueued = true;
+    queueMicrotask(() => { resetsQueued = false; refreshGroupResets(); });
+  };
+  for (const type of ["input", "change", "click"]) body.addEventListener(type, scheduleResets);
 }
 
 // ---- the groups list on the left ----
@@ -89,12 +94,16 @@ function applyPane() {
   const buttons = [...el("settings-nav-list").children];
   const current = activeIndex();
   groups.forEach((group, i) => {
-    group.classList.toggle("pane-hidden", !searching && i !== current);
+    const hidden = !searching && i !== current;
+    if (group.classList.contains("pane-hidden") !== hidden) group.classList.toggle("pane-hidden", hidden);
     const button = buttons[i];
     if (!button) return;
-    button.setAttribute("aria-selected", String(!searching && i === current));
-    button.tabIndex = i === current ? 0 : -1;
-    button.hidden = searching && group.classList.contains(HIDDEN);
+    const selected = String(!searching && i === current);
+    if (button.getAttribute("aria-selected") !== selected) button.setAttribute("aria-selected", selected);
+    const tabIndex = i === current ? 0 : -1;
+    if (button.tabIndex !== tabIndex) button.tabIndex = tabIndex;
+    const buttonHidden = searching && group.classList.contains(HIDDEN);
+    if (button.hidden !== buttonHidden) button.hidden = buttonHidden;
   });
 }
 
@@ -116,14 +125,15 @@ export function selectSettingsGroup(index) {
 // the names follow the headings.
 export function renderSettingsNav() {
   const list = el("settings-nav-list");
-  list.replaceChildren(
-    ...allGroups().map((group, i) => {
-      const button = document.createElement("button");
+  const groups = allGroups();
+  groups.forEach((group, i) => {
+    let button = list.children[i];
+    if (!button) {
+      button = createComponentElement("button");
       button.type = "button";
       button.className = "settings-nav-item";
       button.setAttribute("role", "tab");
       const label = document.createElement("span");
-      label.textContent = groupLabel(group);
       if (group.dataset.icon) {
         const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         svg.setAttribute("class", "ico");
@@ -133,10 +143,12 @@ export function renderSettingsNav() {
         button.append(svg);
       }
       button.append(label);
-      button.addEventListener("click", () => selectSettingsGroup(i));
-      return button;
-    })
-  );
+      button.addEventListener("click", () => selectSettingsGroup([...list.children].indexOf(button)));
+      list.append(button);
+    }
+    button.querySelector('span').textContent = groupLabel(group);
+  });
+  while (list.children.length > groups.length) list.lastElementChild.remove();
   list.onkeydown = (event) => {
     const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
     if (!step) return;
@@ -161,7 +173,7 @@ function blocksOf(group) {
     // is the first thing under a sub-heading, which it stays with.
     const last = blocks[blocks.length - 1];
     const underHeading = last.length === 1 && last[0].tagName === "H4";
-    if (child.tagName === "H4" || (child.classList.contains("settings-row") && !underHeading)) {
+    if (child.tagName === "H4" || (child.matches(".settings-row, .settings-field") && !underHeading)) {
       blocks.push([]);
     }
     blocks[blocks.length - 1].push(child);
@@ -181,12 +193,26 @@ export function filterSettings(query) {
     const title = group.querySelector("h3")?.textContent.toLowerCase() || "";
     const titleMatches = terms.length > 0 && everything(title);
     let groupShown = !terms.length;
+    let section = null;
+    let sectionShown = false;
+    const finishSection = () => {
+      if (section) section.classList.toggle(HIDDEN, !sectionShown);
+    };
     for (const block of blocksOf(group)) {
-      const shown = !terms.length || titleMatches || everything(`${title} ${textOf(block)}`);
-      block.forEach((node) => node.classList.toggle(HIDDEN, !shown));
+      const heading = block.find(node => node.tagName === "H4");
+      if (heading) {
+        finishSection();
+        section = heading;
+        sectionShown = false;
+      }
+      const sectionText = section?.textContent || "";
+      const shown = !terms.length || titleMatches || everything(`${title} ${sectionText.toLowerCase()} ${textOf(block)}`);
+      sectionShown = sectionShown || shown;
+      block.forEach((node) => { if (node.classList.contains(HIDDEN) !== !shown) node.classList.toggle(HIDDEN, !shown); });
       groupShown = groupShown || shown;
     }
-    group.classList.toggle(HIDDEN, !groupShown);
+    finishSection();
+    if (group.classList.contains(HIDDEN) !== !groupShown) group.classList.toggle(HIDDEN, !groupShown);
     anyShown = anyShown || groupShown;
   }
   el("settings-search-empty").hidden = anyShown || !terms.length;

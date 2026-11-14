@@ -52,9 +52,9 @@ no extension rather than giving it one.
 
 ### Rule kinds
 
-- **Find and replace** — literal or regular-expression, with *whole word* and
-  *match case* flags, the `.*`, `Aa` and `ab` buttons inside the find field.
-  Whole word is what stops a `Dj` → `DJ` rule from mangling `Djibouti`.
+- **Find and replace** — literal text, with labelled **Match case** and **Whole
+  words** options. **Advanced → Pattern matching** enables regular expressions.
+  Whole words stops a `Dj` → `DJ` rule from mangling `Djibouti`.
 - **Change case** — Title, lower, UPPER or Sentence. Title case keeps known
   acronyms and roman numerals intact, so `DJ` doesn't become `Dj` and
   `Symphony III` doesn't become `Symphony Iii`. **Keep small words lowercase**
@@ -64,19 +64,19 @@ no extension rather than giving it one.
   or inside brackets): `Lord of the Rings - The Return of the King`. Pick the
   list by language (English, German, Spanish, French or Italian) and edit the
   words as text; nothing guesses the language of a value. Off by default.
-- **Remove diacritics** — strips accents off Latin letters: `Björk` → `Bjork`.
-- **Transliterate to Latin** — maps a whole non-Latin script onto Latin:
+- **Remove accents** — strips accents off Latin letters: `Björk` → `Bjork`.
+- **Use Latin letters** — maps a whole non-Latin script onto Latin:
   `Пётр` → `Pyotr`, `Ελλάδα` → `Ellada`. Cyrillic and Greek. This is a different
   job from removing diacritics, and Latin text passes through untouched.
-- **Transliterate to Cyrillic** — the reverse, for tags that arrived already
+- **Use Cyrillic letters** — the reverse, for tags that arrived already
   romanized. Reversing a romanization is guesswork, so it is built to be wrong
   as rarely as possible: longest run first (`shch` → щ before `sh` → ш), and a
   word containing a letter with no Cyrillic reading is left in Latin entirely,
   which is what keeps `Jazz` and `The` from becoming `Jазз` and `Тхе`. What the
   forward direction discarded stays discarded: `ъ`/`ь` romanize to nothing, and
   `й`/`ы` both come back as `й`.
-- **Key notation** — converts a musical key between musical, Camelot and Open Key
-  notation. Best pointed at the Key field; unrecognized values are left alone.
+- **Musical key format** — converts a musical key between musical, Camelot and
+  Open Key notation. Best pointed at the Key field; unrecognized values are left alone.
 
 ### The preset editor
 
@@ -84,34 +84,48 @@ no extension rather than giving it one.
 checklist opens it on that preset. Your presets are listed first, the shipped
 ones below them.
 
-- **New** starts an empty preset, **Duplicate** copies the open one, **Delete**
-  removes one of yours (after asking). Rename a preset in its name field.
-- Rules can be dragged into a different order by their grip, and each has an
-  on/off checkbox in its head: a disabled step stays in the preset, drawn with a
-  dashed edge, and contributes nothing, which is how you test what one rule is
-  responsible for without deleting it.
-- Built-in presets open read-only and stay as shipped, shown as what they do
-  rather than as a form. **Duplicate** under the list gives a copy you can
-  edit.
-- Changes save as you go — when you switch presets, close the editor or quit.
+- **New preset** starts an empty preset. **Add rule** opens a short chooser
+  explaining each rule type. Click a rule to expand its editor directly below
+  it; only one editor is open at a time.
+- Right-click a preset, or open its **…** menu, to **Rename**, **Copy** or
+  **Delete** it. Rename in the sidebar: Enter confirms, Escape cancels. Deleting
+  a personal preset offers a brief **Undo** action.
+- Built-ins remain read-only. Expand their rules to inspect them, then use
+  **Copy to edit** to make your own version. The original stays unchanged.
+- Personal rules have enable checkboxes. A disabled rule stays in the chain but
+  contributes nothing. Drag a grip to change the order, or use **Move up** and
+  **Move down** inside the expanded editor.
+- The pinned **Before / After** preview stays visible while you scroll the
+  rules. Choose **Field** to try the rules on a particular tag, file name or
+  extension. Type your own example, or use **Selection** when a file is selected.
+  Rules for unrelated fields are excluded from that field's sample.
+- Shared targets appear once beside **Rules**; mixed targets appear beside
+  their individual rules. Pattern errors appear beside the Find field.
+- Preset edits save when you switch presets, close the editor or quit.
+  Trying a sample never writes your audio files: review the main change plan
+  and use **Apply** to write changes.
 
 Presets run in list order as a single plan, each seeing what the previous one
 did — so one that lower-cases the file name and one that rewrites the extension
 compose into one rename instead of the second discarding the first.
 
+![Pinned preview and readable built-in rules](../img/transformation-presets-overview.png)
+
+![Inline editor with labelled matching options](../img/transformation-preset-editor.png)
+
 ### The shipped presets
 
 | Preset | Scope | What it does |
 | --- | --- | --- |
-| Standard values | all tags | Collapse runs of whitespace and trim the ends |
+| Clean up spaces | all tags | Collapse runs of whitespace and trim the ends |
 | Discogs cleanup | all tags; artists | Drop the numeric disambiguator: `Sunbeam (2)` → `Sunbeam`; on the artist and album artist, also the name-variation asterisk a release page shows: `NBG*` → `NBG` |
-| Normalize english | all tags | Title-case, keeping known acronyms and roman numerals |
-| General Latin | all tags | Romanize non-Latin scripts, then strip leftover accents |
-| No dash | all tags | Dashes to spaces, then collapse the gaps that leaves |
-| No underscore | all tags | Underscores to spaces, then collapse the gaps that leaves |
-| Lower case | file name | Lower-case the stem, extension untouched |
-| File extension | file extension | `.FLAC` → `.flac` |
-| FTP format | file name | Plain ASCII, no spaces — a name that survives any server |
+| English title case | all tags | Title-case, keeping known acronyms and roman numerals |
+| Plain Latin text | all tags | Romanize non-Latin scripts, then strip leftover accents |
+| Replace dashes | all tags | Dashes to spaces, then collapse the gaps that leaves |
+| Replace underscores | all tags | Underscores to spaces, then collapse the gaps that leaves |
+| Lowercase file names | file name | Lower-case the stem, extension untouched |
+| Lowercase extensions | file extension | `.FLAC` → `.flac` |
+| Simple file names | file name | Plain ASCII, no spaces — a name that survives any server |
 
 Every one of these is a chain you could have built by hand; none of them needs a
 rule kind that isn't in the list above.

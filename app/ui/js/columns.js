@@ -1,3 +1,4 @@
+import { createComponentElement } from "../lib/component-elements.js";
 // The table's columns and its grouping menu (#43, #143 split them out of
 // app.js).
 //
@@ -9,13 +10,15 @@ import { el, escapeHtml, ico, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { EXTENDED_FIELDS, VIRTUAL_COLUMNS, fieldLabel } from "./fields.js";
-import { t } from "./i18n.js";
+import { currentLang, t } from "./i18n.js";
 import { isFieldLocked } from "./locks.js";
 import { placeholderToken } from "./placeholders.js";
 import { groupByPref, saveGroupBy } from "./prefs.js";
 import { enablePointerReorder } from "./reorder.js";
 import {
   DEFAULT_COLUMNS,
+  ARTWORK_COLUMN_WIDTH,
+  TABLE_DATA_COLUMN_OFFSET,
   collapsedGroups,
   columnWidths,
   diffByPath,
@@ -24,6 +27,7 @@ import {
   setGroupByValue,
   setVisibleColumns,
   tracks,
+  contentRevision,
   visibleColumns,
 } from "./state.js";
 
@@ -153,6 +157,16 @@ const CUSTOM_PREFIX = "custom:";
 let customColumns = [];
 // id -> Map<path, rendered>. Dropped wholesale when a definition changes.
 const customValues = new Map();
+let customGeneration = 0;
+let customLibrary = tracks;
+let customRevision = contentRevision;
+function bindCustomSubject() {
+  customLibrary = tracks;
+  customRevision = contentRevision;
+}
+function ensureCustomSubject() {
+  if (customLibrary !== tracks || customRevision !== contentRevision) invalidateCustomColumns();
+}
 
 function loadCustomColumns() {
   const saved = readStoredJson(CUSTOM_COLUMNS_STORAGE_KEY);
@@ -188,46 +202,108 @@ function customColumnValue(key, path) {
   return customValues.get(column.id)?.get(path) ?? "";
 }
 
-// Render every visible custom column over `paths`, one call each. Skipped
-// entirely when no custom column is shown, which is the normal case.
+// All missing visible patterns share one backend metadata snapshot per path.
+// Existing rows survive scoped Apply/Undo invalidation; a bad pattern blanks
+// only its own values instead of rejecting the other requested columns.
 async function refreshCustomColumns(paths) {
+  ensureCustomSubject();
   const shown = visibleColumns.map(customColumnOf).filter(Boolean);
-  if (!shown.length || !paths.length) return false;
-  let changed = false;
-  for (const column of shown) {
+  const needed = shown.filter((column) => {
     const cached = customValues.get(column.id);
-    // Nothing to do when the cache already covers exactly these paths.
-    if (cached && cached.size === paths.length && paths.every((p) => cached.has(p))) continue;
-    try {
-      const rendered = await invoke("render_column", { pattern: column.pattern, paths });
-      customValues.set(column.id, new Map(paths.map((p, i) => [p, rendered[i] ?? ""])));
-      changed = true;
-    } catch (e) {
-      // A pattern the parser refuses (a typo, or half-typed) leaves the column
-      // blank rather than blocking the paint or spamming a toast per repaint.
-      customValues.set(column.id, new Map());
-      changed = true;
-    }
+    return !cached || paths.some((path) => !cached.has(path));
+  });
+  if (!needed.length || !paths.length) return false;
+  const missing = paths.filter((path) => needed.some((column) => !customValues.get(column.id)?.has(path)));
+  const mine = ++customGeneration;
+  const library = tracks, revision = contentRevision;
+  const current = () => mine === customGeneration && library === tracks && revision === contentRevision &&
+    needed.every((column) => customColumnOf(customColumnKey(column.id)) === column);
+  try {
+    const rendered = await invoke("render_columns", { patterns: needed.map((column) => column.pattern), paths: missing });
+    if (!current()) return false;
+    needed.forEach((column, index) => {
+      const cached = customValues.get(column.id) || new Map();
+      missing.forEach((path, row) => cached.set(path, rendered[index]?.[row] ?? ''));
+      customValues.set(column.id, cached);
+    });
+    return true;
+  } catch {
+    // Transient I/O failures leave uncached rows retryable. Invalid patterns
+    // are represented by null columns in a successful backend response.
+    return false;
   }
-  return changed;
 }
 
-// A definition changed: its cached values are meaningless now.
+// Definition changes invalidate in-flight work as well as cached values.
 function invalidateCustomColumn(id) {
+  customGeneration++;
   customValues.delete(id);
 }
 
-// The library was re-read, so every cached value is suspect. After an apply the
-// paths are often IDENTICAL while the tags behind them are not, which is the one
-// case the "cache already covers these paths" check cannot catch (#150).
-function invalidateCustomColumns() {
-  customValues.clear();
+// With known changed paths preserve the remaining cached rows. A full reread,
+// library switch or rename uses the no-argument form to invalidate everything.
+function customColumnAffected(column, fields) {
+  if (!fields) return true; // unknown/block/name changes require fresh values
+  const tokens = [...column.pattern.matchAll(/%([^%]+)%/g)]
+    .map(match => match[1].split(":")[0].toLowerCase());
+  return column.pattern.includes("$") || tokens.some(token => token.startsWith("_")) ||
+    tokens.some(token => fields.has(token)) ||
+    (tokens.some(token => token === "side" || token === "position") && ["disc", "track", "media"].some(field => fields.has(field)));
+}
+function invalidateCustomColumns(paths = null, fieldsByPath = null) {
+  customGeneration++;
+  if (paths) {
+    const changed = new Set(paths);
+    for (const [id, cached] of customValues) {
+      const column = customColumns.find(column => column.id === id);
+      for (const path of changed) {
+        if (!column || customColumnAffected(column, fieldsByPath?.get(path))) cached.delete(path);
+      }
+    }
+  } else customValues.clear();
+  bindCustomSubject();
 }
 
 // Render whatever the visible mask columns need for the current track list and
 // repaint if anything arrived. The one call site for "make the columns current".
 async function refreshCustomColumnCells() {
   if (await refreshCustomColumns(tracks.map((t) => t.path))) hooks.renderTracks();
+}
+
+// A direct cell write changes one file. Hidden columns are invalidated lazily;
+// visible affected columns keep their other cached rows and repaint with the
+// caller, so this path never triggers a second whole-table/model rebuild.
+async function refreshCustomColumnPath(path, field) {
+  const mine = ++customGeneration;
+  bindCustomSubject();
+  const library = tracks, revision = contentRevision;
+  const current = (column) => mine === customGeneration && library === tracks && revision === contentRevision &&
+    customColumnOf(customColumnKey(column.id)) === column;
+  const shown = new Set(visibleColumns);
+  for (const column of customColumns) {
+    const tokens = [...column.pattern.matchAll(/%([^%]+)%/g)]
+      .map((match) => match[1].split(":")[0].toLowerCase());
+    const affected = !field || column.pattern.includes("$") || tokens.includes(field) ||
+      tokens.some((token) => token.startsWith("_")) ||
+      (tokens.some((token) => token === "side" || token === "position") && ["disc", "track", "media"].includes(field));
+    if (!affected) continue;
+    const cached = customValues.get(column.id);
+    if (!shown.has(customColumnKey(column.id))) {
+      cached?.delete(path);
+      continue;
+    }
+    try {
+      // render_column is explicitly per-file: it provides no batch index or
+      // total context, so passing one path preserves every supported mask.
+      const [value = ""] = await invoke("render_column", { pattern: column.pattern, paths: [path] });
+      if (!current(column)) continue;
+      const values = customValues.get(column.id) || new Map();
+      values.set(path, value);
+      customValues.set(column.id, values);
+    } catch {
+      if (current(column)) cached?.delete(path);
+    }
+  }
 }
 
 function upsertCustomColumn(column) {
@@ -244,6 +320,9 @@ function removeCustomColumn(id) {
   saveCustomColumns();
   applyColumns(visibleColumns.filter((k) => k !== customColumnKey(id)));
   renderColumnsMenu();
+  // Removing a definition can invalidate an unfinished shared batch. Make the
+  // remaining shown columns current even when their first answer was discarded.
+  refreshCustomColumnCells();
 }
 
 // ---- the mask-column editor (#150) ----
@@ -332,7 +411,7 @@ const AUTOFIT_STORAGE_KEY = "tagrex.autofitColumns";
 // before anything is written back, so the browser flushes layout once.
 function measureColumns(keys) {
   const table = el("tracks");
-  const headers = [...table.querySelectorAll("thead th.sortable")];
+  const headers = [...table.querySelectorAll("thead th.sortable:not(.artwork-col)")];
   const saved = headers.map((th) => th.style.width);
   for (const th of headers) th.style.width = "";
   // The table only holds the rows the window shows (#189), so the widest value
@@ -434,12 +513,39 @@ setGroupByValue(groupByPref());
 // (#129), matching what a reference tagger shows.
 
 function renderTableHead() {
-  const row = el("tracks").querySelector("thead tr");
+  const table = el("tracks");
+  const row = table.querySelector("thead tr");
   row.querySelectorAll("th.sortable").forEach((th) => th.remove());
-  for (const key of visibleColumns) {
+  row.querySelector('th.sel')?.setAttribute('aria-colindex', '1');
+  table.style.setProperty('--artwork-column-width', `${ARTWORK_COLUMN_WIDTH}px`);
+  const artwork = document.createElement('th');
+  artwork.className = 'sortable artwork-col';
+  artwork.dataset.sort = 'artwork';
+  artwork.style.width = `${ARTWORK_COLUMN_WIDTH}px`;
+  artwork.setAttribute('aria-colindex', '2');
+  artwork.setAttribute('aria-label', t('table.artwork.embedded'));
+  const artworkSort = createComponentElement('button', { variant: 'ghost', size: 'icon-sm' });
+  artworkSort.type = 'button';
+  artworkSort.className = 'artwork-sort';
+  artworkSort.dataset.artworkSort = '';
+  artworkSort.setAttribute('aria-label', t('table.artwork.sort'));
+  artworkSort.title = t('table.artwork.sort');
+  artworkSort.innerHTML = ico('image');
+  artworkSort.addEventListener('click', event => {
+    event.stopPropagation();
+    document.dispatchEvent(new CustomEvent('tagrex:sort-artwork'));
+  });
+  artwork.append(artworkSort);
+  const artworkIndicator = document.createElement('span');
+  artworkIndicator.className = 'sort-ind';
+  artwork.append(artworkIndicator);
+  row.append(artwork);
+  for (const [index, key] of visibleColumns.entries()) {
     const th = document.createElement("th");
     th.dataset.sort = key;
     th.className = "sortable";
+    th.tabIndex = 0;
+    th.setAttribute('aria-colindex', String(index + TABLE_DATA_COLUMN_OFFSET + 1));
     th.style.width = `${columnWidth(key)}px`;
     // Name the mask placeholder that addresses this column (#148). The column
     // header is where someone is already looking when they wonder what to write
@@ -482,7 +588,7 @@ function renderTableHead() {
     // stays first, so it is not a handle and not a target.
     th.dataset.key = key;
     if (key !== "file") {
-      enablePointerReorder(th, th, row, "th.sortable", moveColumn, { axis: "x" });
+      enablePointerReorder(th, th, row, "th.sortable:not(.artwork-col)", moveColumn, { axis: "x" });
     }
     row.appendChild(th);
   }
@@ -595,47 +701,62 @@ function resetColumns() {
 
 // ---- column picker popover (#43) ----
 
+let columnsMenuSignature = '';
+let columnsMenuFocusFrame = 0;
 function renderColumnsMenu() {
   const menu = el("columns-menu");
+  const signature = JSON.stringify([
+    currentLang(), visibleColumns, customColumns, autofitEnabled(),
+    allColumnKeys().map(columnLabel),
+    ['columns.add', 'columns.addTitle', 'columns.fit', 'columns.fitTitle', 'columns.autofit', 'columns.autofitTitle', 'columns.reset', 'columns.alwaysShown', 'columns.hidden'].map((key) => t(key)),
+  ]);
+  if (signature === columnsMenuSignature && menu.querySelector('.col-menu-actions')) return;
+  columnsMenuSignature = signature;
+  cancelAnimationFrame(columnsMenuFocusFrame);
+  const scrollTop = menu.querySelector('.column-options')?.scrollTop || 0;
+  const focusKey = menu.contains(document.activeElement) ? document.activeElement.closest('.col-menu-row')?.dataset.key : null;
   menu.innerHTML = "";
-  for (const key of visibleColumns) menu.appendChild(colMenuRow(key, true));
+  const options = document.createElement("div");
+  options.className = "column-options";
+  let scrollIdle;
+  options.addEventListener('scroll', () => {
+    options.classList.add('is-scrolling');
+    clearTimeout(scrollIdle);
+    scrollIdle = setTimeout(() => options.classList.remove('is-scrolling'), 650);
+  }, {passive:true});
+  for (const key of visibleColumns) options.appendChild(colMenuRow(key, true));
   const hidden = allColumnKeys().filter((k) => !visibleColumns.includes(k));
   if (hidden.length) {
     const sep = document.createElement("div");
     sep.className = "col-menu-sep";
     sep.textContent = t("columns.hidden");
-    menu.appendChild(sep);
-    for (const key of hidden) menu.appendChild(colMenuRow(key, false));
+    options.appendChild(sep);
+    for (const key of hidden) options.appendChild(colMenuRow(key, false));
   }
-  // Everything that is not a column goes into one block that stays put while
-  // the list scrolls above it (#174). With a dozen columns picked, these used to
-  // sit below the fold with nothing to say they were there.
+  // Actions stay outside the scrolling list, inside the same rounded surface.
   const actions = document.createElement("div");
   actions.className = "col-menu-actions";
 
   // Defining a new mask column (#150) belongs with the list of columns, since
   // that is where someone goes looking for one that isn't there.
-  const addFoot = document.createElement("div");
-  addFoot.className = "col-menu-foot";
-  const add = document.createElement("button");
+  const add = createComponentElement("button");
   add.type = "button";
-  add.className = "text-btn";
+  add.className = "column-action";
   add.textContent = t("columns.add");
   add.title = t("columns.addTitle");
   add.addEventListener("click", () => {
     menu.hidden = true;
     openColumnEditor(null);
   });
-  addFoot.appendChild(add);
-  actions.appendChild(addFoot);
+  actions.appendChild(add);
 
-  // Fit-to-content (#151), above the reset row: it acts on the widths, which is
-  // what the rows above configure, while Reset throws the whole set away.
+  // Width options precede column visibility; one-shot Fit and persistent
+  // Autofit keep their distinct action/toggle semantics.
   const fitFoot = document.createElement("div");
-  fitFoot.className = "col-menu-foot col-fit-foot";
-  const fit = document.createElement("button");
+  fitFoot.className = "column-fit-options";
+  const fit = createComponentElement("button");
   fit.type = "button";
-  fit.className = "text-btn";
+  fit.className = "text-btn column-fit-action";
   fit.textContent = t("columns.fit");
   fit.title = t("columns.fitTitle");
   fit.addEventListener("click", () => {
@@ -644,8 +765,6 @@ function renderColumnsMenu() {
   });
   fitFoot.appendChild(fit);
 
-  // ...and the sticky version of the same thing, as a row rather than a button:
-  // it is a mode that stays on, not an action.
   const autoRow = document.createElement("label");
   autoRow.className = "col-menu-row col-autofit";
   const autoBox = document.createElement("input");
@@ -658,26 +777,31 @@ function renderColumnsMenu() {
   autoRow.title = t("columns.autofitTitle");
   autoRow.append(autoBox, autoLabel);
   fitFoot.appendChild(autoRow);
-  actions.appendChild(fitFoot);
 
   // Reset-to-default footer (#91): default set, order, visibility, and widths.
-  const foot = document.createElement("div");
-  foot.className = "col-menu-foot";
-  const reset = document.createElement("button");
+  const reset = createComponentElement("button");
   reset.type = "button";
-  reset.className = "text-btn";
+  reset.className = "column-action";
   reset.textContent = t("columns.reset");
   reset.title = t("columns.resetTitle");
   reset.addEventListener("click", resetColumns);
-  foot.appendChild(reset);
-  actions.appendChild(foot);
-  menu.appendChild(actions);
+  actions.appendChild(reset);
+  menu.append(fitFoot, options, actions);
+  options.scrollTop = scrollTop;
+  // The native-checkbox bridge mounts during the microtask flush. Restore
+  // focus to its final button after that flush, rather than its hidden proxy.
+  if (focusKey) columnsMenuFocusFrame = requestAnimationFrame(() => {
+    columnsMenuFocusFrame = 0;
+    if (menu.hidden) return;
+    const row = [...options.querySelectorAll('.col-menu-row')].find(row => row.dataset.key === focusKey);
+    row?.querySelector('[role="checkbox"],input[type="checkbox"]')?.focus({preventScroll:true});
+  });
 }
 
 function colMenuRow(key, visible) {
   const isFile = key === "file";
   const row = document.createElement("div");
-  row.className = "col-menu-row";
+  row.className = `col-menu-row${visible ? '' : ' is-hidden'}`;
   row.dataset.key = key;
 
   const grip = document.createElement("span");
@@ -706,6 +830,9 @@ function colMenuRow(key, visible) {
   label.textContent = isFile ? t("column.alwaysShown", { name: columnLabel(key) }) : columnLabel(key);
 
   row.append(grip, box, label);
+  row.addEventListener('click', event => {
+    if (!event.target.closest('input, button, .col-grip') && !box.disabled) box.click();
+  });
 
   // A mask column is defined by the user, so it can be edited and deleted from
   // the same row that shows it (#150). A tag column has nothing to edit.
@@ -713,7 +840,7 @@ function colMenuRow(key, visible) {
   if (custom) {
     row.title = custom.pattern;
 
-    const edit = document.createElement("button");
+    const edit = createComponentElement("button");
     edit.type = "button";
     edit.className = "icon col-row-btn";
     edit.innerHTML = ico("rename");
@@ -724,7 +851,7 @@ function colMenuRow(key, visible) {
       e.stopPropagation();
       openColumnEditor(custom);
     });
-    const remove = document.createElement("button");
+    const remove = createComponentElement("button");
     remove.type = "button";
     remove.className = "icon col-row-btn";
     remove.innerHTML = ico("close");
@@ -749,6 +876,7 @@ export {
   invalidateCustomColumns,
   loadCustomColumns,
   refreshCustomColumnCells,
+  refreshCustomColumnPath,
   autofitEnabled,
   fitAllColumns,
   fitColumn,

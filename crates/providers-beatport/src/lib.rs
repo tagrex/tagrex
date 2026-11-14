@@ -50,6 +50,7 @@ const IMAGE_SIZE: u32 = 1400;
 /// What the store sells: one digital medium, no discs, no sides.
 const FORMAT: &str = "Digital";
 
+#[derive(Clone)]
 pub struct BeatportProvider {
     agent: ureq::Agent,
     access_token: String,
@@ -132,6 +133,8 @@ impl BeatportProvider {
 
         let data = response
             .body_mut()
+            .with_config()
+            .limit(tagrex_core::provider::MAX_IMAGE_BYTES)
             .read_to_vec()
             .map_err(|err| ProviderError::Network(err.to_string()))?;
 
@@ -347,6 +350,7 @@ fn parse_release(release_body: &str, tracks_body: &str) -> Result<Release, Provi
     let label = label_of(&release);
     let images = images_of(&release);
     Ok(Release {
+        links: Vec::new(),
         id: ReleaseId(id_of(&release)),
         artist: artist_string(release.get("artists")),
         title: string(&release, "name"),

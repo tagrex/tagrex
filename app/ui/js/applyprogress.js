@@ -26,7 +26,7 @@ function paint(progress) {
 export async function beginApplyProgress() {
   const bar = el("diff-actionbar");
   el("ab-bar-fill").style.width = "0%";
-  el("ab-file").textContent = "";
+  el("ab-file").textContent = t("apply.checking");
   el("diff-cancel-apply").disabled = false;
   showTimer = setTimeout(() => bar.classList.add("applying"), SHOW_AFTER_MS);
   const events = window.__TAURI__ && window.__TAURI__.event;

@@ -24,7 +24,7 @@ import { previewTagsFromText, visibleSubject } from "./fromtext.js";
 import { openTransformModal } from "./generator.js";
 import { catalogue, insertAt, renderReference } from "./placeholders.js";
 import { maskPart, planForMask, preview } from "./renamer.js";
-import { selectedPaths, tracks } from "./state.js";
+import { captureSelection, isSelectionCurrent, tracks } from "./state.js";
 
 // Rows the list shows. A list is for reading, and a few hundred names is past
 // what anyone reads; the count says how many more there are.
@@ -42,6 +42,8 @@ let timer = null;
 // Which refresh is the latest, so a slow answer to an older expression never
 // paints over the answer to a newer one.
 let generation = 0;
+let activeRefresh = false;
+let queuedRefresh = null;
 
 function baseName(path) {
   return String(path).split(/[\\/]/).pop();
@@ -295,36 +297,53 @@ const MODES = {
 };
 let mode = MODES.render;
 
-async function refresh() {
-  const mine = ++generation;
-  const paths = selectedPaths();
-  // FROM TEXT reads the list with or without files to pair it with (#550).
-  if (!paths.length && mode !== MODES.text) {
-    el("mb-error").hidden = true;
-    expr.parentElement.classList.remove("has-error");
-    el("mb-summary").textContent = "";
-    el("mb-list").innerHTML = `<p class="mb-empty muted">${escapeHtml(t("maskBuilder.noSelection"))}</p>`;
-    return;
-  }
-  const shown = paths.slice(0, LIMIT);
+function refresh() {
+  if (modal.hidden) return;
+  queuedRefresh = { mine: ++generation, subject: captureSelection(), mode, mask: expr.value };
+  void drainRefresh();
+}
+
+// At most one native preview is active. Later typing replaces a single queued
+// request rather than filling the native worker/lock queue with obsolete masks.
+async function drainRefresh() {
+  if (activeRefresh || !queuedRefresh) return;
+  const request = queuedRefresh;
+  queuedRefresh = null;
+  activeRefresh = true;
+  const { mine, subject, mode: requestedMode, mask } = request;
+  const current = () => mine === generation && !modal.hidden && mode === requestedMode && isSelectionCurrent(subject);
   try {
-    const result = await mode.list(expr.value, shown, paths.length);
-    if (mine !== generation) return;
+    const paths = subject.paths;
+    // FROM TEXT can inspect text even without files to pair it with.
+    if (!paths.length && requestedMode !== MODES.text) {
+      if (!current()) return;
+      el("mb-error").hidden = true;
+      expr.parentElement.classList.remove("has-error");
+      el("mb-summary").textContent = "";
+      el("mb-list").innerHTML = `<p class="mb-empty muted">${escapeHtml(t("maskBuilder.noSelection"))}</p>`;
+      return;
+    }
+    const result = await requestedMode.list(mask, paths.slice(0, LIMIT), paths.length);
+    if (!current()) return;
     el("mb-error").hidden = true;
     expr.parentElement.classList.remove("has-error");
     el("mb-list").innerHTML = result.html;
     el("mb-summary").innerHTML = result.summary;
   } catch (e) {
-    if (mine !== generation) return;
-    // The list stays as the last expression that parsed left it: half-typed
-    // `$if(` is a moment, not a reason to blank the screen.
+    if (!current()) return;
+    // Keep the last parsed result while an expression is half-typed.
     el("mb-error").textContent = String(e);
     el("mb-error").hidden = false;
     expr.parentElement.classList.add("has-error");
+  } finally {
+    activeRefresh = false;
+    if (queuedRefresh && !modal.hidden) void drainRefresh();
   }
 }
 
 function schedule() {
+  generation++; // Reject the previous answer immediately, during the debounce.
+  queuedRefresh = null;
   clearTimeout(timer);
   timer = setTimeout(refresh, DEBOUNCE_MS);
 }
@@ -427,6 +446,7 @@ function close() {
   rememberSize();
   clearTimeout(timer);
   generation++;
+  queuedRefresh = null;
   modal.hidden = true;
   el(mode.opener).focus();
 }
@@ -506,7 +526,7 @@ modal.addEventListener("keydown", (e) => {
   // window, the preset editor) closes on Escape first.
   const above =
     !el("preset-menu").hidden ||
-    !!document.querySelector(".modal-backdrop:not([hidden]):not(#mask-builder)");
+    [...document.querySelectorAll(".modal-backdrop:not(#mask-builder)")].some((root) => !root.hidden);
   if (e.key === "Escape" && !above) {
     e.preventDefault();
     close();

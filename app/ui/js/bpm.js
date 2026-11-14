@@ -14,7 +14,10 @@ import { invoke } from "./invoke.js";
 import { t, tn } from "./i18n.js";
 import { hooks } from "./hooks.js";
 import { applyColumns } from "./columns.js";
+import { liveInputRevision } from "./live-preview.js";
 import {
+  captureSelection,
+  isSelectionCurrent,
   previewPlan,
   selectedPaths,
   setPreviewPlan,
@@ -27,6 +30,8 @@ const button = el("detect-bpm");
 
 let running = false;
 let stopping = false;
+let operationRevision = 0;
+let activeRun = 0;
 
 // Title and label come from here rather than from data-i18n attributes: they
 // change with the run, and a language switch would otherwise put the idle text
@@ -75,6 +80,13 @@ export function bpmRunning() {
   return running;
 }
 
+// Invalidate before a folder-open request replaces the track list. Wait for the
+// old run to settle before allowing another to reset native cancellation state.
+export function invalidateBpm() {
+  operationRevision++;
+  stopBpm();
+}
+
 async function detectBpm() {
   if (running) {
     stopBpm();
@@ -85,6 +97,13 @@ async function detectBpm() {
     toast(t("toast.bpm.select"), true);
     return;
   }
+  const run = ++operationRevision;
+  activeRun = run;
+  const subject = captureSelection();
+  const inputRevision = liveInputRevision();
+  const startingPlan = previewPlan;
+  const current = () => run === operationRevision && isSelectionCurrent(subject) &&
+    liveInputRevision() === inputRevision && previewPlan === startingPlan;
   running = true;
   stopping = false;
   paintButton();
@@ -95,11 +114,14 @@ async function detectBpm() {
   el("busy-stop").disabled = false;
   el("busy-pill").hidden = false;
   const events = window.__TAURI__ && window.__TAURI__.event;
-  const unlisten = events
-    ? await events.listen(EVENT, (e) => paintProgress(e.payload.done, e.payload.total))
-    : null;
+  let unlisten = null;
   try {
+    unlisten = events
+      ? await events.listen(EVENT, (e) => { if (current()) paintProgress(e.payload.done, e.payload.total); })
+      : null;
+    if (!current()) return;
     const result = await invoke("detect_bpm", { paths });
+    if (!current()) return;
     // A run that measured nothing new leaves whatever is staged alone.
     if (result.plan.changes.length || !previewPlan) {
       // The diff shows a change in the column of its field, and a BPM column
@@ -114,9 +136,11 @@ async function detectBpm() {
     }
     reportRun(result, paths.length);
   } catch (e) {
-    toast(String(e), true);
+    if (current()) toast(String(e), true);
   } finally {
     if (unlisten) unlisten();
+    if (activeRun !== run) return;
+    activeRun = 0;
     running = false;
     stopping = false;
     el("busy-pill").hidden = true;

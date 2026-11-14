@@ -1,3 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 100" role="img" aria-label="TagRex logo">
-  <path d="M4,14 Q4,6 12,6 L92,6 L128,42 Q136,50 128,58 L92,94 L12,94 Q4,94 4,86 Z M39,50 A9,9 0 1 0 21,50 A9,9 0 1 0 39,50 Z M37,44 L42,44 L42,20 L37,20 Z M42,20 L51,25 L51,31 L42,26 Z" fill="#1D9E75" fill-rule="evenodd"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="10.94 11.06 230.00 230.00" role="img" aria-label="TagRex logo">
+<defs>
+  <linearGradient id="front" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#3FD3A3"/>
+    <stop offset="1" stop-color="#0B7D5C"/>
+  </linearGradient>
+  <linearGradient id="noteFill" gradientUnits="userSpaceOnUse" x1="0" y1="-88" x2="0" y2="18">
+    <stop offset="0" stop-color="#FFFFFF"/>
+    <stop offset="1" stop-color="#D2F3E6"/>
+  </linearGradient>
+</defs>
+<path d="M22.34,123.78 L114.76,31.35 A21.39262811868989,21.39262811868989 0 0 1 127.12,25.27 L219.61,13.20 A17.11410249495191,17.11410249495191 0 0 1 238.80,32.39 L226.73,124.88 A21.39262811868989,21.39262811868989 0 0 1 220.65,137.24 L128.22,229.66 A32.088942178034834,32.088942178034834 0 0 1 82.84,229.66 L22.34,169.16 A32.088942178034834,32.088942178034834 0 0 1 22.34,123.78 Z M181.95,57.22 A12.835576871213934,12.835576871213934 0 1 0 207.62,57.22 A12.835576871213934,12.835576871213934 0 1 0 181.95,57.22 Z" fill="url(#front)" fill-rule="evenodd" /><g transform="translate(112.72,139.28) scale(1.018) translate(-15.17,35.02)" fill="url(#noteFill)" ><ellipse cx="0" cy="0" rx="23" ry="17" transform="rotate(-22)"/><path d="M11,-4 L11,-82 Q11,-88 17,-88 L18,-88 Q22,-88 22,-84 C24,-70 34,-64 42,-56 C52,-46 54,-30 46,-18 Q44,-15 42,-18 C46,-32 40,-44 22,-52 L22,-4 Z"/></g>
 </svg>

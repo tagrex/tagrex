@@ -1,0 +1,49 @@
+/* Inputs share a soft corner. Pill geometry belongs to action buttons. */
+:root { --input-radius:var(--r-control); --input-inset:9px; --input-text-size:var(--text-sm); --input-line-height:var(--lh-tight); }
+body input[data-slot='input'], body textarea[data-slot='textarea'],
+body select[data-slot='native-select'], body .field,
+body button.app-select-trigger, body .lib .path-open,
+body .mode-col .fe .field-input,
+body .filter-panel .filter-ctl,
+body .filter-panel .filter-ctl input[data-slot='input'] { border-radius:var(--input-radius); }
+/* One focus edge per field. Avoid stacking a border, ring and outline. */
+body :is(input[data-slot='input'], textarea[data-slot='textarea'], button.app-select-trigger):focus-visible,
+body .mode-col :is(input[data-slot='input'], button.app-select-trigger):focus-visible {
+  outline:2px solid var(--accent); outline-offset:0; border-color:transparent; box-shadow:none;
+}
+body .field:has(:focus-visible) {
+  outline:2px solid var(--accent); outline-offset:0; border-color:transparent; box-shadow:none;
+}
+body .field :is(input[data-slot='input'], textarea[data-slot='textarea']):focus-visible {
+  outline:none; border-color:transparent; box-shadow:none;
+}
+body :is(input[data-slot='input'], textarea[data-slot='textarea'], button.app-select-trigger)[aria-invalid='true']:focus-visible,
+body .field.has-error:has(:focus-visible) { outline-color:var(--del); }
+
+
+/* Shadcn text boxes, app selects and compound-field text use the same normal
+   control metrics. Palette and validation states remain owned by the theme. */
+body :is(input[data-slot='input'], button.app-select-trigger),
+body .settings-row input[data-slot='input'],
+body input[data-slot='input']:not(.field > *):not(.field-input) {
+  height:var(--ctl-h);
+  padding:4px var(--input-inset);
+  font-size:var(--input-text-size);
+  line-height:var(--input-line-height);
+}
+body .field { line-height:var(--input-line-height); }
+body .field > input[data-slot='input'] {
+  height:auto;
+  min-height:0;
+  padding:4px var(--input-inset);
+  font:inherit;
+}
+
+/* Quiet settings controls use fill for their resting boundary. Focus and error
+   states keep their own visible treatment. */
+body .settings-search input[data-slot='input']:not([aria-invalid='true']) {
+  height:36px; border-color:transparent; background:var(--bg); padding-inline:12px;
+}
+body .settings-body :is(input[data-slot='input'], button.app-select-trigger):not([aria-invalid='true']) {
+  border-color:transparent; background:var(--panel);
+}

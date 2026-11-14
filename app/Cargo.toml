@@ -9,12 +9,16 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+dev-mcp = ["dep:tauri-plugin-mcp-bridge"]
+
 [dependencies]
+tauri-plugin-mcp-bridge = { version = "=0.13.2", optional = true }
 tagrex-core.workspace = true
 # The command layer (#272). It used to be this crate's own src/lib.rs; it moved
 # out so any interface can call it without linking the webview stack (#409).
 tagrex-commands = { path = "../crates/commands" }
-# The preview player and waveform decoder (#296). Moved out of this crate so the
+# The preview player and tempo analysis (#296). Moved out of this crate so the
 # any interface can drive playback; the rodio audio backend rides with it.
 tagrex-player = { path = "../crates/player" }
 tagrex-providers-beatport = { path = "../crates/providers-beatport" }
@@ -51,8 +55,12 @@ ureq = "3.2.1"
 # nothing here does. It also drops the COM apartment mode, which is not
 # optional: on Windows the crate fails to compile unless one is named (#222),
 # so the default one is asked for by name. Inert on the other platforms.
-trash = { version = "5.2.6", default-features = false, features = [
+# Since 5.3 the Linux backend (the freedesktop trash spec) is a feature of its
+# own too, so without `freedesktop` the crate does not build on Linux (#760).
+# Inert on macOS and Windows.
+trash = { version = "5.3.0", default-features = false, features = [
     "coinit_apartmentthreaded",
+    "freedesktop",
 ] }
 
 # A second launch hands its folder to the window that is already open instead of
@@ -103,6 +111,9 @@ objc2-media-player = { version = "0.3.2", default-features = false, features = [
 # crate that links libdbus or brings an older zbus.
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5"
+# Native WebKit compositor compatibility for the 2.54 fade regression.
+webkit2gtk = "2.0.2"
+libc = "0.2"
 
 # The system media session on Windows (#515): the System Media Transport
 # Controls behind the media keys and the media flyout. The `windows` crate the
@@ -125,5 +136,6 @@ windows-future = "0.3"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 # GUI shell: main.rs is the Tauri entry point (commands forward to the App
-# command layer in lib.rs); the frontend is static HTML/CSS/JS under ui/.
-# Run with `cargo run -p tagrex`; bundle a .app with `cargo tauri build`.
+# command layer in lib.rs); Vite builds the frontend from ui/ into dist/.
+# Run `npm run build` before `cargo run -p tagrex`; `cargo tauri build`
+# runs the frontend build automatically.

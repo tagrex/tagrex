@@ -1,0 +1,136 @@
+/* Docking: layout allocation, module chrome, splitters, the compact switcher
+ * and the local module-layout menu. Allocation percentages and persistence stay
+ * with DockWorkspace/JS; this file owns the visible geometry only.
+ *
+ * Geometry roles (shared --sp / --r / --ctl tokens from style.css):
+ *   28px  module chrome, compact module tabs, menu rows
+ *   24px  icon-sized hit boxes inside chrome
+ *    4px  splitter track (allocation) with a 10px invisible grab band
+ *   16/8 menu shell / menu row, 1px border + 7px padding = 8px contour inset
+ * Documented exceptions: the splitter keeps a 1px seam and a 1px inset focus
+ * edge (a 2px outset ring would be clipped by the adjacent pane), and the
+ * 4px allocation track is layout, not spacing. */
+.dock-frame { display:flex; flex:1; flex-direction:column; min-width:0; min-height:0; height:100%; overflow:hidden; }
+.dock-workspace { display:grid; flex:1; min-height:0; min-width:0; grid-template-rows:var(--dock-top-size) var(--dock-top-handle) minmax(0,1fr) var(--dock-bottom-handle) var(--dock-bottom-size); }
+.dock-middle { display:grid; grid-template-columns:minmax(0,var(--dock-left)) 4px minmax(0,1fr); min-width:0; min-height:0; }
+/* The desktop inspector keeps its compact form intact instead of changing
+   label placement or clipping controls as the split is dragged smaller. */
+body .dock-frame[data-dock-compact='false'] .dock-workspace[data-has-left='true'][data-has-right='true'] > .dock-middle:has(> .dock-right #dock-module-inspector) {
+  grid-template-columns:minmax(0,min(var(--dock-left),calc(100% - 404px))) 4px minmax(0,1fr);
+}
+body .dock-frame[data-dock-compact='false'] .dock-workspace[data-has-left='true'][data-has-right='true'] > .dock-middle:has(> .dock-left #dock-module-inspector) {
+  grid-template-columns:minmax(400px,var(--dock-left)) 4px minmax(0,1fr);
+}
+.dock-workspace[data-has-right='false'] .dock-middle { grid-template-columns:minmax(0,1fr) 0 0; }
+.dock-workspace[data-has-left='false'] .dock-middle { grid-template-columns:0 0 minmax(0,1fr); }
+.dock-workspace[data-has-left='false'] .dock-left, .dock-workspace[data-has-right='false'] .dock-right { display:none; }
+.dock-area { display:flex; flex-direction:column; min-height:0; min-width:0; overflow:auto; position:relative; gap:0; }
+/* Grow factors below one leave a fraction of free space unused when a sibling
+   collapses. Scale every weight equally: ratios persist and the area fills. */
+.dock-module { display:flex; flex:calc(var(--dock-weight,1) * 100) 1 0%; flex-direction:column; min-width:0; min-height:72px; overflow:hidden; background:var(--workbench-chrome,var(--panel)); }
+.dock-module-body { flex:1; min-height:0; min-width:0; overflow:hidden; display:flex; flex-direction:column; }
+.dock-module-body > * { min-height:0; min-width:0; }
+
+/* Module header: one 28px rail for every module, whatever its content, so a
+   title, its help and its actions share a baseline across the dock. */
+body .dock-module > .dock-module-chrome,
+body .dock-module[data-collapsible='true'] > .dock-module-chrome {
+  display:flex;
+  align-items:center;
+  flex:none;
+  gap:var(--sp-1);
+  height:var(--ctl-h-sm);
+  min-height:var(--ctl-h-sm);
+  padding:0 var(--sp-2);
+  background:var(--panel-bg,var(--bg));
+  color:var(--muted);
+  font-size:var(--type-body-size);
+  font-weight:var(--fw-medium);
+  user-select:none;
+}
+.dock-module-title { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+body .dock-module-chrome .dock-module-toggle { min-width:0; height:var(--ctl-hit); min-height:var(--ctl-hit); padding:0 var(--sp-1); border:0; border-radius:var(--r-compact); background:transparent; box-shadow:none; color:inherit; font-size:var(--type-body-size); font-weight:var(--fw-medium); gap:var(--sp-1); }
+.dock-module-chrome .dock-module-toggle:hover { color:var(--text); background:var(--row-hover); }
+.dock-module-chrome[data-inline='true'] { margin-left:0; height:auto; min-height:var(--ctl-hit); background:transparent; }
+.dock-module-chrome:focus-visible { outline:1px solid var(--accent); outline-offset:-1px; }
+
+/* Splitters: the 4px allocation track, a 1px seam and a 1px inset focus edge.
+   Documented exceptions (plan §"Shared contracts"): fixed splitters are exempt
+   from the 24px hit-box tier — the grid allocates 4px and the keyboard
+   separator is the accessible resize path. Widening the box would also move
+   the measured gutter, so the band stays 4px. */
+body button.dock-splitter, body button.dock-module-splitter { padding:0; margin:0; width:100%; min-width:0; height:4px; min-height:0; border:0; border-radius:0; background:transparent; box-shadow:none; touch-action:none; cursor:row-resize; z-index:2; position:relative; }
+body button.dock-column-splitter { width:4px; height:100%; cursor:col-resize; }
+body button.dock-splitter::after, body button.dock-module-splitter::after { content:''; position:absolute; inset:1px 0 auto; height:1px; background:var(--workbench-seam,var(--border)); pointer-events:none; transition:background-color 120ms; }
+body button.dock-column-splitter::after { inset:0 auto 0 1px; width:1px; height:auto; }
+body button.dock-splitter:hover::after, body button.dock-module-splitter:hover::after, body button.dock-splitter:focus-visible::after, body button.dock-module-splitter:focus-visible::after { background:var(--accent); }
+body button.dock-splitter:focus-visible, body button.dock-module-splitter:focus-visible { outline:1px solid var(--accent); outline-offset:-1px; }
+body button.dock-splitter[hidden], body button.dock-module-splitter[hidden] { display:none; }
+body button.dock-module-splitter { flex:0 0 4px; height:4px; min-height:4px; position:relative; transform:none!important; }
+body button.dock-splitter { transform:none!important; }
+body.resizing-dock, body.resizing-dock * { user-select:none!important; }
+
+/* The local module-layout menu is a menu, not a list of action pills: shell and
+   row are concentric (16 - (1px border + 7px padding) = 8). */
+.dock-layout-menu {
+  z-index:180;
+  min-width:180px;
+  padding:var(--menu-inset);
+  border:1px solid var(--border);
+  border-radius:var(--r-menu);
+  background:var(--bg);
+  color:var(--text);
+  box-shadow:var(--shadow);
+}
+.dock-layout-menu [data-slot='context-menu-item'] {
+  min-height:var(--ctl-h-sm);
+  padding:var(--sp-1) var(--sp-3);
+  border-radius:var(--r-menu-item);
+  font-size:var(--type-body-size);
+  line-height:var(--lh-snug);
+}
+.dock-layout-menu [data-slot='context-menu-item'][data-highlighted] { background:var(--row-hover); }
+.dock-layout-menu [role='separator'] { margin-block:var(--sp-1); background:var(--border); }
+
+/* Compact switching: the same 28px tab tier as the rest of the shell. */
+.dock-switcher { display:none; }
+.dock-frame[data-dock-compact='true'] .dock-switcher { display:flex; flex:none; gap:var(--sp-1); overflow:auto; padding:var(--sp-1) 0 var(--sp-2); border:0; }
+body .dock-switcher button.dock-module-tab { flex:none; height:var(--ctl-h-sm); min-height:var(--ctl-h-sm); padding:0 var(--sp-3); border:0; border-radius:var(--r-compact); font-size:var(--type-body-size); font-weight:var(--fw-medium); color:var(--muted); }
+body .dock-switcher button.dock-module-tab:hover { color:var(--text); background:var(--row-hover); }
+body .dock-switcher button.dock-module-tab[aria-selected='true'] { background:var(--sel-tint); color:var(--accent-ink); }
+.dock-parking { display:none; }
+.dock-announcement { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+
+.dock-frame[data-dock-compact='true'] .dock-workspace, .dock-frame[data-dock-compact='true'] .dock-middle, .dock-frame[data-dock-compact='true'] .dock-area { display:contents; }
+.dock-frame[data-dock-compact='true'] .dock-module[data-dock-active='false'] { display:none; }
+.dock-frame[data-dock-compact='true'] .dock-module[data-dock-active='true'] { display:flex; flex:1; min-height:0; }
+.dock-frame[data-dock-compact='true'] :is(.dock-splitter,.dock-module-splitter) { display:none; }
+.dock-frame[data-dock-compact='true'] .dock-module[data-dock-active='true'][data-dock-collapsed='true'] { flex:0 0 var(--dock-collapsed-height,var(--ctl-h)); }
+
+/* Existing controller roots fill their dock rather than retaining the old
+   fixed inspector width or the two-column workarea's flex basis. */
+body .dock-module-body > .files-col, body .dock-module-body > .mode-col { flex:1 1 auto; width:100%; height:100%; max-width:none; min-width:0; min-height:0; }
+body .dock-module-body > .mode-col { flex-basis:auto; }
+
+/* Hidden empty-area splitters must not change the grid's auto-placement. */
+.dock-top { grid-row:1; grid-column:1; }
+.dock-top-splitter { grid-row:2; grid-column:1; }
+.dock-middle { grid-row:3; grid-column:1; }
+.dock-bottom-splitter { grid-row:4; grid-column:1; }
+.dock-bottom { grid-row:5; grid-column:1; }
+.dock-left { grid-column:1; grid-row:1; }
+.dock-column-splitter { grid-column:2; grid-row:1; }
+.dock-right { grid-column:3; grid-row:1; }
+
+/* Fold only the occupied share, retaining the body and its component state.
+   Flex geometry transitions are enabled for the short toggle only; live
+   splitter drags never inherit easing or do storage/structural work per frame. */
+.dock-module[data-collapsible='true'][data-collapse-animating='true'] { transition:flex-grow 165ms var(--workbench-ease), flex-basis 165ms var(--workbench-ease), min-height 165ms var(--workbench-ease); }
+.dock-module[data-dock-collapsed='true'] { flex:0 0 var(--dock-collapsed-height,var(--ctl-h)); min-height:var(--dock-collapsed-height,var(--ctl-h)); }
+.dock-module[data-collapsible='true'] > .dock-module-body { opacity:1; transition:opacity 110ms; }
+.dock-module[data-dock-collapsed='true'] > .dock-module-body { opacity:0; pointer-events:none; }
+body.resizing-dock .dock-module { transition:none!important; }
+@media(prefers-reduced-motion:reduce) {
+  .dock-layout-menu { animation:none!important; }
+  .dock-module, .dock-module > .dock-module-body { transition:none!important; }
+}

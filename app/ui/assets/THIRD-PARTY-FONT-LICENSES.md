@@ -1,19 +1,19 @@
 # Third-party font licenses
 
-TagRex bundles subsets of two font families, shipped as `tagrex-*.woff2` next to
-this file. Both are used under the SIL Open Font License 1.1, reproduced
-verbatim below together with their copyright notices.
+The self-hosted font binaries are modified under SIL Open Font License 1.1.
+Full upstream notices accompany them:
 
-- **IBM Plex Sans** and **IBM Plex Sans Condensed** — the interface type
-  (`tagrex-sans.woff2`, `tagrex-sans-medium.woff2`, `tagrex-sans-bold.woff2`,
-  `tagrex-ui-condensed.woff2`). <https://github.com/IBM/plex>
-- **JetBrains Mono** — the monospace used for file names and tag values
-  (`tagrex-mono.woff2`). <https://github.com/JetBrains/JetBrainsMono>
+- TagRex Inter derives from Inter: [OFL-inter.txt](OFL-inter.txt).
+- TagRex Sans derives from IBM Plex Sans: [OFL-ibmplexsans.txt](OFL-ibmplexsans.txt).
+- TagRex Source Sans derives from Source Sans 3: [OFL-sourcesans3.txt](OFL-sourcesans3.txt).
+- TagRex Mono derives from JetBrains Mono: [OFL-jetbrainsmono.txt](OFL-jetbrainsmono.txt).
+- TagRex Condensed preserves the existing IBM Plex Sans Condensed subset;
+  its original notice and licence remain reproduced below.
 
-The files are subsets of the originals (Latin, Latin-ext, Cyrillic and a few
-punctuation ranges); in the JetBrains Mono one the code ligatures are removed
-as well. The interface refers to them under the names `TagRex Sans`,
-`TagRex Condensed` and `TagRex Mono`.
+All modified primary/internal family identities are renamed to TagRex names.
+Copyright, authorship and licence metadata remain intact. See
+[FONT-PROVENANCE.md](FONT-PROVENANCE.md) for pinned inputs, modifications,
+reproduction commands and coverage. No runtime network font service is used.
 
 ---
 

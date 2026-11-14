@@ -20,7 +20,7 @@
 use serde_json::Value;
 use tagrex_core::provider::{
     disc_from_position, FetchedImage, MetadataProvider, ProviderError, Release, ReleaseCandidate,
-    ReleaseId, ReleaseImage, ReleaseLabel, ReleaseTrack, SearchQuery,
+    ReleaseId, ReleaseImage, ReleaseLabel, ReleaseLink, ReleaseLinkKind, ReleaseTrack, SearchQuery,
 };
 use tagrex_core::transform::{TransformChain, TransformStep};
 
@@ -31,6 +31,7 @@ const USER_AGENT: &str = concat!(
     " +https://github.com/tagrex/tagrex"
 );
 
+#[derive(Clone)]
 pub struct DiscogsProvider {
     agent: ureq::Agent,
     token: String,
@@ -139,6 +140,8 @@ impl DiscogsProvider {
 
         let data = response
             .body_mut()
+            .with_config()
+            .limit(tagrex_core::provider::MAX_IMAGE_BYTES)
             .read_to_vec()
             .map_err(|err| ProviderError::Network(err.to_string()))?;
 
@@ -414,6 +417,7 @@ fn parse_release(body: &str) -> Result<Release, ProviderError> {
         .unwrap_or_default();
 
     Ok(Release {
+        links: parse_links(&root),
         id,
         artist,
         title,
@@ -528,6 +532,36 @@ fn parse_duration(value: &str) -> Option<u64> {
     }
     // Bare "238" is not a duration; require at least minutes and seconds.
     (2..=3).contains(&parts).then_some(seconds)
+}
+
+fn parse_links(root: &Value) -> Vec<ReleaseLink> {
+    [
+        ("artists", ReleaseLinkKind::Artist),
+        ("labels", ReleaseLinkKind::Label),
+    ]
+    .into_iter()
+    .flat_map(|(field, kind)| {
+        root.get(field)
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(move |entry| {
+                let id = entry
+                    .get("id")
+                    .and_then(Value::as_u64)
+                    .filter(|id| *id > 0)?;
+                let name = entry.get("name").and_then(Value::as_str)?.trim();
+                if name.is_empty() {
+                    return None;
+                }
+                Some(ReleaseLink {
+                    name: name.to_string(),
+                    kind: kind.clone(),
+                    id: id.to_string(),
+                })
+            })
+    })
+    .collect()
 }
 
 /// The full-resolution URL of a release's primary image. Discogs marks one
@@ -914,6 +948,34 @@ mod tests {
         assert_eq!(second.label, None);
         assert_eq!(second.format, None);
         assert_eq!(second.catalog_number, None);
+    }
+
+    #[test]
+    fn release_links_keep_exact_artist_and_label_ids() {
+        let release = parse_release(
+            r#"{
+            "id": 42, "title": "A release",
+            "artists": [{"id": 123, "name": "Various"}],
+            "labels": [{"id": 456, "name": "Test Label", "catno": "TST 1"},
+                       {"id": 0, "name": "Unknown"}]
+        }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            release.links,
+            vec![
+                ReleaseLink {
+                    name: "Various".into(),
+                    kind: ReleaseLinkKind::Artist,
+                    id: "123".into()
+                },
+                ReleaseLink {
+                    name: "Test Label".into(),
+                    kind: ReleaseLinkKind::Label,
+                    id: "456".into()
+                },
+            ]
+        );
     }
 
     /// A multi-disc release states the disc twice over -- in every track's

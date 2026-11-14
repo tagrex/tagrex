@@ -1,0 +1,35 @@
+/* Shared dropdowns use the app palette and preserve the native controller model. */
+.app-select { position:relative; display:inline-grid; grid-template-areas:'control'; min-width:0; max-width:100%; vertical-align:middle; }
+.app-select-proxy { grid-area:control; min-width:0; pointer-events:none; }
+.app-select-proxy > select { width:100%; opacity:0; pointer-events:none; }
+body button.app-select-trigger { grid-area:control; width:100%; height:var(--ctl-h); min-width:0; border-radius:var(--r-control); padding-inline:12px; border:1px solid var(--border); background:var(--bg); color:var(--text); font:inherit; font-size:var(--type-body-size); box-shadow:none; }
+.app-select-label { overflow:hidden; text-overflow:ellipsis; min-width:0; text-align:start; }
+body .app-select-menu { z-index:140; padding:7px; border:1px solid var(--border); border-radius:var(--r-menu); background:var(--bg); color:var(--text); min-width:min(calc(100dvw - 16px), max(160px, var(--bits-select-anchor-width))); max-width:calc(100dvw - 16px); box-shadow:0 12px 32px rgb(0 0 0 / .25); transform-origin:var(--bits-select-content-transform-origin); animation:app-select-in 130ms var(--workbench-ease) both; }
+body .app-select-menu[data-state='closed'] { animation:app-select-out 90ms ease-in both; }
+body .app-select-menu [data-slot='select-item'] { min-height:32px; border-radius:var(--r-menu-item); padding:var(--sp-1) 30px var(--sp-1) var(--sp-3); line-height:1.5; color:var(--text); font-size:var(--type-body-size); cursor:default; }
+body .app-select-menu [data-highlighted] { background:var(--row-hover); }
+body .app-select-menu [data-selected] { color:var(--accent-ink); }
+body .app-select-trigger:focus-visible { outline:none; border-color:var(--accent); box-shadow:var(--ring); }
+@keyframes app-select-in { from {opacity:0; transform:translateY(-3px) scale(.985)} to {opacity:1; transform:translateY(0) scale(1)} }
+@keyframes app-select-out { from {opacity:1; transform:translateY(0) scale(1)} to {opacity:0; transform:translateY(-2px) scale(.985)} }
+@media(prefers-reduced-motion:reduce) { body .app-select-menu, body .app-select-menu[data-state='closed'] { animation:none; } }
+
+/* Select wrappers participate in the original field layout. Never snapshot a
+   computed width: these rules continue to respond to panel and window sizes. */
+.app-select[hidden] { display:none; }
+.app-select:has(:where(select.w-full)), .settings-row > .app-select, .exp-mask > .app-select { width:100%; }
+.online-head-row > .app-select { width:auto; flex:0 1 auto; }
+.source-label > .app-select { width:auto; min-width:118px; }
+.export-row > .app-select { flex:1; }
+.gen-add > .app-select { flex:0 1 auto; }
+.tracklist-label .app-select { max-width:260px; }
+.rule-head > .app-select:has(.rule-scope) { flex:none; max-width:16ch; }
+.rule-small > .app-select:has(.rule-small-lang) { flex:none; }
+body .rule-head .app-select-trigger { height:var(--ctl-h-sm); font-size:var(--type-help-size); }
+body .release-toolbar .app-select-trigger, body .tracklist-label .app-select-trigger, body .rule-small .app-select-trigger { height:var(--ctl-h-sm); font-size:var(--type-help-size); }
+@container (max-width:420px) {
+  .rule-head > .app-select:has(.rule-scope) { order:9; max-width:calc(100% - var(--rule-indent)); margin-left:calc(var(--rule-indent) - var(--space-2)); }
+}
+@media(max-width:760px) {
+  .pe-edit-col .gen-add > .app-select { flex:1 1 160px; min-width:min(120px,100%); }
+}

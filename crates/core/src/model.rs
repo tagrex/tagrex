@@ -512,7 +512,9 @@ impl CoverKind {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CoverArt {
     pub mime: String,
-    pub data: Vec<u8>,
+    /// Shared immutable bytes: per-file proposals and journal snapshots can
+    /// retain the same image without copying it on every plan clone.
+    pub data: std::sync::Arc<[u8]>,
     /// What the image depicts. Defaults to the front cover, which is what a
     /// picked or fetched image is meant as unless said otherwise.
     pub kind: CoverKind,
@@ -1032,6 +1034,26 @@ pub struct TrackRead {
     pub has_cover: bool,
 }
 
+impl TrackRead {
+    /// The existing native field for the compilation flag. The UI edits this
+    /// through the ordinary preview/Apply path, without guessing tag names.
+    pub fn compilation_field(&self) -> Option<TagField> {
+        let primary = self.file.format.primary_tag_type();
+        // Writes can add the primary block when the read block cannot hold the
+        // flag (for example ID3v1-only MP3, RIFF INFO WAV or text-only AIFF).
+        // A capable read block still wins, including Vorbis tags in an MP3.
+        let kind = self
+            .blocks
+            .iter()
+            .find(|block| block.read_from)
+            .map(|block| block.kind.to_tag_type())
+            .filter(|kind| ItemKey::FlagCompilation.map_key(*kind).is_some())
+            .unwrap_or(primary);
+        ItemKey::FlagCompilation.map_key(kind)?;
+        Some(item_key_to_tag_field(ItemKey::FlagCompilation, kind))
+    }
+}
+
 /// A single audio file as seen by the table model.
 #[derive(Debug, Clone)]
 pub struct TrackFile {
@@ -1098,7 +1120,11 @@ fn custom_item_options() -> ParseOptions {
 /// The error reported when all three fail is the **first** one: it describes the
 /// file as it actually presents itself, which is what someone looking at the
 /// message needs.
+///
+/// An Ogg stream of a codec the backend cannot read is refused before any of
+/// them (#762), see [`refuse_unsupported_ogg`].
 fn probe_file(path: &Path) -> Result<lofty::file::TaggedFile, TagIoError> {
+    refuse_unsupported_ogg(path)?;
     let first = match probe_source(path)?
         .guess_file_type()?
         .options(parse_options())
@@ -1137,6 +1163,62 @@ fn probe_file(path: &Path) -> Result<lofty::file::TaggedFile, TagIoError> {
     }
 
     Err(first.into())
+}
+
+/// The first packet of each Ogg codec the backend reads: Vorbis, Opus, Speex.
+const OGG_CODEC_MAGICS: [&[u8]; 3] = [b"\x01vorbis", b"OpusHead", b"Speex   "];
+
+/// Refuse an Ogg stream of a codec the backend has no reader for (#762).
+///
+/// The backend knows an Ogg file only by the codecs it reads. One holding FLAC
+/// fell through its sniff to the frame-sync search, which found an ADTS-looking
+/// pair of bytes in the FLAC data and read the file as AAC: no tags shown, and
+/// a write put an ID3v2 tag in front of the first Ogg page. So the first
+/// packet is looked at here, and anything but a codec the backend reads is
+/// unsupported, named when it is FLAC. A leading ID3v2 tag is stepped over
+/// first, so a file such a write already damaged is refused too instead of
+/// being read as AAC again.
+fn refuse_unsupported_ogg(path: &Path) -> Result<(), TagIoError> {
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut file = std::fs::File::open(path)?;
+    let mut head = [0u8; 10];
+    if file.read_exact(&mut head).is_err() {
+        return Ok(());
+    }
+    let start = if &head[..3] == b"ID3" {
+        let size = head[6..10]
+            .iter()
+            .fold(0u64, |size, byte| (size << 7) | u64::from(byte & 0x7f));
+        let footer = if head[5] & 0x10 != 0 { 10 } else { 0 };
+        10 + size + footer
+    } else {
+        0
+    };
+    file.seek(SeekFrom::Start(start))?;
+    // The page header is 27 bytes and its segment table at most 255; the
+    // longest magic follows right after.
+    let mut page = Vec::new();
+    file.take(27 + 255 + 8).read_to_end(&mut page)?;
+    if !page.starts_with(b"OggS") {
+        return Ok(());
+    }
+    let packet = page
+        .get(26)
+        .and_then(|&segments| page.get(27 + usize::from(segments)..))
+        .unwrap_or_default();
+    if OGG_CODEC_MAGICS
+        .iter()
+        .any(|magic| packet.starts_with(magic))
+    {
+        return Ok(());
+    }
+    let codec = if packet.starts_with(b"\x7fFLAC") {
+        "Ogg FLAC"
+    } else {
+        "Ogg (unknown codec)"
+    };
+    Err(TagIoError::UnsupportedFormat(codec.to_string()))
 }
 
 /// The file at `path`, in memory, with the frames of its leading ID3v2 tag that
@@ -3337,14 +3419,14 @@ fn cover_from_picture(picture: &Picture) -> CoverArt {
             .mime_type()
             .map(|mime| mime.as_str().to_string())
             .unwrap_or_default(),
-        data: picture.data().to_vec(),
+        data: picture.data().into(),
         kind: CoverKind::from_picture_type(picture.pic_type()),
         description: picture.description().unwrap_or_default().to_string(),
     }
 }
 
 fn picture_from_cover(cover: &CoverArt) -> Picture {
-    let mut builder = Picture::unchecked(cover.data.clone())
+    let mut builder = Picture::unchecked(cover.data.to_vec())
         .pic_type(cover.kind.to_picture_type())
         .mime_type(MimeType::from_str(&cover.mime));
     if !cover.description.is_empty() {
@@ -6659,6 +6741,20 @@ mod tests {
         // Nothing but separators still writes something rather than vanishing.
         assert_eq!(split_multi_value_with("; ", sep), vec!["; "]);
         assert_eq!(split_multi_value_with("", sep), vec![""]);
+    }
+
+    #[test]
+    fn a_semicolon_genre_separator_keeps_slashes_inside_one_value() {
+        for separator in [";", DEFAULT_MULTI_VALUE_SEPARATOR] {
+            assert_eq!(
+                split_multi_value_with("Hardcore; Happy Hardcore; Pop/Rock", separator),
+                vec!["Hardcore", "Happy Hardcore", "Pop/Rock"]
+            );
+            assert_eq!(
+                split_multi_value_with("Pop/Rock", separator),
+                vec!["Pop/Rock"]
+            );
+        }
     }
 
     #[test]
