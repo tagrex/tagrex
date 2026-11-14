@@ -4,8 +4,10 @@
 // shell.
 import { mockInvoke } from "./mock.js";
 import { message } from "./i18n.js";
+import { createPlanCodec } from "./plan-codec.js";
 
 export const TAURI = window.__TAURI__ ? window.__TAURI__.core : null;
+const plans = createPlanCodec();
 
 // A failure the backend describes as a code and its values (#268), wrapped so
 // it reads as a sentence wherever one is expected.
@@ -23,13 +25,14 @@ class BackendError extends Error {
 
   toString() {
     if (!this.failure || typeof this.failure !== "object") return String(this.failure);
-    return message(this.failure.message) || this.failure.text || "";
+    return message(this.failure.message) || this.failure.text || this.message;
   }
 }
 
 export async function invoke(cmd, args) {
   try {
-    return await (TAURI ? TAURI.invoke(cmd, args) : mockInvoke(cmd, args));
+    const request = TAURI ? plans.prepare(args) : args;
+    return plans.accept(await (TAURI ? TAURI.invoke(cmd, request) : mockInvoke(cmd, request)));
   } catch (failure) {
     // The mock rejects the same shapes the backend does — including the plain
     // strings it still uses for the failures it invents itself — so the browser

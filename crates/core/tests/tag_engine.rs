@@ -574,7 +574,7 @@ fn cover_embed_read_remove_and_survives_a_tag_write() {
     // Arbitrary bytes stand in for image data (lofty stores them verbatim).
     let cover = CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5],
+        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5].into(),
         ..CoverArt::default()
     };
 
@@ -629,7 +629,7 @@ fn a_cover_write_keeps_the_custom_fields() {
     .unwrap();
     let cover = CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3],
+        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3].into(),
         ..CoverArt::default()
     };
 
@@ -683,12 +683,12 @@ fn ape_pictures_are_read_written_and_removed() {
     let png = |tail: u8| vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, tail];
     let front = CoverArt {
         mime: "image/png".to_string(),
-        data: png(1),
+        data: png(1).into(),
         ..CoverArt::default()
     };
     let back = CoverArt {
         mime: "image/png".to_string(),
-        data: png(2),
+        data: png(2).into(),
         kind: CoverKind::Back,
         description: "Back".to_string(),
     };
@@ -745,7 +745,7 @@ fn an_mp3_ape_block_keeps_its_pictures() {
     content.tags.insert(TagField::Artist, "Someone".to_string());
     content.covers.push(CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 7],
+        data: vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 7].into(),
         ..CoverArt::default()
     });
 
@@ -764,7 +764,7 @@ fn an_mp3_ape_block_keeps_its_pictures() {
 fn listing_probe_reports_whether_a_file_carries_a_cover() {
     let cover = CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5],
+        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5].into(),
         ..CoverArt::default()
     };
 
@@ -860,7 +860,7 @@ fn mp3_write_preserves_non_text_frames() {
         &path,
         &[CoverArt {
             mime: "image/png".to_string(),
-            data: vec![1, 2, 3, 4],
+            data: vec![1, 2, 3, 4].into(),
             ..CoverArt::default()
         }],
     )
@@ -1113,7 +1113,7 @@ fn several_images_round_trip_with_their_types() {
 
     let image = |kind: CoverKind, byte: u8, description: &str| CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, 0x50, 0x4e, 0x47, byte],
+        data: vec![0x89, 0x50, 0x4e, 0x47, byte].into(),
         kind,
         description: description.to_string(),
     };
@@ -1172,13 +1172,13 @@ fn mp3_keeps_several_images_and_its_private_frames() {
     let set = vec![
         CoverArt {
             mime: "image/png".to_string(),
-            data: vec![0x89, 0x50, 1],
+            data: vec![0x89, 0x50, 1].into(),
             kind: CoverKind::Front,
             description: String::new(),
         },
         CoverArt {
             mime: "image/png".to_string(),
-            data: vec![0x89, 0x50, 2],
+            data: vec![0x89, 0x50, 2].into(),
             kind: CoverKind::Back,
             description: String::new(),
         },
@@ -2193,7 +2193,7 @@ fn conversion_loss_names_what_the_target_block_cannot_hold() {
     content.tags.insert(TagField::Isrc, "Dropped".to_string());
     content.covers.push(CoverArt {
         mime: "image/png".to_string(),
-        data: vec![1, 2, 3],
+        data: vec![1, 2, 3].into(),
         ..CoverArt::default()
     });
 
@@ -3436,7 +3436,7 @@ fn a_write_never_leaves_an_ape_tag_misread_as_id3v1() {
         &path,
         &[CoverArt {
             mime: "image/png".into(),
-            data: vec![0x89, 0x50, 0x4e, 0x47],
+            data: vec![0x89, 0x50, 0x4e, 0x47].into(),
             ..CoverArt::default()
         }],
     )
@@ -3468,7 +3468,7 @@ fn values_in_id3v1_survive_an_id3v2_tag_that_holds_only_a_picture() {
 
     let cover = CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5],
+        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5].into(),
         ..CoverArt::default()
     };
     TagEngine::write_covers(&path, std::slice::from_ref(&cover)).unwrap();
@@ -3546,7 +3546,7 @@ fn a_zero_filled_id3v1_tag_is_not_read_in_place_of_an_empty_id3v2_tag() {
         &path,
         &[CoverArt {
             mime: "image/png".to_string(),
-            data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5],
+            data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5].into(),
             ..CoverArt::default()
         }],
     )
@@ -4762,7 +4762,7 @@ fn an_mp3_ape_block_beside_id3v2_loses_only_what_was_edited() {
         .insert(TagField::Album, "Only In APE".to_string());
     content.covers.push(CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 7],
+        data: vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A, 7].into(),
         ..CoverArt::default()
     });
     TagEngine::write_block(&path, TagBlockKind::Ape, None, &content).unwrap();
@@ -6127,7 +6127,7 @@ fn nothing_may_come_before_an_id3v2_tag_a_write_replaces() {
             &path,
             &[CoverArt {
                 mime: "image/png".to_string(),
-                data: vec![0x89, b'P', b'N', b'G'],
+                data: vec![0x89, b'P', b'N', b'G'].into(),
                 ..CoverArt::default()
             }],
         );
@@ -6281,5 +6281,67 @@ fn a_write_over_a_compressed_frame_leaves_the_file_readable() {
             reread.expect("a successful write left the file unreadable");
         }
         Err(_) => assert!(after == before, "a failed write changed the file"),
+    }
+}
+
+/// Known provider lists use the model's semicolon codec, not a slash that could
+/// be part of one genre. Verify native entries, not only their joined display.
+#[test]
+fn semicolon_genres_are_distinct_native_values_and_keep_literal_slashes() {
+    use lofty::file::TaggedFileExt;
+    use lofty::tag::ItemKey;
+    let expected = vec!["Hardcore", "Happy Hardcore", "Pop/Rock"];
+    let joined = expected.join("; ");
+    for (extension, format, bytes) in [
+        ("flac", AudioFormat::Flac, MINIMAL_FLAC.to_vec()),
+        ("mp3", AudioFormat::Mp3, minimal_mp3()),
+        (
+            "m4a",
+            AudioFormat::M4a,
+            include_bytes!("fixtures/minimal.m4a").to_vec(),
+        ),
+    ] {
+        let path = std::env::temp_dir().join(format!(
+            "tagrex-semicolon-genres-{}.{}",
+            std::process::id(),
+            extension
+        ));
+        std::fs::write(&path, bytes).expect("write synthetic fixture");
+        TagEngine::write(&TrackFile {
+            path: path.clone(),
+            format,
+            tags: BTreeMap::from([
+                (TagField::Genre, joined.clone()),
+                (TagField::Artist, "Artist One; Artist Two".to_string()),
+            ]),
+        })
+        .expect("write genres");
+        let native_genres = || {
+            let parsed = lofty::probe::Probe::open(&path).unwrap().read().unwrap();
+            parsed
+                .primary_tag()
+                .unwrap()
+                .get_strings(ItemKey::Genre)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            native_genres(),
+            expected,
+            "native genre values in {extension}"
+        );
+        let read = TagEngine::read(&path).expect("read genres");
+        assert_eq!(read.tags.get(&TagField::Genre), Some(&joined));
+        assert_eq!(
+            read.tags.get(&TagField::Artist).map(String::as_str),
+            Some("Artist One; Artist Two")
+        );
+        TagEngine::write(&read).expect("rewrite genre list");
+        assert_eq!(
+            native_genres(),
+            expected,
+            "a rewrite preserves one Pop/Rock entry in {extension}"
+        );
+        std::fs::remove_file(&path).expect("remove synthetic fixture");
     }
 }

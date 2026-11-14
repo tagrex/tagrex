@@ -329,6 +329,50 @@ fn rejects_a_rename_target_outside_the_root() {
 }
 
 #[test]
+fn cloned_bulk_plans_share_artwork_and_copy_on_write_is_explicit() {
+    use tagrex_core::model::CoverArt;
+    use tagrex_core::plan::CoverChange;
+    let art = CoverArt {
+        data: vec![7; 128 * 1024].into(),
+        ..CoverArt::default()
+    };
+    let plan = ChangePlan {
+        changes: (0..64)
+            .map(|index| FileChange {
+                path: PathBuf::from(format!("{index}.flac")),
+                cover_change: Some(CoverChange {
+                    old: Vec::new(),
+                    new: vec![art.clone()],
+                }),
+                ..FileChange::default()
+            })
+            .collect(),
+        ..ChangePlan::default()
+    };
+    let mut cloned = plan.clone();
+    for change in &cloned.changes {
+        assert_eq!(
+            art.data.as_ptr(),
+            change.cover_change.as_ref().unwrap().new[0].data.as_ptr()
+        );
+    }
+    // A deliberate byte edit makes a private copy. Metadata changes need no
+    // byte copy, and changing one picture can never mutate another file's plan.
+    let changed = &mut cloned.changes[0].cover_change.as_mut().unwrap().new[0];
+    std::sync::Arc::make_mut(&mut changed.data)[0] = 9;
+    assert_ne!(art.data.as_ptr(), changed.data.as_ptr());
+    assert_eq!(changed.data[0], 9);
+    assert_eq!(
+        plan.changes[0].cover_change.as_ref().unwrap().new[0].data[0],
+        7
+    );
+    assert_eq!(
+        cloned.changes[1].cover_change.as_ref().unwrap().new[0].data[0],
+        7
+    );
+}
+
+#[test]
 fn embeds_cover_and_undo_removes_it() {
     use tagrex_core::model::CoverArt;
     use tagrex_core::plan::CoverChange;
@@ -339,7 +383,7 @@ fn embeds_cover_and_undo_removes_it() {
 
     let cover = CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, 0x50, 0x4e, 0x47, 9, 8, 7],
+        data: vec![0x89, 0x50, 0x4e, 0x47, 9, 8, 7].into(),
         ..CoverArt::default()
     };
     let plan = ChangePlan {
@@ -556,7 +600,7 @@ fn a_revision_switch_keeps_every_frame_and_undo_restores_the_revision() {
     // And a picture, which the switch used to drop (#607).
     let cover = tagrex_core::model::CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, 0x50, 0x4e, 0x47, 9, 9],
+        data: vec![0x89, 0x50, 0x4e, 0x47, 9, 9].into(),
         ..tagrex_core::model::CoverArt::default()
     };
     TagEngine::write_covers(&track, std::slice::from_ref(&cover)).unwrap();
@@ -1589,7 +1633,7 @@ fn undoing_a_vorbis_block_removal_puts_back_every_comment() {
     tag.save_to_path(&track, WriteOptions::default()).unwrap();
     let cover = CoverArt {
         mime: "image/png".to_string(),
-        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2],
+        data: vec![0x89, 0x50, 0x4e, 0x47, 1, 2].into(),
         ..CoverArt::default()
     };
     TagEngine::write_covers(&track, std::slice::from_ref(&cover)).unwrap();

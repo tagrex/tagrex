@@ -15,6 +15,23 @@ use crate::model::{
 };
 use crate::plan::{BlockChange, ChangePlan, CoverChange, FieldChange, FileChange};
 
+/// Inline journal rows retain the stable on-disk format. Intern images after
+/// reading so repeated snapshots still share immutable bytes in memory.
+#[derive(Default)]
+struct LoadedImages {
+    inline: std::collections::HashSet<std::sync::Arc<[u8]>>,
+}
+impl LoadedImages {
+    fn intern(&mut self, bytes: Vec<u8>) -> std::sync::Arc<[u8]> {
+        if let Some(existing) = self.inline.get(bytes.as_slice()) {
+            return existing.clone();
+        }
+        let shared: std::sync::Arc<[u8]> = bytes.into();
+        self.inline.insert(shared.clone());
+        shared
+    }
+}
+
 /// Identifier of an applied batch, stable across restarts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BatchId(pub i64);
@@ -901,7 +918,7 @@ impl SqliteJournal {
         message: Option<String>,
         applied_at: i64,
     ) -> Result<AppliedBatch, JournalError> {
-        let changes = self.load_file_changes(id)?;
+        let changes = self.load_file_changes(id, &mut LoadedImages::default())?;
         Ok(AppliedBatch {
             id: BatchId(id),
             description: description.clone(),
@@ -974,7 +991,11 @@ impl SqliteJournal {
         Ok(revisions)
     }
 
-    fn load_file_changes(&self, batch_id: i64) -> Result<Vec<FileChange>, JournalError> {
+    fn load_file_changes(
+        &self,
+        batch_id: i64,
+        images: &mut LoadedImages,
+    ) -> Result<Vec<FileChange>, JournalError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, path, rename_to, copied FROM file_changes WHERE batch_id = ?1 ORDER BY id",
         )?;
@@ -993,11 +1014,11 @@ impl SqliteJournal {
             changes.push(FileChange {
                 path: PathBuf::from(path),
                 tag_changes: self.load_field_changes(file_change_id)?,
-                cover_change: self.load_cover_change(file_change_id)?,
+                cover_change: self.load_cover_change(file_change_id, images)?,
                 rename_to: rename_to.map(PathBuf::from),
                 copy: copied,
                 sidecar_renames: self.load_sidecar_renames(file_change_id)?,
-                block_changes: self.load_block_changes(file_change_id)?,
+                block_changes: self.load_block_changes(file_change_id, images)?,
             });
         }
         Ok(changes)
@@ -1029,7 +1050,11 @@ impl SqliteJournal {
     /// rolls back. A file change with no rows here falls back to the legacy
     /// removal-only tables, so a batch recorded before conversion landed can
     /// still be undone.
-    fn load_block_changes(&self, file_change_id: i64) -> Result<Vec<BlockChange>, JournalError> {
+    fn load_block_changes(
+        &self,
+        file_change_id: i64,
+        images: &mut LoadedImages,
+    ) -> Result<Vec<BlockChange>, JournalError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, kind, revision, old_revision, old_bytes, has_old, has_new, \
              text_to_unicode FROM block_changes WHERE file_change_id = ?1 ORDER BY id",
@@ -1056,13 +1081,13 @@ impl SqliteJournal {
             let Some(kind) = TagBlockKind::from_storage_key(&kind) else {
                 continue;
             };
-            let side = |side: &str, present: bool| -> Result<_, JournalError> {
+            let mut side = |side: &str, present: bool| -> Result<_, JournalError> {
                 if !present {
                     return Ok(None);
                 }
                 Ok(Some(TagBlockContent {
                     tags: self.load_block_change_fields(id, side)?,
-                    covers: self.load_block_change_images(id, side)?,
+                    covers: self.load_block_change_images(id, side, images)?,
                 }))
             };
             changes.push(BlockChange {
@@ -1082,7 +1107,7 @@ impl SqliteJournal {
         if any {
             return Ok(changes);
         }
-        self.load_legacy_block_removals(file_change_id)
+        self.load_legacy_block_removals(file_change_id, images)
     }
 
     fn load_block_change_fields(&self, id: i64, side: &str) -> Result<TagMap, JournalError> {
@@ -1101,7 +1126,12 @@ impl SqliteJournal {
         Ok(tags)
     }
 
-    fn load_block_change_images(&self, id: i64, side: &str) -> Result<Vec<CoverArt>, JournalError> {
+    fn load_block_change_images(
+        &self,
+        id: i64,
+        side: &str,
+        images: &mut LoadedImages,
+    ) -> Result<Vec<CoverArt>, JournalError> {
         let mut stmt = self.conn.prepare(
             "SELECT kind, description, mime, data FROM block_change_images \
              WHERE block_change_id = ?1 AND side = ?2 ORDER BY id",
@@ -1111,7 +1141,7 @@ impl SqliteJournal {
                 kind: CoverKind::from_storage_key(&row.get::<_, String>(0)?),
                 description: row.get::<_, String>(1)?,
                 mime: row.get::<_, String>(2)?,
-                data: row.get::<_, Vec<u8>>(3)?,
+                data: images.intern(row.get::<_, Vec<u8>>(3)?),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -1123,6 +1153,7 @@ impl SqliteJournal {
     fn load_legacy_block_removals(
         &self,
         file_change_id: i64,
+        images: &mut LoadedImages,
     ) -> Result<Vec<BlockChange>, JournalError> {
         let mut stmt = self
             .conn
@@ -1148,17 +1179,17 @@ impl SqliteJournal {
                 let (field, value) = row?;
                 tags.insert(TagField::from_storage_key(&field), value);
             }
-            let mut images = self.conn.prepare(
+            let mut image_statement = self.conn.prepare(
                 "SELECT kind, description, mime, data FROM block_removal_images \
                  WHERE block_removal_id = ?1 ORDER BY id",
             )?;
-            let covers = images
+            let covers = image_statement
                 .query_map(rusqlite::params![removal_id], |row| {
                     Ok(CoverArt {
                         kind: CoverKind::from_storage_key(&row.get::<_, String>(0)?),
                         description: row.get::<_, String>(1)?,
                         mime: row.get::<_, String>(2)?,
-                        data: row.get::<_, Vec<u8>>(3)?,
+                        data: images.intern(row.get::<_, Vec<u8>>(3)?),
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -1171,7 +1202,11 @@ impl SqliteJournal {
     /// none. Reads the current `cover_images` rows; a file change with none of
     /// those falls back to the legacy single-pair `cover_changes` row, so a
     /// batch recorded before the set model can still be rolled back.
-    fn load_cover_change(&self, file_change_id: i64) -> Result<Option<CoverChange>, JournalError> {
+    fn load_cover_change(
+        &self,
+        file_change_id: i64,
+        images: &mut LoadedImages,
+    ) -> Result<Option<CoverChange>, JournalError> {
         let mut stmt = self.conn.prepare(
             "SELECT side, kind, description, mime, data FROM cover_images \
              WHERE file_change_id = ?1 ORDER BY id",
@@ -1183,7 +1218,7 @@ impl SqliteJournal {
                     kind: CoverKind::from_storage_key(&row.get::<_, String>(1)?),
                     description: row.get::<_, String>(2)?,
                     mime: row.get::<_, String>(3)?,
-                    data: row.get::<_, Vec<u8>>(4)?,
+                    data: images.intern(row.get::<_, Vec<u8>>(4)?),
                 },
             ))
         })?;
@@ -1201,12 +1236,13 @@ impl SqliteJournal {
         if any {
             return Ok(Some(change));
         }
-        self.load_legacy_cover_change(file_change_id)
+        self.load_legacy_cover_change(file_change_id, images)
     }
 
     fn load_legacy_cover_change(
         &self,
         file_change_id: i64,
+        images: &mut LoadedImages,
     ) -> Result<Option<CoverChange>, JournalError> {
         let mut stmt = self.conn.prepare(
             "SELECT old_mime, old_data, new_mime, new_data FROM cover_changes \
@@ -1225,10 +1261,10 @@ impl SqliteJournal {
         };
         let (old_mime, old_data, new_mime, new_data) = row?;
         // A pre-#56 pair: one front cover, or none on that side.
-        let cover = |mime: Option<String>, data: Option<Vec<u8>>| match (mime, data) {
+        let mut cover = |mime: Option<String>, data: Option<Vec<u8>>| match (mime, data) {
             (Some(mime), Some(data)) => vec![CoverArt {
                 mime,
-                data,
+                data: images.intern(data),
                 kind: CoverKind::Front,
                 description: String::new(),
             }],

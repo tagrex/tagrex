@@ -101,7 +101,7 @@ pub async fn update(app: AppHandle, now: NowPlaying) {
                 tagrex_core::model::TagEngine::read_cover(&PathBuf::from(path))
                     .ok()
                     .flatten()
-                    .map(|art| art.data)
+                    .map(|art| art.data.to_vec())
             })
             .await
             .ok()

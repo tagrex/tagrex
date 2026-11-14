@@ -512,7 +512,9 @@ impl CoverKind {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CoverArt {
     pub mime: String,
-    pub data: Vec<u8>,
+    /// Shared immutable bytes: per-file proposals and journal snapshots can
+    /// retain the same image without copying it on every plan clone.
+    pub data: std::sync::Arc<[u8]>,
     /// What the image depicts. Defaults to the front cover, which is what a
     /// picked or fetched image is meant as unless said otherwise.
     pub kind: CoverKind,
@@ -3397,14 +3399,14 @@ fn cover_from_picture(picture: &Picture) -> CoverArt {
             .mime_type()
             .map(|mime| mime.as_str().to_string())
             .unwrap_or_default(),
-        data: picture.data().to_vec(),
+        data: picture.data().into(),
         kind: CoverKind::from_picture_type(picture.pic_type()),
         description: picture.description().unwrap_or_default().to_string(),
     }
 }
 
 fn picture_from_cover(cover: &CoverArt) -> Picture {
-    let mut builder = Picture::unchecked(cover.data.clone())
+    let mut builder = Picture::unchecked(cover.data.to_vec())
         .pic_type(cover.kind.to_picture_type())
         .mime_type(MimeType::from_str(&cover.mime));
     if !cover.description.is_empty() {

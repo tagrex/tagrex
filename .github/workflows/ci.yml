@@ -48,6 +48,10 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Standalone ES-module checks; no npm install or frontend build.
+      - name: Check artwork plan transport
+        run: node --test tests/unit/plan-codec.test.js
+
       - name: Build
         run: cargo build --workspace
 
