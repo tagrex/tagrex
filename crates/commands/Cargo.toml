@@ -35,3 +35,10 @@ trash = { version = "5.3.0", default-features = false, features = [
     "coinit_apartmentthreaded",
     "freedesktop",
 ] }
+
+[target.'cfg(unix)'.dependencies]
+# Directory-relative atomic outputs: pin parents and never follow target links.
+rustix = { version = "1.1.5", features = ["fs"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }

@@ -1,0 +1,88 @@
+name: Guarded output runtime tests
+on:
+  pull_request:
+    paths:
+      - crates/commands/src/output.rs
+      - .github/workflows/output-tests.yml
+  workflow_dispatch:
+jobs:
+  windows-exfat:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Exercise publication on an exFAT virtual disk
+        shell: pwsh
+        run: |
+          if (Test-Path 'Z:\') { throw 'Z: is already in use; refusing to touch it' }
+          $disk = Join-Path $env:RUNNER_TEMP 'tagrex-output-tests.vhd'
+          if (Test-Path $disk) { throw 'Test VHD already exists' }
+          try {
+            @"
+          create vdisk file="$disk" maximum=128 type=expandable
+          select vdisk file="$disk"
+          attach vdisk
+          create partition primary
+          format fs=exfat quick label=TagRexOutputs
+          assign letter=Z
+          "@ | diskpart
+            if ((Get-Volume -DriveLetter Z).FileSystem -ne 'exFAT') {
+              throw 'The disposable exFAT test volume was not created'
+            }
+            $env:TAGREX_OUTPUT_TEST_ROOT = 'Z:\'
+            # exFAT has no Windows ACLs; the NTFS-only ACL regression runs in normal CI.
+            cargo test -p tagrex-commands output::tests -- --nocapture --skip traverse_only_parent_can_be_pinned_without_listing
+            if ($LASTEXITCODE -ne 0) { throw 'Output tests failed on exFAT' }
+          } finally {
+            Remove-Item Env:TAGREX_OUTPUT_TEST_ROOT -ErrorAction SilentlyContinue
+            @"
+          select vdisk file="$disk"
+          detach vdisk
+          "@ | diskpart
+            Remove-Item $disk -ErrorAction SilentlyContinue
+          }
+  macos-fat:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        filesystem: [ExFAT, MS-DOS FAT32]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Exercise publication on a disposable FAT-family image
+        env:
+          OUTPUT_FILESYSTEM: ${{ matrix.filesystem }}
+        run: |
+          set -euo pipefail
+          image="$RUNNER_TEMP/tagrex-output-tests.dmg"
+          mount="$RUNNER_TEMP/tagrex-output-volume"
+          if [ -e "$image" ] || [ -e "$mount" ]; then
+            echo 'Disposable image or mount already exists' >&2
+            exit 1
+          fi
+          device=""
+          cleanup() {
+            if [ -n "$device" ]; then hdiutil detach "$device" || true; fi
+            rm -f "$image" "$RUNNER_TEMP/tagrex-output-attach.plist"
+          }
+          trap cleanup EXIT
+          # Create an unformatted image first: some macOS releases refuse
+          # direct hdiutil -fs ExFAT formatting even with elevated privileges.
+          hdiutil create -size 512m -layout NONE -type UDIF "$image"
+          hdiutil attach -nomount -plist "$image" > "$RUNNER_TEMP/tagrex-output-attach.plist"
+          # Select only the whole device returned for this newly attached image;
+          # never enumerate or choose an unrelated host disk for formatting.
+          device="$(python3 -c 'import plistlib,re,sys; p=plistlib.load(open(sys.argv[1], "rb")); d=[x["dev-entry"] for x in p["system-entities"] if re.fullmatch(r"/dev/disk[0-9]+", x.get("dev-entry", ""))]; assert len(d)==1, d; print(d[0])' "$RUNNER_TEMP/tagrex-output-attach.plist")"
+          # Keep the label within FAT's short uppercase naming rules.
+          diskutil eraseDisk "$OUTPUT_FILESYSTEM" TAGREXTEST MBR "$device"
+          diskutil unmountDisk "$device"
+          mkdir "$mount"
+          diskutil mount -mountPoint "$mount" "${device}s1"
+          diskutil info -plist "$mount" | python3 -c 'import os,plistlib,sys; p=plistlib.loads(sys.stdin.buffer.read()); expected="exfat" if os.environ["OUTPUT_FILESYSTEM"]=="ExFAT" else "msdos"; actual=p.get("FilesystemType", "").lower(); print("Filesystem:", actual); assert actual==expected, p'
+          export TAGREX_OUTPUT_TEST_ROOT="$mount"
+          # FAT-family volumes cannot create symlinks. Those two protections
+          # run on APFS in ordinary CI; exercise all publication paths here.
+          cargo test -p tagrex-commands output::tests -- --nocapture \
+            --skip pinned_parent_cannot_be_redirected_by_a_directory_symlink \
+            --skip checked_rename_refuses_existing_and_dangling_links
