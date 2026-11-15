@@ -5,6 +5,8 @@ on:
       - crates/commands/src/output.rs
       - .github/workflows/output-tests.yml
   workflow_dispatch:
+permissions:
+  contents: read
 jobs:
   windows-exfat:
     runs-on: windows-latest
