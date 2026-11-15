@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-11-15
+
+A small release for colour-vision deficiencies. Red and green no longer carry
+meaning on their own: the track lengths on a release card get a check or a
+cross, and the dark theme's green and red are set apart in lightness, so they
+stay distinct when red-green vision folds them into one colour.
+
 ### Fixed
 
 - The length difference after each track on a release card marks a match with a check and an off value with a cross, so the two no longer differ by green and red alone, which a red-green colour-vision deficiency shows as one colour. A near value keeps no mark ([#782](https://github.com/tagrex/tagrex/issues/782)).
