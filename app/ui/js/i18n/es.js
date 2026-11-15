@@ -271,6 +271,8 @@ export const es = {
   "topbar.collapsePanelTitle": "Contraer el panel del modo (más espacio para la tabla)",
   "topbar.undo": "Deshacer el último lote aplicado",
   "topbar.redo": "Rehacer el último lote deshecho",
+  "topbar.history": "Historial",
+  "topbar.view": "Vista",
   "topbar.settings": "Ajustes",
   "mode.tagger.title": "Editar etiquetas — desde una fuente en línea, a mano, y portada",
   "mode.renamer.title": "Renombrar archivos y reorganizarlos en carpetas",

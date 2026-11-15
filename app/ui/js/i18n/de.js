@@ -269,6 +269,8 @@ export const de = {
   "topbar.collapsePanelTitle": "Modusbereich einklappen (mehr Platz für die Tabelle)",
   "topbar.undo": "Zuletzt angewendeten Stapel rückgängig machen",
   "topbar.redo": "Den zuletzt rückgängig gemachten Vorgang wiederholen",
+  "topbar.history": "Verlauf",
+  "topbar.view": "Ansicht",
   "topbar.settings": "Einstellungen",
   "mode.tagger.title": "Tags bearbeiten — aus einer Online-Quelle, von Hand, und Cover",
   "mode.renamer.title": "Dateien umbenennen und in Ordnern neu ordnen",

@@ -273,6 +273,8 @@ export const ru = {
   "topbar.collapsePanelTitle": "Свернуть панель режима (больше места таблице)",
   "topbar.undo": "Отменить последнее применение",
   "topbar.redo": "Повторить последний отменённый пакет",
+  "topbar.history": "История",
+  "topbar.view": "Вид",
   "topbar.settings": "Настройки",
   "mode.tagger.title": "Правка тегов — из онлайн-источника, вручную и обложка",
   "mode.renamer.title": "Переименование файлов и раскладка по папкам",

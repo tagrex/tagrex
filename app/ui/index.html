@@ -113,14 +113,18 @@
           <button id="update-notes" class="update-notes icon" type="button" hidden data-i18n-title="update.notes" title="What's new in this version" data-i18n-aria-label="update.notes" aria-label="What's new in this version"><svg class="ico"><use href="#i-doc"/></svg></button>
           <button id="update-skip" class="update-skip icon" type="button" data-i18n-title="update.skip" title="Don't tell me about this version" data-i18n-aria-label="update.skip" aria-label="Don't tell me about this version"><svg class="ico"><use href="#i-close"/></svg></button>
         </span>
-        <!-- App-level actions (#343): undo and settings, and — past a hairline —
-             the layout toggle, at the far right above the panel it shows and
-             hides (#421). They act on the app, not the library. -->
-        <button id="undo" class="icon" disabled data-i18n-title="topbar.undo" title="Undo the last applied batch" data-i18n-aria-label="topbar.undo" aria-label="Undo the last applied batch"><svg class="ico"><use href="#i-undo"/></svg></button>
-        <button id="redo" class="icon" disabled data-i18n-title="topbar.redo" title="Redo the last undone batch" data-i18n-aria-label="topbar.redo" aria-label="Redo the last undone batch"><svg class="ico"><use href="#i-redo"/></svg></button>
-        <button id="settings-open" class="icon gear" data-i18n-title="topbar.settings" title="Settings" data-i18n-aria-label="topbar.settings" aria-label="Settings"><svg class="ico"><use href="#i-settings"/></svg></button>
-        <span class="topbar-div" aria-hidden="true"></span>
-        <button id="panel-toggle" class="icon" data-i18n-title="topbar.collapsePanelTitle" title="Collapse the mode panel (more room for the table)" data-i18n-aria-label="topbar.collapsePanel" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
+        <!-- App-level actions (#343) in two tracks of the mode pill's make (#778):
+             History (undo, redo) and View (settings, and the layout toggle at the
+             far right above the panel it shows and hides, #421). They act on the
+             app, not the library; the gap between the tracks is their divider. -->
+        <div class="tb-group" role="group" data-i18n-aria-label="topbar.history" aria-label="History">
+          <button id="undo" class="icon" disabled data-i18n-title="topbar.undo" title="Undo the last applied batch" data-i18n-aria-label="topbar.undo" aria-label="Undo the last applied batch"><svg class="ico"><use href="#i-undo"/></svg></button>
+          <button id="redo" class="icon" disabled data-i18n-title="topbar.redo" title="Redo the last undone batch" data-i18n-aria-label="topbar.redo" aria-label="Redo the last undone batch"><svg class="ico"><use href="#i-redo"/></svg></button>
+        </div>
+        <div class="tb-group" role="group" data-i18n-aria-label="topbar.view" aria-label="View">
+          <button id="settings-open" class="icon gear" data-i18n-title="topbar.settings" title="Settings" data-i18n-aria-label="topbar.settings" aria-label="Settings"><svg class="ico"><use href="#i-settings"/></svg></button>
+          <button id="panel-toggle" class="icon" data-i18n-title="topbar.collapsePanelTitle" title="Collapse the mode panel (more room for the table)" data-i18n-aria-label="topbar.collapsePanel" aria-label="Collapse the mode panel"><svg class="ico"><use href="#i-collapse"/></svg></button>
+        </div>
       </div>
       <!-- Row 2 (#343): the library path on its own line, full width, with the
            library actions (open, re-read) beside it. -->

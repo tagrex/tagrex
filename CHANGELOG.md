@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Updated `globals`, the browser name list the interface lint check uses, to 17.14.0 ([#765](https://github.com/tagrex/tagrex/pull/765)).
 - Updated `rustix` to 1.1.6, a patch release with fixes in areas the app does not use, among them a security fix in socket message parsing ([#766](https://github.com/tagrex/tagrex/pull/766)).
 - Updated `rusqlite` to 0.42.0. The undo journal keeps the same bundled SQLite 3.54.1, so existing journals are unaffected; the build drops a second copy of `hashbrown` ([#767](https://github.com/tagrex/tagrex/pull/767)).
+- The top bar's action buttons sit in two rounded tracks of the mode switcher's own make and height: Undo and Redo in one, Settings and the panel toggle in the other. Their icons are drawn at full strength, so a disabled one reads apart from an enabled one, and the update button matches the same height. The classic tab look keeps the square buttons ([#778](https://github.com/tagrex/tagrex/issues/778)).
 
 ### Fixed
 

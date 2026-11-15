@@ -273,6 +273,8 @@ export const en = {
   "topbar.collapsePanelTitle": "Collapse the mode panel (more room for the table)",
   "topbar.undo": "Undo the last applied batch",
   "topbar.redo": "Redo the last undone batch",
+  "topbar.history": "History",
+  "topbar.view": "View",
   "topbar.settings": "Settings",
   // The mode names (TAGGER, RENAMER…) are not catalogue strings: they read the
   // same in every language (#424). What each mode does is.
