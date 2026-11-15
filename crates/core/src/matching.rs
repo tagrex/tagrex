@@ -187,7 +187,19 @@ pub fn match_track(
         }
     }
 
-    let (title, reason) = title_score(local.title, candidate.title);
+    let (mut title, mut reason) = title_score(local.title, candidate.title);
+    // A file's name often carries the artist ahead of the title (#771):
+    // `Agzamoff - Hear Dis (Lost Remix)`. Scored again without it, the better
+    // of the two counts; the name as it stands is never scored worse for it.
+    if let Some(bare) = candidate
+        .artist
+        .and_then(|artist| without_artist_prefix(local.title, artist))
+    {
+        let (bare_title, bare_reason) = title_score(bare, candidate.title);
+        if bare_title > title {
+            (title, reason) = (bare_title, bare_reason);
+        }
+    }
     // Accept/reject is decided on the title alone; an exact match stands on its
     // own, a fuzzy one has to clear the bar.
     if reason == MatchReason::Fuzzy && title < options.strictness {
@@ -439,7 +451,56 @@ fn variants(value: &str) -> Vec<String> {
     // the title `Throw`. Dropped on both sides, so a title that really begins
     // with a number still meets itself.
     let no_number = strip_leading_article(&strip_leading_number(&no_punctuation));
-    vec![basic, no_noise, no_punctuation, no_article, no_number]
+    // Initials written with dots come apart into single letters once the dots
+    // are gone (#771): `A.T.T.O.S.` reads `a t t o s`, the listing `attos`.
+    // Joined before the article goes, or `A.T.T.O.S.` would lose its `a`.
+    let joined_initials =
+        strip_leading_article(&strip_leading_number(&join_initials(&no_punctuation)));
+    vec![
+        basic,
+        no_noise,
+        no_punctuation,
+        no_article,
+        no_number,
+        joined_initials,
+    ]
+}
+
+/// `title` without a leading `<artist> - ` (after an optional track number),
+/// when what precedes the dash names `artist`, or `None` (#771).
+fn without_artist_prefix<'a>(title: &'a str, artist: &str) -> Option<&'a str> {
+    let (head, rest) = title.split_once(" - ")?;
+    let head = strip_leading_number(&strip_punctuation(head));
+    let artist = strip_punctuation(artist);
+    let rest = rest.trim();
+    (!head.is_empty() && !artist.is_empty() && !rest.is_empty() && artists_match(&head, &artist))
+        .then_some(rest)
+}
+
+/// Join every run of two or more single-letter words into one word:
+/// `j jean a t t o s remix` reads `j jean attos remix`.
+fn join_initials(value: &str) -> String {
+    let single_letter = |word: &str| {
+        let mut chars = word.chars();
+        chars.next().is_some_and(char::is_alphabetic) && chars.next().is_none()
+    };
+    // A lone initial (`j jean`) is a run of one and comes out as it went in.
+    let mut words: Vec<String> = Vec::new();
+    let mut run = String::new();
+    for word in value.split_whitespace() {
+        if single_letter(word) {
+            run.push_str(word);
+            continue;
+        }
+        if !run.is_empty() {
+            words.push(std::mem::take(&mut run));
+        }
+        words.push(word.to_string());
+    }
+    if !run.is_empty() {
+        words.push(run);
+    }
+    words.join(" ")
 }
 
 /// Drop a leading track number — `10 `, `01 `, or a disc and track `1 05 ` once
@@ -684,6 +745,60 @@ mod tests {
             best_match(&file, &candidates, &options).map(|(i, _)| i),
             Some(0)
         );
+    }
+
+    // #771: a file named `<artist> - <title>` meets the title its artist's
+    // track lists, however short; initials written with dots meet the same
+    // initials written without; and a different mix still stays apart.
+    #[test]
+    fn an_artist_prefix_or_dotted_initials_do_not_block_a_match() {
+        let options = MatchOptions::default();
+        let prefixed = match_track(
+            &track("Agzamoff - Hear Dis (Lost Remix)", None),
+            &track("Hear Dis (Lost Remix)", Some("Agzamoff")),
+            &options,
+        )
+        .expect("the artist prefix is not part of the title");
+        assert_eq!(prefixed.reason, MatchReason::Exact);
+        assert!(match_track(
+            &track("03. Agzamoff - Hear Dis", None),
+            &track("Hear Dis", Some("Agzamoff")),
+            &options
+        )
+        .is_some_and(|m| m.reason == MatchReason::Exact));
+
+        let initials = match_track(
+            &track("Agzamoff - BadbWoy (J.Jean & A.T.T.O.S. Remix)", None),
+            &track("Badbwoy (J Jean & ATTOS Remix)", Some("Agzamoff")),
+            &options,
+        )
+        .expect("dotted initials are the same initials");
+        assert_eq!(initials.reason, MatchReason::Exact);
+
+        // Another artist's name ahead of the dash is not stripped.
+        assert!(match_track(
+            &track("Somebody Else - Hear Dis (Lost Remix)", None),
+            &track("Hear Dis (Lost Remix)", Some("Agzamoff")),
+            &options
+        )
+        .is_none_or(|m| m.reason != MatchReason::Exact));
+        // Nor does the prefix make two different mixes one.
+        assert!(match_track(
+            &track("Agzamoff - BadbWoy (Original Mix)", None),
+            &track("Badbwoy (DLRM Remix)", Some("Agzamoff")),
+            &options
+        )
+        .is_none_or(|m| m.reason != MatchReason::Exact && m.score < CREDIT_ONLY_SCORE));
+    }
+
+    #[test]
+    fn single_letter_runs_join_into_one_word() {
+        assert_eq!(
+            join_initials("j jean a t t o s remix"),
+            "j jean attos remix"
+        );
+        assert_eq!(join_initials("a love song"), "a love song");
+        assert_eq!(join_initials("b b e 4 x 4"), "bbe 4 x 4");
     }
 
     // Two mixes of one title on a double CD: the credit alone can't choose, the

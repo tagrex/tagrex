@@ -12685,6 +12685,61 @@ mod tests {
         assert_eq!(matched, [Some(0), Some(2), Some(1)]);
     }
 
+    // #771, the reported case: untagged files named `<artist> - <title>`, one
+    // with dotted initials, one not on the release at all. Each listed track
+    // finds its file, and the stranger finds none.
+    #[test]
+    fn auto_align_sees_past_an_artist_prefix_and_dotted_initials() {
+        let dir = TempDir::new("align-prefix");
+        let file = |name: &str| {
+            let path = dir.0.join(name);
+            std::fs::write(&path, MINIMAL_FLAC).unwrap();
+            path
+        };
+        let listed = |position: &str, title: &str| ImportTrackDto {
+            disc: None,
+            position: position.into(),
+            artist: "Agzamoff".into(),
+            title: title.into(),
+            duration_secs: None,
+            isrc: None,
+            bpm: None,
+            key: None,
+        };
+        let paths = [
+            file("Agzamoff - BadbWoy (eQlips Groove Dubz Mix).flac"),
+            file("Agzamoff - BadbWoy (Generator Remix).flac"),
+            file("Agzamoff - BadbWoy (J.Jean & A.T.T.O.S. Remix).flac"),
+            file("Agzamoff - BadbWoy (Original Mix).flac"),
+            file("Agzamoff - BadbWoy (Serg O Mega Blast Mix).flac"),
+            file("Agzamoff - BadbWoy (Static Electric 4X4 Remix).flac"),
+        ];
+        let app = open_app(&dir);
+        let tracks = vec![
+            listed("1", "Badbwoy (J Jean & ATTOS Remix)"),
+            listed("2", "Badbwoy (Generator Remix)"),
+            listed("3", "Badbwoy (Serg O Mega Blast Mix)"),
+            listed("4", "Badbwoy (DLRM Remix)"),
+            listed("5", "Badbwoy (Static Electric 4x4 Remix)"),
+            listed("6", "Badbwoy (eQlips Groove Dubz Mix)"),
+        ];
+        let aligned = app.auto_align(&paths, &tracks).unwrap();
+        let matched: Vec<Option<usize>> = aligned.iter().map(|m| m.map(|m| m.track)).collect();
+        assert_eq!(matched, [Some(5), Some(1), Some(0), None, Some(2), Some(4)]);
+
+        let paths = [
+            file("Agzamoff - Hear Dis (SoundBwoy Addiction Edit).flac"),
+            file("Agzamoff - Hear Dis (Lost Remix).flac"),
+        ];
+        let tracks = vec![
+            listed("1", "Hear Dis (Soundwoy Addiction Edit)"),
+            listed("2", "Hear Dis (Lost Remix)"),
+        ];
+        let aligned = app.auto_align(&paths, &tracks).unwrap();
+        let matched: Vec<Option<usize>> = aligned.iter().map(|m| m.map(|m| m.track)).collect();
+        assert_eq!(matched, [Some(0), Some(1)]);
+    }
+
     // #529: a file the names can't place takes the one free track its length
     // points to; a length two free tracks share places nothing.
     #[test]
