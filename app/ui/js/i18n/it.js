@@ -419,6 +419,7 @@ export const it = {
   "online.found": "Risultati: {entries}",
   "match.sameLength": "Stessa durata, nessuna modifica: {tracks}",
   "match.leftOut": "Escluse: {tracks}",
+  "match.offset": "ogni file {delta} rispetto alla durata indicata",
   "match.byIsrc": "(esatte per ISRC: {count})",
   "match.lengthsDisagree": "{lengths} con differenza fino a {gap}",
   "match.pressAgain": " — premi di nuovo per abbinare per durata",

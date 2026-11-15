@@ -421,6 +421,7 @@ export const en = {
   "online.found": "Found {entries}",
   "match.sameLength": "{tracks} the same length, left alone",
   "match.leftOut": "{tracks} left out",
+  "match.offset": "every file {delta} against its listing",
   "match.byIsrc": "({count} exact by ISRC)",
   "match.lengthsDisagree": "{lengths} by up to {gap}",
   "match.pressAgain": " — press again to match by length",

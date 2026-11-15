@@ -415,6 +415,7 @@ export const de = {
   "online.found": "{entries} gefunden",
   "match.sameLength": "{tracks} gleich lang, unverändert gelassen",
   "match.leftOut": "{tracks} ausgelassen",
+  "match.offset": "jede Datei {delta} gegenüber der Angabe",
   "match.byIsrc": "({count} exakt per ISRC)",
   "match.lengthsDisagree": "{lengths} um bis zu {gap}",
   "match.pressAgain": " — erneut drücken, um nach Länge zuzuordnen",

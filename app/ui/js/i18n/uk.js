@@ -420,6 +420,7 @@ export const uk = {
   "online.found": "Знайдено: {entries}",
   "match.sameLength": "{tracks} однакової тривалості, не зачеплені",
   "match.leftOut": "не увійшло: {tracks}",
+  "match.offset": "у всіх файлів {delta} від тривалості в релізі",
   "match.byIsrc": "(точних за ISRC: {count})",
   "match.lengthsDisagree": "{lengths} — до {gap}",
   "match.pressAgain": " — натисніть ще раз, щоб зіставити за тривалістю",

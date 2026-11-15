@@ -828,11 +828,14 @@ const PAIR_LIMIT_SECS = 120;
 // how many selected files could take part at all — an empty map means "nothing
 // to compare" or "nothing close enough", and the tally says different things
 // about the two.
-function durationPairs(release) {
+//
+// `offset` (#772) is a difference every file shares with the release, taken off
+// a file's length before pairing; the deltas reported stay the real ones.
+function durationPairs(release, offset = 0) {
   const files = [];
   for (const path of selectedPaths()) {
     const t = trackAt(path);
-    if (t && t.duration_secs) files.push({ path, secs: t.duration_secs });
+    if (t && t.duration_secs) files.push({ path, secs: t.duration_secs - offset, real: t.duration_secs });
   }
   const byTrack = new Map();
   if (files.length === 0) return { pairs: byTrack, files: 0 };
@@ -840,7 +843,11 @@ function durationPairs(release) {
     && files.every((f) => Number.isInteger(f.secs));
   const pairing = whole ? pairByClosestLength(release.tracks, files) : pairByClosestLengthSorted(release.tracks, files);
   for (const [i, j] of pairing) {
-    byTrack.set(i, { delta: files[j].secs - release.tracks[i].duration_secs, path: files[j].path, secs: files[j].secs });
+    byTrack.set(i, {
+      delta: files[j].real - release.tracks[i].duration_secs,
+      path: files[j].path,
+      secs: files[j].real,
+    });
   }
   return { pairs: byTrack, files: files.length };
 }
@@ -907,6 +914,24 @@ function pairByClosestLengthSorted(tracks, files) {
     takenFiles.add(p.j);
   }
   return pairing;
+}
+
+// A difference shared by every pair is the files' own, not evidence against
+// the pairing (#772): another master, or silence trimmed from every track. It
+// counts when at least two pairs agree on it within OFFSET_SPREAD_SECS, and no
+// further out than OFFSET_LIMIT_SECS, where it would be another edit rather
+// than the same recording. Returns the offset in seconds, 0 when there is none.
+const OFFSET_SPREAD_SECS = 4;
+const OFFSET_LIMIT_SECS = 30;
+
+function commonOffset(pairs) {
+  const deltas = [...pairs.values()].map((pair) => pair.delta).sort((a, b) => a - b);
+  if (deltas.length < 2) return 0;
+  if (deltas[deltas.length - 1] - deltas[0] > OFFSET_SPREAD_SECS) return 0;
+  const middle = deltas.length >> 1;
+  const median =
+    deltas.length % 2 ? deltas[middle] : Math.round((deltas[middle - 1] + deltas[middle]) / 2);
+  return Math.abs(median) > MATCH_SECS && Math.abs(median) <= OFFSET_LIMIT_SECS ? median : 0;
 }
 
 function deltaBand(delta) {
@@ -1536,10 +1561,15 @@ async function matchByLength(card) {
     toast(t("online.selectTracksFirst"), true);
     return;
   }
-  const { pairs } = durationPairs(release);
+  // Every file off by the same amount is paired with that amount taken off
+  // (#772): two files 11 s shorter than their listing are still in no doubt.
+  const offset = commonOffset(durationPairs(release).pairs);
+  const { pairs } = durationPairs(release, offset);
   // Only claim a pairing the lengths actually support: a delta past the "near"
   // band is a different recording, not a file out of order.
-  const claimed = [...pairs.entries()].filter(([, pair]) => Math.abs(pair.delta) <= NEAR_SECS);
+  const claimed = [...pairs.entries()].filter(
+    ([, pair]) => Math.abs(pair.delta - offset) <= NEAR_SECS,
+  );
   // And drop the ones the lengths can't tell apart. The rival is any OTHER
   // track of nearly the same length, matched or not: if two tracks run the same
   // time, saying which of them a file is remains a guess even when only one of
@@ -1559,7 +1589,7 @@ async function matchByLength(card) {
   if (ambiguous.size) {
     try {
       const byName = await invoke("auto_align", { paths, tracks: releaseTrackRefs(release) });
-      resolveSameLengths(release, paths, ambiguous, matchedPairs, byName);
+      resolveSameLengths(release, paths, ambiguous, matchedPairs, byName, offset);
     } catch (e) {
       /* the names are a help here, not a requirement */
     }
@@ -1586,6 +1616,7 @@ async function matchByLength(card) {
   if (stillAmbiguous)
     notes.push(t("match.sameLength", { tracks: tn("unit.track", stillAmbiguous) }));
   if (dropped > 0) notes.push(t("match.leftOut", { tracks: tn("unit.releaseTrack", dropped) }));
+  if (offset) notes.push(t("match.offset", { delta: deltaLabel(offset) }));
   toast(
     t("toast.match.byLength", {
       matched: matchedPairs.length,
@@ -1599,13 +1630,13 @@ async function matchByLength(card) {
 // track, and whose length is near it, takes it. Then whatever that left: a
 // track none of whose same-length rivals is still free is no longer ambiguous,
 // and takes the one free file near its length.
-function resolveSameLengths(release, paths, ambiguous, matchedPairs, byName) {
+function resolveSameLengths(release, paths, ambiguous, matchedPairs, byName, offset = 0) {
   const taken = new Set(matchedPairs.map((p) => p.path));
   const placed = new Set(matchedPairs.map((p) => p.track));
   const secsOf = (path) => trackAt(path)?.duration_secs;
   const listed = (track) => release.tracks[track]?.duration_secs;
   const near = (path, track) =>
-    secsOf(path) && listed(track) && Math.abs(secsOf(path) - listed(track)) <= NEAR_SECS;
+    secsOf(path) && listed(track) && Math.abs(secsOf(path) - offset - listed(track)) <= NEAR_SECS;
   const place = (path, track) => {
     matchedPairs.push({ path, track });
     taken.add(path);

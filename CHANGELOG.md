@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Auto-match finds an untagged file named `Artist - Title` whatever the length of the title: the artist ahead of the dash made a short title look too different and the file went unmatched. Initials written with dots (`A.T.T.O.S.`) also meet the same initials written without them ([#771](https://github.com/tagrex/tagrex/issues/771)).
 - A selected file that an online import has no track for takes nothing from the release. It used to get every album field (album, year, label, catalogue number and the rest), and the release cover could reach any file with an edit pending. An import with no track ticked still writes the album fields to every selected file ([#773](https://github.com/tagrex/tagrex/issues/773)).
 - The file order set by Auto-match or by dragging rows survives an apply, an undo and a refresh. The re-read sorted the files back by the column, while the release card kept its ticks, so the next import paired them with the wrong files. A click on a column header still ends the hand-made order ([#776](https://github.com/tagrex/tagrex/issues/776)).
+- Match by length orders files that all run the same few seconds off their listing (another master, trimmed silence) instead of giving up when the difference passes 10 s. The shared difference is taken off before the lengths are compared, and the result says how much it was ([#772](https://github.com/tagrex/tagrex/issues/772)).
 
 ## [1.5.0] - 2026-11-13
 

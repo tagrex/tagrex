@@ -419,6 +419,7 @@ export const ru = {
   "online.found": "Найдено: {entries}",
   "match.sameLength": "{tracks} одинаковой длительности, не тронуты",
   "match.leftOut": "не вошло: {tracks}",
+  "match.offset": "у всех файлов {delta} от длины в релизе",
   "match.byIsrc": "(точных по ISRC: {count})",
   "match.lengthsDisagree": "{lengths} — до {gap}",
   "match.pressAgain": " — нажмите ещё раз, чтобы сопоставить по длительности",
