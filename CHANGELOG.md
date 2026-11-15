@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The length difference after each track on a release card marks a match with a check and an off value with a cross, so the two no longer differ by green and red alone, which a red-green colour-vision deficiency shows as one colour. A near value keeps no mark ([#782](https://github.com/tagrex/tagrex/issues/782)).
+
 ## [1.6.0] - 2026-11-15
 
 A release about online imports and the safety of what gets written. An

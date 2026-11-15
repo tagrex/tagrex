@@ -4780,6 +4780,16 @@ button.tk-art-btn > .ico:last-child {
   margin: 0 4px;
   color: var(--muted);
 }
+/* The match / off glyph (#782): inline with the digits and in their colour.
+   At 12 px the sprite's 1.5 stroke thins out, so it is drawn a little heavier. */
+.tk-delta .ico {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 2px;
+  vertical-align: -1px;
+  stroke-width: 1.9;
+}
 .tk-delta.match {
   color: var(--add);
 }

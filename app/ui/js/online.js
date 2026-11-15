@@ -954,9 +954,19 @@ function durationCell(track, pair) {
   const base = track.duration_secs ? fmtTime(track.duration_secs) : "—";
   if (!pair) return base;
   const title = t("online.runs", { file: fileName(pair.path), time: fmtTime(pair.secs) });
-  return `${base}<span class="tk-delta ${deltaBand(pair.delta)}" title="${escapeHtml(title)}">${deltaLabel(
+  const band = deltaBand(pair.delta);
+  return `${base}<span class="tk-delta ${band}" title="${escapeHtml(title)}">${deltaGlyph(band)}${deltaLabel(
     pair.delta,
   )}</span>`;
+}
+
+// A shape for the two outer bands (#782), so a match and an off value differ by
+// more than green and red, which a red-green colour-vision deficiency folds into
+// one colour. Near is the in-between band and keeps no glyph.
+function deltaGlyph(band) {
+  if (band === "match") return ico("check");
+  if (band === "off") return ico("close");
+  return "";
 }
 
 // Re-derive the pairing for one rendered tracklist and write it into the rows.
