@@ -1835,8 +1835,9 @@ async function refreshLibrary() {
     for (const path of goneFromSelection) selection.delete(path);
     for (const path of goneFromEdits) edits.delete(path);
     const before = tracks.length;
+    const order = handOrder();
     setTracks(fresh);
-    sortTracks(); // the sort stays, as everything else does (#526)
+    sortKeepingHandOrder(order); // the sort stays, as everything else does (#526)
     // Nothing left selected but files to select: the same rule the open path
     // follows, so an operation is never aimed at nothing without saying so.
     if (selection.size === 0) {
@@ -2080,8 +2081,12 @@ async function apply() {
       for (const path of appliedPaths) edits.delete(path);
     }
     // cover apply leaves the tag-edits buffer untouched (separate change kind)
+    const renamed = new Map(
+      appliedPlan.changes.filter((c) => c.rename_to && !c.copy).map((c) => [c.path, c.rename_to]),
+    );
+    const order = handOrder(renamed);
     setTracks(await invoke("list_tracks", {}));
-    sortTracks(); // the list came back in scan order (#196)
+    sortKeepingHandOrder(order); // the list came back in scan order (#196)
     // Mask columns render from disk, and an apply is exactly when what is on
     // disk changed under unchanged paths (#150).
     invalidateCustomColumns();
@@ -2156,8 +2161,9 @@ async function undo() {
     if (kept.length === 0) toast(msg("app.undid"));
     else report(msg("app.undid"), undoKeptParts(kept));
     resetEdits();
+    const order = handOrder();
     setTracks(await invoke("list_tracks", {}));
-    sortTracks(); // the list came back in scan order (#196)
+    sortKeepingHandOrder(order); // the list came back in scan order (#196)
     invalidateCustomColumns();
     // exitDiffState() also clears previewPlan/previewSource and repaints.
     exitDiffState();
@@ -3351,14 +3357,42 @@ function applySort(key, dir) {
 // being worked on included, and nothing said why.
 function sortTracks() {
   if (!sortKey) return;
-  // Whatever was placed by hand is placed by the sort now (#198) — a re-read
-  // from disk is where a hand-made order ends, and so is a fresh sort.
+  // Whatever was placed by hand is placed by the sort now (#198): a fresh sort
+  // is where a hand-made order ends. A re-read from disk keeps it, through
+  // sortKeepingHandOrder (#776).
   setManualOrder(false);
   tracks.sort(
     (a, b) =>
       sortValue(a, sortKey).localeCompare(sortValue(b, sortKey), undefined, { numeric: true }) *
       sortDir,
   );
+}
+
+// The order a re-read has to keep (#776): the files as placed by hand, by a
+// match or a drag, or `null` when nothing was. `renamed` maps an old path to the
+// new one an apply gave it, so a renamed file keeps its place too.
+function handOrder(renamed) {
+  if (!manualOrder) return null;
+  return tracks.map((t) => (renamed && renamed.get(t.path)) || t.path);
+}
+
+// `sortTracks` for a list just read from disk, keeping a hand-made order
+// (#776). The ticks of a match pair the i-th ticked track with the i-th file,
+// so a re-read that sorted the files back by name (an apply, an undo, a
+// refresh, #196) left those ticks pointing at the wrong files. The sort places
+// the list; the files placed by hand then take the slots it gives them in the
+// order they had. A file the list did not hold before is placed by the sort.
+function sortKeepingHandOrder(order) {
+  sortTracks();
+  if (!order) return;
+  const rank = new Map(order.map((path, i) => [path, i]));
+  const placed = tracks
+    .filter((t) => rank.has(t.path))
+    .sort((a, b) => rank.get(a.path) - rank.get(b.path));
+  let next = 0;
+  tracks.splice(0, tracks.length, ...tracks.map((t) => (rank.has(t.path) ? placed[next++] : t)));
+  reindexTracks();
+  setManualOrder(true);
 }
 
 // Sort clicks are delegated on the header so dynamically-built columns (#43)
