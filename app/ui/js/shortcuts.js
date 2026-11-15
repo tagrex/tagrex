@@ -56,6 +56,7 @@ const ACTIONS = [
   { id: "apply", combo: "Mod+Enter", buttons: ["diff-apply"], run: () => press("diff-apply") },
   { id: "discard", combo: "Mod+Backspace", buttons: ["diff-discard"], run: () => press("diff-discard") },
   { id: "undo", combo: "Mod+KeyZ", buttons: ["undo"], run: () => press("undo") },
+  { id: "redo", combo: "Mod+Shift+KeyZ", buttons: ["redo"], run: () => press("redo") },
   {
     id: "clearTags",
     combo: "Mod+Shift+KeyX",

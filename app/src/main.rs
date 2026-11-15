@@ -1191,6 +1191,32 @@ async fn undo(
         .await
 }
 
+// Apply the batch undone last again (#775), off the main thread and with the
+// same progress events as an undo; `None` when nothing is undone.
+#[tauri::command]
+async fn redo(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Option<BatchDto>, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let mut report = progress_reporter(app_handle);
+            with_app_mut(&state, |app| {
+                app.redo_with(&mut report).map_err(ErrorDto::from)
+            })
+        })
+        .await
+}
+
+#[tauri::command]
+async fn redo_count(state: State<'_, AppState>) -> Result<usize, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || with_app(&state, |app| Ok(app.redo_count())))
+        .await
+}
+
 // `async` so it runs off the main thread (#449): the interface asks for the
 // history before and after every apply and undo, and a synchronous command
 // would hold the window for as long as the journal takes to read.
@@ -2085,6 +2111,8 @@ fn main() {
             detect_bpm,
             cancel_detect_bpm,
             undo,
+            redo,
+            redo_count,
             history,
             take_journal_notice,
             provider_search,

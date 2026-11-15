@@ -28,7 +28,7 @@ use thiserror::Error;
 
 use base64::Engine as _;
 use tagrex_core::export::{self, CueTrack, PlaylistTrack};
-use tagrex_core::journal::{BatchHeader, BatchId, SqliteJournal};
+use tagrex_core::journal::{BatchHeader, BatchId, SqliteJournal, UndoJournal};
 use tagrex_core::mask::{portable_file_name, FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{
@@ -2291,6 +2291,10 @@ pub struct App {
     /// lasts. Undo of an older batch does not need this list, because the batch
     /// records the roots it was applied under.
     extra_roots: RefCell<Vec<PathBuf>>,
+    /// The plans of the batches undone in this session, the last undone on top
+    /// (#775). Redo applies the top one again as a new batch. Any other apply
+    /// empties the stack, the way every redo works; it is never persisted.
+    redo_plans: Vec<ChangePlan>,
 }
 
 impl App {
@@ -2327,6 +2331,7 @@ impl App {
             portable_names: Cell::new(default_portable_names()),
             locked_fields: RefCell::new(HashSet::new()),
             extra_roots: RefCell::new(Vec::new()),
+            redo_plans: Vec::new(),
         })
     }
 
@@ -5132,6 +5137,8 @@ impl App {
     /// Apply a previewed plan to disk and record it for undo.
     pub fn apply(&mut self, plan: &PlanDto) -> Result<BatchDto, AppError> {
         self.read_cache.borrow_mut().clear();
+        // A new change ends what could be redone (#775).
+        self.redo_plans.clear();
         let change_plan = plan.to_change_plan();
         let roots = self.allowed_roots();
         let batch = Executor::apply(&change_plan, &mut self.journal, &roots)?;
@@ -5148,6 +5155,7 @@ impl App {
         cancel: &AtomicBool,
     ) -> Result<BatchDto, AppError> {
         self.read_cache.borrow_mut().clear();
+        self.redo_plans.clear();
         let change_plan = plan.to_change_plan();
         let roots = self.allowed_roots();
         let batch =
@@ -5190,9 +5198,46 @@ impl App {
     ) -> Result<UndoReportDto, AppError> {
         let roots = self.allowed_roots();
         self.read_cache.borrow_mut().clear();
+        // Taken before the rollback removes it from the journal (#775).
+        let plan = self
+            .journal
+            .batch(BatchId(batch_id))?
+            .map(|batch| batch.plan);
         let report =
             Executor::undo_with_mode(&mut self.journal, BatchId(batch_id), &roots, mode, progress)?;
+        // An undo that kept some newer values left the files neither as the
+        // batch found them nor as it left them: there is nothing exact to redo,
+        // and what was stacked before it no longer follows on.
+        match plan {
+            Some(plan) if report.kept.is_empty() => self.redo_plans.push(plan),
+            _ => self.redo_plans.clear(),
+        }
         Ok(UndoReportDto::from(&report))
+    }
+
+    /// How many undone batches Redo can bring back (#775).
+    pub fn redo_count(&self) -> usize {
+        self.redo_plans.len()
+    }
+
+    /// Apply the batch undone last again, as a new batch with its own undo
+    /// (#775), or `None` when nothing is undone. The plan's old values are what
+    /// the undo put back, so the executor's staleness check refuses a file
+    /// changed since, rather than writing over that change; the plan stays on
+    /// the stack then. No cancel, like undo.
+    pub fn redo_with(
+        &mut self,
+        progress: &mut dyn FnMut(&ApplyProgress),
+    ) -> Result<Option<BatchDto>, AppError> {
+        let Some(plan) = self.redo_plans.last().cloned() else {
+            return Ok(None);
+        };
+        self.read_cache.borrow_mut().clear();
+        let roots = self.allowed_roots();
+        let never = AtomicBool::new(false);
+        let batch = Executor::apply_with(&plan, &mut self.journal, &roots, progress, &never)?;
+        self.redo_plans.pop();
+        Ok(Some(BatchDto::from(&batch)))
     }
 
     /// Recorded batches for the currently open library, newest first. The undo
@@ -9928,6 +9973,104 @@ mod tests {
                 .map(String::as_str),
             Some("Old Artist")
         );
+    }
+
+    // #775: Redo applies the batch undone last again, as a new batch that
+    // undoes like any other; a new apply ends what could be redone.
+    #[test]
+    fn redo_brings_back_the_undone_batch_and_a_new_apply_ends_it() {
+        let dir = TempDir::new("redo");
+        let track = dir.tagged_flac("x.flac", "Old Artist", "Title");
+        let mut app = open_app(&dir);
+        let artist = |track: &Path| {
+            TagEngine::read(track)
+                .unwrap()
+                .tags
+                .get(&TagField::Artist)
+                .cloned()
+        };
+        let edit = |value: &str| {
+            vec![TagEditDto {
+                path: track.to_string_lossy().into_owned(),
+                field: "artist".into(),
+                value: Some(value.into()),
+            }]
+        };
+        let mut nothing = |_: &ApplyProgress| {};
+
+        assert!(app.redo_with(&mut nothing).unwrap().is_none());
+        let batch = app
+            .apply(&app.preview_tag_edits(&edit("New Artist")).unwrap())
+            .unwrap();
+        app.undo(batch.id).unwrap();
+        assert_eq!(app.redo_count(), 1);
+
+        let redone = app
+            .redo_with(&mut nothing)
+            .unwrap()
+            .expect("a batch to redo");
+        assert_eq!(artist(&track).as_deref(), Some("New Artist"));
+        assert_eq!(app.redo_count(), 0);
+        assert_eq!(app.history().unwrap().len(), 1);
+
+        // The redone batch undoes, and can be redone again.
+        app.undo(redone.id).unwrap();
+        assert_eq!(artist(&track).as_deref(), Some("Old Artist"));
+        assert_eq!(app.redo_count(), 1);
+
+        // Any other apply ends the redo.
+        app.apply(&app.preview_tag_edits(&edit("Other Artist")).unwrap())
+            .unwrap();
+        assert_eq!(app.redo_count(), 0);
+        assert!(app.redo_with(&mut nothing).unwrap().is_none());
+        assert_eq!(artist(&track).as_deref(), Some("Other Artist"));
+    }
+
+    // #775: a file changed since the undo is not written over; the redo stays
+    // offered, and a rename comes back as a rename.
+    #[test]
+    fn redo_refuses_a_file_changed_since_and_redoes_a_rename() {
+        let dir = TempDir::new("redo-stale");
+        let track = dir.tagged_flac("x.flac", "Old Artist", "Title");
+        let mut app = open_app(&dir);
+        let mut nothing = |_: &ApplyProgress| {};
+        let plan = app
+            .preview_tag_edits(&[TagEditDto {
+                path: track.to_string_lossy().into_owned(),
+                field: "artist".into(),
+                value: Some("New Artist".into()),
+            }])
+            .unwrap();
+        let batch = app.apply(&plan).unwrap();
+        app.undo(batch.id).unwrap();
+
+        let mut changed = TagEngine::read(&track).unwrap();
+        changed
+            .tags
+            .insert(TagField::Artist, "Someone Else".to_string());
+        TagEngine::write(&changed).unwrap();
+        assert!(app.redo_with(&mut nothing).is_err());
+        assert_eq!(app.redo_count(), 1);
+        assert_eq!(
+            TagEngine::read(&track)
+                .unwrap()
+                .tags
+                .get(&TagField::Artist)
+                .map(String::as_str),
+            Some("Someone Else")
+        );
+
+        let renamed = dir.0.join("Someone Else - Title.flac");
+        let plan = app
+            .preview_rename("%artist% - %title%", std::slice::from_ref(&track))
+            .unwrap();
+        let batch = app.apply(&plan).unwrap();
+        app.undo(batch.id).unwrap();
+        assert!(track.exists() && !renamed.exists());
+        app.redo_with(&mut nothing)
+            .unwrap()
+            .expect("a batch to redo");
+        assert!(renamed.exists() && !track.exists());
     }
 
     #[test]

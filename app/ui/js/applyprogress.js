@@ -39,11 +39,13 @@ export async function beginApplyProgress() {
 let undoUnlisten = null;
 let undoTimer = null;
 
-export async function beginUndoProgress() {
+// `running` names what runs: an undo, or a redo (#775), which cannot be
+// stopped half-way either.
+export async function beginUndoProgress(running = "undo.running") {
   // A rollback can't be stopped, so the pill shows no Stop (#558).
   el("busy-stop").hidden = true;
   el("busy-fill").style.width = "0%";
-  el("busy-text").textContent = t("undo.running");
+  el("busy-text").textContent = t(running);
   undoTimer = setTimeout(() => (el("busy-pill").hidden = false), SHOW_AFTER_MS);
   const events = window.__TAURI__ && window.__TAURI__.event;
   if (events) {
@@ -51,7 +53,7 @@ export async function beginUndoProgress() {
       const { done, total } = e.payload;
       const percent = total ? Math.round((done / total) * 100) : 0;
       el("busy-fill").style.width = `${percent}%`;
-      el("busy-text").textContent = `${t("undo.running")} ${percent}%`;
+      el("busy-text").textContent = `${t(running)} ${percent}%`;
     });
   }
 }

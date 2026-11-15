@@ -157,6 +157,11 @@ The one place where extra complexity is bought up front. The journal must:
   (old path → new path);
 - allow rollback of a whole batch as a unit.
 
+Redo is deliberately not in the journal: the session keeps the plans of the
+batches it undid, and Redo applies the last one again as a new batch, through
+the same staleness check as any apply. Any other apply empties that stack, and
+it is gone on restart.
+
 Rationale: "renamed 8,000 files, closed the app, realized in the morning the
 mask was wrong" is a real scenario, and it is exactly where every existing
 editor fails.

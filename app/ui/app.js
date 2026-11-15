@@ -227,6 +227,7 @@ const tracksBody = el("tracks-body");
 const tracksEmpty = el("tracks-empty");
 const applyBtn = el("diff-apply");
 const undoBtn = el("undo");
+const redoBtn = el("redo");
 const selectAll = el("select-all");
 const statusSel = el("status-sel");
 
@@ -1600,6 +1601,14 @@ async function refreshHistory() {
       : msg("topbar.undo");
     undoBtn.title = label;
     undoBtn.setAttribute("aria-label", label);
+    // Redo (#775): what this session undid and can bring back.
+    const redoable = await invoke("redo_count", {});
+    redoBtn.disabled = redoable === 0;
+    const redoLabel = redoable
+      ? msg("topbar.redoCount", { batches: tn("unit.batch", redoable) })
+      : msg("topbar.redo");
+    redoBtn.title = redoLabel;
+    redoBtn.setAttribute("aria-label", redoLabel);
   } catch (e) {
     /* history is best-effort in the toolbar */
   }
@@ -2178,6 +2187,32 @@ async function undo() {
 }
 
 
+// Apply the batch undone last again (#775). It comes back as a new batch, so
+// the list is read again exactly as after an apply. A file changed since the
+// undo is refused by the backend, and the redo stays offered.
+async function redo() {
+  if (applying || undoing) return;
+  undoing = true;
+  try {
+    await beginUndoProgress("redo.running");
+    const batch = await invoke("redo", {});
+    if (!batch) return;
+    toast(msg("app.redid"));
+    resetEdits();
+    const order = handOrder();
+    setTracks(await invoke("list_tracks", {}));
+    sortKeepingHandOrder(order); // the list came back in scan order (#196)
+    invalidateCustomColumns();
+    exitDiffState();
+    refreshCustomColumnCells();
+  } catch (e) {
+    toast(String(e), true);
+  } finally {
+    endUndoProgress();
+    undoing = false;
+    await refreshHistory();
+  }
+}
 
 // ---- mode tabs ----
 // The active mode's panel is the only one shown; entering a mode refreshes its
@@ -2519,6 +2554,7 @@ document.addEventListener("click", (e) => {
 
 applyBtn.addEventListener("click", apply);
 undoBtn.addEventListener("click", undo);
+redoBtn.addEventListener("click", redo);
 el("fields-add").addEventListener("click", addCustomField);
 el("fields-add-toggle").addEventListener("click", openAddField);
 el("fields-add-cancel").addEventListener("click", closeAddField);

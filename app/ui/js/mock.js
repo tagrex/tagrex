@@ -825,6 +825,7 @@ function mockInvoke(cmd, args) {
         for (const tc of c.tag_changes) t.tags[tc.field] = tc.new || "";
       }
       s.history.unshift({ id: s.history.length + 1, description: args.plan.description, applied_at: 0 });
+      s.redo = []; // a new change ends what could be redone (#775)
       return Promise.resolve({ id: s.history.length, description: args.plan.description, applied_at: 0 });
     case "cancel_apply":
       return Promise.resolve();
@@ -871,8 +872,17 @@ function mockInvoke(cmd, args) {
     case "take_journal_notice":
       return Promise.resolve(null);
     case "undo":
-      s.history.shift();
+      (s.redo = s.redo || []).push(s.history.shift());
       return Promise.resolve({ kept: [] });
+    // Redo (#775): the batch undone last comes back on top of the history. The
+    // mock does not rewrite tags either way, as its undo does not.
+    case "redo": {
+      const batch = (s.redo || []).pop();
+      if (batch) s.history.unshift(batch);
+      return Promise.resolve(batch || null);
+    }
+    case "redo_count":
+      return Promise.resolve((s.redo || []).length);
     case "preview_cover_embed": {
       const changes = args.paths.map((p) => ({
         path: p,

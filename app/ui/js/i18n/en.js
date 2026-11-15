@@ -272,6 +272,7 @@ export const en = {
   "topbar.collapsePanel": "Collapse the mode panel",
   "topbar.collapsePanelTitle": "Collapse the mode panel (more room for the table)",
   "topbar.undo": "Undo the last applied batch",
+  "topbar.redo": "Redo the last undone batch",
   "topbar.settings": "Settings",
   // The mode names (TAGGER, RENAMER…) are not catalogue strings: they read the
   // same in every language (#424). What each mode does is.
@@ -396,6 +397,7 @@ export const en = {
   "toast.applyCancelled": "Apply cancelled. Nothing was changed.",
   "apply.cancelling": "Cancelling…",
   "undo.running": "Undoing…",
+  "redo.running": "Redoing…",
   "bpm.progress": "BPM: {done} of {total}",
   "bpm.stopping": "Stopping…",
   "ctx.removeN": "Remove {files} from the list",
@@ -721,6 +723,7 @@ export const en = {
   // ---- what a plan calls itself, composed in Rust (#268) ----
   "unit.batch": { one: "{n} available", other: "{n} available" },
   "topbar.undoCount": "Undo the last applied batch ({batches})",
+  "topbar.redoCount": "Redo the last undone batch ({batches})",
   "plan.renameByMask": "Rename by mask: {mask}",
   "plan.tagsFromName": "Tags from name: {mask}",
   "plan.tagsFromText": "Tags from text: {mask}",
@@ -1010,6 +1013,7 @@ export const en = {
   "shortcuts.action.apply": "Apply the staged changes",
   "shortcuts.action.discard": "Discard the staged changes",
   "shortcuts.action.undo": "Undo the last applied batch",
+  "shortcuts.action.redo": "Redo the last undone batch",
   "shortcuts.action.clearTags": "Clear the selected files' tags",
   "shortcuts.action.detectBpm": "Detect the selected files' BPM",
   "shortcuts.action.trash": "Move the selected files to the Trash",
@@ -1048,6 +1052,7 @@ export const en = {
   "app.noPendingEdits": "No pending edits to preview",
   "app.tickOneRow": "Tick at least one row to apply",
   "app.undid": "Undid last batch",
+  "app.redid": "Redid last batch",
   "app.undidKept": { one: "{n} field was changed by another edit since, and was kept as it is", other: "{n} fields were changed by another edit since, and were kept as they are" },
   "app.undidKeptMore": { one: "and {n} more file", other: "and {n} more files" },
   "undo.changed.title": "Some files were edited after this change was applied",

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Each track the backend lists names the field that holds its compilation flag in that file's own tag format, so an interface can offer the flag and write it through the ordinary Preview and Apply. A WAV, AIFF or MP3 whose tags cannot hold the flag is given the key of the ID3v2 tag a write adds ([#761](https://github.com/tagrex/tagrex/pull/761)).
 - A CI check fails when an interface module uses a name it neither declares nor imports. Such a slip only showed when that line ran, and not at all inside a `try/catch`, which is how saved filter presets stopped working unnoticed ([#764](https://github.com/tagrex/tagrex/issues/764)).
 - An online import asks first when the order of the selected files contradicts the track lengths, so that some file would get the tags of a track far from its own length while another selected file fits it. It offers to order the files by length and import, to import in the order as it stands, or to cancel; it stays silent when the lengths agree, are unknown, or cannot tell two tracks apart ([#774](https://github.com/tagrex/tagrex/issues/774)).
+- Redo, next to Undo in the top bar and on Shift+Cmd+Z (Shift+Ctrl+Z): it applies the batch undone last again, as a new batch that undoes like any other. A file changed since the undo is refused rather than written over, and any new apply ends what can be redone. The batches to redo are kept for the session only ([#775](https://github.com/tagrex/tagrex/issues/775)).
 
 ### Changed
 
