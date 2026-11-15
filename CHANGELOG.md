@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Saved filter presets are stored and listed again. Saving one silently did nothing since 0.4.0, and the presets menu closed on Save instead of showing the new preset ([#763](https://github.com/tagrex/tagrex/issues/763)).
 - A WavPack file whose APE tag claims a size that reaches into the audio is no longer written. The tag write took the claimed bytes for the old tag and cut the end of the audio away with them, leaving the file unreadable; it is refused now with nothing touched ([#768](https://github.com/tagrex/tagrex/issues/768)).
 - A tag write no longer cuts 32 bytes of audio from an MP3, Monkey's Audio, Musepack or WavPack file whose APE tag has no header, which the format allows: the write took those bytes for the missing header. Such a file, and one whose APE tag size is damaged in any of these formats, is refused now with nothing touched ([#769](https://github.com/tagrex/tagrex/issues/769)).
+- A damaged file that the app reads only by falling back on looser rules no longer stops opening after a tag write. The extra reads of its tag blocks used the strict rules alone and failed the whole read; they fall back the same way now ([#770](https://github.com/tagrex/tagrex/issues/770)).
 
 ## [1.5.0] - 2026-11-13
 

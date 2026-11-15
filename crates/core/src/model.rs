@@ -1085,6 +1085,30 @@ fn tag_only_options() -> ParseOptions {
     parse_options().read_properties(false)
 }
 
+/// Run a concrete read the way [`probe_file`] reads the whole file: with
+/// `options`, then best-attempt, then with the wide junk window. The ladder can
+/// have read the file on a later rung, and a concrete read that tried only the
+/// first one then failed on a file the listing had just read, making the whole
+/// read fail (#770). Every attempt after the first costs nothing on a file that
+/// reads, since it is reached only on an error.
+fn read_like_the_ladder<T>(
+    options: ParseOptions,
+    read: impl Fn(ParseOptions) -> Result<T, TagIoError>,
+) -> Result<T, TagIoError> {
+    let first = match read(options) {
+        Ok(value) => return Ok(value),
+        Err(error) => error,
+    };
+    let (mut best_attempt, mut wide_junk) = (options, options);
+    if let Ok(value) = read(best_attempt.parsing_mode(ParsingMode::BestAttempt)) {
+        return Ok(value);
+    }
+    if let Ok(value) = read(wide_junk.max_junk_bytes(STUBBORN_JUNK_BYTES)) {
+        return Ok(value);
+    }
+    Err(first)
+}
+
 /// Tag-only, and without the embedded artwork either. The custom-field read
 /// wants nothing but the item names, and decoding a cover it will not look at
 /// is the single most expensive thing a second parse could do — the listing
@@ -1958,27 +1982,29 @@ fn read_vorbis(
     container: FileType,
     options: ParseOptions,
 ) -> Result<Option<VorbisComments>, TagIoError> {
-    let mut file = buffered(path)?;
-    Ok(match Some(container) {
-        Some(FileType::Flac) => FlacFile::read_from(&mut file, options)?
-            .vorbis_comments()
-            .cloned(),
-        Some(FileType::Vorbis) => Some(
-            VorbisFile::read_from(&mut file, options)?
+    read_like_the_ladder(options, |options| {
+        let mut file = buffered(path)?;
+        Ok(match Some(container) {
+            Some(FileType::Flac) => FlacFile::read_from(&mut file, options)?
                 .vorbis_comments()
-                .clone(),
-        ),
-        Some(FileType::Opus) => Some(
-            OpusFile::read_from(&mut file, options)?
-                .vorbis_comments()
-                .clone(),
-        ),
-        Some(FileType::Speex) => Some(
-            SpeexFile::read_from(&mut file, options)?
-                .vorbis_comments()
-                .clone(),
-        ),
-        _ => None,
+                .cloned(),
+            Some(FileType::Vorbis) => Some(
+                VorbisFile::read_from(&mut file, options)?
+                    .vorbis_comments()
+                    .clone(),
+            ),
+            Some(FileType::Opus) => Some(
+                OpusFile::read_from(&mut file, options)?
+                    .vorbis_comments()
+                    .clone(),
+            ),
+            Some(FileType::Speex) => Some(
+                SpeexFile::read_from(&mut file, options)?
+                    .vorbis_comments()
+                    .clone(),
+            ),
+            _ => None,
+        })
     })
 }
 
@@ -2030,16 +2056,18 @@ fn read_ape(
     if container == FileType::Mpeg && mp3_surely_without_ape(path)? {
         return Ok(None);
     }
-    let mut file = buffered(path)?;
-    Ok(match Some(container) {
-        Some(FileType::Ape) => ApeFile::read_from(&mut file, options)?.ape().cloned(),
-        Some(FileType::Mpc) => MpcFile::read_from(&mut file, options)?.ape().cloned(),
-        Some(FileType::WavPack) => WavPackFile::read_from(&mut file, options)?.ape().cloned(),
-        // An MP3 can carry an APE block beside its ID3v2 one (#608).
-        Some(FileType::Mpeg) => read_mpeg_past_undecodable_frames(path, &mut file, options)?
-            .ape()
-            .cloned(),
-        _ => None,
+    read_like_the_ladder(options, |options| {
+        let mut file = buffered(path)?;
+        Ok(match Some(container) {
+            Some(FileType::Ape) => ApeFile::read_from(&mut file, options)?.ape().cloned(),
+            Some(FileType::Mpc) => MpcFile::read_from(&mut file, options)?.ape().cloned(),
+            Some(FileType::WavPack) => WavPackFile::read_from(&mut file, options)?.ape().cloned(),
+            // An MP3 can carry an APE block beside its ID3v2 one (#608).
+            Some(FileType::Mpeg) => read_mpeg_past_undecodable_frames(path, &mut file, options)?
+                .ape()
+                .cloned(),
+            _ => None,
+        })
     })
 }
 
@@ -5019,15 +5047,17 @@ fn parse_id3v2(
     container: FileType,
     options: ParseOptions,
 ) -> Result<Option<Id3v2Tag>, TagIoError> {
-    let mut file = buffered(path)?;
-    Ok(match Some(container) {
-        Some(FileType::Mpeg) => read_mpeg_past_undecodable_frames(path, &mut file, options)?
-            .id3v2()
-            .cloned(),
-        Some(FileType::Aac) => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
-        Some(FileType::Aiff) => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
-        Some(FileType::Wav) => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
-        _ => None,
+    read_like_the_ladder(options, |options| {
+        let mut file = buffered(path)?;
+        Ok(match Some(container) {
+            Some(FileType::Mpeg) => read_mpeg_past_undecodable_frames(path, &mut file, options)?
+                .id3v2()
+                .cloned(),
+            Some(FileType::Aac) => AacFile::read_from(&mut file, options)?.id3v2().cloned(),
+            Some(FileType::Aiff) => AiffFile::read_from(&mut file, options)?.id3v2().cloned(),
+            Some(FileType::Wav) => WavFile::read_from(&mut file, options)?.id3v2().cloned(),
+            _ => None,
+        })
     })
 }
 
