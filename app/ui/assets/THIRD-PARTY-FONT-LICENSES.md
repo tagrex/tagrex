@@ -10,9 +10,10 @@ verbatim below together with their copyright notices.
 - **JetBrains Mono** — the monospace used for file names and tag values
   (`tagrex-mono.woff2`). <https://github.com/JetBrains/JetBrainsMono>
 
-The files are subsets of the originals (Latin, Latin-ext, Cyrillic and a few
-punctuation ranges); in the JetBrains Mono one the code ligatures are removed
-as well. The interface refers to them under the names `TagRex Sans`,
+The files are subsets of the originals (Latin, Latin-ext, Vietnamese, Greek,
+Cyrillic, combining marks and a few punctuation ranges), cut from IBM Plex Sans
+3.005, IBM Plex Sans Condensed 3.000 and JetBrains Mono 2.304; in the JetBrains
+Mono one the code ligatures are removed as well. The interface refers to them under the names `TagRex Sans`,
 `TagRex Condensed` and `TagRex Mono`.
 
 ---

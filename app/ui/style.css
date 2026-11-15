@@ -1,5 +1,6 @@
 /* Bundled disambiguating monospace (#76): JetBrains Mono Regular, SIL OFL 1.1,
-   subset to Latin + Cyrillic + punctuation, shipped as assets/tagrex-mono.woff2
+   subset to Latin + Vietnamese + Greek + Cyrillic + punctuation (Greek and
+   Vietnamese since #785, for tag values), shipped as assets/tagrex-mono.woff2
    (a local bundled asset, so the UI stays self-contained and offline). Code
    ligatures are stripped so file names and tag values never fuse (e.g. "->"
    stays two glyphs). Backs the --font-mono-bundled token; the system stack
@@ -15,7 +16,7 @@
 
 /* Optional condensed UI face for the dense file table (#100): a narrow sans so
    more of each value fits before it truncates. Bundled-asset slot on the same
-   pattern as the mono above — drop a Latin+Cyrillic subset woff2 at
+   pattern as the mono above — a subset woff2 (same coverage as the sans) at
    assets/tagrex-ui-condensed.woff2 and it takes over; until then the token's
    fallback stack uses a system condensed face where one exists. */
 @font-face {
@@ -27,7 +28,8 @@
 }
 
 /* Bundled UI sans (typography audit): IBM Plex Sans, OFL 1.1, subset to
-   Latin + Latin-ext + Cyrillic + digits + filename punctuation and shipped as
+   Latin + Latin-ext + Vietnamese + Greek + Cyrillic + combining marks + digits
+   + filename punctuation (Greek and Vietnamese since #785) and shipped as
    assets/tagrex-sans*.woff2 (local bundled assets, offline). Backs the
    --font-ui token so UI text renders identically on macOS/Linux/Windows instead
    of drifting across each OS's system sans; the system stack stays the fallback.

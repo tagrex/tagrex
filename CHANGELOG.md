@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - Selecting by dragging can start in the empty area below the rows, as on a file manager's background: dragging up from there selects from the last row to the one under the pointer, with Cmd/Ctrl adding to the selection. A short list with a tall window previously left most of the table where a drag did nothing ([#784](https://github.com/tagrex/tagrex/issues/784)).
+- Greek and Vietnamese tag values are drawn in the interface's own fonts, the monospaced table font included, instead of whatever face the system falls back to, which in the table came out at another width and in another design. The bundled fonts grow by about 50 KB in all ([#785](https://github.com/tagrex/tagrex/issues/785)).
 
 ## [1.6.1] - 2026-11-15
 
