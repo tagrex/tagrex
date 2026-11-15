@@ -3984,6 +3984,19 @@ impl App {
         edits: &[TagEditDto],
         cover: Option<&CoverArtDto>,
     ) -> Result<PlanDto, AppError> {
+        self.preview_tag_edits_with_cover_for(edits, cover, None)
+    }
+
+    /// [`App::preview_tag_edits_with_cover`] with the cover kept to the files
+    /// the import paired with a track (#773), when `cover_paths` names them.
+    /// Other files with edits pending get their edits and no cover: they are
+    /// not on the release.
+    pub fn preview_tag_edits_with_cover_for(
+        &self,
+        edits: &[TagEditDto],
+        cover: Option<&CoverArtDto>,
+        cover_paths: Option<&[String]>,
+    ) -> Result<PlanDto, AppError> {
         // Group edits by file so each file is read once and becomes one change.
         let mut by_path: std::collections::BTreeMap<&str, Vec<&TagEditDto>> =
             std::collections::BTreeMap::new();
@@ -4019,9 +4032,10 @@ impl App {
                     tag_changes.push(FieldChangeDto::new(edit.field.clone(), old, new));
                 }
             }
+            let on_release = cover_paths.is_none_or(|paths| paths.iter().any(|p| p == path));
             let cover_change = match &import_art {
-                Some(art) => import_cover_change(Path::new(path), art, mode)?,
-                None => None,
+                Some(art) if on_release => import_cover_change(Path::new(path), art, mode)?,
+                _ => None,
             };
             if cover_change.is_some() {
                 with_cover += 1;
@@ -5433,9 +5447,10 @@ impl App {
     /// without writing. The frontend decides the mapping, the way a manual
     /// tagger does: the user toggles which release tracks participate and
     /// orders the files to match, so here the i-th enabled track simply maps
-    /// onto the i-th file. Album-level fields go to every file; per-track fields
-    /// (title/artist/track number) to files that line up with a selected
-    /// track. The track number comes from the release track's own position,
+    /// onto the i-th file. Album-level fields go to every file that lines up
+    /// with a selected track, and per-track fields (title/artist/track number)
+    /// too; a file left over takes nothing (#773), unless no track is selected
+    /// at all, when the album fields go to every file. The track number comes from the release track's own position,
     /// not the selection index, so an aligned file keeps its real number.
     /// Reads current values for `old` and drops no-op edits, flowing through
     /// the same preview/apply/undo path as manual edits.
@@ -5452,6 +5467,13 @@ impl App {
         let mut side_track_counters: std::collections::HashMap<u32, u32> =
             std::collections::HashMap::new();
         for (index, path) in paths.iter().enumerate() {
+            // A file left over once every ticked track has its file is not on
+            // the release, and takes nothing from it (#773). With no track
+            // ticked at all the import is the album fields alone, for every
+            // file, as asked.
+            if !selection.tracks.is_empty() && index >= selection.tracks.len() {
+                continue;
+            }
             let current = self.read_cached(path)?;
 
             // (field, desired new value) — album-level first, then per-track.
@@ -10176,6 +10198,18 @@ mod tests {
         // Both files still get their tag change, cover or not.
         assert_eq!(plan.changes.len(), 2);
 
+        // Kept to the files the import paired (#773): a file whose edit is
+        // pending for another reason gets its edit and no cover.
+        let paired = [has_art.to_string_lossy().into_owned()];
+        let kept = app
+            .preview_tag_edits_with_cover_for(&list, Some(&release_cover), Some(&paired))
+            .unwrap();
+        assert_eq!(kept.changes.len(), 2);
+        assert!(kept
+            .changes
+            .iter()
+            .all(|change| change.cover_change.is_none()));
+
         app.apply(&plan).unwrap();
         assert_eq!(
             TagEngine::read_cover(&bare).unwrap().map(|c| c.data),
@@ -10461,6 +10495,45 @@ mod tests {
         assert!(!field_value_invalid("artist", Some("19x6")));
         assert!(!field_value_invalid("title", Some("A1")));
         assert!(!field_value_invalid("comment", Some("anything at all")));
+    }
+
+    // #773: six files, five tracks ticked (one file is not on the release):
+    // the file left over takes nothing, not even the album fields. With no
+    // track ticked, the album fields go to every file, as asked.
+    #[test]
+    fn preview_import_leaves_a_file_without_a_track_untouched() {
+        let dir = TempDir::new("import-leftover");
+        let a = dir.tagged_flac("a.flac", "Old A", "Old Title A");
+        let b = dir.tagged_flac("b.flac", "Old B", "Old Title B");
+        let app = open_app(&dir);
+        let track = ImportTrackDto {
+            disc: None,
+            position: "1".into(),
+            artist: String::new(),
+            title: "First".into(),
+            duration_secs: None,
+            isrc: None,
+            bpm: None,
+            key: None,
+        };
+        let selection = ImportSelectionDto {
+            album: Some("The Release".into()),
+            catalog_number: Some("CAT 1".into()),
+            tracks: vec![track],
+            ..ImportSelectionDto::default()
+        };
+        let plan = app
+            .preview_import(&[a.clone(), b.clone()], &selection, false)
+            .unwrap();
+        let touched: Vec<&str> = plan.changes.iter().map(|c| c.path.as_str()).collect();
+        assert_eq!(touched, [a.to_string_lossy()]);
+
+        let album_only = ImportSelectionDto {
+            tracks: Vec::new(),
+            ..selection
+        };
+        let plan = app.preview_import(&[a, b], &album_only, false).unwrap();
+        assert_eq!(plan.changes.len(), 2);
     }
 
     #[test]

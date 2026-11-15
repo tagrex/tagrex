@@ -547,12 +547,15 @@ async fn preview_tag_edits(
     edits: Vec<TagEditDto>,
     // The release cover an import brought with it (#207), when there is one.
     cover: Option<CoverArtDto>,
+    // The files that cover is for (#773): the ones the import paired with a
+    // track. Absent, it goes to every file with edits, as it always did.
+    cover_paths: Option<Vec<String>>,
 ) -> Result<PlanDto, ErrorDto> {
     let state = state.inner().clone();
     SESSION_QUEUE
         .run(move || {
             with_app(&state, |app| {
-                app.preview_tag_edits_with_cover(&edits, cover.as_ref())
+                app.preview_tag_edits_with_cover_for(&edits, cover.as_ref(), cover_paths.as_deref())
                     .map_err(ErrorDto::from)
             })
         })

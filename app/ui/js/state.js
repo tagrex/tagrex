@@ -40,7 +40,8 @@ export function setPreviewPlan(value) {
 // for the staging call that turns the pending edits into a plan. One plan means
 // one Apply and one undo for what the user did as a single action; leaving the
 // cover to its own batch is what made undoing an import bring back the tags and
-// keep the artwork.
+// keep the artwork. Held as `{ cover, paths }`: the cover is only for the files
+// the import paired with a track (#773).
 export let pendingImportCover = null;
 export function setPendingImportCover(value) {
   pendingImportCover = value;

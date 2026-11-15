@@ -2029,9 +2029,15 @@ async function previewEdits() {
     // The cover rides along exactly once: whether it is written at all is the
     // backend's decision (the import-cover setting, per file), but a second
     // staging must not silently re-offer it.
-    const cover = pendingImportCover;
+    const pending = pendingImportCover;
     setPendingImportCover(null);
-    setPreviewPlan(await invoke("preview_tag_edits", { edits: list, cover }));
+    setPreviewPlan(
+      await invoke("preview_tag_edits", {
+        edits: list,
+        cover: pending ? pending.cover : null,
+        coverPaths: pending ? pending.paths : null,
+      }),
+    );
     setPreviewSource("edits");
     renderPreview(previewPlan);
   } catch (e) {

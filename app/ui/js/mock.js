@@ -781,7 +781,8 @@ function mockInvoke(cmd, args) {
       // sides of the setting are reachable from a browser.
       const changes = Object.entries(byPath).map(([path, tag_changes]) => {
         const track = findTrack(path);
-        const gets_cover = args.cover && !track?.cover;
+        const forThisFile = !args.coverPaths || args.coverPaths.includes(path);
+        const gets_cover = args.cover && forThisFile && !track?.cover;
         return {
           path,
           rename_to: null,
@@ -1470,7 +1471,11 @@ function mockInvoke(cmd, args) {
       });
     case "preview_import": {
       const sideCounters = {}; // per-disc running track number for bare vinyl sides
-      const changes = args.paths.map((p, i) => {
+      // A file left over once every ticked track has its file takes nothing
+      // (#773); with no track ticked, the album fields go to every file.
+      const ticked = args.selection.tracks.length;
+      const paired = ticked ? args.paths.slice(0, ticked) : args.paths;
+      const changes = paired.map((p, i) => {
         const t = findTrack(p);
         const rt = args.selection.tracks[i];
         const tag_changes = [

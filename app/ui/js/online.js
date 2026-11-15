@@ -1841,7 +1841,12 @@ async function importRelease(card) {
     // importing straight after expanding would otherwise race it and drop the
     // artwork silently, which is the one failure this feature must not have.
     await loadFullCover(card.dataset.id, release.cover_image_url, card);
-    setPendingImportCover(coverCache.get(card.dataset.id) || null);
+    // Only for the files the import paired with a track (#773): another file
+    // with an edit pending is not on the release. With no track ticked, the
+    // album-only import goes to every selected file, and so does the cover.
+    const cover = coverCache.get(card.dataset.id) || null;
+    const paired = selection.tracks.length ? paths.slice(0, selection.tracks.length) : paths;
+    setPendingImportCover(cover ? { cover, paths: paired } : null);
     // No plain render here: `previewEdits` stages the plan and repaints the
     // table as a diff a moment later, so rendering first only builds a few
     // thousand rows to throw them away (#186).
