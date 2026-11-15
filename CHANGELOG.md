@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Updated `rusqlite` to 0.42.0. The undo journal keeps the same bundled SQLite 3.54.1, so existing journals are unaffected; the build drops a second copy of `hashbrown` ([#767](https://github.com/tagrex/tagrex/pull/767)).
 - The top bar's action buttons sit in two rounded tracks of the mode switcher's own make and height: Undo and Redo in one, Settings and the panel toggle in the other. Their icons are drawn at full strength, so a disabled one reads apart from an enabled one, and the update button matches the same height. The classic tab look keeps the square buttons ([#778](https://github.com/tagrex/tagrex/issues/778)).
 - Undo and Redo show a U-turn arrow centred in its button, in place of the hooked arrow whose loop sat a pixel low and made the glyph look tilted ([#779](https://github.com/tagrex/tagrex/issues/779)).
+- The Undo and Redo arrows are drawn at the size of the Settings and panel toggle icons beside them; they read a size smaller ([#780](https://github.com/tagrex/tagrex/issues/780)).
 
 ### Fixed
 
