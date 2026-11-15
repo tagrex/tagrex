@@ -5,7 +5,7 @@
 // browser, the query presets that build a search string from the selection, and
 // the import that merges a release onto the selected files. Everything it
 // stages goes through the ordinary preview/apply/undo path.
-import { confirmDialog, el, escapeHtml, fileName, ico, placeFloating, toast } from "./dom.js";
+import { choiceDialog, confirmDialog, el, escapeHtml, fileName, ico, placeFloating, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { runChainOverPlan } from "./chains.js";
@@ -1800,13 +1800,96 @@ async function saveReleaseImages(card, all) {
   }
 }
 
+// ---- the import's order against the lengths (#774) ----
+// The import pairs the i-th ticked track with the i-th selected file, in table
+// order. When nothing lined the files up first, the titles can land a step off,
+// and the only hint was the delta on each track row. Returns the order of the
+// selected files the lengths ask for, or null when the order as it stands is
+// not contradicted: lengths unknown, close enough, or unable to tell.
+//
+// A pair is contradicted when its file is past the "near" band of its track
+// while another selected file is within it, and no other track of the release
+// runs close enough to the same time to make that a guess. A length every file
+// shares as an offset (#772) is taken off first.
+function orderTheLengthsAskFor(card, release, paths) {
+  const state = tracklistState.get(card);
+  if (!state) return null;
+  const ticked = [];
+  state.checked.forEach((on, i) => {
+    if (on) ticked.push(i);
+  });
+  const tracks = ticked.map((i) => release.tracks[i]);
+  if (!tracks.length || tracks.some((track) => !track.duration_secs)) return null;
+  const files = paths.map((path) => ({ path, secs: trackAt(path)?.duration_secs }));
+  if (files.some((file) => !file.secs)) return null;
+  const whole =
+    tracks.every((track) => Number.isInteger(track.duration_secs)) &&
+    files.every((file) => Number.isInteger(file.secs));
+  const pair = (list) =>
+    whole ? pairByClosestLength(tracks, list) : pairByClosestLengthSorted(tracks, list);
+  const deltas = new Map(
+    [...pair(files)].map(([k, j]) => [k, { delta: files[j].secs - tracks[k].duration_secs }]),
+  );
+  const offset = commonOffset(deltas);
+  const shifted = files.map((file) => ({ path: file.path, secs: file.secs - offset }));
+  const near = (j, k) => Math.abs(shifted[j].secs - tracks[k].duration_secs) <= NEAR_SECS;
+  const alike = (k) =>
+    release.tracks.some(
+      (other, n) =>
+        n !== ticked[k] &&
+        other.duration_secs &&
+        Math.abs(other.duration_secs - tracks[k].duration_secs) <= AMBIGUOUS_SECS,
+    );
+  const byLength = pair(shifted);
+  const assigned = new Map(); // ticked slot -> file index the lengths are sure of
+  let contradicted = 0;
+  for (const [k, j] of byLength) {
+    // A track past the last file has no slot to move a file into.
+    if (k >= files.length || !near(j, k) || alike(k)) continue;
+    assigned.set(k, j);
+    if (j !== k && !near(k, k)) contradicted += 1;
+  }
+  if (!contradicted) return null;
+  // The files the lengths are sure of go to their tracks; every other file
+  // keeps its turn in the slots left, the ones past the ticked tracks included.
+  const taken = new Set(assigned.values());
+  const rest = files.map((_, j) => j).filter((j) => !taken.has(j));
+  const order = [];
+  for (let slot = 0; slot < files.length; slot++) {
+    order.push(files[assigned.has(slot) ? assigned.get(slot) : rest.shift()].path);
+  }
+  return { order, contradicted };
+}
+
+// Put the selected files in `order`, in the table slots they hold now (#774).
+function orderSelectedFiles(paths, order) {
+  const byPath = new Map(tracks.map((track) => [track.path, track]));
+  const selected = new Set(paths);
+  let next = 0;
+  setTracks(tracks.map((track) => (selected.has(track.path) ? byPath.get(order[next++]) : track)));
+  setManualOrder(true);
+  hooks.renderTracks();
+}
+
 async function importRelease(card) {
-  const paths = selectedPaths();
+  let paths = selectedPaths();
   if (paths.length === 0) {
     toast(t("toast.online.selectImport"), true);
     return;
   }
   const release = releaseCache.get(card.dataset.id);
+  const asked = orderTheLengthsAskFor(card, release, paths);
+  if (asked) {
+    const choice = await choiceDialog(
+      t("import.orderContradicts", { files: tn("unit.file", asked.contradicted) }),
+      { primary: t("import.orderByLength"), secondary: t("import.asItStands") },
+    );
+    if (!choice) return;
+    if (choice === "primary") {
+      orderSelectedFiles(paths, asked.order);
+      paths = selectedPaths();
+    }
+  }
   // Prefer Discogs "styles" over the coarse "genres" for the genre tag (#26),
   // joined with "/" to match the user's library convention.
   const genreValues = release.styles.length ? release.styles : release.genres;

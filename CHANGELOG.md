@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Each track the backend lists names the field that holds its compilation flag in that file's own tag format, so an interface can offer the flag and write it through the ordinary Preview and Apply. A WAV, AIFF or MP3 whose tags cannot hold the flag is given the key of the ID3v2 tag a write adds ([#761](https://github.com/tagrex/tagrex/pull/761)).
 - A CI check fails when an interface module uses a name it neither declares nor imports. Such a slip only showed when that line ran, and not at all inside a `try/catch`, which is how saved filter presets stopped working unnoticed ([#764](https://github.com/tagrex/tagrex/issues/764)).
+- An online import asks first when the order of the selected files contradicts the track lengths, so that some file would get the tags of a track far from its own length while another selected file fits it. It offers to order the files by length and import, to import in the order as it stands, or to cancel; it stays silent when the lengths agree, are unknown, or cannot tell two tracks apart ([#774](https://github.com/tagrex/tagrex/issues/774)).
 
 ### Changed
 
