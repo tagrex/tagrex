@@ -233,8 +233,11 @@
     --accent-text: #ffffff;
     --accent-ink: #14a67d;
     --accent-soft: #142e2b;
-    --add: #3fca74;
-    --del: #f87171;
+    /* Apart in lightness, not only in hue (#783): at equal lightness green and
+       red are one khaki under deuteranopia. The red still clears AA as text on
+       its own 18% tint (the mask builder's clash row on hover). */
+    --add: #6ee7a0;
+    --del: #f56565;
     --row-hover: #242832;
     --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
     --tip-bg: #343a45;
@@ -255,8 +258,11 @@
   --accent-text: #ffffff;
   --accent-ink: #14a67d;
   --accent-soft: #142e2b;
-  --add: #3fca74;
-  --del: #f87171;
+  /* Apart in lightness, not only in hue (#783): at equal lightness green and
+     red are one khaki under deuteranopia. The red still clears AA as text on
+     its own 18% tint (the mask builder's clash row on hover). */
+  --add: #6ee7a0;
+  --del: #f56565;
   --row-hover: #242832;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   --tip-bg: #343a45;
@@ -2362,7 +2368,7 @@ body.diffing {
   background: color-mix(in srgb, var(--del) 10%, var(--bg));
 }
 /* The fill is --del darkened: the dark theme's --del is a light red that white
-   text fails AA on (2.8:1); darkened, white reads at 5:1 or better in both. */
+   text fails AA on (3.3:1); darkened, white reads at 5:1 or better in both. */
 button.primary.danger,
 .modal-actions .primary.danger {
   background: color-mix(in srgb, var(--del) 72%, #000);

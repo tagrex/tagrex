@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - The length difference after each track on a release card marks a match with a check and an off value with a cross, so the two no longer differ by green and red alone, which a red-green colour-vision deficiency shows as one colour. A near value keeps no mark ([#782](https://github.com/tagrex/tagrex/issues/782)).
+- The dark theme's green and red differ in lightness as well as hue, so under deuteranopia they no longer turn into the same khaki. The red stays readable as text on every red surface, the error cell and the clash row on hover included ([#783](https://github.com/tagrex/tagrex/issues/783)).
 
 ## [1.6.0] - 2026-11-15
 
