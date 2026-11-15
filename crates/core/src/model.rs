@@ -2789,6 +2789,7 @@ impl TagEngine {
             ogg_safe_write(&file.path, || {
                 ensure_audio_after_tags(&file.path)?;
                 ensure_nothing_before_id3v2(&file.path)?;
+                ensure_ape_tag_header_where_the_write_expects_it(&file.path)?;
                 ensure_ape_tag_clear_of_wavpack_blocks(&file.path)?;
                 pad_ape_tag_misread_as_id3v1(&file.path)?;
                 // Guard the year before touching the file. It is written as a timestamp
@@ -2931,6 +2932,7 @@ impl TagEngine {
         guarded(path, || {
             ensure_audio_after_tags(path)?;
             ensure_nothing_before_id3v2(path)?;
+            ensure_ape_tag_header_where_the_write_expects_it(path)?;
             ensure_ape_tag_clear_of_wavpack_blocks(path)?;
             pad_ape_tag_misread_as_id3v1(path)?;
             drop_id3v2_extended_header(path)?;
@@ -2999,6 +3001,7 @@ impl TagEngine {
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_nothing_before_id3v2(path)?;
+                ensure_ape_tag_header_where_the_write_expects_it(path)?;
                 ensure_ape_tag_clear_of_wavpack_blocks(path)?;
                 pad_ape_tag_misread_as_id3v1(path)?;
                 let mut tag = vorbis_comments_from_packet(bytes).ok_or_else(|| {
@@ -3033,6 +3036,7 @@ impl TagEngine {
         guarded(path, || {
             ensure_audio_after_tags(path)?;
             ensure_nothing_before_id3v2(path)?;
+            ensure_ape_tag_header_where_the_write_expects_it(path)?;
             ensure_ape_tag_clear_of_wavpack_blocks(path)?;
             pad_ape_tag_misread_as_id3v1(path)?;
             drop_id3v2_extended_header(path)?;
@@ -3105,6 +3109,7 @@ impl TagEngine {
             };
             ensure_audio_after_tags(path)?;
             ensure_nothing_before_id3v2(path)?;
+            ensure_ape_tag_header_where_the_write_expects_it(path)?;
             ensure_ape_tag_clear_of_wavpack_blocks(path)?;
             pad_ape_tag_misread_as_id3v1(path)?;
             drop_id3v2_extended_header(path)?;
@@ -3173,6 +3178,7 @@ impl TagEngine {
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_nothing_before_id3v2(path)?;
+                ensure_ape_tag_header_where_the_write_expects_it(path)?;
                 ensure_ape_tag_clear_of_wavpack_blocks(path)?;
                 pad_ape_tag_misread_as_id3v1(path)?;
                 drop_id3v2_extended_header(path)?;
@@ -3228,6 +3234,7 @@ impl TagEngine {
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_nothing_before_id3v2(path)?;
+                ensure_ape_tag_header_where_the_write_expects_it(path)?;
                 ensure_ape_tag_clear_of_wavpack_blocks(path)?;
                 pad_ape_tag_misread_as_id3v1(path)?;
                 drop_id3v2_extended_header(path)?;
@@ -3365,6 +3372,7 @@ impl TagEngine {
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_nothing_before_id3v2(path)?;
+                ensure_ape_tag_header_where_the_write_expects_it(path)?;
                 ensure_ape_tag_clear_of_wavpack_blocks(path)?;
                 pad_ape_tag_misread_as_id3v1(path)?;
                 drop_id3v2_extended_header(path)?;
@@ -5236,28 +5244,84 @@ fn ensure_ape_tag_clear_of_wavpack_blocks(path: &Path) -> Result<(), TagIoError>
     Ok(())
 }
 
-/// Where the tag library's write takes the APE tag at the end of `file` to
-/// start: the footer's size, plus the 32-byte header a version 2000 tag has,
-/// counted back from the footer's end. The footer is looked for where the
-/// library looks, at the very end or just before an ID3v1 tag.
-fn ape_tag_start(file: &mut std::fs::File, len: u64) -> Result<Option<u64>, TagIoError> {
+/// Refuse to write a file whose APE tag the tag library would cut wrongly
+/// (#769). For a version 2000 tag its write always takes 32 bytes more than the
+/// footer's size, for a header, and replaces them along with the tag. A tag
+/// without a header (the format allows one) thus lost the 32 bytes of audio in
+/// front of it on every write, and a tag whose size is damaged lost whatever
+/// that size reached into. Only a header sitting where the library expects one
+/// shows the bytes it is about to replace are the tag.
+fn ensure_ape_tag_header_where_the_write_expects_it(path: &Path) -> Result<(), TagIoError> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let Some((footer_end, footer)) = ape_footer(&mut file, len)? else {
+        return Ok(());
+    };
+    let word = |at: usize| {
+        u32::from_le_bytes([footer[at], footer[at + 1], footer[at + 2], footer[at + 3]])
+    };
+    if word(8) != 2000
+        || !matches!(
+            container_of(path),
+            Ok(Some(
+                FileType::Mpeg | FileType::Ape | FileType::Mpc | FileType::WavPack
+            ))
+        )
+    {
+        return Ok(());
+    }
+    if word(20) & (1 << 31) == 0 {
+        return Err(TagIoError::Malformed(format!(
+            "{} has an APE tag without a header; writing to it would cut 32 bytes of audio before the tag",
+            path.display()
+        )));
+    }
+    // A start before the file's beginning is refused by the library itself.
+    let Some(header_at) = footer_end.checked_sub(u64::from(word(12)) + 32) else {
+        return Ok(());
+    };
+    let mut header = [0u8; 8];
+    file.seek(SeekFrom::Start(header_at))?;
+    if file.read_exact(&mut header).is_err() || &header != b"APETAGEX" {
+        return Err(TagIoError::Malformed(format!(
+            "{} has an APE tag whose size reaches into the audio; writing to it would cut the audio short",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+/// The APE footer at the end of `file`, and where it ends, looked for where the
+/// tag library looks: at the very end, or just before an ID3v1 tag.
+fn ape_footer(file: &mut std::fs::File, len: u64) -> Result<Option<(u64, [u8; 32])>, TagIoError> {
     use std::io::{Read, Seek, SeekFrom};
     let mut read_at = |at: u64, buf: &mut [u8]| -> Result<bool, TagIoError> {
         file.seek(SeekFrom::Start(at))?;
         Ok(file.read_exact(buf).is_ok())
     };
     let mut footer = [0u8; 32];
-    let mut footer_end = len;
-    if len < 32 || !read_at(len - 32, &mut footer)? || &footer[..8] != b"APETAGEX" {
-        let mut id3v1 = [0u8; 3];
-        if len < 160 || !read_at(len - 128, &mut id3v1)? || &id3v1 != b"TAG" {
-            return Ok(None);
-        }
-        footer_end = len - 128;
-        if !read_at(footer_end - 32, &mut footer)? || &footer[..8] != b"APETAGEX" {
-            return Ok(None);
-        }
+    if len >= 32 && read_at(len - 32, &mut footer)? && &footer[..8] == b"APETAGEX" {
+        return Ok(Some((len, footer)));
     }
+    let mut id3v1 = [0u8; 3];
+    if len < 160 || !read_at(len - 128, &mut id3v1)? || &id3v1 != b"TAG" {
+        return Ok(None);
+    }
+    let footer_end = len - 128;
+    if !read_at(footer_end - 32, &mut footer)? || &footer[..8] != b"APETAGEX" {
+        return Ok(None);
+    }
+    Ok(Some((footer_end, footer)))
+}
+
+/// Where the tag library's write takes the APE tag at the end of `file` to
+/// start: the footer's size, plus the 32-byte header a version 2000 tag has,
+/// counted back from the footer's end.
+fn ape_tag_start(file: &mut std::fs::File, len: u64) -> Result<Option<u64>, TagIoError> {
+    let Some((footer_end, footer)) = ape_footer(file, len)? else {
+        return Ok(None);
+    };
     let word = |at: usize| {
         u32::from_le_bytes([footer[at], footer[at + 1], footer[at + 2], footer[at + 3]])
     };
