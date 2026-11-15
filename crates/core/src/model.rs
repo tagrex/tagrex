@@ -2789,6 +2789,7 @@ impl TagEngine {
             ogg_safe_write(&file.path, || {
                 ensure_audio_after_tags(&file.path)?;
                 ensure_nothing_before_id3v2(&file.path)?;
+                ensure_ape_tag_clear_of_wavpack_blocks(&file.path)?;
                 pad_ape_tag_misread_as_id3v1(&file.path)?;
                 // Guard the year before touching the file. It is written as a timestamp
                 // (ID3v2.4 TDRC / Vorbis DATE / MP4 ©day) whose year MUST be exactly 4
@@ -2930,6 +2931,7 @@ impl TagEngine {
         guarded(path, || {
             ensure_audio_after_tags(path)?;
             ensure_nothing_before_id3v2(path)?;
+            ensure_ape_tag_clear_of_wavpack_blocks(path)?;
             pad_ape_tag_misread_as_id3v1(path)?;
             drop_id3v2_extended_header(path)?;
             // A block journaled before #648 can still carry its extended header.
@@ -2997,6 +2999,7 @@ impl TagEngine {
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_nothing_before_id3v2(path)?;
+                ensure_ape_tag_clear_of_wavpack_blocks(path)?;
                 pad_ape_tag_misread_as_id3v1(path)?;
                 let mut tag = vorbis_comments_from_packet(bytes).ok_or_else(|| {
                     TagIoError::UnsupportedFormat(
@@ -3030,6 +3033,7 @@ impl TagEngine {
         guarded(path, || {
             ensure_audio_after_tags(path)?;
             ensure_nothing_before_id3v2(path)?;
+            ensure_ape_tag_clear_of_wavpack_blocks(path)?;
             pad_ape_tag_misread_as_id3v1(path)?;
             drop_id3v2_extended_header(path)?;
             let Some(container) = container_of(path)? else {
@@ -3101,6 +3105,7 @@ impl TagEngine {
             };
             ensure_audio_after_tags(path)?;
             ensure_nothing_before_id3v2(path)?;
+            ensure_ape_tag_clear_of_wavpack_blocks(path)?;
             pad_ape_tag_misread_as_id3v1(path)?;
             drop_id3v2_extended_header(path)?;
             let Some(container) = container_of(path)? else {
@@ -3168,6 +3173,7 @@ impl TagEngine {
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_nothing_before_id3v2(path)?;
+                ensure_ape_tag_clear_of_wavpack_blocks(path)?;
                 pad_ape_tag_misread_as_id3v1(path)?;
                 drop_id3v2_extended_header(path)?;
                 // An AIFF's or a WAV's ID3v2 is a chunk this module writes itself
@@ -3222,6 +3228,7 @@ impl TagEngine {
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_nothing_before_id3v2(path)?;
+                ensure_ape_tag_clear_of_wavpack_blocks(path)?;
                 pad_ape_tag_misread_as_id3v1(path)?;
                 drop_id3v2_extended_header(path)?;
                 let options = match (kind, revision) {
@@ -3358,6 +3365,7 @@ impl TagEngine {
             ogg_safe_write(path, || {
                 ensure_audio_after_tags(path)?;
                 ensure_nothing_before_id3v2(path)?;
+                ensure_ape_tag_clear_of_wavpack_blocks(path)?;
                 pad_ape_tag_misread_as_id3v1(path)?;
                 drop_id3v2_extended_header(path)?;
                 // Same reason as `write`: going through the generic tag would drop an
@@ -5185,6 +5193,79 @@ fn ensure_nothing_before_id3v2(path: &Path) -> Result<(), TagIoError> {
         "{} has data before its ID3v2 tag, which a write would cut off; the start of the file looks damaged",
         path.display()
     )))
+}
+
+/// Refuse to write a WavPack file whose APE tag, by its own footer, starts
+/// inside the last audio block (#768). The tag library's write takes the size
+/// in the footer at its word and replaces that many bytes before the footer
+/// with the new tag, without checking they hold a tag. When the size is damaged
+/// and reaches back into the audio, the write cuts the end of the last block
+/// away and the file no longer reads. A sound file's blocks always end where
+/// its tag begins, so walking them costs a real file nothing.
+fn ensure_ape_tag_clear_of_wavpack_blocks(path: &Path) -> Result<(), TagIoError> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let mut magic = [0u8; 4];
+    if file.read_exact(&mut magic).is_err() || &magic != b"wvpk" {
+        return Ok(());
+    }
+    let Some(tag_start) = ape_tag_start(&mut file, len)? else {
+        return Ok(());
+    };
+    let mut pos = 0u64;
+    let mut header = [0u8; 8];
+    while pos < tag_start {
+        file.seek(SeekFrom::Start(pos))?;
+        if file.read_exact(&mut header).is_err() || &header[..4] != b"wvpk" {
+            return Ok(());
+        }
+        let end = pos
+            + 8
+            + u64::from(u32::from_le_bytes([
+                header[4], header[5], header[6], header[7],
+            ]));
+        if end > tag_start {
+            return Err(TagIoError::Malformed(format!(
+                "{} has an APE tag whose size reaches into the audio; writing to it would cut the audio short",
+                path.display()
+            )));
+        }
+        pos = end;
+    }
+    Ok(())
+}
+
+/// Where the tag library's write takes the APE tag at the end of `file` to
+/// start: the footer's size, plus the 32-byte header a version 2000 tag has,
+/// counted back from the footer's end. The footer is looked for where the
+/// library looks, at the very end or just before an ID3v1 tag.
+fn ape_tag_start(file: &mut std::fs::File, len: u64) -> Result<Option<u64>, TagIoError> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut read_at = |at: u64, buf: &mut [u8]| -> Result<bool, TagIoError> {
+        file.seek(SeekFrom::Start(at))?;
+        Ok(file.read_exact(buf).is_ok())
+    };
+    let mut footer = [0u8; 32];
+    let mut footer_end = len;
+    if len < 32 || !read_at(len - 32, &mut footer)? || &footer[..8] != b"APETAGEX" {
+        let mut id3v1 = [0u8; 3];
+        if len < 160 || !read_at(len - 128, &mut id3v1)? || &id3v1 != b"TAG" {
+            return Ok(None);
+        }
+        footer_end = len - 128;
+        if !read_at(footer_end - 32, &mut footer)? || &footer[..8] != b"APETAGEX" {
+            return Ok(None);
+        }
+    }
+    let word = |at: usize| {
+        u32::from_le_bytes([footer[at], footer[at + 1], footer[at + 2], footer[at + 3]])
+    };
+    let mut size = u64::from(word(12));
+    if word(8) == 2000 {
+        size += 32;
+    }
+    Ok(footer_end.checked_sub(size))
 }
 
 /// Where the tag library's write would find the old ID3v2 tag in `head`, the
