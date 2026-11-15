@@ -2830,6 +2830,35 @@ tracksBody.addEventListener("mousedown", (e) => {
   document.addEventListener("mouseup", onBandUp);
 });
 
+// A band can also start in the empty area below the rows (#784), the same area
+// where a plain click deselects (#346): the `#files-view` background or a
+// windowing spacer row. It is anchored on the row nearest the press, the last
+// one when the press is below them all, and selects nothing until the pointer
+// reaches a row, so dragging up from below takes in the rows from the bottom.
+tableWrap.addEventListener("mousedown", (e) => {
+  if (e.button !== 0 || e.shiftKey || diffByPath || !viewPaths.length) return;
+  const tr = e.target.closest("tr");
+  if (e.target !== tableWrap && !(tr && tr.classList.contains("spacer"))) return;
+  // A press on the wrapper's own scrollbar lands on the wrapper too.
+  const box = tableWrap.getBoundingClientRect();
+  if (e.clientX - box.left >= tableWrap.clientLeft + tableWrap.clientWidth) return;
+  if (e.clientY - box.top >= tableWrap.clientTop + tableWrap.clientHeight) return;
+  const near = bandIndexAt(e.clientX, e.clientY);
+  const start = near === null ? viewPaths.length - 1 : near;
+  band = {
+    start: viewPaths[start],
+    startY: e.clientY,
+    add: e.metaKey || e.ctrlKey,
+    active: false,
+    fromEmpty: true,
+    index: null,
+    pointer: { x: e.clientX, y: e.clientY },
+    frame: 0,
+  };
+  document.addEventListener("mousemove", onBandMove);
+  document.addEventListener("mouseup", onBandUp);
+});
+
 // The index in `viewPaths` of the row under the pointer, clamped into the table
 // so a pointer held above or below it still names the edge row. Null over a
 // group header or the empty area past the last row, which keeps the band as is.
@@ -2853,7 +2882,9 @@ function onBandMove(e) {
     // Start from the pressed row alone, on top of the selection when adding.
     if (!band.add) selection.clear();
     anchorSelection(band.start);
-    selectRangeFromAnchor(band.index, band.index);
+    // From the empty area nothing is under the pointer yet: fitBand selects the
+    // range once it reaches a row.
+    if (!band.fromEmpty) selectRangeFromAnchor(band.index, band.index);
     syncSelectionUI();
     band.frame = requestAnimationFrame(bandTick);
   }

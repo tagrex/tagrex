@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Selecting by dragging can start in the empty area below the rows, as on a file manager's background: dragging up from there selects from the last row to the one under the pointer, with Cmd/Ctrl adding to the selection. A short list with a tall window previously left most of the table where a drag did nothing ([#784](https://github.com/tagrex/tagrex/issues/784)).
+
 ## [1.6.1] - 2026-11-15
 
 A small release for colour-vision deficiencies. Red and green no longer carry
