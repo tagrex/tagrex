@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `tools/fonts/build_subsets.py` rebuilds the bundled font subsets from the official releases, refusing any other source version, and its check mode compares a rebuild with the bundled files glyph by glyph before anything is replaced. The recipe was not written down anywhere before ([#786](https://github.com/tagrex/tagrex/issues/786)).
+
 ### Fixed
 
 - Selecting by dragging can start in the empty area below the rows, as on a file manager's background: dragging up from there selects from the last row to the one under the pointer, with Cmd/Ctrl adding to the selection. A short list with a tall window previously left most of the table where a drag did nothing ([#784](https://github.com/tagrex/tagrex/issues/784)).
