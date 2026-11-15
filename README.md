@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 1.5.x.** Stable for day-to-day use: table editing, rename masks
+> **Status: 1.6.x.** Stable for day-to-day use: table editing, rename masks
 > with a function language, tags read back out of file names and text lists,
 > text transforms, online lookups, BPM detection from the audio, cover art, tag
 > block conversion, duplicate detection, exports, a preview player, a
@@ -107,7 +107,7 @@ embed — produces a change plan that is
 rendered as a diff *into the table itself*, with a per-row apply scope and an
 Apply/Discard bar. Applying goes through a transactional executor with a
 persistent SQLite undo journal, so a batch survives an application restart and
-can still be rolled back.
+can still be rolled back; an undone batch can be redone.
 
 <p align="center">
   <img src="docs/img/renamer-diff-dark.png#gh-dark-mode-only" width="800" alt="A rename previewed as a diff inside the table, with an Apply and Discard bar at the bottom">

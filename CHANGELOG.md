@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-11-15
+
+A release about online imports and the safety of what gets written. An
+import now pairs files with tracks the way you expect: a file the release has
+no track for takes nothing from it, the order you set survives an apply or an
+undo, and a contradiction between file order and track lengths is asked about
+first. Redo joins Undo, the window stays responsive during long commands, and
+tag writes that could damage a file are fixed: cutting audio from WavPack and
+APE-tagged files, or putting an ID3v2 tag in front of an Ogg FLAC stream.
+
 ### Added
 
 - Each track the backend lists names the field that holds its compilation flag in that file's own tag format, so an interface can offer the flag and write it through the ordinary Preview and Apply. A WAV, AIFF or MP3 whose tags cannot hold the flag is given the key of the ID3v2 tag a write adds ([#761](https://github.com/tagrex/tagrex/pull/761)).
