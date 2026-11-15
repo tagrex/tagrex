@@ -1250,7 +1250,10 @@ function updateStatus() {
       ? `${tracks.filter(matchesFilter).length}/${tn("unit.file", total)}`
       : tn("unit.file", total);
   // The active check names itself in the filter field's chip (#559).
-  statusSel.textContent = `${files} · ${tn("count.selected", selected)}`;
+  // While a preview is staged, the rows outside it recede and the selection
+  // alone reads as wrong (#777): the count the action bar applies goes beside it.
+  const staged = diffByPath ? ` · ${applySelection.size} ${msg("diff.toApply")}` : "";
+  statusSel.textContent = `${files} · ${tn("count.selected", selected)}${staged}`;
 }
 
 function resetEdits() {
@@ -1554,6 +1557,7 @@ function updateDiffBar() {
   const n = applySelection.size;
   el("ab-count").textContent = String(n);
   applyBtn.disabled = n === 0;
+  updateStatus(); // the status bar names the same count (#777)
   selectAll.checked = n > 0 && n === staged;
   selectAll.indeterminate = n > 0 && n < staged;
 }
