@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Selecting by dragging can start in the empty area below the rows, as on a file manager's background: dragging up from there selects from the last row to the one under the pointer, with Cmd/Ctrl adding to the selection. A short list with a tall window previously left most of the table where a drag did nothing ([#784](https://github.com/tagrex/tagrex/issues/784)).
 - Greek and Vietnamese tag values are drawn in the interface's own fonts, the monospaced table font included, instead of whatever face the system falls back to, which in the table came out at another width and in another design. The bundled fonts grow by about 50 KB in all ([#785](https://github.com/tagrex/tagrex/issues/785)).
+- Updating from inside the app works again for an `.rpm` install on rpm 6 (Fedora 45), which refuses packages without an OpenPGP signature: the system asked for the password twice and then reported only "Failed to install package". TagRex now installs the package itself with one password prompt, skipping only that signature check, since the update has already been checked against the key built into the app, and a refusal shows rpm's own message. A copy of 1.6.1 or older on rpm 6 needs one update by hand (`sudo dnf install ./TagRex-*.rpm`); later ones go through the button ([#787](https://github.com/tagrex/tagrex/issues/787)).
 
 ## [1.6.1] - 2026-11-15
 

@@ -217,11 +217,153 @@ pub fn run_installer_elevated(
     }
 }
 
+/// Whether this copy was installed from an rpm package (#787).
+#[cfg(target_os = "linux")]
+pub fn installed_from_rpm() -> bool {
+    matches!(
+        tauri::utils::platform::bundle_type(),
+        Some(tauri::utils::config::BundleType::Rpm)
+    )
+}
+
+/// What an rpm update comes to when the app installs it itself (#787).
+#[cfg(target_os = "linux")]
+pub enum RpmInstall {
+    Installed,
+    /// There is no `pkexec` to ask for root with; the updater plugin's own
+    /// install, with its password prompt and `sudo`, is left to try.
+    NoPkexec,
+}
+
+/// The command that installs the package at `path`. rpm 6 refuses a package
+/// without an OpenPGP signature, which ours do not carry; the download has
+/// checked the bundle against the minisign key built into the app, so only that
+/// check is skipped. rpm still verifies the package digests.
+#[cfg(any(target_os = "linux", test))]
+fn rpm_install_args(path: &std::path::Path) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = ["rpm", "-U", "--nosignature"]
+        .iter()
+        .map(Into::into)
+        .collect();
+    args.push(path.into());
+    args
+}
+
+/// Why `pkexec rpm` failed, in words: pkexec's own codes for a dismissed or
+/// failed password prompt, otherwise what rpm wrote, which the plugin's error
+/// ("Failed to install package") leaves out.
+#[cfg(any(target_os = "linux", test))]
+fn rpm_failure(code: Option<i32>, stderr: &str) -> String {
+    let said: Vec<&str> = stderr
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    let said = said.join("; ");
+    match code {
+        Some(126) => "the password prompt was dismissed".to_string(),
+        // pkexec's own failure: its message is about polkit, not rpm.
+        Some(127) if said.is_empty() => "authentication failed".to_string(),
+        Some(127) => said,
+        _ if !said.is_empty() => format!("rpm: {said}"),
+        Some(code) => format!("rpm stopped with code {code}"),
+        None => "rpm was stopped".to_string(),
+    }
+}
+
+/// Install the rpm package in `bytes`, whose signature the download has
+/// checked, as root through polkit: one password prompt (#787). The package is
+/// written to a folder only this user can open, so nobody else can swap it
+/// before rpm reads it, and the folder is removed afterwards either way.
+#[cfg(target_os = "linux")]
+pub fn install_rpm(bytes: &[u8]) -> Result<RpmInstall, String> {
+    use std::os::unix::fs::DirBuilderExt;
+
+    if !bytes.starts_with(&[0xed, 0xab, 0xee, 0xdb]) {
+        return Err("the update is not an rpm package".to_string());
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| since.as_nanos())
+        .unwrap_or_default();
+    let dir = std::env::temp_dir().join(format!("tagrex-update-{}-{stamp}", std::process::id()));
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&dir)
+        .map_err(|error| error.to_string())?;
+    let package = dir.join("TagRex-update.rpm");
+    let result = std::fs::write(&package, bytes)
+        .map_err(|error| error.to_string())
+        .and_then(|()| {
+            match std::process::Command::new("pkexec")
+                .args(rpm_install_args(&package))
+                .output()
+            {
+                Ok(output) if output.status.success() => Ok(RpmInstall::Installed),
+                Ok(output) => Err(rpm_failure(
+                    output.status.code(),
+                    &String::from_utf8_lossy(&output.stderr),
+                )),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    Ok(RpmInstall::NoPkexec)
+                }
+                Err(error) => Err(error.to_string()),
+            }
+        });
+    let _ = std::fs::remove_dir_all(&dir);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         elevated_installer_parameters, is_newer, parse_version, proxy_url, refuses_writes,
+        rpm_failure, rpm_install_args,
     };
+
+    #[test]
+    fn an_rpm_update_skips_only_the_signature_check() {
+        let args = rpm_install_args(std::path::Path::new("/tmp/tagrex update/TagRex.rpm"));
+        assert_eq!(
+            args,
+            [
+                "rpm",
+                "-U",
+                "--nosignature",
+                "/tmp/tagrex update/TagRex.rpm"
+            ]
+            .map(std::ffi::OsString::from)
+        );
+    }
+
+    #[test]
+    fn a_failed_rpm_install_says_why() {
+        assert_eq!(
+            rpm_failure(Some(126), ""),
+            "the password prompt was dismissed"
+        );
+        assert_eq!(rpm_failure(Some(127), "\n"), "authentication failed");
+        assert_eq!(
+            rpm_failure(
+                Some(127),
+                "Error executing command as another user: Not authorized\n"
+            ),
+            "Error executing command as another user: Not authorized"
+        );
+        assert_eq!(
+            rpm_failure(
+                Some(1),
+                "\tpackage tag-rex-0:1.6.1-1.aarch64 is already installed\n\n"
+            ),
+            "rpm: package tag-rex-0:1.6.1-1.aarch64 is already installed"
+        );
+        assert_eq!(
+            rpm_failure(Some(1), "error: one\nerror: two\n"),
+            "rpm: error: one; error: two"
+        );
+        assert_eq!(rpm_failure(Some(2), ""), "rpm stopped with code 2");
+        assert_eq!(rpm_failure(None, ""), "rpm was stopped");
+    }
 
     #[test]
     fn versions_read_with_or_without_a_v_and_a_suffix() {

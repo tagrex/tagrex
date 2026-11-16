@@ -1764,7 +1764,9 @@ async fn check_for_update(
 /// installer takes over and the app quits for it, so this returns there only
 /// with an error; elsewhere too, the update kept for another try. In a folder
 /// the user cannot write to, Windows is asked for administrator rights first
-/// (#699). The frontend refuses to start it while there is anything unapplied.
+/// (#699). An rpm install is installed here, through polkit, because rpm 6
+/// refuses the unsigned package the plugin hands it (#787). The frontend
+/// refuses to start it while there is anything unapplied.
 #[tauri::command]
 async fn install_update(
     app: tauri::AppHandle,
@@ -1801,6 +1803,14 @@ async fn install_update(
         update::run_installer_elevated(&bytes, &update.version, &dir)
             .map_err(|detail| ErrorDto::plain(format!("Could not install the update: {detail}")))?;
         std::process::exit(0);
+    }
+    #[cfg(target_os = "linux")]
+    if update::installed_from_rpm() {
+        let installed = update::install_rpm(&bytes)
+            .map_err(|detail| ErrorDto::plain(format!("Could not install the update: {detail}")))?;
+        if matches!(installed, update::RpmInstall::Installed) {
+            app.restart()
+        }
     }
     update
         .install(&bytes)
