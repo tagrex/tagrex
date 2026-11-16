@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-11-16
+
+A small release that mends the in-app update on Fedora 45 and other systems
+with rpm 6, where it failed after asking for the password twice. A copy of
+1.6.1 or older installed from an `.rpm` on such a system needs this one update
+by hand (`sudo dnf install ./TagRex-*.rpm`); later ones go through the button
+again. Greek and Vietnamese tag values now use the interface's own fonts, and
+a drag selection can start below the last row.
+
 ### Added
 
 - `tools/fonts/build_subsets.py` rebuilds the bundled font subsets from the official releases, refusing any other source version, and its check mode compares a rebuild with the bundled files glyph by glyph before anything is replaced. The recipe was not written down anywhere before ([#786](https://github.com/tagrex/tagrex/issues/786)).
