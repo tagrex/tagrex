@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- EDITOR runs ticked presets too: it is a job of its own behind the wand, and the presets ticked there clean the values typed into the field editor before they are staged, so `first song` typed by hand can be staged as `First Song`. Its set starts empty, so a typed value still comes out as typed until a preset is ticked for EDITOR ([#789](https://github.com/tagrex/tagrex/issues/789)).
+
 ### Changed
 
 - GENERATOR runs its blocks together: Transform, Number tracks and Vinyl sides each have a switch in their heading, and one Preview button at the bottom of the panel builds a single plan from every switched-on block, with the presets seeing the new track numbers along with every other tag. Numbering a set of files and title-casing their titles took two plans and two Apply presses. A transform alone still cleans up a staged plan as before, and the switches are remembered ([#788](https://github.com/tagrex/tagrex/issues/788)).

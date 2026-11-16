@@ -389,9 +389,10 @@ async function previewTransform() {
 // (FROM NAME's chain is a different chain over different values — #144 — not a
 // third entry point to this one.)
 
-// Which job's chain the block is holding (#236). Null where a chain has no
-// business existing: EDITOR, where a value typed by hand must come out exactly
-// as typed, and the modes that produce no values at all.
+// Which job's chain the block is holding (#236). Null in the modes that produce
+// no values at all. EDITOR has a chain of its own since #789: hand-typed values
+// need cleaning as much as imported ones, and its set starts empty, so a value
+// still comes out exactly as typed until a preset is ticked there.
 function chainContext() {
   if (currentMode === "generator") return "generator";
   if (currentMode === "renamer") return "renamer";
@@ -401,6 +402,7 @@ function chainContext() {
   // FROM NAME's chain rather than a third one.
   if (sub === "filename" || sub === "fromtext") return "fromname";
   if (sub === "online") return "online";
+  if (sub === "editor") return "editor";
   return null;
 }
 
@@ -420,11 +422,13 @@ const CONTEXT_NOTES = {
   online: "generator.note.online",
   fromname: "generator.note.fromname",
   renamer: "generator.note.renamer",
+  editor: "generator.note.editor",
 };
 const CONTEXT_TITLES = {
   online: "generator.title.online",
   fromname: "generator.title.fromname",
   renamer: "generator.title.renamer",
+  editor: "generator.title.editor",
 };
 
 function transformModalOpen() {

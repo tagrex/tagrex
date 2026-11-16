@@ -44,6 +44,8 @@ const CHAIN_CONTEXTS = {
   fromname: "the tags read from the name",
   renamer: "the new names",
   generator: "the selection",
+  // The values typed into EDITOR's field editor (#789).
+  editor: "the typed values",
 };
 
 const FILE_SCOPES = ["filename", "fileext"];
@@ -120,7 +122,7 @@ function renameActivePreset(from, to) {
 function contextTakes(context, scope) {
   const file = FILE_SCOPES.includes(scope);
   if (context === "renamer") return file;
-  if (context === "online" || context === "fromname") return !file;
+  if (context === "online" || context === "fromname" || context === "editor") return !file;
   return true;
 }
 
@@ -266,7 +268,9 @@ function seedJobs(keys) {
   active = Object.fromEntries(
     Object.keys(CHAIN_CONTEXTS).map((context) => [
       context,
-      keys.filter((key) => byKey.has(key) && presetAppliesTo(byKey.get(key), context)),
+      // EDITOR starts empty (#789): a value typed by hand comes out as typed
+      // until a preset is ticked there on purpose.
+      context === "editor" ? [] : keys.filter((key) => byKey.has(key) && presetAppliesTo(byKey.get(key), context)),
     ])
   );
   persistActive();

@@ -3674,6 +3674,39 @@ impl App {
         ))
     }
 
+    /// Run action groups over loose field values, keyed by storage key (#789):
+    /// what EDITOR's ticked presets make of the values typed into the field
+    /// editor before they are staged.
+    ///
+    /// The values belong to no file yet (the same typed value goes to every
+    /// selected file), so this works on the values alone: each chain aimed at
+    /// tags, or at that field, rewrites it in turn, and rules on file names
+    /// have nothing here to act on.
+    pub fn transform_field_values(
+        &self,
+        groups: &[ActionGroupDto],
+        values: &BTreeMap<String, String>,
+    ) -> Result<BTreeMap<String, String>, AppError> {
+        let chains = groups
+            .iter()
+            .map(build_segments)
+            .collect::<Result<Vec<_>, AppError>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        Ok(values
+            .iter()
+            .map(|(key, value)| {
+                let field = TagField::from_storage_key(key).to_storage_key();
+                let cleaned = chains
+                    .iter()
+                    .filter(|(scope, _)| scope == "tags" || *scope == field)
+                    .fold(value.clone(), |value, (_, chain)| chain.apply(&value));
+                (key.clone(), cleaned)
+            })
+            .collect())
+    }
+
     /// Run action groups over a **staged plan** rather than over the files (#142).
     ///
     /// Every flow that *produces* values needs the same second step — clean them
@@ -12153,6 +12186,45 @@ mod tests {
             (artist.old.as_deref(), artist.new.as_deref()),
             (Some("some artist"), None)
         );
+    }
+
+    #[test]
+    fn field_values_take_the_rules_aimed_at_them() {
+        let dir = TempDir::new("transform-field-values");
+        let app = open_app(&dir);
+        let group = |scope: &str, style: &str| ActionGroupDto {
+            name: format!("{scope} {style}"),
+            scope: scope.into(),
+            rules: vec![case_rule(style)],
+            note: String::new(),
+        };
+        let values: BTreeMap<String, String> = [
+            ("title", "first song"),
+            ("artist", "some artist"),
+            ("custom:CATALOG", "abc 123"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+
+        // A tags-wide rule reaches every value, a field rule only its field, in
+        // order, and a file-name rule has nothing to act on here.
+        let cleaned = app
+            .transform_field_values(
+                &[
+                    group("tags", "title"),
+                    group("artist", "upper"),
+                    group("filename", "lower"),
+                ],
+                &values,
+            )
+            .unwrap();
+        assert_eq!(cleaned["title"], "First Song");
+        assert_eq!(cleaned["artist"], "SOME ARTIST");
+        assert_eq!(cleaned["custom:CATALOG"], "Abc 123");
+
+        // No groups, the values as typed.
+        assert_eq!(app.transform_field_values(&[], &values).unwrap(), values);
     }
 
     #[test]

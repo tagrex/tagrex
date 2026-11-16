@@ -673,6 +673,20 @@ function mockInvoke(cmd, args) {
         .filter(Boolean);
       return Promise.resolve({ description: "Transform", changes });
     }
+    // EDITOR's chain over the typed values (#789).
+    case "transform_field_values": {
+      const out = { ...args.values };
+      for (const group of args.groups) {
+        for (const seg of mockSegments(group)) {
+          if (seg.scope === "filename" || seg.scope === "fileext") continue;
+          for (const [field, value] of Object.entries(out)) {
+            if (seg.scope !== "tags" && seg.scope !== field) continue;
+            out[field] = mockApplyRules(value, seg.rules);
+          }
+        }
+      }
+      return Promise.resolve(out);
+    }
     // The same chains, over a STAGED plan rather than over the files (#142):
     // the input is what the plan proposes, and the output replaces it.
     case "preview_transform_over_plan": {

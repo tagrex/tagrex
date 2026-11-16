@@ -21,6 +21,7 @@ import {
 import { EXTENDED_FIELDS, customLabel, fieldLabel as catalogueLabel } from "./fields.js";
 import { isFieldLocked, lockButton } from "./locks.js";
 import { hooks } from "./hooks.js";
+import { presetsFor } from "./chains.js";
 
 // Fields the user actually touched in the dialog, staged until they confirm.
 let stagedFields = new Map();
@@ -770,6 +771,21 @@ function addCustomField() {
 
 // Push the staged fields into the shared pending-edits buffer for every
 // selected file, then preview them alongside any other pending edits.
+// The typed values after EDITOR's ticked presets (#789), or as typed when none
+// is ticked. A failing rule keeps the typed values, as every other job keeps
+// its plan: the values are still worth staging.
+async function throughEditorChain(staged) {
+  const groups = presetsFor("editor");
+  if (!groups.length) return staged;
+  try {
+    const cleaned = await invoke("transform_field_values", { groups, values: Object.fromEntries(staged) });
+    return new Map(Object.entries(cleaned));
+  } catch (e) {
+    toast(String(e), true);
+    return staged;
+  }
+}
+
 async function applyFieldEditor() {
   const paths = selectedPaths();
   if (paths.length === 0) {
@@ -780,11 +796,12 @@ async function applyFieldEditor() {
     toast(tr("toast.editor.nothingToStage"));
     return;
   }
+  const values = await throughEditorChain(stagedFields);
   let changed = 0;
   for (const path of paths) {
     if (!edits.has(path)) edits.set(path, new Map());
     const fields = edits.get(path);
-    for (const [key, value] of stagedFields) {
+    for (const [key, value] of values) {
       // Skip no-ops so the preview stays honest.
       const track = trackAt(path);
       const onDisk = (track && track.tags[key]) || "";

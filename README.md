@@ -178,12 +178,13 @@ with a count; choosing one narrows the table to the files it flags.
 
 **Cleanup is part of the job, not a second step.** Tick presets in the dialog
 behind the wand and they run as part of importing a release, reading tags out
-of a file name and renaming — inside that panel's own button: one press, one
+of a file name, staging values typed into EDITOR and renaming — inside that
+panel's own button: one press, one
 plan, one undo entry. Each job keeps its own ticked set and takes only the
-rules aimed at what it produces: tag rules for imports and FROM NAME, file-name
-rules for RENAMER. So the underscore RENAMER wants never reaches the tags
-FROM NAME reads. The tag editor has none on purpose — a value typed by hand
-comes out as typed.
+rules aimed at what it produces: tag rules for imports, FROM NAME and EDITOR,
+file-name rules for RENAMER. So the underscore RENAMER wants never reaches the
+tags FROM NAME reads. EDITOR's set starts empty, so a value typed by hand comes
+out as typed until you tick a preset there.
 - **DEDUPLICATOR** — read-only scan for likely duplicates by a chosen criterion.
 - **EXPORTER** — M3U playlists, CUE sheets, CSV, HTML, XML, and mask-based
   reports. A playlist can come out as one list, or one per folder or album with

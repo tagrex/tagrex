@@ -1964,6 +1964,25 @@ async fn preview_transform_over_plan(
         .await
 }
 
+/// Run EDITOR's ticked action groups over the values typed into the field
+/// editor, before they are staged (#789).
+#[tauri::command]
+async fn transform_field_values(
+    state: State<'_, AppState>,
+    groups: Vec<ActionGroupDto>,
+    values: std::collections::BTreeMap<String, String>,
+) -> Result<std::collections::BTreeMap<String, String>, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.transform_field_values(&groups, &values)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
+}
+
 #[tauri::command]
 async fn save_settings(
     app: tauri::AppHandle,
@@ -2158,6 +2177,7 @@ fn main() {
             render_column,
             preview_transform_groups,
             preview_transform_over_plan,
+            transform_field_values,
             player_status,
             media_session_update,
             take_launch_paths
