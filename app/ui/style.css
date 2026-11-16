@@ -5130,6 +5130,15 @@ td[data-field="year"],
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
+/* EDITOR's three actions share one line (#790): Clear tags, Write and next,
+   then Stage in the last cell, each a cell of the closing grid. */
+.editor-actions > #fields-clear {
+  grid-column: 1 / 2;
+}
+.editor-actions > #fields-write-next {
+  grid-column: -3 / -2;
+  justify-self: stretch;
+}
 
 /* Reorganize's destination + mode row (#153). The destination is chosen, never
    typed, so its field reads as a value rather than an input; the mode segment

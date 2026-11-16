@@ -102,6 +102,8 @@ import {
   validateFieldValue,
   addCustomField,
   applyFieldEditor,
+  stagedEditorValues,
+  fieldEditorHasErrors,
 } from "./js/editor.js";
 
 // Hand the table-side refreshers to the panels that were split out (#143); see
@@ -1380,6 +1382,71 @@ async function refreshTrackInPlace(path) {
   if (currentMode === "tagger") refreshFieldEditor();
 }
 
+// EDITOR's "Write and next" (#790): write the fields typed for the one selected
+// file at once, as a cell edit is written on Enter, then select the next file in
+// the list with the caret back in the same field. Tagging files one by one by
+// hand was type, Stage, look at the plan, Apply, pick the next file; Stage stays
+// for edits across several files, where the preview is worth having.
+async function writeFieldEditorAndNext() {
+  const paths = selectedPaths();
+  if (paths.length !== 1) {
+    toast(msg("editor.writeNextOne"), true);
+    return;
+  }
+  // A staged plan is under review; writing past it would leave it stale.
+  if (diffByPath) {
+    toast(msg("editor.writeNextStaged"), true);
+    return;
+  }
+  if (fieldEditorHasErrors()) {
+    toast(msg("editor.writeNextFix"), true);
+    return;
+  }
+  if (applying || undoing) return;
+  const path = paths[0];
+  const focusKey = document.activeElement?.closest?.("#fields-body")
+    ? document.activeElement.dataset.key
+    : null;
+  const values = await stagedEditorValues();
+  const list = [...values].map(([field, value]) => ({ path, field, value }));
+  let wrote = false;
+  if (list.length) {
+    applying = true;
+    try {
+      const plan = await invoke("preview_tag_edits", { edits: list, cover: null });
+      if (plan.changes.length > 0) {
+        await invoke("apply_plan", { plan });
+        wrote = true;
+      }
+    } catch (e) {
+      toast(String(e), true);
+      return;
+    } finally {
+      applying = false;
+    }
+    // A value staged for these fields earlier is written now, not pending.
+    const pending = edits.get(path);
+    if (pending) {
+      for (const field of values.keys()) pending.delete(field);
+      if (pending.size === 0) edits.delete(path);
+    }
+    if (wrote) await refreshHistory();
+    await refreshTrackInPlace(path);
+  }
+  const index = navPathIndex.get(path);
+  const next = index === undefined ? undefined : navPaths[index + 1];
+  const name = fileName(path);
+  if (next) revealPath(next);
+  if (wrote) toast(msg(next ? "editor.wroteNext" : "editor.wroteLast", { file: name }));
+  // The field editor was rebuilt for the new selection; the caret goes back to
+  // the field it was in, its text selected, ready to be typed over.
+  const input = focusKey && el("fields-body").querySelector(`.field-input[data-key="${CSS.escape(focusKey)}"]`);
+  if (input && !input.disabled) {
+    input.focus();
+    input.select();
+  }
+}
+
 // Escape leaves a cell as it was: the typed value is dropped and nothing is
 // written.
 function cancelCellEdit(td) {
@@ -2575,6 +2642,7 @@ for (const id of ["fields-new-name", "fields-new-value"]) {
   });
 }
 el("fields-apply").addEventListener("click", applyFieldEditor);
+el("fields-write-next").addEventListener("click", writeFieldEditorAndNext);
 el("fields-clear").addEventListener("click", previewClearTags);
 // Same flow from the table toolbar, so clearing doesn't require opening EDITOR.
 el("clear-tags").addEventListener("click", previewClearTags);

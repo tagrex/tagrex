@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - EDITOR runs ticked presets too: it is a job of its own behind the wand, and the presets ticked there clean the values typed into the field editor before they are staged, so `first song` typed by hand can be staged as `First Song`. Its set starts empty, so a typed value still comes out as typed until a preset is ticked for EDITOR ([#789](https://github.com/tagrex/tagrex/issues/789)).
+- Write and next in EDITOR, also on Cmd+Enter (Ctrl+Enter) in one of its fields: it writes the fields typed for the selected file at once, after EDITOR's ticked presets, as its own undo entry, then selects the next file in the list with the caret back in the same field. Tagging files one by one by hand no longer needs Stage, the plan and Apply for every file; Stage field changes stays for edits across several files. Outside the field editor Cmd+Enter still applies a staged plan ([#790](https://github.com/tagrex/tagrex/issues/790)).
 
 ### Changed
 

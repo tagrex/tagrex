@@ -91,7 +91,9 @@ regex, optionally field-scoped as `artist:aphex`) and saved filter/sort presets.
 Selection is first-class: click, ⌘/Ctrl, Shift ranges, a drag over the rows,
 keyboard. Tag cells edit
 in place, offering the values the library already holds as you type, and a cell
-is written when you press Enter — a change of its own that undo takes back. A button
+is written when you press Enter — a change of its own that undo takes back. The
+EDITOR panel does the same for a whole file: Write and next (⌘/Ctrl+Enter in a
+field) writes the fields you typed and moves on to the next file. A button
 beside the folder path re-reads what is open without losing your sort, filter or
 pending edits, and right-clicking a file offers Detect BPM and Clear tags for
 the selection, or to drop it from the list or move it to the system Trash.

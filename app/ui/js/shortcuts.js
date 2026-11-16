@@ -53,7 +53,22 @@ function pressMode(mode) {
 // keys (⌘⌫ deletes a line there, ⌘← moves the caret, ⌘Z undoes typing).
 // `buttons` are what the tooltip hint and aria-keyshortcuts go on.
 const ACTIONS = [
-  { id: "apply", combo: "Mod+Enter", buttons: ["diff-apply"], run: () => press("diff-apply") },
+  // In EDITOR's field editor the same key writes the file and moves on (#790);
+  // in any other field it leaves the field its own key, as before.
+  {
+    id: "apply",
+    combo: "Mod+Enter",
+    typing: true,
+    buttons: ["diff-apply", "fields-write-next"],
+    run: (e) => {
+      if (e.target.closest?.("#fields-body")) {
+        press("fields-write-next");
+        return;
+      }
+      if (typingIn(e.target) || typingIn(document.activeElement)) return;
+      press("diff-apply");
+    },
+  },
   { id: "discard", combo: "Mod+Backspace", buttons: ["diff-discard"], run: () => press("diff-discard") },
   { id: "undo", combo: "Mod+KeyZ", buttons: ["undo"], run: () => press("undo") },
   { id: "redo", combo: "Mod+Shift+KeyZ", buttons: ["redo"], run: () => press("redo") },

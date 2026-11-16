@@ -786,6 +786,16 @@ async function throughEditorChain(staged) {
   }
 }
 
+// What "Write and next" writes (#790): the fields typed for the selection after
+// EDITOR's presets, and whether any of them fails its check.
+async function stagedEditorValues() {
+  return throughEditorChain(stagedFields);
+}
+
+function fieldEditorHasErrors() {
+  return !!el("fields-body").querySelector(".field-input.error");
+}
+
 async function applyFieldEditor() {
   const paths = selectedPaths();
   if (paths.length === 0) {
@@ -833,4 +843,6 @@ export {
   validateFieldValue,
   addCustomField,
   applyFieldEditor,
+  stagedEditorValues,
+  fieldEditorHasErrors,
 };
