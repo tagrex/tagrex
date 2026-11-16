@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-16
+
+A release for tagging files by hand. EDITOR gains Write and next (also
+Cmd+Enter in a field): it writes the fields typed for one file and moves on
+to the next, and the presets ticked for EDITOR now clean those typed values
+first. GENERATOR runs its switched-on blocks, numbering, vinyl sides and the
+presets, as one plan with one Apply.
+
 ### Added
 
 - EDITOR runs ticked presets too: it is a job of its own behind the wand, and the presets ticked there clean the values typed into the field editor before they are staged, so `first song` typed by hand can be staged as `First Song`. Its set starts empty, so a typed value still comes out as typed until a preset is ticked for EDITOR ([#789](https://github.com/tagrex/tagrex/issues/789)).

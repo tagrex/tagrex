@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 1.6.x.** Stable for day-to-day use: table editing, rename masks
+> **Status: 1.7.x.** Stable for day-to-day use: table editing, rename masks
 > with a function language, tags read back out of file names and text lists,
 > text transforms, online lookups, BPM detection from the audio, cover art, tag
 > block conversion, duplicate detection, exports, a preview player, a
