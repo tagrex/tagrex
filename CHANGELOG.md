@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- GENERATOR runs its blocks together: Transform, Number tracks and Vinyl sides each have a switch in their heading, and one Preview button at the bottom of the panel builds a single plan from every switched-on block, with the presets seeing the new track numbers along with every other tag. Numbering a set of files and title-casing their titles took two plans and two Apply presses. A transform alone still cleans up a staged plan as before, and the switches are remembered ([#788](https://github.com/tagrex/tagrex/issues/788)).
+
 ## [1.6.2] - 2026-11-16
 
 A small release that mends the in-app update on Fedora 45 and other systems

@@ -1931,13 +1931,14 @@ async fn preview_transform_groups(
     state: State<'_, AppState>,
     paths: Vec<String>,
     groups: Vec<ActionGroupDto>,
+    base: Option<Vec<TagEditDto>>,
 ) -> Result<PlanDto, ErrorDto> {
     let state = state.inner().clone();
     SESSION_QUEUE
         .run(move || {
             let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
             with_app(&state, |app| {
-                app.preview_transform_groups(&paths, &groups)
+                app.preview_transform_groups_over(&paths, &groups, base.as_deref().unwrap_or(&[]))
                     .map_err(ErrorDto::from)
             })
         })

@@ -574,8 +574,12 @@
                up from any mode without a second copy of it existing (#149,
                #239). #transform-home marks where it belongs. -->
           <div id="transform-home"></div>
-          <div id="transform-block" class="panel-block">
-            <h2><span data-i18n="generator.transform">Transform</span> <span id="transform-count" class="muted"></span></h2>
+          <!-- Each block has a switch in its heading, and the button at the
+               bottom of the panel runs every switched-on block as one plan
+               (#788). The heading is hidden in the Transform window, and the
+               switch with it: there the context's own action runs the chain. -->
+          <div id="transform-block" class="panel-block" data-gen-block="transform">
+            <h2><label class="gen-switch"><input type="checkbox" data-gen-switch="transform" /><span data-i18n="generator.transform">Transform</span></label> <span id="transform-count" class="muted"></span></h2>
             <p class="hint muted" style="padding: 0" data-i18n="generator.transformHint">
               Rules run top to bottom. Nothing is written until you review the preview and press Apply.
             </p>
@@ -597,21 +601,17 @@
               <!-- Where presets are made and changed (#391); this block only
                    uses them. -->
               <button id="presets-edit" class="btn" type="button" data-i18n="presets.edit">Edit presets…</button>
-              <div class="spacer"></div>
-              <button id="transform-preview" class="primary" data-i18n="generator.previewChanges">Preview changes</button>
             </div>
           </div>
 
           <!-- Auto-number (#39): fill TrackNumber 1..N across the selection in
                mapping order, staged through the pending-edits preview/apply/undo. -->
-          <div class="panel-block">
-            <h2><span data-i18n="generator.numberTracks">Number tracks</span> <span id="autonum-count" class="muted"></span></h2>
+          <div class="panel-block" data-gen-block="number">
+            <h2><label class="gen-switch"><input type="checkbox" data-gen-switch="number" /><span data-i18n="generator.numberTracks">Number tracks</span></label> <span id="autonum-count" class="muted"></span></h2>
             <p class="hint muted" style="padding: 0" data-i18n="generator.numberHint">Numbers the selected files in table order.</p>
-            <!-- The run button closes the last line (#571): the flags start it,
-                 the button ends it, and the free space sits between them. -->
-            <!-- Six cells, the run button last (#579): the fields and flags fill
-                 the closing grid, so no row has an empty corner. -->
-            <div class="panel-actions">
+            <!-- The fields and flags flow in lines (#788): the run button that
+                 closed this grid moved to the bottom of the panel. -->
+            <div class="panel-actions gen-cells">
               <span class="panel-field"><label for="autonum-start" data-i18n="generator.startAt">Start at</label><input id="autonum-start" type="number" min="0" step="1" value="1" /></span>
               <span class="panel-field"><label for="autonum-disc" data-i18n="generator.discNo">Disc #</label><input id="autonum-disc" type="text" data-i18n-placeholder="generator.discPlaceholder" placeholder="none" data-i18n-title="generator.discTitle" title="Write this disc number to every numbered file; leave it blank to keep their disc numbers as they are" spellcheck="false" /></span>
               <label class="rule-flag" data-i18n-title="generator.trackTotalTitle" title="Also write the track total (the count of numbered files) to every file">
@@ -623,7 +623,6 @@
               <label class="rule-flag" data-i18n-title="generator.keepSidesTitle" title="Leave non-numeric positions like vinyl sides (A1, B2) untouched instead of renumbering them">
                 <input id="autonum-keep-sides" type="checkbox" checked /><span data-i18n="generator.keepSides">Keep vinyl sides</span>
               </label>
-              <button id="autonum-run" class="primary" data-i18n="generator.numberRun">Number tracks</button>
             </div>
           </div>
 
@@ -631,12 +630,19 @@
                or the reverse 1A) into a plain track number plus a disc number
                (side A -> disc 1, B -> disc 2, ...), since the side letter can't
                live in the integer track-number tag. Staged like the rest. -->
-          <div class="panel-block">
-            <h2><span data-i18n="generator.vinylSides">Vinyl sides</span> <span id="vinyl-count" class="muted"></span></h2>
-            <!-- No controls: the note starts the closing line (#571). -->
+          <div class="panel-block" data-gen-block="vinyl">
+            <h2><label class="gen-switch"><input type="checkbox" data-gen-switch="vinyl" /><span data-i18n="generator.vinylSides">Vinyl sides</span></label> <span id="vinyl-count" class="muted"></span></h2>
             <div class="panel-actions">
               <p class="panel-note" data-i18n="generator.vinylHint" data-i18n-html>Side A → disc 1, B → disc 2; <b>A1</b> becomes track 1. Rows without a side letter stay as they are.</p>
-              <button id="vinyl-split" class="primary" data-i18n="generator.splitSide">Split side → disc</button>
+            </div>
+          </div>
+
+          <!-- The one run (#788): vinyl sides, then numbering, then the ticked
+               presets over the selection with those values in place. -->
+          <div class="panel-block">
+            <div class="panel-actions">
+              <p id="gen-run-note" class="panel-note"></p>
+              <button id="gen-run" class="primary" data-i18n="generator.previewChanges">Preview changes</button>
             </div>
           </div>
         </section>

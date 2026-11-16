@@ -1148,6 +1148,11 @@ body.panel-collapsed .col-splitter {
   color: var(--text);
   font-weight: var(--fw-medium);
 }
+/* A note with no button after it takes the row (GENERATOR's Vinyl sides since
+   #788 moved the run button to the bottom of the panel). */
+.panel-actions > .panel-note:only-child {
+  grid-column: 1 / -1;
+}
 .panel-actions > .ro-note.panel-note {
   display: flex;
   align-items: center;
@@ -2841,6 +2846,32 @@ body.show-checkbox tr.playing td.sel {
 #autonum-disc {
   width: 6ch;
   box-sizing: content-box;
+}
+/* ---- GENERATOR blocks (#788) ----
+   A switch in each block's heading puts the block in the panel's one run. It
+   reads as part of the title: a checkbox before the heading's caps. A block
+   left out keeps its settings on screen, dimmed and out of reach (the script
+   makes them inert), so switching it back on finds them as they were. The
+   Transform window borrows the transform block without its heading, and never
+   dims it: there the chain belongs to another job. */
+.gen-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.gen-switch > input {
+  margin: 0;
+}
+.panel-block.gen-off:not(.in-dialog) > :not(h2) {
+  opacity: 0.55;
+}
+/* Number tracks' fields and flags flow in lines: the run button that closed
+   their grid is the panel's own now. */
+.panel-actions.gen-cells {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
 }
 .export-row select {
   padding-right: 24px; /* room for the #115 caret */

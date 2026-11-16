@@ -641,6 +641,11 @@ function mockInvoke(cmd, args) {
           let name = p.slice(p.lastIndexOf("/") + 1, p.lastIndexOf("."));
           let ext = p.slice(p.lastIndexOf(".") + 1);
           const tags = { ...t.tags };
+          // GENERATOR's other blocks' values, in place before the chains (#788).
+          for (const edit of (args.base || []).filter((e) => e.path === p)) {
+            if (edit.value) tags[edit.field] = edit.value;
+            else delete tags[edit.field];
+          }
           for (const group of args.groups) {
             for (const seg of mockSegments(group)) {
               if (seg.scope === "filename") {

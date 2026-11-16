@@ -56,7 +56,9 @@ function overStagedPlan() {
 // mode). The rule chain persists across mode switches within a session.
 function refreshGenerator() {
   const count = selectedPaths().length;
-  const staged = overStagedPlan();
+  const on = generatorBlocks();
+  // A staged plan is only what the run acts on when the transform runs alone.
+  const staged = overStagedPlan() && transformAlone(on);
   // In the dialog the chain has no button, so the note about acting on a staged
   // plan would be describing a press that cannot happen there (#237).
   const inDialog = !el("transform-modal").hidden;
@@ -66,9 +68,9 @@ function refreshGenerator() {
       ? `— ${tn("count.selected", count)}`
       : "";
   el("transform-over-plan").hidden = !staged || inDialog;
-  el("transform-preview").textContent = t(
-    staged ? "generator.cleanUpStaged" : "generator.previewChanges"
-  );
+  el("gen-run").textContent = t(staged ? "generator.cleanUpStaged" : "generator.previewChanges");
+  el("gen-run-note").textContent = runNote(on);
+  paintBlocks(on);
   el("autonum-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
   el("vinyl-count").textContent = count ? `— ${tn("count.selected", count)}` : "";
   presetChecklist.render();
@@ -113,16 +115,19 @@ function isVinylSide(value) {
   return v !== "" && !/^\d+$/.test(v);
 }
 
-// Fill TrackNumber across the selection (mapping order) into the pending-edits
-// buffer, then preview — so it flows through the usual apply/undo path. Options:
+// The field map `into` holds for `path`, made on first use.
+function fieldsOf(into, path) {
+  if (!into.has(path)) into.set(path, new Map());
+  return into.get(path);
+}
+
+// Fill TrackNumber across the selection (mapping order) into `into`. Options:
 // start value, optional TrackTotal + disc, per-group restart when a grouping is
-// active, and preserving existing vinyl-side positions.
-async function numberTracks() {
-  const paths = selectedPaths(); // mapping order; reads `selection`, survives re-render
-  if (paths.length === 0) {
-    toast(t("generator.selectToNumber"), true);
-    return;
-  }
+// active, and preserving existing vinyl-side positions. Gives back how many
+// files got a number and whether the numbering restarted per group, or null
+// after saying why it cannot run. A position `into` already holds (a vinyl side
+// split in the same run) counts over the one on disk.
+function collectNumbers(paths, into) {
   const start = Math.max(0, Math.floor(Number(el("autonum-start").value) || 1));
   const writeTotal = el("autonum-total").checked;
   const perGroup = el("autonum-per-group").checked && !!groupBy;
@@ -130,7 +135,7 @@ async function numberTracks() {
   const discRaw = el("autonum-disc").value.trim();
   if (discRaw && !/^\d+$/.test(discRaw)) {
     toast(t("generator.discWhole"), true);
-    return;
+    return null;
   }
   const disc = discRaw ? String(Number(discRaw)) : "";
 
@@ -143,7 +148,7 @@ async function numberTracks() {
   for (const path of paths) {
     const track = trackByPath.get(path);
     if (!track) continue;
-    if (keepSides && isVinylSide(track.tags.track)) continue;
+    if (keepSides && isVinylSide(into.get(path)?.get("track") ?? track.tags.track)) continue;
     const gkey = perGroup ? groupKeyOf(track) : "";
     let n;
     if (perGroup) {
@@ -153,10 +158,6 @@ async function numberTracks() {
       n = flat++;
     }
     assigned.push({ path, number: n, gkey });
-  }
-  if (assigned.length === 0) {
-    toast(t("generator.nothingToNumber"));
-    return;
   }
 
   // TrackTotal (unpadded): per group when restarting, else the whole run.
@@ -169,39 +170,26 @@ async function numberTracks() {
   // normalizes it), so zero-padding can't persist here — pad file names instead
   // via the RENAMER (%track:2%). We write the plain number.
   for (const a of assigned) {
-    if (!edits.has(a.path)) edits.set(a.path, new Map());
-    const fields = edits.get(a.path);
+    const fields = fieldsOf(into, a.path);
     fields.set("track", String(a.number));
     if (writeTotal) fields.set("tracktotal", String(perGroup ? groupTotals.get(a.gkey) : assigned.length));
     if (disc) fields.set("disc", disc);
   }
-  hooks.renderTracks();
-  await hooks.previewEdits();
-  toast(
-    t("toast.numbered", { tracks: tn("unit.track", assigned.length) }) +
-      (perGroup ? t("toast.numbered.perGroup") : "")
-  );
+  return { count: assigned.length, perGroup };
 }
 
-
 // Decompose vinyl-side track values in the selection into a plain track number
-// plus a disc number, staged into the pending-edits buffer. For files already
-// tagged "A1"/"B2" (e.g. by another tool) — the side can't live in the integer
-// track tag, so it moves to the disc field. A bare side ("B", the whole side is
-// one track) has no digit, so its track becomes 1.
-async function splitVinylSides() {
-  const paths = selectedPaths();
-  if (paths.length === 0) {
-    toast(t("generator.selectToSplit"), true);
-    return;
-  }
+// plus a disc number, into `into`, and give back how many were split. For files
+// already tagged "A1"/"B2" (e.g. by another tool) — the side can't live in the
+// integer track tag, so it moves to the disc field. A bare side ("B", the whole
+// side is one track) has no digit, so its track becomes 1.
+function collectVinylSides(paths, into) {
   let changed = 0;
   for (const path of paths) {
     const raw = currentFieldValue(path, "track");
     const parsed = parseVinylPosition(raw);
     if (!parsed) continue;
-    if (!edits.has(path)) edits.set(path, new Map());
-    const fields = edits.get(path);
+    const fields = fieldsOf(into, path);
     fields.set("track", parsed.track ?? "1");
     fields.set("disc", parsed.disc);
     // Keep the raw side position (A1, B2) verbatim in POSITION — the same tag an
@@ -210,13 +198,136 @@ async function splitVinylSides() {
     fields.set("custom:POSITION", raw.trim());
     changed += 1;
   }
-  if (changed === 0) {
-    toast(t("generator.noSides"));
+  return changed;
+}
+
+// ---- the panel's blocks and its one run (#788) ----
+// Each block has a switch, and one button runs every switched-on block as one
+// plan: vinyl sides, then numbering, then the ticked presets over the selection
+// with those values already in place, so the rules see the new numbers and the
+// rest of each file alike. Numbering hand-tagged files and title-casing them
+// used to be two plans and two Apply presses: a transform over the staged
+// numbering only revised the values that plan proposed (#142).
+const GEN_BLOCKS_KEY = "tagrex.generatorBlocks";
+const GEN_BLOCKS_DEFAULT = { transform: true, number: false, vinyl: false };
+// In run order, for the note under the blocks.
+const GEN_BLOCK_TITLES = [
+  ["vinyl", "generator.vinylSides"],
+  ["number", "generator.numberTracks"],
+  ["transform", "generator.transform"],
+];
+
+function generatorBlocks() {
+  try {
+    return { ...GEN_BLOCKS_DEFAULT, ...JSON.parse(localStorage.getItem(GEN_BLOCKS_KEY) || "{}") };
+  } catch (e) {
+    return { ...GEN_BLOCKS_DEFAULT };
+  }
+}
+
+function setGeneratorBlock(name, on) {
+  try {
+    localStorage.setItem(GEN_BLOCKS_KEY, JSON.stringify({ ...generatorBlocks(), [name]: on }));
+  } catch (e) {
+    // Not remembered, but the run below still reads the switches on screen.
+  }
+}
+
+// The transform on its own is the one run that acts on a staged plan (#142):
+// the other blocks read the files.
+function transformAlone(on) {
+  return on.transform && !on.number && !on.vinyl;
+}
+
+// Switches, dimming and inertness from the remembered set. The Transform window
+// borrows the transform block (#239) for another job, so there it is never off.
+function paintBlocks(on) {
+  for (const block of document.querySelectorAll("[data-gen-block]")) {
+    const name = block.dataset.genBlock;
+    const off = !on[name] && !block.classList.contains("in-dialog");
+    block.classList.toggle("gen-off", off);
+    for (const child of block.children) {
+      if (child.tagName !== "H2") child.inert = off;
+    }
+    const toggle = block.querySelector("[data-gen-switch]");
+    if (toggle) toggle.checked = !!on[name];
+  }
+}
+
+function runNote(on) {
+  const names = GEN_BLOCK_TITLES.filter(([name]) => on[name]).map(([, key]) => t(key));
+  return names.length ? t("generator.runNote", { blocks: names.join(" → ") }) : t("generator.noneOn");
+}
+
+async function runGenerator() {
+  const on = generatorBlocks();
+  if (!on.transform && !on.number && !on.vinyl) {
+    toast(t("generator.noneOn"), true);
     return;
   }
-  hooks.renderTracks();
-  await hooks.previewEdits();
-  toast(t("toast.splitSides", { positions: tn("unit.vinylPosition", changed) }));
+  if (transformAlone(on)) {
+    await previewTransform();
+    return;
+  }
+  const paths = selectedPaths(); // mapping order; reads `selection`, survives re-render
+  if (paths.length === 0) {
+    toast(t("toast.selectOneFile"), true);
+    return;
+  }
+  const produced = new Map();
+  const split = on.vinyl ? collectVinylSides(paths, produced) : 0;
+  const numbered = on.number ? collectNumbers(paths, produced) : { count: 0, perGroup: false };
+  if (numbered === null) return;
+
+  if (!on.transform) {
+    if (produced.size === 0) {
+      toast(t(on.number ? "generator.nothingToNumber" : "generator.noSides"));
+      return;
+    }
+    // Through the pending-edits buffer, as each block did on its own button.
+    for (const [path, fields] of produced) {
+      const into = fieldsOf(edits, path);
+      for (const [field, value] of fields) into.set(field, value);
+    }
+    hooks.renderTracks();
+    await hooks.previewEdits();
+    if (split && numbered.count) {
+      toast(t("toast.previewing", { files: tn("unit.file", produced.size) }));
+    } else if (numbered.count) {
+      toast(
+        t("toast.numbered", { tracks: tn("unit.track", numbered.count) }) +
+          (numbered.perGroup ? t("toast.numbered.perGroup") : "")
+      );
+    } else {
+      toast(t("toast.splitSides", { positions: tn("unit.vinylPosition", split) }));
+    }
+    return;
+  }
+
+  const groups = presetsFor("generator");
+  if (!groups.length) {
+    toast(t("presets.noneTicked"), true);
+    return;
+  }
+  const base = [...produced].flatMap(([path, fields]) =>
+    [...fields].map(([field, value]) => ({ path, field, value: value ?? null }))
+  );
+  try {
+    const plan = await invoke("preview_transform_groups", { paths, groups, base });
+    stageRun(
+      plan,
+      groups.flatMap((g) => g.rules.map((r) => r.scope)),
+      false,
+    );
+    toast(
+      plan.changes.length
+        ? t("toast.previewing", { files: tn("unit.file", plan.changes.length) })
+        : nothingChanged(false, "subject.theseGroups"),
+      plan.changes.length === 0
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
 }
 
 // Run the ticked presets over the selection, or over the staged plan when there
@@ -326,8 +437,8 @@ function openTransformModal() {
   el("transform-modal-title").textContent = t(CONTEXT_TITLES[context]);
   paintContextNote(context);
   el("transform-context-note").hidden = false;
-  // No run button here: the context's own action runs the chain (#237).
-  el("transform-preview").hidden = true;
+  // No run button here: the context's own action runs the chain (#237), and
+  // the GENERATOR switch is in the heading the dialog hides (#788).
   el("transform-block").classList.add("in-dialog");
   el("transform-modal-body").append(el("transform-block"));
   el("transform-modal").hidden = false;
@@ -349,9 +460,9 @@ function closeTransformModal() {
   if (!transformModalOpen()) return;
   el("transform-modal").hidden = true;
   el("transform-context-note").hidden = true;
-  el("transform-preview").hidden = false;
   el("transform-block").classList.remove("in-dialog");
   el("transform-home").after(el("transform-block"));
+  paintBlocks(generatorBlocks());
   refreshTransformButton();
 }
 
@@ -419,7 +530,13 @@ onPresetsChanged((renamed) => {
   refreshTransformButton();
   notifyChainChanged();
 });
-el("transform-preview").addEventListener("click", previewTransform);
+el("gen-run").addEventListener("click", runGenerator);
+for (const toggle of document.querySelectorAll("[data-gen-switch]")) {
+  toggle.addEventListener("change", () => {
+    setGeneratorBlock(toggle.dataset.genSwitch, toggle.checked);
+    refreshGenerator();
+  });
+}
 el("presets-edit").addEventListener("click", () => openPresetEditor());
 el("transform-btn").addEventListener("click", () =>
   transformModalOpen() ? closeTransformModal() : openTransformModal()
@@ -432,8 +549,6 @@ el("transform-modal").addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && transformModalOpen()) closeTransformModal();
 });
-el("autonum-run").addEventListener("click", numberTracks);
-el("vinyl-split").addEventListener("click", splitVinylSides);
 // Rule reorder is wired per-card by the chain component via enablePointerReorder
 // (grip drag), with ↑/↓ as the fallback — no container-level HTML5 DnD (#88).
 
@@ -441,8 +556,7 @@ export {
   openTransformModal,
   syncTransformPlacement,
   refreshTransformButton,
-  numberTracks,
   previewTransform,
   refreshGenerator,
-  splitVinylSides,
+  runGenerator,
 };

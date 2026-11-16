@@ -3525,6 +3525,26 @@ impl App {
         paths: &[PathBuf],
         groups: &[ActionGroupDto],
     ) -> Result<PlanDto, AppError> {
+        self.preview_transform_groups_over(paths, groups, &[])
+    }
+
+    /// [`Self::preview_transform_groups`] with `base` values put in place
+    /// before the groups run (#788).
+    ///
+    /// GENERATOR's other blocks produce values (track numbers, discs read out of
+    /// vinyl sides) that the groups have to see together with everything else
+    /// in the file: a transform over a plan of only those values never reaches
+    /// the titles, and a transform over the files never sees the new numbers.
+    /// So each file starts from its tags with `base` laid over them, the groups
+    /// run over the lot, and the net difference from the file on disk is the
+    /// change, which makes the whole panel one plan and one undo entry. An
+    /// empty `value` in `base` removes that field.
+    pub fn preview_transform_groups_over(
+        &self,
+        paths: &[PathBuf],
+        groups: &[ActionGroupDto],
+        base: &[TagEditDto],
+    ) -> Result<PlanDto, AppError> {
         // Build every chain up front: a malformed rule should be an error before
         // anything is previewed, not halfway through the file list.
         let chains = groups
@@ -3554,6 +3574,14 @@ impl App {
                 .and_then(|e| e.to_str())
                 .map(str::to_string);
             let mut tags = track.tags.clone();
+            let file = path.to_string_lossy();
+            for edit in base.iter().filter(|edit| edit.path == file) {
+                let field = TagField::from_storage_key(&edit.field);
+                match edit.value.clone().filter(|value| !value.is_empty()) {
+                    Some(value) => tags.insert(field, value),
+                    None => tags.remove(&field),
+                };
+            }
 
             for (scope, chain) in &chains {
                 match scope.as_str() {
@@ -3581,7 +3609,7 @@ impl App {
                 }
             }
 
-            let tag_changes: Vec<FieldChangeDto> = tags
+            let mut tag_changes: Vec<FieldChangeDto> = tags
                 .iter()
                 .filter(|(field, value)| track.tags.get(field) != Some(value))
                 .map(|(field, value)| {
@@ -3592,6 +3620,16 @@ impl App {
                     )
                 })
                 .collect();
+            // A field `base` removed is a change too; the groups never remove one.
+            tag_changes.extend(
+                track
+                    .tags
+                    .iter()
+                    .filter(|(field, _)| !tags.contains_key(field))
+                    .map(|(field, old)| {
+                        FieldChangeDto::new(field.to_storage_key(), Some(old.clone()), None)
+                    }),
+            );
 
             let file_name = match &ext {
                 Some(ext) => format!("{name}.{ext}"),
@@ -12041,6 +12079,79 @@ mod tests {
         assert_eq!(
             changed.get("title").map(String::as_str),
             Some("Desert Rain")
+        );
+    }
+
+    #[test]
+    fn transform_groups_over_base_values_make_one_plan() {
+        let dir = TempDir::new("transform-groups-base");
+        let first = dir.tagged_flac("a.flac", "some artist", "first song");
+        let second = dir.tagged_flac("b.flac", "some artist", "second song");
+        let app = open_app(&dir);
+        let groups = [ActionGroupDto {
+            name: "title case".into(),
+            scope: "tags".into(),
+            rules: vec![case_rule("title")],
+            note: String::new(),
+        }];
+        let base = |path: &PathBuf, track: &str| {
+            let path = path.to_string_lossy().into_owned();
+            vec![
+                TagEditDto {
+                    path: path.clone(),
+                    field: "track".into(),
+                    value: Some(track.into()),
+                },
+                TagEditDto {
+                    path,
+                    field: "tracktotal".into(),
+                    value: Some("2".into()),
+                },
+            ]
+        };
+        let edits: Vec<TagEditDto> = [base(&first, "1"), base(&second, "2")].concat();
+
+        // The numbers GENERATOR produced and the case the presets fix land in
+        // one plan: each file carries both, measured against the file on disk.
+        let plan = app
+            .preview_transform_groups_over(&[first.clone(), second.clone()], &groups, &edits)
+            .unwrap();
+        assert_eq!(plan.changes.len(), 2);
+        let fields =
+            |i: usize| -> std::collections::HashMap<String, (Option<String>, Option<String>)> {
+                plan.changes[i]
+                    .tag_changes
+                    .iter()
+                    .map(|c| (c.field.clone(), (c.old.clone(), c.new.clone())))
+                    .collect()
+            };
+        let a = fields(0);
+        assert_eq!(
+            a["title"],
+            (Some("first song".into()), Some("First Song".into()))
+        );
+        assert_eq!(a["artist"].1.as_deref(), Some("Some Artist"));
+        assert_eq!(a["track"], (None, Some("1".into())));
+        assert_eq!(a["tracktotal"].1.as_deref(), Some("2"));
+        assert_eq!(fields(1)["track"].1.as_deref(), Some("2"));
+
+        // An empty base value removes the field, which is a change of its own.
+        let clear = [TagEditDto {
+            path: first.to_string_lossy().into_owned(),
+            field: "artist".into(),
+            value: None,
+        }];
+        let plan = app
+            .preview_transform_groups_over(std::slice::from_ref(&first), &[], &clear)
+            .unwrap();
+        let artist = plan.changes[0]
+            .tag_changes
+            .iter()
+            .find(|c| c.field == "artist")
+            .unwrap();
+        assert_eq!(
+            (artist.old.as_deref(), artist.new.as_deref()),
+            (Some("some artist"), None)
         );
     }
 

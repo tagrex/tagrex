@@ -172,7 +172,9 @@ with a count; choosing one narrows the table to the files it flags.
   notation. Rules are grouped into named presets, made in their own editor,
   which tries them on a sample as you build them; every rule names the field it
   acts on, so one preset can upper-case a catalogue number while title-casing
-  the titles.
+  the titles. Track numbering (with the total) and vinyl sides → disc sit beside
+  them, each with a switch: the switched-on blocks preview as one plan, so
+  numbering a set and title-casing it is one Apply.
 
 **Cleanup is part of the job, not a second step.** Tick presets in the dialog
 behind the wand and they run as part of importing a release, reading tags out
