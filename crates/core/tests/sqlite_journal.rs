@@ -720,3 +720,50 @@ fn a_healthy_or_unavailable_journal_is_never_set_aside() {
     assert!(SqliteJournal::open_or_recover(&folder).is_err());
     assert!(folder.is_dir(), "an unavailable journal is not moved");
 }
+
+#[cfg(unix)]
+#[test]
+fn recovering_a_private_journal_keeps_the_replacement_private() {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let dir = TempDir::new("private-recovery");
+    let db = dir.db();
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&db)
+        .unwrap();
+    file.write_all(b"a damaged private history").unwrap();
+    drop(file);
+    let (journal, aside) = SqliteJournal::open_or_recover(&db).unwrap();
+    let aside = aside.unwrap();
+    for path in [&db, &aside] {
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    assert_eq!(std::fs::read(&aside).unwrap(), b"a damaged private history");
+    assert!(journal.batches().unwrap().is_empty());
+    drop(journal);
+    assert!(SqliteJournal::open_or_recover(&db).unwrap().1.is_none());
+}
+
+#[cfg(unix)]
+#[test]
+fn recovering_a_journal_preserves_deliberate_group_read_access() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new("group-read-recovery");
+    let db = dir.db();
+    std::fs::write(&db, b"a damaged group-readable history").unwrap();
+    std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o640)).unwrap();
+    let (journal, aside) = SqliteJournal::open_or_recover(&db).unwrap();
+    for path in [&db, &aside.unwrap()] {
+        assert_eq!(
+            std::fs::metadata(path).unwrap().permissions().mode() & 0o777,
+            0o640
+        );
+    }
+    assert!(journal.batches().unwrap().is_empty());
+}
