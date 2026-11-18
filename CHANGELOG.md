@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- On Linux and macOS, a damaged history journal that is set aside is replaced by a new one with the same permissions, so a journal its owner made private (`0600`) no longer comes back readable by other users ([#791](https://github.com/tagrex/tagrex/pull/791)).
+- Setting aside a damaged history journal that was read-only no longer leaves an empty read-only journal that stops every later start: the new journal always lets its owner read and write it, still without widening anyone else's access, and if it cannot be opened the empty file is removed so the next start tries again ([#792](https://github.com/tagrex/tagrex/issues/792)).
+
 ## [1.7.0] - 2026-11-16
 
 A release for tagging files by hand. EDITOR gains Write and next (also

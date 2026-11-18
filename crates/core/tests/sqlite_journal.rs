@@ -767,3 +767,29 @@ fn recovering_a_journal_preserves_deliberate_group_read_access() {
     }
     assert!(journal.batches().unwrap().is_empty());
 }
+
+#[cfg(unix)]
+#[test]
+fn recovering_a_read_only_journal_gives_a_writable_one_and_no_wider_access() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new("read-only-recovery");
+    let db = dir.db();
+    std::fs::write(&db, b"a damaged read-only history").unwrap();
+    std::fs::set_permissions(&db, std::fs::Permissions::from_mode(0o440)).unwrap();
+    let (journal, aside) = SqliteJournal::open_or_recover(&db).unwrap();
+    assert_eq!(
+        std::fs::metadata(&db).unwrap().permissions().mode() & 0o777,
+        0o640
+    );
+    assert_eq!(
+        std::fs::metadata(aside.unwrap())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o440
+    );
+    assert!(journal.batches().unwrap().is_empty());
+    drop(journal);
+    assert!(SqliteJournal::open_or_recover(&db).unwrap().1.is_none());
+}

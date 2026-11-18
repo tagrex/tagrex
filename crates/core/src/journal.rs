@@ -347,21 +347,37 @@ impl SqliteJournal {
         #[cfg(unix)]
         {
             use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            // The owner always gets read and write (#792): a damaged read-only
+            // journal would otherwise be replaced by an empty read-only one that
+            // SQLite cannot use. Group and other bits stay as they were.
+            let mode = (permissions.mode() & 0o777) | 0o600;
             // Create exclusively, before SQLite opens it, so there is no window
             // in which a replacement journal has broader permissions.
             let replacement = std::fs::OpenOptions::new()
                 .write(true)
                 .create_new(true)
-                .mode(permissions.mode() & 0o777)
+                .mode(mode)
                 .open(path)
                 .map_err(|err| JournalError::Storage(err.to_string()))?;
             // A restrictive umask must not silently remove deliberately granted
             // access either. Restore only the original rwx bits before SQLite.
             replacement
-                .set_permissions(std::fs::Permissions::from_mode(permissions.mode() & 0o777))
+                .set_permissions(std::fs::Permissions::from_mode(mode))
                 .map_err(|err| JournalError::Storage(err.to_string()))?;
         }
-        Ok((Self::open(path)?, Some(aside)))
+        match Self::open(path) {
+            Ok(journal) => Ok((journal, Some(aside))),
+            Err(error) => {
+                // An empty file left here is not a damaged database, so the next
+                // start would meet the same error forever (#792). Take back only
+                // the empty replacement made above, so the next start retries.
+                #[cfg(unix)]
+                if std::fs::metadata(path).is_ok_and(|meta| meta.len() == 0) {
+                    std::fs::remove_file(path).ok();
+                }
+                Err(error)
+            }
+        }
     }
 
     /// Open (creating if needed) the journal database at `path` and run
