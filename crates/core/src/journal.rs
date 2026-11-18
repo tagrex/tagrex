@@ -323,6 +323,13 @@ impl SqliteJournal {
         if !is_damaged_database(path) {
             return Err(error);
         }
+        // A caller may have deliberately restricted its history to 0600. SQLite
+        // otherwise recreates a recovered database using the process umask,
+        // which can make that private history readable by other users.
+        #[cfg(unix)]
+        let permissions = std::fs::metadata(path)
+            .map_err(|err| JournalError::Storage(err.to_string()))?
+            .permissions();
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|elapsed| elapsed.as_secs())
@@ -336,6 +343,23 @@ impl SqliteJournal {
             if from.exists() {
                 std::fs::rename(&from, with_suffix(&aside, companion)).ok();
             }
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            // Create exclusively, before SQLite opens it, so there is no window
+            // in which a replacement journal has broader permissions.
+            let replacement = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(permissions.mode() & 0o777)
+                .open(path)
+                .map_err(|err| JournalError::Storage(err.to_string()))?;
+            // A restrictive umask must not silently remove deliberately granted
+            // access either. Restore only the original rwx bits before SQLite.
+            replacement
+                .set_permissions(std::fs::Permissions::from_mode(permissions.mode() & 0o777))
+                .map_err(|err| JournalError::Storage(err.to_string()))?;
         }
         Ok((Self::open(path)?, Some(aside)))
     }
