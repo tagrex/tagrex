@@ -626,7 +626,7 @@ export const de = {
   "placeholder.technical._filesize": "Größe, gut lesbar",
   "placeholder.technical._filesize_bytes": "Größe in Bytes",
   "placeholder.technical._filedate": "Änderungsdatum, JJJJ-MM-TT",
-  "placeholder.special.side": "Buchstabe der Vinyl-Seite, aus der Disc-Nummer",
+  "placeholder.special.side": "Buchstabe der Vinyl-Seite, aus POSITION oder der Disc-Nummer",
   "placeholder.group.special": "Spezial",
   "placeholder.special.position": "Trackposition im Release, z. B. A1 — beim Import gespeichert",
   "placeholder.special.skip": "Erkennt ein Textstück und verwirft es",

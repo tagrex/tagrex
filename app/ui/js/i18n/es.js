@@ -628,7 +628,7 @@ export const es = {
   "placeholder.technical._filesize": "Tamaño, legible",
   "placeholder.technical._filesize_bytes": "Tamaño en bytes",
   "placeholder.technical._filedate": "Fecha de modificación, AAAA-MM-DD",
-  "placeholder.special.side": "Letra de la cara del vinilo, a partir del número de disco",
+  "placeholder.special.side": "Letra de la cara del vinilo, a partir de POSITION o del número de disco",
   "placeholder.group.special": "Especiales",
   "placeholder.special.position": "Posición de la pista en el lanzamiento, p. ej. A1 — guardada al importar",
   "placeholder.special.skip": "Reconoce un tramo de texto y lo descarta",

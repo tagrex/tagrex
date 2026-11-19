@@ -631,7 +631,7 @@ export const uk = {
   "placeholder.technical._filesize": "Розмір, по-людськи",
   "placeholder.technical._filesize_bytes": "Розмір у байтах",
   "placeholder.technical._filedate": "Дата зміни, РРРР-ММ-ДД",
-  "placeholder.special.side": "Літера сторони вінілу, з номера диска",
+  "placeholder.special.side": "Літера сторони вінілу, з POSITION або номера диска",
   "placeholder.group.special": "Особливі",
   "placeholder.special.position": "Позиція треку в релізі, напр. A1 — зберігається під час імпорту",
   "placeholder.special.skip": "Збігається зі шматком тексту й відкидає його",

@@ -630,7 +630,7 @@ export const ru = {
   "placeholder.technical._filesize": "Размер, по-человечески",
   "placeholder.technical._filesize_bytes": "Размер в байтах",
   "placeholder.technical._filedate": "Дата изменения, ГГГГ-ММ-ДД",
-  "placeholder.special.side": "Буква стороны винила, из номера диска",
+  "placeholder.special.side": "Буква стороны винила, из POSITION или номера диска",
   "placeholder.group.special": "Особые",
   "placeholder.special.position": "Позиция трека в релизе, напр. A1 — сохраняется при импорте",
   "placeholder.special.skip": "Совпадает с куском текста и отбрасывает его",

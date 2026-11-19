@@ -630,7 +630,7 @@ export const it = {
   "placeholder.technical._filesize": "Dimensione, leggibile",
   "placeholder.technical._filesize_bytes": "Dimensione in byte",
   "placeholder.technical._filedate": "Data modifica, YYYY-MM-DD",
-  "placeholder.special.side": "Lettera lato vinile, dal numero disco",
+  "placeholder.special.side": "Lettera lato vinile, da POSITION o dal numero disco",
   "placeholder.group.special": "Speciale",
   "placeholder.special.position": "Posizione della traccia nella release, es. A1 — salvata all'importazione",
   "placeholder.special.skip": "Abbina e scarta una porzione di testo",

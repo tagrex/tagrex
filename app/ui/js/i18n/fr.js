@@ -630,7 +630,7 @@ export const fr = {
   "placeholder.technical._filesize": "Taille, lisible",
   "placeholder.technical._filesize_bytes": "Taille en octets",
   "placeholder.technical._filedate": "Date de modification, AAAA-MM-JJ",
-  "placeholder.special.side": "Lettre de la face du vinyle, d'après le numéro de disque",
+  "placeholder.special.side": "Lettre de la face du vinyle, d'après POSITION ou le numéro de disque",
   "placeholder.group.special": "Spéciales",
   "placeholder.special.position": "Position de la piste dans la parution, p. ex. A1 — enregistrée à l'import",
   "placeholder.special.skip": "Reconnaît un passage de texte et l'écarte",

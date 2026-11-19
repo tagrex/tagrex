@@ -29,7 +29,7 @@ use thiserror::Error;
 use base64::Engine as _;
 use tagrex_core::export::{self, CueTrack, PlaylistTrack};
 use tagrex_core::journal::{BatchHeader, BatchId, SqliteJournal, UndoJournal};
-use tagrex_core::mask::{portable_file_name, FileContext, Mask, MaskError};
+use tagrex_core::mask::{portable_file_name, vinyl_side_label, FileContext, Mask, MaskError};
 use tagrex_core::matching::{self, MatchOptions, TrackRef};
 use tagrex_core::model::{
     is_vinyl_position, is_writable_value, is_writable_value_at, total_needs_number_at, CoverArt,
@@ -6073,30 +6073,6 @@ fn disc_from_folder_name(path: &Path, existing: Option<&String>) -> Option<u32> 
         .parse::<u32>()
         .ok()
         .filter(|disc| (1..=99).contains(disc))
-}
-
-/// The side a vinyl position names (#105, #795), upper-cased: `A` for "A1",
-/// "a2", a bare "A" and the reverse "1A"; `AA` for "AA3". A side is one letter
-/// or that letter repeated: a double A-side single lists `A` and `AA`, and a box
-/// running past Z goes on with `AA`, `BB`. Any numeric part is plain digits.
-/// `None` for a plain number ("5"), a disc-track pair ("1-05"), mixed letters
-/// ("AB"), a sub-track ("A1a") or nothing at all.
-fn vinyl_side_label(position: &str) -> Option<String> {
-    let position = position.trim();
-    let letters = position.bytes().take_while(u8::is_ascii_alphabetic).count();
-    let (side, digits) = if letters > 0 {
-        (&position[..letters], &position[letters..])
-    } else {
-        let digits = position.bytes().take_while(u8::is_ascii_digit).count();
-        if digits == 0 {
-            return None;
-        }
-        (&position[digits..], &position[..digits])
-    };
-    let side = side.to_ascii_uppercase();
-    let first = *side.as_bytes().first()?;
-    let one_letter = first.is_ascii_alphabetic() && side.bytes().all(|b| b == first);
-    (one_letter && side.len() <= 3 && digits.bytes().all(|b| b.is_ascii_digit())).then_some(side)
 }
 
 /// Where each vinyl track of a release lands under a [`VinylNumbering`]

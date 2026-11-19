@@ -114,16 +114,24 @@ literally named `AC/DC` becomes one folder, not two.
 
 ## `%side%` — vinyl sides
 
-`%side%` renders the side letter derived from the disc number: disc 1 → `A`,
-disc 2 → `B`, and so on. It is blank for non-vinyl media.
+`%side%` renders the side a track is on. It reads the side from the `POSITION`
+field an import stores (`B1` → `B`, `AA2` → `AA`); a file without one gets the
+side letter derived from the disc number instead: disc 1 → `A`, disc 2 → `B`,
+and so on. It is blank for non-vinyl media.
+
+To name a file by its vinyl position, use `%position%`, which renders the stored
+position as it is. A vinyl release imported by record (the default) numbers its
+tracks across both sides of a record, so `%side%%track%` would pair side `B`
+with track 3:
 
 ```
-%side%%track:1% - %title%    →  A1 - Safe From Harm
+%position% - %title%         →  B1 - Safe From Harm
+%side%%track:1% - %title%    →  B3 - Safe From Harm (numbered by record)
 ```
 
-It is **name only** (what the in-app reference calls it): computed from the disc
-number rather than stored, so a mask containing it can build a name but cannot be
-used to read tags back out of one.
+It is **name only** (what the in-app reference calls it): computed rather than
+stored, so a mask containing it can build a name but cannot be used to read tags
+back out of one.
 
 ## File and technical placeholders
 

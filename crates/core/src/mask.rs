@@ -680,11 +680,12 @@ fn render_segments(
                     produced = true;
                 }
             }
-            // `%side%` renders the disc as a side letter on side-based media, and
-            // nothing otherwise -- never an error (empty is a valid outcome).
+            // `%side%` renders the side the POSITION field names, else the disc as
+            // a side letter on side-based media, and nothing otherwise -- never
+            // an error (empty is a valid outcome).
             Segment::Side => {
-                if let Some(letter) = side_letter_for(tags) {
-                    out.push(letter);
+                if let Some(side) = side_letter_for(tags) {
+                    out.push_str(&side);
                     produced = true;
                 }
             }
@@ -866,9 +867,17 @@ fn civil_from_days(days: i64) -> (i64, u32, u32) {
     (year + i64::from(month <= 2), month, day)
 }
 
-/// The side letter for `%side%`: only on side-based media (vinyl, cassette), and
+/// The side for `%side%`. The one the POSITION field names comes first (#798):
+/// once a record is one disc (#795), the disc number no longer says which side
+/// a track is on. Without one, only on side-based media (vinyl, cassette), and
 /// only when the disc number is 1..=26 -> 'A'..='Z'. Empty (None) otherwise.
-fn side_letter_for(tags: &TagMap) -> Option<char> {
+fn side_letter_for(tags: &TagMap) -> Option<String> {
+    let stored = tags
+        .get(&TagField::Custom(POSITION_CUSTOM_FIELD.to_string()))
+        .and_then(|position| vinyl_side_label(position));
+    if stored.is_some() {
+        return stored;
+    }
     let media = tags.get(&TagField::MediaType)?;
     if !is_side_medium(media) {
         return None;
@@ -876,7 +885,31 @@ fn side_letter_for(tags: &TagMap) -> Option<char> {
     let disc: u32 = tags.get(&TagField::DiscNumber)?.trim().parse().ok()?;
     (1..=26)
         .contains(&disc)
-        .then(|| (b'A' + (disc as u8 - 1)) as char)
+        .then(|| char::from(b'A' + (disc as u8 - 1)).to_string())
+}
+
+/// The side a vinyl position names (#105, #795), upper-cased: `A` for "A1",
+/// "a2", a bare "A" and the reverse "1A"; `AA` for "AA3". A side is one letter
+/// or that letter repeated: a double A-side single lists `A` and `AA`, and a box
+/// running past Z goes on with `AA`, `BB`. Any numeric part is plain digits.
+/// `None` for a plain number ("5"), a disc-track pair ("1-05"), mixed letters
+/// ("AB"), a sub-track ("A1a") or nothing at all.
+pub fn vinyl_side_label(position: &str) -> Option<String> {
+    let position = position.trim();
+    let letters = position.bytes().take_while(u8::is_ascii_alphabetic).count();
+    let (side, digits) = if letters > 0 {
+        (&position[..letters], &position[letters..])
+    } else {
+        let digits = position.bytes().take_while(u8::is_ascii_digit).count();
+        if digits == 0 {
+            return None;
+        }
+        (&position[digits..], &position[..digits])
+    };
+    let side = side.to_ascii_uppercase();
+    let first = *side.as_bytes().first()?;
+    let one_letter = first.is_ascii_alphabetic() && side.bytes().all(|b| b == first);
+    (one_letter && side.len() <= 3 && digits.bytes().all(|b| b.is_ascii_digit())).then_some(side)
 }
 
 /// Whether a media-type value denotes a side-based medium (vinyl / cassette),
@@ -1723,6 +1756,30 @@ mod tests {
             (TagField::Title, "Rose"),
         ]);
         assert_eq!(mask.render(&cd).unwrap(), "3 - Rose");
+    }
+
+    /// #798: numbered by record (#795), side B of the first record is disc 1,
+    /// and only the stored position knows it is B.
+    #[test]
+    fn side_prefers_the_side_the_stored_position_names() {
+        let mask = Mask::parse("%side%").unwrap();
+        let b1 = tags(&[
+            (TagField::MediaType, "Vinyl"),
+            (TagField::DiscNumber, "1"),
+            (TagField::TrackNumber, "3"),
+            (TagField::Custom("POSITION".to_string()), "B1"),
+        ]);
+        assert_eq!(mask.render(&b1).unwrap(), "B");
+        let double_a = tags(&[(TagField::Custom("POSITION".to_string()), "AA")]);
+        assert_eq!(mask.render(&double_a).unwrap(), "AA");
+        // A CD position names no side; the disc rule decides, and on a CD that
+        // is nothing.
+        let cd = tags(&[
+            (TagField::MediaType, "CD"),
+            (TagField::DiscNumber, "1"),
+            (TagField::Custom("POSITION".to_string()), "1-05"),
+        ]);
+        assert_eq!(mask.render(&cd).unwrap(), "");
     }
 
     #[test]

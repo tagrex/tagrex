@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the Vinyl numbering setting says, so a vinyl release imported as 1, 2, 1, 2
   can be repaired from the panel
   ([#797](https://github.com/tagrex/tagrex/issues/797)).
+- `%side%` reads the side from the POSITION field and falls back to the disc
+  number only for files without one, so it still names side B of a record
+  numbered as one disc ([#798](https://github.com/tagrex/tagrex/issues/798)).
 
 ## [1.7.1] - 2026-11-19
 
