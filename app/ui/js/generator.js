@@ -18,12 +18,13 @@ import { createPresetChecklist, renderAllGroupsMenus } from "./chain.js";
 import { onPresetsChanged, openPresetEditor } from "./presets.js";
 import { currentFieldValue } from "./editor.js";
 import { groupKeyOf } from "./grouping.js";
-import { parseVinylPosition } from "./vinyl.js";
+import { layoutVinylPositions, sideOfPosition, vinylNumberingOf } from "./vinyl.js";
 import {
   currentMode,
   groupBy,
   edits,
   previewPlan,
+  savedSettings,
   selectedPaths,
   setPreviewPlan,
   setPreviewSource,
@@ -178,27 +179,50 @@ function collectNumbers(paths, into) {
   return { count: assigned.length, perGroup };
 }
 
-// Decompose vinyl-side track values in the selection into a plain track number
-// plus a disc number, into `into`, and give back how many were split. For files
-// already tagged "A1"/"B2" (e.g. by another tool) — the side can't live in the
-// integer track tag, so it moves to the disc field. A bare side ("B", the whole
-// side is one track) has no digit, so its track becomes 1.
+// The extensions of an MP4 container, whose track number is an integer.
+const MP4_EXTENSION = /\.(m4a|m4b|m4p|m4r|m4v|mp4)$/i;
+
+// Number the selection from its vinyl positions, into `into`, and give back how
+// many files it touched. A file's position is its track value when that names a
+// side ("A1", hand-tagged or kept as is) and otherwise the POSITION field an
+// import stored (#797), so a release imported as 1, 2, 1, 2 is repaired here.
+// The numbering is the Settings choice (#795): by record (disc = record, the
+// number running on across its sides) or side = disc, both from the selection
+// in its order, with DiscTotal counting what it found; or the position as is,
+// written into the track number where the file can hold it.
 function collectVinylSides(paths, into) {
-  let changed = 0;
+  const numbering = vinylNumberingOf(savedSettings);
+  const found = [];
   for (const path of paths) {
-    const raw = currentFieldValue(path, "track");
-    const parsed = parseVinylPosition(raw);
-    if (!parsed) continue;
-    const fields = fieldsOf(into, path);
-    fields.set("track", parsed.track ?? "1");
-    fields.set("disc", parsed.disc);
-    // Keep the raw side position (A1, B2) verbatim in POSITION — the same tag an
-    // online import fills (#352) — so %position% renaming works for hand-split
-    // files too (#353). Only side values reach here, never a bare ordinal.
-    fields.set("custom:POSITION", raw.trim());
-    changed += 1;
+    const track = currentFieldValue(path, "track").trim();
+    const stored = currentFieldValue(path, "custom:POSITION").trim();
+    const position = sideOfPosition(track) ? track : sideOfPosition(stored) ? stored : null;
+    if (position) found.push({ path, position });
   }
-  return changed;
+  if (numbering === "position") {
+    let changed = 0;
+    for (const { path, position } of found) {
+      // An MP4 stores the track number as an integer and cannot take "A1".
+      if (MP4_EXTENSION.test(path) || currentFieldValue(path, "track").trim() === position) continue;
+      fieldsOf(into, path).set("track", position);
+      changed += 1;
+    }
+    return changed;
+  }
+  const { places, discs } = layoutVinylPositions(
+    found.map((entry) => entry.position),
+    numbering
+  );
+  found.forEach(({ path, position }, k) => {
+    const fields = fieldsOf(into, path);
+    fields.set("track", places[k].track);
+    fields.set("disc", places[k].disc);
+    fields.set("disctotal", String(discs));
+    // Keep the position verbatim in POSITION, the tag an online import fills
+    // (#352), so %position% renaming works for hand-split files too (#353).
+    fields.set("custom:POSITION", position);
+  });
+  return found.length;
 }
 
 // ---- the panel's blocks and its one run (#788) ----

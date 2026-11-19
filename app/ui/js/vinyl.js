@@ -68,4 +68,56 @@ function parseVinylPosition(value) {
   return { disc: String(disc), track: num ? String(parseInt(num, 10)) : null };
 }
 
-export { isSideMedium, sideLetterOf, vinylPositionOf, parseVinylPosition };
+// ---- vinyl numbering (#795, #797) ----
+// The Settings choice that numbers a vinyl release: "records" (the default),
+// "position" or "sides". A settings file from before #795 has only the #642
+// switch, which keeps its meaning.
+function vinylNumberingOf(settings) {
+  const s = settings || {};
+  return s.import_vinyl_numbering || (s.import_vinyl_position ? "position" : "records");
+}
+
+// The side a position names and its digits: "A1" -> { side: "A", digits: "1" },
+// "AA" -> { side: "AA", digits: "" }, the reverse "1A" -> { side: "A", digits:
+// "1" }. null for anything that names no side ("5", "1-05", "AB", "A1a").
+function sideOfPosition(value) {
+  const v = String(value || "").trim();
+  const front = /^(([A-Za-z])\2{0,2})(\d*)$/.exec(v);
+  if (front) return { side: front[1].toUpperCase(), digits: front[3] };
+  const back = /^(\d+)([A-Za-z])$/.exec(v);
+  return back ? { side: back[2].toUpperCase(), digits: back[1] } : null;
+}
+
+// Where each position lands under a numbering other than "position": a
+// { disc, track } per position (null for one naming no side) and how many
+// discs that makes. Mirrors `vinyl_layout` in the backend: sides ranked by
+// first appearance, two to a record, the number running on across a record's
+// sides (or per side, from the position's digits, under "sides"). Without a
+// release's stated record count a record is always two sides here.
+function layoutVinylPositions(positions, numbering) {
+  const order = [];
+  const counters = new Map();
+  const places = positions.map((position) => {
+    const parsed = sideOfPosition(position);
+    if (!parsed) return null;
+    let rank = order.indexOf(parsed.side);
+    if (rank < 0) rank = order.push(parsed.side) - 1;
+    const disc = numbering === "sides" ? rank + 1 : Math.floor(rank / 2) + 1;
+    const n = (counters.get(disc) || 0) + 1;
+    counters.set(disc, n);
+    const track = numbering === "sides" && parsed.digits ? String(Number(parsed.digits)) : String(n);
+    return { disc: String(disc), track };
+  });
+  const discs = numbering === "sides" ? order.length : Math.ceil(order.length / 2);
+  return { places, discs };
+}
+
+export {
+  isSideMedium,
+  sideLetterOf,
+  vinylPositionOf,
+  parseVinylPosition,
+  vinylNumberingOf,
+  sideOfPosition,
+  layoutVinylPositions,
+};

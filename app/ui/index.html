@@ -624,14 +624,14 @@
             </div>
           </div>
 
-          <!-- Vinyl sides -> disc (#105): split a vinyl-side track value (A1/B2,
-               or the reverse 1A) into a plain track number plus a disc number
-               (side A -> disc 1, B -> disc 2, ...), since the side letter can't
+          <!-- Vinyl sides (#105, #797): number the selection from its vinyl
+               positions (the track value, else the POSITION field) the way the
+               Vinyl numbering setting says (#795), since a side letter can't
                live in the integer track-number tag. Staged like the rest. -->
           <div class="panel-block" data-gen-block="vinyl">
             <h2><label class="gen-switch"><input type="checkbox" data-gen-switch="vinyl" /><span data-i18n="generator.vinylSides">Vinyl sides</span></label> <span id="vinyl-count" class="muted"></span></h2>
             <div class="panel-actions">
-              <p class="panel-note" data-i18n="generator.vinylHint" data-i18n-html>Side A → disc 1, B → disc 2; <b>A1</b> becomes track 1. Rows without a side letter stay as they are.</p>
+              <p class="panel-note" data-i18n="generator.vinylHint" data-i18n-html>Numbers the selection from its vinyl positions (<b>A1</b> in the track number or the POSITION field) the way the Vinyl numbering setting says. Select the whole release. Rows without a side stay as they are.</p>
             </div>
           </div>
 

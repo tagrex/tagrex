@@ -19,7 +19,7 @@ let mockBpmCancel = false;
 function plan(description, message, changes, notes = []) {
   return { description, message: { args: {}, count: null, ...message }, notes, changes };
 }
-import { parseVinylPosition } from "./vinyl.js";
+import { vinylNumberingOf, layoutVinylPositions } from "./vinyl.js";
 
 // A group as the sequence of scoped chains it runs as, mirroring the backend's
 // `build_segments` (#250): a rule may name its own target, and consecutive rules
@@ -1501,22 +1501,16 @@ function mockInvoke(cmd, args) {
     case "preview_import": {
       // Mirror the backend's vinyl numbering (#795): by record unless the
       // settings say "position" or "sides"; numbered from the whole tracklist.
-      const settings = mockInvoke.state?.settings || {};
-      const numbering = settings.import_vinyl_numbering || (settings.import_vinyl_position ? "position" : "records");
+      const numbering = vinylNumberingOf(mockInvoke.state?.settings);
       const positions = args.selection.release_positions?.length
         ? args.selection.release_positions
         : args.selection.tracks.map((track) => track.position);
       const layout = new Map();
       if (numbering !== "position") {
-        const counters = {};
-        for (const position of positions) {
-          const parsed = parseVinylPosition(position);
-          if (!parsed || layout.has(position)) continue;
-          const disc = numbering === "sides" ? parsed.disc : Math.ceil(parsed.disc / 2);
-          counters[disc] = (counters[disc] || 0) + 1;
-          const track = numbering === "sides" && parsed.track ? parsed.track : String(counters[disc]);
-          layout.set(position, { disc: String(disc), track });
-        }
+        const { places } = layoutVinylPositions(positions, numbering);
+        positions.forEach((position, k) => {
+          if (places[k] && !layout.has(position)) layout.set(position, places[k]);
+        });
       }
       // A file left over once every ticked track has its file takes nothing
       // (#773); with no track ticked, the album fields go to every file.

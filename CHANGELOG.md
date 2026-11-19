@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   field, falling back to the side letter of the disc plus the track number only
   when the file has none, so a record numbered as one disc still reads B1, not
   A3 ([#796](https://github.com/tagrex/tagrex/issues/796)).
+- The GENERATOR Vinyl sides block reads a file's position from the POSITION
+  field when its track number names no side, and numbers the selection the way
+  the Vinyl numbering setting says, so a vinyl release imported as 1, 2, 1, 2
+  can be repaired from the panel
+  ([#797](https://github.com/tagrex/tagrex/issues/797)).
 
 ## [1.7.1] - 2026-11-19
 

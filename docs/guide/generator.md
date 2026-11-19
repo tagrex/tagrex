@@ -131,13 +131,20 @@ table the way you want them numbered first.
 
 ## Vinyl sides
 
-**Split side → disc** turns a vinyl position into a plain track number plus a
-disc number: side A → disc 1, B → disc 2, and so on. `A1` becomes disc 1,
-track 1; `B2` becomes disc 2, track 2. The reverse spelling (`1A`) is understood
-too.
+**Vinyl sides** numbers the selected files from their vinyl positions, the way
+**Settings › Online import › Vinyl numbering** says. A file's position is its
+track number when that names a side (`A1`, `B2`, the reverse `1A`, a bare `B`),
+and otherwise the `POSITION` field an import stored, so a vinyl release that
+came in numbered `1, 2, 1, 2` on one disc can be repaired here.
 
-This exists because a side letter cannot live in an integer track-number tag.
-Once split, the side is recoverable for display and for renaming through the
-`%side%` [mask placeholder](masks.md#side--vinyl-sides).
+- **By record**: each record is a disc (two sides each) and the track number
+  runs on across both sides: `A1`, `A2`, `B1` become disc 1 tracks 1, 2, 3.
+- **Side = disc**: side A is disc 1, B disc 2, and `B2` is track 2.
+- **Position as is**: the position goes into the track number (not on an MP4
+  file, which can only hold a number).
 
-Only rows that actually carry a side letter change.
+The block numbers from the selection in its order, and the disc total counts
+the records or sides it found, so select the whole release. The position stays
+in `POSITION`, where the `%position%` and `%side%`
+[mask placeholders](masks.md#side--vinyl-sides) read it. Only rows that name a
+side change.
