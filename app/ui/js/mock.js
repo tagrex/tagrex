@@ -1499,7 +1499,25 @@ function mockInvoke(cmd, args) {
           "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
       });
     case "preview_import": {
-      const sideCounters = {}; // per-disc running track number for bare vinyl sides
+      // Mirror the backend's vinyl numbering (#795): by record unless the
+      // settings say "position" or "sides"; numbered from the whole tracklist.
+      const settings = mockInvoke.state?.settings || {};
+      const numbering = settings.import_vinyl_numbering || (settings.import_vinyl_position ? "position" : "records");
+      const positions = args.selection.release_positions?.length
+        ? args.selection.release_positions
+        : args.selection.tracks.map((track) => track.position);
+      const layout = new Map();
+      if (numbering !== "position") {
+        const counters = {};
+        for (const position of positions) {
+          const parsed = parseVinylPosition(position);
+          if (!parsed || layout.has(position)) continue;
+          const disc = numbering === "sides" ? parsed.disc : Math.ceil(parsed.disc / 2);
+          counters[disc] = (counters[disc] || 0) + 1;
+          const track = numbering === "sides" && parsed.track ? parsed.track : String(counters[disc]);
+          layout.set(position, { disc: String(disc), track });
+        }
+      }
       // A file left over once every ticked track has its file takes nothing
       // (#773); with no track ticked, the album fields go to every file.
       const ticked = args.selection.tracks.length;
@@ -1529,13 +1547,10 @@ function mockInvoke(cmd, args) {
         if (rt) {
           tag_changes.push({ field: "title", old: t ? t.tags.title || null : null, new: rt.title });
           tag_changes.push({ field: "artist", old: t ? t.tags.artist || null : null, new: rt.artist });
-          // Mirror the backend: when the vinyl toggle is on and the position is a
-          // side, map the side to a disc (overwriting a default disc) and restart
-          // the track number per side; otherwise the plain number / row index.
-          const parsed = args.vinylSidesToDisc ? parseVinylPosition(rt.position) : null;
+          const parsed = layout.get(rt.position);
           let num;
           if (parsed) {
-            num = parsed.track ?? String((sideCounters[parsed.disc] = (sideCounters[parsed.disc] || 0) + 1));
+            num = parsed.track;
             const curDisc = t ? t.tags.disc || null : null;
             if (curDisc !== parsed.disc) {
               tag_changes.push({ field: "disc", old: curDisc, new: parsed.disc });

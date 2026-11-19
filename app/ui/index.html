@@ -423,9 +423,6 @@
               <div class="release-toolbar" id="release-toolbar" hidden>
                 <span class="hint muted" id="release-found" data-i18n="online.foundNone">Found 0 entries</span>
                 <div class="spacer"></div>
-                <label class="hint muted" data-i18n-title="online.vinylDiscTitle" title="On import, map a vinyl side (A1/B2) to the disc number: side A → disc 1, B → disc 2, …">
-                  <input id="import-vinyl-disc" type="checkbox" /> <span data-i18n="online.vinylDisc">Vinyl side → disc</span>
-                </label>
                 <label class="hint muted per-page"><span data-i18n="online.show">Show</span>
                   <select id="search-per-page" data-i18n-title="online.perPage" title="Results per page">
                     <option value="5" selected>5</option>
@@ -1318,15 +1315,16 @@
             </div>
             <p class="settings-hint" data-i18n="settings.importCoverHint" data-i18n-html>Whether an import also embeds the release's cover. <strong>If missing</strong> only fills in files that carry no artwork at all, so nothing you chose yourself is ever overwritten — decided per file, so a mixed selection gets it exactly where it's needed. <strong>Always</strong> replaces the cover a file already has. Either way the tags and the artwork are one change, so a single undo takes back both.</p>
 
-            <!-- How a vinyl position becomes the track number (#642). -->
+            <!-- How a vinyl release is numbered (#642, #795). -->
             <div class="settings-row">
-              <label data-i18n="importField.track">Track number</label>
-              <div class="seg" id="set-import-track" role="tablist" data-i18n-aria-label="settings.importTrack" aria-label="Import track number">
-                <button class="seg-btn active" type="button" data-import-track="number" data-i18n="settings.importTrack.number">Number</button>
-                <button class="seg-btn" type="button" data-import-track="position" data-i18n="settings.importTrack.position">Vinyl position</button>
+              <label data-i18n="settings.vinylNumbering">Vinyl numbering</label>
+              <div class="seg" id="set-import-track" role="tablist" data-i18n-aria-label="settings.vinylNumbering" aria-label="Vinyl numbering">
+                <button class="seg-btn active" type="button" data-import-track="records" data-i18n="settings.importTrack.records">By record</button>
+                <button class="seg-btn" type="button" data-import-track="position" data-i18n="settings.importTrack.position">Position as is</button>
+                <button class="seg-btn" type="button" data-import-track="sides" data-i18n="settings.importTrack.sides">Side = disc</button>
               </div>
             </div>
-            <p class="settings-hint" data-i18n="settings.importTrackHint" data-i18n-html>How an import writes a vinyl position such as A1 as the track number. <strong>Number</strong> writes 1, the numeric track number the tag standards define and every player and DJ program reads; the position itself goes to the POSITION field. <strong>Vinyl position</strong> writes A1 as it is. An MP4 file always gets the number, and with Vinyl side → disc on the tracks are numbered per side either way.</p>
+            <p class="settings-hint" data-i18n="settings.importTrackHint" data-i18n-html>How an import numbers a release whose tracks sit on sides (A1, B2). <strong>By record</strong> makes each record a disc and runs the track number on across both of its sides: A1, A2, B1 are 1, 2, 3 on disc 1 and C1 starts disc 2. <strong>Position as is</strong> writes A1 as the track number (an MP4 file still gets the number). <strong>Side = disc</strong> makes side A disc 1, side B disc 2, numbered per side. The position itself always goes to the POSITION field.</p>
           </div>
 
           <div class="settings-group" data-icon="i-doc" data-reset-group="files">

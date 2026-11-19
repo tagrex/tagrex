@@ -1385,14 +1385,13 @@ async fn preview_import(
     state: State<'_, AppState>,
     paths: Vec<String>,
     selection: ImportSelectionDto,
-    vinyl_sides_to_disc: bool,
 ) -> Result<PlanDto, ErrorDto> {
     let state = state.inner().clone();
     SESSION_QUEUE
         .run(move || {
             let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
             with_app(&state, |app| {
-                app.preview_import(&paths, &selection, vinyl_sides_to_disc)
+                app.preview_import(&paths, &selection)
                     .map_err(ErrorDto::from)
             })
         })

@@ -106,15 +106,24 @@ file has it; see [Import, then fix](tagger.md#import-then-fix).
 **Cover art**: whether an import also embeds the release's cover: **Never**,
 **If missing** (the default, only files with no artwork at all) or **Always**.
 
-**Track number**: how an import writes a vinyl position such as `A1`.
-**Number** (the default) writes `1`: the tag standards define the track number
-as a number, and every player and DJ program reads it that way. The position
+**Vinyl numbering**: how an import numbers a release whose tracks sit on sides
+(`A1`, `B2`). The tag standards define the track number as a number, so a side
+letter has to go somewhere else.
+
+| Choice | Disc | Track number |
+|---|---|---|
+| **By record** (the default) | each record: sides A and B are disc 1, C and D disc 2 | runs on across both sides: `A1`, `A2`, `B1` are 1, 2, 3 |
+| **Position as is** | from the release, as for any other medium | `A1` as it is (an MP4 file still gets the number, it stores an integer) |
+| **Side = disc** | each side: A is disc 1, B disc 2 | per side: `B2` is 2 |
+
+By record numbers from the whole tracklist, so leaving a track out of the import
+does not renumber the others, and the disc total counts the records (the sides
+under Side = disc). A single-sided record (a set stating as many records as it
+has sides) is a disc of its own, and in a set with other media (vinyl plus a CD)
+the other media come after the records. Whichever you choose, the position
 itself is kept in the `POSITION` field, which the `%position%` and `%side%`
-placeholders read. **Vinyl position** writes `A1` as it is, for a library that
-keeps its vinyl that way. A position that is not a vinyl side, such as `1-05`,
-still gives a number, an MP4 file always gets the number because it stores the
-track number as an integer, and with **Vinyl side → disc** on the tracks are
-numbered per side whichever you choose.
+placeholders read. A position that is not a vinyl side, such as `1-05`, still
+gives a number. Cassette sides are numbered the same way.
 
 ## Files
 

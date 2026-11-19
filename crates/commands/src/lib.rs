@@ -417,6 +417,53 @@ fn default_import_cover() -> String {
     ImportCover::default().to_storage_key().to_string()
 }
 
+/// How an online import numbers a vinyl release (#795). A side letter cannot
+/// live in the integer track number every player reads, so something has to
+/// give; which thing is the user's choice, made once in Settings rather than
+/// per import, where forgetting it left a record numbered 1, 2, 1, 2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VinylNumbering {
+    /// Disc = the record, the track number runs on across both of its sides:
+    /// A1, A2, B1, B2 are 1-4 on disc 1, C1 starts disc 2 at 1. The default:
+    /// it is how a player shows a multi-disc set, and a single LP reads 1..N.
+    #[default]
+    Records,
+    /// The position itself as the track number (`A1`, #642), where the file
+    /// can hold it. Discs come from the release as for any other medium.
+    Position,
+    /// Disc = the side (A -> 1, B -> 2, ...), numbered per side (#105).
+    Sides,
+}
+
+impl VinylNumbering {
+    /// The settings key, and the inverse. An unknown key reads as the default.
+    pub fn from_storage_key(key: &str) -> Self {
+        match key {
+            "position" => Self::Position,
+            "sides" => Self::Sides,
+            _ => Self::Records,
+        }
+    }
+
+    pub fn to_storage_key(self) -> &'static str {
+        match self {
+            Self::Records => "records",
+            Self::Position => "position",
+            Self::Sides => "sides",
+        }
+    }
+
+    /// The choice a settings file makes. One saved before #795 has no
+    /// `import_vinyl_numbering`, and its #642 switch keeps the meaning it had.
+    fn from_settings(settings: &SettingsDto) -> Self {
+        if settings.import_vinyl_numbering.trim().is_empty() && settings.import_vinyl_position {
+            Self::Position
+        } else {
+            Self::from_storage_key(settings.import_vinyl_numbering.trim())
+        }
+    }
+}
+
 /// One choice the block-conversion UI can offer: a target block kind, or an
 /// ID3v2 revision. Same shape for both — a storage key and what to show.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1188,6 +1235,13 @@ pub struct SettingsDto {
     /// asks for (#642). An MP4 always gets the number.
     #[serde(default)]
     pub import_vinyl_position: bool,
+    /// How an online import numbers a vinyl release (#795): `records` (the
+    /// default: disc = record, track runs on across its two sides), `position`
+    /// (`A1` verbatim) or `sides` (disc = side). Empty in settings saved before
+    /// it existed, when [`import_vinyl_position`](Self::import_vinyl_position)
+    /// still decides. See [`VinylNumbering`].
+    #[serde(default)]
+    pub import_vinyl_numbering: String,
     /// Saved transform-chain action groups (#57): each a named, ordered set of
     /// steps + scope. Stored data only — `apply_settings` ignores it; the UI
     /// reads it from `load_settings` and rewrites it via `save_settings`.
@@ -1312,6 +1366,7 @@ impl Default for SettingsDto {
             cover_quality: 0,
             import_cover: default_import_cover(),
             import_vinyl_position: false,
+            import_vinyl_numbering: String::new(),
             action_groups: Vec::new(),
             mask_presets: Vec::new(),
             carry_sidecars: default_carry_sidecars(),
@@ -1575,6 +1630,12 @@ pub struct ImportSelectionDto {
     /// disc reads as N/total (#146). Album-level, like `track_total`.
     #[serde(default)]
     pub disc_total: Option<String>,
+    /// Every track position of the release, ticked or not, in tracklist order
+    /// (#795). A vinyl release is numbered from the whole tracklist, so leaving
+    /// a track out of the import does not renumber the rest. Empty from a
+    /// caller that does not send it: the selected tracks stand in.
+    #[serde(default)]
+    pub release_positions: Vec<String>,
 }
 
 /// One rule in a transformation chain, as the UI describes it.
@@ -2261,7 +2322,7 @@ pub struct App {
     import_cover: Cell<ImportCover>,
     /// Whether an import writes a vinyl position as the track number (#642),
     /// from settings.
-    import_vinyl_position: Cell<bool>,
+    vinyl_numbering: Cell<VinylNumbering>,
     /// The lower end of the range a detected tempo is folded into (#536), from
     /// settings; 0 = no folding.
     bpm_floor: Cell<u32>,
@@ -2325,7 +2386,7 @@ impl App {
             sidecar_extensions: RefCell::new(default_sidecar_extensions()),
             import_skip_fields: RefCell::new(HashSet::new()),
             import_cover: Cell::new(ImportCover::default()),
-            import_vinyl_position: Cell::new(false),
+            vinyl_numbering: Cell::new(VinylNumbering::Records),
             bpm_floor: Cell::new(0),
             bpm_max_length: Cell::new(bpm_max_length(default_bpm_max_minutes())),
             portable_names: Cell::new(default_portable_names()),
@@ -2475,8 +2536,8 @@ impl App {
             settings.import_skip_fields.iter().cloned().collect();
         self.import_cover
             .set(ImportCover::from_storage_key(&settings.import_cover));
-        self.import_vinyl_position
-            .set(settings.import_vinyl_position);
+        self.vinyl_numbering
+            .set(VinylNumbering::from_settings(settings));
         self.bpm_floor.set(settings.bpm_floor);
         self.bpm_max_length
             .set(bpm_max_length(settings.bpm_max_minutes));
@@ -5574,14 +5635,30 @@ impl App {
         &self,
         paths: &[PathBuf],
         selection: &ImportSelectionDto,
-        vinyl_sides_to_disc: bool,
     ) -> Result<PlanDto, AppError> {
         let mut changes = Vec::new();
-        // Per-side running track number, used only for vinyl positions that carry
-        // a side but no digit ("B" = the single track on side B): each side (disc)
-        // restarts at 1, in the order the tracks are imported.
-        let mut side_track_counters: std::collections::HashMap<u32, u32> =
-            std::collections::HashMap::new();
+        // Where every vinyl track lands (#795), from the whole tracklist so an
+        // unticked track does not renumber the rest. `None` for a release with
+        // no sides, and under "position as is", which numbers nothing itself.
+        let numbering = self.vinyl_numbering.get();
+        let stated_disc_total = selection
+            .disc_total
+            .as_deref()
+            .and_then(|total| total.trim().parse::<u32>().ok());
+        let positions: Vec<&str> = if selection.release_positions.is_empty() {
+            selection
+                .tracks
+                .iter()
+                .map(|track| track.position.as_str())
+                .collect()
+        } else {
+            selection
+                .release_positions
+                .iter()
+                .map(String::as_str)
+                .collect()
+        };
+        let layout = vinyl_layout(&positions, numbering, stated_disc_total);
         for (index, path) in paths.iter().enumerate() {
             // A file left over once every ticked track has its file is not on
             // the release, and takes nothing from it (#773). With no track
@@ -5644,38 +5721,25 @@ impl App {
                 desired.push((TagField::Bpm, track.bpm.map(|bpm| bpm.to_string())));
                 desired.push((TagField::InitialKey, non_empty(track.key.clone())));
 
-                // Vinyl side -> disc (#105): a vinyl-side position ("A1", the
-                // reverse "1A", or a bare side "B") can't keep its letter in the
-                // integer track-number tag, so -- when the toggle is on -- the
-                // side maps to a disc number (A->1, B->2, ...) and the track
-                // number restarts per side. This is an explicit per-import opt-in,
-                // so it overwrites a disc (a file's default "disc 1" must not
-                // block side B becoming disc 2).
-                let side_disc = if vinyl_sides_to_disc {
-                    side_disc_from_position(&track.position)
-                } else {
-                    None
-                };
-                // The position itself as the track number (#642), when the setting
-                // asks for it and the file can hold one; the number the standard
-                // asks for is the default. Sides to discs, an instruction for
-                // this import, wins and numbers the tracks per side.
-                let verbatim_position = (self.import_vinyl_position.get() && side_disc.is_none())
+                // A vinyl side (#105, #795): a position ("A1", the reverse "1A",
+                // a bare side "B") can't keep its letter in the integer track
+                // number, so the layout gives it a disc (the record, or the side)
+                // and a number on that disc. It is the release speaking, so it
+                // overwrites a disc: a file's default "disc 1" must not block
+                // side C becoming disc 2.
+                let side = layout
+                    .as_ref()
+                    .and_then(|layout| layout.side(&track.position));
+                // The position itself as the track number (#642), when the
+                // setting asks for it and the file can hold one.
+                let verbatim_position = (numbering == VinylNumbering::Position)
                     .then_some(track.position.trim())
                     .filter(|position| {
                         is_vinyl_position(position)
                             && is_writable_value_at(path, &TagField::TrackNumber, position)
                     });
-                let position_number = match side_disc {
-                    // Digits in the position are already per-side ("A1" -> 1);
-                    // a bare side ("B") has none, so take the next per-side number.
-                    Some(disc) => {
-                        track_number_from_position(&track.position).unwrap_or_else(|| {
-                            let counter = side_track_counters.entry(disc).or_insert(0);
-                            *counter += 1;
-                            counter.to_string()
-                        })
-                    }
+                let position_number = match side {
+                    Some((_, number)) => number.to_string(),
                     // Not a vinyl side: the position's number, else the row index.
                     None => track_number_from_position(&track.position)
                         .unwrap_or_else(|| (index + 1).to_string()),
@@ -5704,8 +5768,8 @@ impl App {
                 }
                 // Disc number, in precedence order (#146):
                 //
-                // 1. the vinyl side, when that opt-in is on — an explicit
-                //    instruction, so it wins and overwrites;
+                // 1. the vinyl layout (#795): a side's record or side, or for
+                //    another medium of a mixed set its place after the vinyl;
                 // 2. the disc the release states (a Discogs `1-05` position, a
                 //    MusicBrainz medium) — the provider's own answer;
                 // 3. the file's folder, a guess about the file rather than a
@@ -5720,7 +5784,13 @@ impl App {
                 // or more, a track whose position carries no prefix is genuinely
                 // unplaced, and 1 would be a guess. A release stating no count at
                 // all still writes nothing.
-                let disc = side_disc
+                let disc = side
+                    .map(|(disc, _)| disc)
+                    .or_else(|| {
+                        layout
+                            .as_ref()
+                            .and_then(|layout| layout.other_disc(track.disc, stated_disc_total))
+                    })
                     .or(track.disc)
                     .or_else(|| {
                         disc_from_folder_name(path, current.tags.get(&TagField::DiscNumber))
@@ -5741,7 +5811,15 @@ impl App {
                 // files now read 1/1 rather than nothing at all. Album-level
                 // value, applied per file for that reason.
                 if disc.is_some() || current.tags.contains_key(&TagField::DiscNumber) {
-                    desired.push((TagField::DiscTotal, non_empty(selection.disc_total.clone())));
+                    // The vinyl counts its own discs (#795): records or sides,
+                    // not the format quantity that made side B read 2/1.
+                    let total = match &layout {
+                        Some(layout) => layout
+                            .disc_total(stated_disc_total)
+                            .map(|total| total.to_string()),
+                        None => selection.disc_total.clone(),
+                    };
+                    desired.push((TagField::DiscTotal, non_empty(total)));
                 }
                 // The provider's raw position ("A1", "1-05", "B") -> a portable
                 // POSITION custom tag, so a rename mask can name a file by its
@@ -5997,31 +6075,154 @@ fn disc_from_folder_name(path: &Path, existing: Option<&String>) -> Option<u32> 
         .filter(|disc| (1..=99).contains(disc))
 }
 
-/// Map a vinyl-side track *position* to a disc number (#105): the side letter
-/// becomes A->1, B->2, ... . Handles a bare side ("B"), the common side-first
-/// "A1", and the reverse "1A"; any numeric part must be plain digits. Returns
-/// `None` for a plain number ("5"), a disc-track pair ("1-05"), or anything
-/// without a single A-Z side. Only the side matters here -- the track number
-/// itself comes from [`track_number_from_position`] (or a per-side counter).
-fn side_disc_from_position(position: &str) -> Option<u32> {
-    let bytes = position.trim().as_bytes();
-    if bytes.is_empty() {
+/// The side a vinyl position names (#105, #795), upper-cased: `A` for "A1",
+/// "a2", a bare "A" and the reverse "1A"; `AA` for "AA3". A side is one letter
+/// or that letter repeated: a double A-side single lists `A` and `AA`, and a box
+/// running past Z goes on with `AA`, `BB`. Any numeric part is plain digits.
+/// `None` for a plain number ("5"), a disc-track pair ("1-05"), mixed letters
+/// ("AB"), a sub-track ("A1a") or nothing at all.
+fn vinyl_side_label(position: &str) -> Option<String> {
+    let position = position.trim();
+    let letters = position.bytes().take_while(u8::is_ascii_alphabetic).count();
+    let (side, digits) = if letters > 0 {
+        (&position[..letters], &position[letters..])
+    } else {
+        let digits = position.bytes().take_while(u8::is_ascii_digit).count();
+        if digits == 0 {
+            return None;
+        }
+        (&position[digits..], &position[..digits])
+    };
+    let side = side.to_ascii_uppercase();
+    let first = *side.as_bytes().first()?;
+    let one_letter = first.is_ascii_alphabetic() && side.bytes().all(|b| b == first);
+    (one_letter && side.len() <= 3 && digits.bytes().all(|b| b.is_ascii_digit())).then_some(side)
+}
+
+/// Where each vinyl track of a release lands under a [`VinylNumbering`]
+/// (#795), worked out once from the whole tracklist.
+#[derive(Debug)]
+struct VinylLayout {
+    /// Position -> (disc, track number on that disc), for the positions that
+    /// name a side.
+    sides: std::collections::HashMap<String, (u32, u32)>,
+    /// Discs the vinyl takes: its records, or its sides under
+    /// [`VinylNumbering::Sides`].
+    discs: u32,
+    /// Records the vinyl takes, whatever the numbering: what a format quantity
+    /// counts.
+    records: u32,
+    /// Whether the release also lists tracks that name no side (2xLP + CD).
+    mixed: bool,
+}
+
+/// The [`VinylLayout`] of a release from its positions in tracklist order, or
+/// `None` when no position names a side or the numbering leaves the position
+/// as it is.
+///
+/// Sides are ranked by first appearance, not by letter, so `A`, `AA` is two
+/// sides and `Z`, `AA` runs on. A record holds two sides, the first two, the
+/// next two and so on; an odd last side (an etched side D) leaves its record
+/// with one. The exception is a release that is all vinyl and states at least
+/// as many records as it has sides: those are single-sided, one side each.
+fn vinyl_layout(
+    positions: &[&str],
+    numbering: VinylNumbering,
+    stated_total: Option<u32>,
+) -> Option<VinylLayout> {
+    if numbering == VinylNumbering::Position {
         return None;
     }
-    // Side-first: a leading A-Z followed by nothing or only digits ("B", "A1").
-    let side = if bytes[0].is_ascii_alphabetic() && bytes[1..].iter().all(u8::is_ascii_digit) {
-        bytes[0]
-    // Reverse: one or more digits ending in a single A-Z ("1A", "12B").
-    } else if bytes.len() >= 2
-        && bytes[bytes.len() - 1].is_ascii_alphabetic()
-        && bytes[..bytes.len() - 1].iter().all(u8::is_ascii_digit)
-    {
-        bytes[bytes.len() - 1]
-    } else {
+    let mut order: Vec<String> = Vec::new();
+    let mut mixed = false;
+    let mut labelled: Vec<(&str, u32)> = Vec::new();
+    for position in positions {
+        let position = position.trim();
+        match vinyl_side_label(position) {
+            Some(label) => {
+                let rank = match order.iter().position(|known| *known == label) {
+                    Some(rank) => rank,
+                    None => {
+                        order.push(label);
+                        order.len() - 1
+                    }
+                };
+                labelled.push((position, rank as u32 + 1));
+            }
+            None => mixed |= !position.is_empty(),
+        }
+    }
+    if order.is_empty() {
         return None;
+    }
+    let side_count = order.len() as u32;
+    let per_record = if !mixed && stated_total.is_some_and(|total| total >= side_count) {
+        1
+    } else {
+        2
     };
-    let ordinal = u32::from(side.to_ascii_uppercase() - b'A') + 1;
-    (1..=26).contains(&ordinal).then_some(ordinal)
+    let records = side_count.div_ceil(per_record);
+    let mut counters: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
+    let mut sides = std::collections::HashMap::new();
+    for (position, side) in labelled {
+        let disc = match numbering {
+            VinylNumbering::Sides => side,
+            _ => (side - 1) / per_record + 1,
+        };
+        let counter = counters.entry(disc).or_insert(0);
+        *counter += 1;
+        let number = match numbering {
+            // Per side the position's own digits are the number ("B2" -> 2);
+            // a bare side ("B") takes the next one on its side.
+            VinylNumbering::Sides => track_number_from_position(position)
+                .and_then(|number| number.parse().ok())
+                .unwrap_or(*counter),
+            // Across a record they run on: B1 follows the last track of A.
+            _ => *counter,
+        };
+        sides.entry(position.to_string()).or_insert((disc, number));
+    }
+    let discs = match numbering {
+        VinylNumbering::Sides => side_count,
+        _ => records,
+    };
+    Some(VinylLayout {
+        sides,
+        discs,
+        records,
+        mixed,
+    })
+}
+
+impl VinylLayout {
+    /// The (disc, track number) of a position naming a side.
+    fn side(&self, position: &str) -> Option<(u32, u32)> {
+        self.sides.get(position.trim()).copied()
+    }
+
+    /// The disc of a track on another medium of a mixed set: after the vinyl.
+    /// A disc it states counts on from there ("CD1-3" is the first disc after
+    /// the records); without one it is placed only when the stated count
+    /// leaves exactly one more medium, the only case where that is not a guess.
+    fn other_disc(&self, stated: Option<u32>, stated_total: Option<u32>) -> Option<u32> {
+        if !self.mixed {
+            return None;
+        }
+        stated
+            .map(|disc| self.discs + disc)
+            .or_else(|| (stated_total == Some(self.records + 1)).then_some(self.discs + 1))
+    }
+
+    /// DiscTotal: the vinyl's own discs, plus in a mixed set the other media
+    /// the stated count leaves. A mixed set stating no count gets none.
+    fn disc_total(&self, stated_total: Option<u32>) -> Option<u32> {
+        if !self.mixed {
+            return Some(self.discs);
+        }
+        stated_total
+            .filter(|total| *total >= self.records)
+            .map(|total| total - self.records + self.discs)
+    }
 }
 
 /// Normalize a tag value into a duplicate-grouping key (#40): lower-cased with
@@ -8256,7 +8457,8 @@ mod tests {
             cover_max_px: 500,
             cover_quality: 90,
             import_cover: "never".into(),
-            import_vinyl_position: true,
+            import_vinyl_position: false,
+            import_vinyl_numbering: "sides".into(),
             action_groups: Vec::new(),
             mask_presets: Vec::new(),
             carry_sidecars: true,
@@ -8276,7 +8478,7 @@ mod tests {
         assert_eq!(app.cover_quality.get(), 90);
         assert_eq!(app.bpm_floor.get(), 70);
         assert_eq!(app.bpm_max_length(), Some(Duration::from_secs(15 * 60)));
-        assert!(app.import_vinyl_position.get());
+        assert_eq!(app.vinyl_numbering.get(), VinylNumbering::Sides);
     }
 
     #[test]
@@ -10740,7 +10942,7 @@ mod tests {
             ..ImportSelectionDto::default()
         };
         let plan = app
-            .preview_import(&[a.clone(), b.clone()], &selection, false)
+            .preview_import(&[a.clone(), b.clone()], &selection)
             .unwrap();
         let touched: Vec<&str> = plan.changes.iter().map(|c| c.path.as_str()).collect();
         assert_eq!(touched, [a.to_string_lossy()]);
@@ -10749,7 +10951,7 @@ mod tests {
             tracks: Vec::new(),
             ..selection
         };
-        let plan = app.preview_import(&[a, b], &album_only, false).unwrap();
+        let plan = app.preview_import(&[a, b], &album_only).unwrap();
         assert_eq!(plan.changes.len(), 2);
     }
 
@@ -10798,9 +11000,10 @@ mod tests {
             track_total: Some("15".into()),
             url: Some("https://www.discogs.com/release/249504".into()),
             media_type: Some("Vinyl".into()),
+            release_positions: Vec::new(),
         };
 
-        let plan = app.preview_import(&[a, b], &selection, false).unwrap();
+        let plan = app.preview_import(&[a, b], &selection).unwrap();
         assert_eq!(plan.changes.len(), 2);
 
         let fields = |c: &FileChangeDto| {
@@ -10913,7 +11116,7 @@ mod tests {
             ..ImportSelectionDto::default()
         };
         let plan = app
-            .preview_import(&[stated.clone(), silent], &selection, false)
+            .preview_import(&[stated.clone(), silent], &selection)
             .unwrap();
 
         let fields = |change: &FileChangeDto| -> std::collections::BTreeMap<_, _> {
@@ -10959,7 +11162,7 @@ mod tests {
             source: Some("musicbrainz".into()),
             ..ImportSelectionDto::default()
         };
-        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        let plan = app.preview_import(&[path], &selection).unwrap();
         let fields: std::collections::BTreeMap<_, _> = plan.changes[0]
             .tag_changes
             .iter()
@@ -10997,7 +11200,7 @@ mod tests {
             }],
             ..ImportSelectionDto::default()
         };
-        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        let plan = app.preview_import(&[path], &selection).unwrap();
         let changed_fields: Vec<&str> = plan.changes[0]
             .tag_changes
             .iter()
@@ -11019,32 +11222,112 @@ mod tests {
     }
 
     #[test]
-    fn side_disc_from_position_maps_the_side_letter() {
-        assert_eq!(side_disc_from_position("A1"), Some(1));
-        assert_eq!(side_disc_from_position("B2"), Some(2));
-        assert_eq!(side_disc_from_position("C15"), Some(3)); // C = 3rd side
-        assert_eq!(side_disc_from_position("1A"), Some(1)); // reverse notation
-        assert_eq!(side_disc_from_position("12B"), Some(2)); // reverse, multi-digit
-        assert_eq!(side_disc_from_position("2b"), Some(2)); // lower-case side
-        assert_eq!(side_disc_from_position("A"), Some(1)); // bare side, whole side is one track
-        assert_eq!(side_disc_from_position("B"), Some(2));
-        // Not a vinyl side:
-        assert_eq!(side_disc_from_position("5"), None); // plain number
-        assert_eq!(side_disc_from_position("1-05"), None); // disc-track pair
-        assert_eq!(side_disc_from_position("AB"), None); // not a side + track
-        assert_eq!(side_disc_from_position(""), None);
+    fn vinyl_side_label_names_the_side() {
+        let label = |position: &str| vinyl_side_label(position);
+        assert_eq!(label("A1"), Some("A".into()));
+        assert_eq!(label("C15"), Some("C".into()));
+        assert_eq!(label("1A"), Some("A".into())); // reverse notation
+        assert_eq!(label("12B"), Some("B".into())); // reverse, multi-digit
+        assert_eq!(label("2b"), Some("B".into())); // lower-case side
+        assert_eq!(label("B"), Some("B".into())); // bare side, one track
+        assert_eq!(label("AA"), Some("AA".into())); // double A-side
+        assert_eq!(label("BB3"), Some("BB".into())); // a box past Z
+                                                     // Not a vinyl side:
+        assert_eq!(label("5"), None); // plain number
+        assert_eq!(label("1-05"), None); // disc-track pair
+        assert_eq!(label("AB"), None); // two different letters
+        assert_eq!(label("A1a"), None); // sub-track
+        assert_eq!(label(""), None);
     }
 
+    /// #795: where every track of a release lands, by numbering.
     #[test]
-    fn import_maps_vinyl_sides_to_discs_with_per_side_track_numbers() {
+    fn vinyl_layout_numbers_by_record_or_by_side() {
+        let place = |positions: &[&str], numbering, total| {
+            let layout = vinyl_layout(positions, numbering, total).unwrap();
+            let placed: Vec<(u32, u32)> = positions
+                .iter()
+                .filter_map(|position| layout.side(position))
+                .collect();
+            (placed, layout.disc_total(total))
+        };
+        let records = VinylNumbering::Records;
+        // A single LP reads 1..N on disc 1 of 1.
+        assert_eq!(
+            place(&["A1", "A2", "B1", "B2"], records, Some(1)),
+            (vec![(1, 1), (1, 2), (1, 3), (1, 4)], Some(1))
+        );
+        // A 4xLP: two sides a record, the number runs on across both.
+        let box_set = ["A1", "B1", "B2", "C1", "D1", "E1", "F1", "G1", "H1", "H2"];
+        assert_eq!(
+            place(&box_set, records, Some(4)),
+            (
+                vec![
+                    (1, 1),
+                    (1, 2),
+                    (1, 3),
+                    (2, 1),
+                    (2, 2),
+                    (3, 1),
+                    (3, 2),
+                    (4, 1),
+                    (4, 2),
+                    (4, 3)
+                ],
+                Some(4)
+            )
+        );
+        // Side = disc: eight discs, per side, and DiscTotal counts the sides.
+        let (placed, total) = place(&box_set, VinylNumbering::Sides, Some(4));
+        assert_eq!(placed[2], (2, 2));
+        assert_eq!(placed[9], (8, 2));
+        assert_eq!(total, Some(8));
+        // An etched side D leaves the second record with one side.
+        assert_eq!(
+            place(&["A1", "B1", "C1"], records, Some(2)),
+            (vec![(1, 1), (1, 2), (2, 1)], Some(2))
+        );
+        // Single-sided records: as many stated as there are sides.
+        assert_eq!(
+            place(&["A", "B", "C", "D"], records, Some(4)),
+            (vec![(1, 1), (2, 1), (3, 1), (4, 1)], Some(4))
+        );
+        // A double A-side single is one record, ranked by appearance.
+        assert_eq!(
+            place(&["A", "AA"], records, Some(1)),
+            (vec![(1, 1), (1, 2)], Some(1))
+        );
+        // A plain-number release has no layout; position as is makes none.
+        assert!(vinyl_layout(&["1", "2"], records, Some(1)).is_none());
+        assert!(vinyl_layout(&["A1"], VinylNumbering::Position, Some(1)).is_none());
+    }
+
+    /// #795: a 2xLP + CD puts the CD after the records.
+    #[test]
+    fn vinyl_layout_places_another_medium_after_the_records() {
+        let positions = ["A1", "B1", "C1", "D1", "1", "2"];
+        let layout = vinyl_layout(&positions, VinylNumbering::Records, Some(3)).unwrap();
+        assert_eq!(layout.side("D1"), Some((2, 2)));
+        assert_eq!(layout.other_disc(None, Some(3)), Some(3));
+        assert_eq!(layout.other_disc(Some(1), Some(3)), Some(3)); // "CD1-1"
+        assert_eq!(layout.disc_total(Some(3)), Some(3));
+        // Two more media and no disc stated on the track: not a guess to make.
+        assert_eq!(layout.other_disc(None, Some(4)), None);
+        let sides = vinyl_layout(&positions, VinylNumbering::Sides, Some(3)).unwrap();
+        assert_eq!(sides.other_disc(None, Some(3)), Some(5));
+        assert_eq!(sides.disc_total(Some(3)), Some(5));
+    }
+
+    /// #795: by record is the default. Side A and B no longer both start at 1,
+    /// unticking a track does not renumber the rest, and the files' default
+    /// disc 1 does not stop side C becoming disc 2.
+    #[test]
+    fn import_numbers_vinyl_by_record_from_the_whole_tracklist() {
         let dir = TempDir::new("import-vinyl");
-        // A vinyl release: side A tracks A1..A2, side B is a single bare "B".
         let a1 = dir.tagged_flac("f1.flac", "Old", "Old");
-        let a2 = dir.tagged_flac("f2.flac", "Old", "Old");
-        let b = dir.tagged_flac("f3.flac", "Old", "Old");
-        // Every file already carries the ubiquitous default disc 1 -- which must
-        // not stop side B from becoming disc 2.
-        for path in [&a1, &a2, &b] {
+        let b1 = dir.tagged_flac("f2.flac", "Old", "Old");
+        let c1 = dir.tagged_flac("f3.flac", "Old", "Old");
+        for path in [&a1, &b1, &c1] {
             let mut file = TagEngine::read(path).unwrap();
             file.tags.insert(TagField::DiscNumber, "1".into());
             TagEngine::write(&file).unwrap();
@@ -11060,9 +11343,12 @@ mod tests {
             bpm: None,
             key: None,
         };
+        // A2 is left out of the import, but it is still on the record.
         let selection = ImportSelectionDto {
             album: Some("Album".into()),
-            tracks: vec![track("A1"), track("A2"), track("B")],
+            tracks: vec![track("A1"), track("B1"), track("C1")],
+            release_positions: ["A1", "A2", "B1", "C1", "D1"].map(String::from).to_vec(),
+            disc_total: Some("2".into()),
             ..ImportSelectionDto::default()
         };
         let td = |change: &FileChangeDto| {
@@ -11073,34 +11359,30 @@ mod tests {
                 .collect::<std::collections::BTreeMap<_, _>>();
             (
                 m.get("track").cloned(),
-                m.get("disc").cloned().or_else(|| Some("<none>".into())),
+                m.get("disc").cloned(),
+                m.get("disctotal").cloned(),
             )
         };
+        let paths = [a1.clone(), b1.clone(), c1.clone()];
 
-        let on = app
-            .preview_import(&[a1.clone(), a2.clone(), b.clone()], &selection, true)
-            .unwrap();
-        // A1/A2 -> disc 1 (already set, so no disc change) / tracks 1,2; the bare
-        // "B" -> disc 2 (overwrites the default disc 1) / track 1 (per-side restart).
-        assert_eq!(
-            td(&on.changes[0]),
-            (Some("1".into()), Some("<none>".into()))
-        );
-        assert_eq!(
-            td(&on.changes[1]),
-            (Some("2".into()), Some("<none>".into()))
-        );
-        assert_eq!(td(&on.changes[2]), (Some("1".into()), Some("2".into())));
+        let plan = app.preview_import(&paths, &selection).unwrap();
+        let some = |value: &str| Some(value.to_string());
+        assert_eq!(td(&plan.changes[0]), (some("1"), None, some("2")));
+        assert_eq!(td(&plan.changes[1]), (some("3"), None, some("2")));
+        assert_eq!(td(&plan.changes[2]), (some("1"), some("2"), some("2")));
 
-        // Toggle off: sides are not mapped; bare "B" falls back to the row index.
-        let off = app.preview_import(&[a1, a2, b], &selection, false).unwrap();
-        assert_eq!(td(&off.changes[2]).1, Some("<none>".into())); // no disc change
-        assert_eq!(td(&off.changes[2]).0, Some("3".into())); // index-based fallback
+        // Side = disc: per side, and DiscTotal counts the four sides.
+        app.apply_settings(&SettingsDto {
+            import_vinyl_numbering: "sides".into(),
+            ..SettingsDto::default()
+        });
+        let plan = app.preview_import(&paths, &selection).unwrap();
+        assert_eq!(td(&plan.changes[1]), (some("1"), some("2"), some("4")));
+        assert_eq!(td(&plan.changes[2]), (some("1"), some("3"), some("4")));
     }
 
-    // #642: the vinyl position as the track number is an opt-in. The default
-    // is the number the standard asks for; an MP4, which stores an integer,
-    // always gets the number; sides to discs, asked for on the import, wins.
+    // #642: the vinyl position as the track number is an opt-in. An MP4,
+    // which stores an integer, always gets the number.
     #[test]
     fn the_vinyl_position_setting_writes_the_position_as_the_track_number() {
         let dir = TempDir::new("import-vinyl-position");
@@ -11141,30 +11423,29 @@ mod tests {
                 })
                 .collect()
         };
-        let setting = |on: bool| SettingsDto {
-            import_vinyl_position: on,
-            ..SettingsDto::default()
-        };
 
-        let default = app.preview_import(&paths, &selection, false).unwrap();
+        // The default numbers by record: A1 is 1, B2 the second on the record.
+        let default = app.preview_import(&paths, &selection).unwrap();
         assert_eq!(
             numbers(&default),
             vec![Some("1".into()), Some("5".into()), Some("2".into())]
         );
 
-        app.apply_settings(&setting(true));
-        let opted_in = app.preview_import(&paths, &selection, false).unwrap();
+        // A settings file from before #795 keeps the meaning of its switch.
+        app.apply_settings(&SettingsDto {
+            import_vinyl_position: true,
+            ..SettingsDto::default()
+        });
+        assert_eq!(app.vinyl_numbering.get(), VinylNumbering::Position);
+        let opted_in = app.preview_import(&paths, &selection).unwrap();
         assert_eq!(
             numbers(&opted_in),
             vec![Some("A1".into()), Some("5".into()), Some("2".into())]
         );
-        // Sides to discs numbers per side, whatever the setting.
-        let sides = app.preview_import(&paths, &selection, true).unwrap();
-        assert_eq!(numbers(&sides)[0], Some("1".into()));
 
         // A file already stating the position is left alone.
         app.apply(&opted_in).unwrap();
-        let again = app.preview_import(&paths, &selection, false).unwrap();
+        let again = app.preview_import(&paths, &selection).unwrap();
         assert!(numbers(&again).iter().all(Option::is_none));
     }
 
@@ -11197,9 +11478,7 @@ mod tests {
                 .find(|fc| fc.field == "custom:POSITION")
                 .and_then(|fc| fc.new.clone())
         };
-        let plan = app
-            .preview_import(&[side, plain], &selection, false)
-            .unwrap();
+        let plan = app.preview_import(&[side, plain], &selection).unwrap();
         // "A1" carries a side letter -> stored verbatim, so %position% can name it.
         assert_eq!(position_change(&plan.changes[0]), Some("A1".into()));
         // "2" is just the track number under another name -> nothing written.
@@ -11233,7 +11512,7 @@ mod tests {
             ..ImportSelectionDto::default()
         };
 
-        let plan = app.preview_import(&[one, two], &selection, false).unwrap();
+        let plan = app.preview_import(&[one, two], &selection).unwrap();
         let field = |change: &FileChangeDto, name: &str| {
             change
                 .tag_changes
@@ -11275,7 +11554,7 @@ mod tests {
             ..ImportSelectionDto::default()
         };
 
-        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        let plan = app.preview_import(&[path], &selection).unwrap();
         assert!(plan.changes[0]
             .tag_changes
             .iter()
@@ -11313,7 +11592,7 @@ mod tests {
             ..ImportSelectionDto::default()
         };
 
-        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        let plan = app.preview_import(&[path], &selection).unwrap();
         let field = |name: &str| {
             plan.changes[0]
                 .tag_changes
@@ -11349,7 +11628,7 @@ mod tests {
             ..ImportSelectionDto::default()
         };
 
-        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        let plan = app.preview_import(&[path], &selection).unwrap();
         assert!(plan.changes[0]
             .tag_changes
             .iter()
@@ -11380,7 +11659,7 @@ mod tests {
             ..ImportSelectionDto::default()
         };
 
-        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        let plan = app.preview_import(&[path], &selection).unwrap();
         assert!(plan.changes[0]
             .tag_changes
             .iter()
@@ -11415,7 +11694,7 @@ mod tests {
         };
 
         let plan = app
-            .preview_import(&[inside, plain, volume], &selection, false)
+            .preview_import(&[inside, plain, volume], &selection)
             .unwrap();
         let disc = |change: &FileChangeDto| {
             change
@@ -11614,6 +11893,7 @@ mod tests {
                 bpm: Some(128),
                 key: Some("Am".into()),
             }],
+            release_positions: Vec::new(),
         }
     }
 
@@ -11627,9 +11907,7 @@ mod tests {
         let path = dir.tagged_flac("f1.flac", "Old", "Old");
         let app = open_app(&dir);
 
-        let plan = app
-            .preview_import(&[path], &maximal_selection(), false)
-            .unwrap();
+        let plan = app.preview_import(&[path], &maximal_selection()).unwrap();
         let written: std::collections::BTreeSet<String> = plan.changes[0]
             .tag_changes
             .iter()
@@ -11689,9 +11967,7 @@ mod tests {
             ..SettingsDto::default()
         });
 
-        let plan = app
-            .preview_import(&[path], &maximal_selection(), false)
-            .unwrap();
+        let plan = app.preview_import(&[path], &maximal_selection()).unwrap();
         let written: Vec<&str> = plan.changes[0]
             .tag_changes
             .iter()
@@ -11715,9 +11991,7 @@ mod tests {
         let app = open_app(&dir);
         app.apply_settings(&SettingsDto::default());
 
-        let plan = app
-            .preview_import(&[path], &maximal_selection(), false)
-            .unwrap();
+        let plan = app.preview_import(&[path], &maximal_selection()).unwrap();
         assert!(plan.changes[0].tag_changes.len() > 10);
         assert_eq!(
             serde_json::from_str::<SettingsDto>("{}")
@@ -11752,7 +12026,7 @@ mod tests {
             ..ImportSelectionDto::default()
         };
 
-        let plan = app.preview_import(&[path], &selection, false).unwrap();
+        let plan = app.preview_import(&[path], &selection).unwrap();
         assert!(plan.changes[0]
             .tag_changes
             .iter()

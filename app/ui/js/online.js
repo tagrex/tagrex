@@ -1954,13 +1954,12 @@ async function importRelease(card) {
     url: release.url || null,
     // Physical medium → drives the vinyl side view (#106).
     media_type: mediaTagValue(release.format),
+    // The whole tracklist's positions, ticked or not: a vinyl release is
+    // numbered by record from all of it (#795).
+    release_positions: (release.tracks || []).map((track) => track.position || ""),
   };
   try {
-    const imported = await invoke("preview_import", {
-      paths,
-      selection,
-      vinylSidesToDisc: el("import-vinyl-disc").checked,
-    });
+    const imported = await invoke("preview_import", { paths, selection });
     // ONLINE's chain runs on what the provider gave, before any of it reaches
     // the edit buffer (#237). This is where the shipped "Discogs cleanup" group
     // was always meant to be used: trusting a source is not the same as taking

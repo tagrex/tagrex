@@ -165,22 +165,21 @@ when there is more than one the card shows a **Label · cat#** selector and you
 choose. With a single pair (or none) there is nothing to choose and no selector
 appears; import takes the first.
 
-### Vinyl side → disc
+### Vinyl releases
 
-The checkbox on the results toolbar controls how a vinyl position is imported. On,
-`A1` becomes disc 1 / track 1 and `B2` becomes disc 2 / track 2. Off, the track
-number is the position's number (`A1` gives 1, a bare side such as `B` its row in
-the list) and the disc is left to the release. Either way the position itself is
-kept in the `POSITION` field; see the `%position%` and `%side%` placeholders in
-the [mask reference](masks.md).
+A vinyl position such as `B2` cannot keep its side letter in the track number
+every player reads, so an import numbers a vinyl release by record: each record
+is a disc, and the track number runs on across both of its sides. On a double LP
+`A1`, `A2`, `B1` become disc 1 tracks 1, 2, 3 and `C1` starts disc 2 at 1. The
+position itself is kept in the `POSITION` field and shown in the Position
+column; see the `%position%` and `%side%` placeholders in the
+[mask reference](masks.md).
 
-The tag standards define the track number as a number, so that is what an import
-writes by default. If your library keeps vinyl positions as the track number
-itself, switch **Settings › Online import › Track number** to **Vinyl position**
-and `A1` is written as `A1` (not on an MP4 file, which can only hold a number).
-With this checkbox on the tracks are numbered per side whichever you choose. A
-position can also be typed into the track or disc number by hand, in the editor
-or through a FROM NAME or FROM TEXT mask.
+**Settings › Online import › Vinyl numbering** offers two other ways: **Position
+as is** writes `A1` as the track number (not on an MP4 file, which can only hold
+a number), and **Side = disc** makes every side a disc of its own. A position can
+also be typed into the track or disc number by hand, in the editor or through a
+FROM NAME or FROM TEXT mask.
 
 ## Import, then fix
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- A vinyl release is numbered by record on import: each record is a disc and the
+  track number runs on across both of its sides, so a double LP no longer reads
+  1, 2, 1, 2 on one disc and a 4xLP is four discs, not eight. The per-import
+  "Vinyl side → disc" checkbox is gone; Settings › Online import › Vinyl
+  numbering chooses between By record (the default), Position as is and
+  Side = disc, which now also writes the number of sides as the disc total
+  ([#795](https://github.com/tagrex/tagrex/issues/795)).
+
 ## [1.7.1] - 2026-11-19
 
 A small release. A disc or section heading in a release's tracklist now ticks

@@ -72,9 +72,10 @@ let id3Choice = "v24"; // "v23" | "v24", mirrored by the segmented control
 // Whether an import brings the release's cover (#207): "never" | "if-missing"
 // | "always", mirrored by its segmented control.
 let importCoverChoice = "if-missing";
-// How an import writes a vinyl position as the track number (#642): "number"
-// (the default, the numeric track number the standards define) | "position".
-let importTrackChoice = "number";
+// How an import numbers a vinyl release (#642, #795): "records" (the default:
+// disc = record, the number runs on across its sides) | "position" (A1 as the
+// track number) | "sides" (disc = side).
+let importTrackChoice = "records";
 
 function updateSettingsDot() {
   el("settings-open").classList.toggle("has-token", !!el("discogs-token").value.trim());
@@ -402,7 +403,8 @@ async function openSettings() {
     el("set-check-updates").checked = s.check_updates !== false;
     setId3Choice(s.id3_v23 ? "v23" : "v24");
     setImportCoverChoice(s.import_cover || "if-missing");
-    setImportTrackChoice(s.import_vinyl_position ? "position" : "number");
+    // A settings file from before #795 has only the #642 switch.
+    setImportTrackChoice(s.import_vinyl_numbering || (s.import_vinyl_position ? "position" : "records"));
     el("set-cover-max").value = s.cover_max_px || 0;
     el("set-cover-quality").value = s.cover_quality || 85;
     el("set-bpm-range").value = String(s.bpm_floor || 0);
@@ -588,6 +590,7 @@ async function saveSettings() {
       sidecar_extensions: parseSidecarExts(el("set-sidecar-exts").value),
       import_skip_fields: importSkipFromForm(),
       import_cover: importCoverChoice,
+      import_vinyl_numbering: importTrackChoice,
       import_vinyl_position: importTrackChoice === "position",
       bpm_floor: parseInt(el("set-bpm-range").value, 10) || 0,
       bpm_detection: el("set-bpm-detection").checked,
@@ -749,11 +752,11 @@ initGroupResets([
     isDefault: () =>
       importSkipFromForm().length === 0 &&
       importCoverChoice === "if-missing" &&
-      importTrackChoice === "number",
+      importTrackChoice === "records",
     reset: () => {
       setAllImportFields(true);
       setImportCoverChoice("if-missing");
-      setImportTrackChoice("number");
+      setImportTrackChoice("records");
     },
   },
   {
