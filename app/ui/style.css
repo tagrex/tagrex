@@ -4715,6 +4715,19 @@ button.tk-art-btn > .ico:last-child {
   font-weight: 700;
   color: var(--accent-ink);
 }
+/* A heading ticks or unticks the tracks under it (#794): the whole band is the
+   target, and it says so on hover and keyboard focus. */
+.release-tracklist tr.tk-section {
+  cursor: pointer;
+}
+.release-tracklist tr.tk-section:hover td {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg));
+}
+.tk-section-label:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 
 /* "N / M selected" and the length-match note stay at the right edge of the card
    while the long titles scroll under them (#471, #472): the header cell spans

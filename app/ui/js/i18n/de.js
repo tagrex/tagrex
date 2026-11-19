@@ -174,6 +174,7 @@ export const de = {
   "online.saveAsFolder": "Als folder.jpg speichern",
   "online.saveAll": "Alle {images} speichern",
   "online.selectAllTitle": "Alle Tracks auswählen / keinen",
+  "online.sectionTickTitle": "Klicken, um alle Tracks unter dieser Überschrift anzuhaken oder alle abzuwählen",
   "online.selectAllAria": "Alle Tracks auswählen",
   "online.fitTitle": "Wie viele Längen dieses Releases die gewählten Dateien abdecken",
   "online.lengthsMatch": "{hits} von {stated} Längen passen",

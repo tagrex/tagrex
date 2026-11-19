@@ -153,7 +153,9 @@ Click a card's head to expand it and load its tracklist. From there:
 
 Individual tracks in the tracklist can be ticked and unticked, so importing a
 compilation where you only want half the tracks doesn't require deselecting
-files.
+files. On a release split into discs or headed runs, clicking a heading (or
+Enter on it) ticks every track under it, or unticks them all when they are all
+ticked already, so importing one disc of a set is a click per other disc.
 
 ### Label · cat#
 

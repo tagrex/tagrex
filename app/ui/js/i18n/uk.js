@@ -179,6 +179,7 @@ export const uk = {
   "online.saveAsFolder": "Зберегти як folder.jpg",
   "online.saveAll": "Зберегти все: {images}",
   "online.selectAllTitle": "Вибрати всі треки / жодного",
+  "online.sectionTickTitle": "Натисніть, щоб позначити всі треки під цим заголовком або зняти з них позначки",
   "online.selectAllAria": "Вибрати всі треки",
   "online.fitTitle": "Скільки тривалостей цього релізу збігається з вибраними файлами",
   "online.lengthsMatch": "збігається {hits} із {stated} тривалостей",

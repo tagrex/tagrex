@@ -176,6 +176,7 @@ export const es = {
   "online.saveAsFolder": "Guardar como folder.jpg",
   "online.saveAll": "Guardar las {images}",
   "online.selectAllTitle": "Seleccionar todas las pistas / ninguna",
+  "online.sectionTickTitle": "Haz clic para marcar todas las pistas bajo este encabezado, o desmarcarlas todas",
   "online.selectAllAria": "Seleccionar todas las pistas",
   "online.fitTitle": "Cuántas duraciones de este lanzamiento cubren los archivos seleccionados",
   "online.lengthsMatch": "{hits} de {stated} duraciones coinciden",

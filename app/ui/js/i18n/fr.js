@@ -178,6 +178,7 @@ export const fr = {
   "online.saveAsFolder": "Enregistrer en folder.jpg",
   "online.saveAll": "Enregistrer les {images}",
   "online.selectAllTitle": "Tout sélectionner / rien",
+  "online.sectionTickTitle": "Cliquez pour cocher toutes les pistes sous ce titre, ou toutes les décocher",
   "online.selectAllAria": "Sélectionner toutes les pistes",
   "online.fitTitle": "Combien de durées de cette parution les fichiers sélectionnés couvrent",
   "online.lengthsMatch": "{hits} durées sur {stated} correspondent",

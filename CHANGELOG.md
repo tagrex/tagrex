@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Clicking a disc or section heading in a release's tracklist, such as "Disc 3 (Unmixed)", ticks every track under it, or unticks them all when they are all ticked already; Enter or Space on the heading does the same. Importing one disc of a set no longer means unticking the others track by track ([#794](https://github.com/tagrex/tagrex/issues/794)).
+
 ### Fixed
 
 - The FTP format preset cuts dots out of the file name as well, so `k.c.y.c._-_under_control_(dj_t._edit)` becomes `kcyc_-_under_control_(dj_t_edit)`; the extension keeps its own dot ([#793](https://github.com/tagrex/tagrex/issues/793)).

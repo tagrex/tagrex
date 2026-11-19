@@ -178,6 +178,7 @@ export const en = {
   "online.saveAsFolder": "Save as folder.jpg",
   "online.saveAll": "Save all {images}",
   "online.selectAllTitle": "Select all tracks / none",
+  "online.sectionTickTitle": "Click to tick every track under this heading, or untick them all",
   "online.selectAllAria": "Select all tracks",
   "online.fitTitle": "How many of this release's lengths the selected files account for",
   "online.lengthsMatch": "{hits} of {stated} lengths match",

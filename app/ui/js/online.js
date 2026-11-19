@@ -1038,8 +1038,32 @@ function trackRowHtml(state, i) {
   </tr>`;
 }
 
-function sectionRowHtml(section) {
-  return `<tr class="tk-section"><td colspan="3"><span class="tk-section-label" title="${escapeHtml(section)}">${escapeHtml(section)}</span></td></tr>`;
+// `k` is the heading's place in the drawn rows: clicking it ticks or unticks the
+// tracks under it (#794), and a heading text can repeat, so the place says which.
+function sectionRowHtml(section, k) {
+  const title = `${section}\n${t("online.sectionTickTitle")}`;
+  return `<tr class="tk-section" data-k="${k}"><td colspan="3"><span class="tk-section-label" role="button" tabindex="0" title="${escapeHtml(title)}">${escapeHtml(section)}</span></td></tr>`;
+}
+
+// The tracks under the heading at row `k`: every track row down to the next
+// heading (#794).
+function sectionTracks(state, k) {
+  const out = [];
+  for (let r = k + 1; r < state.rows.length && state.rows[r].section === undefined; r++) out.push(state.rows[r].i);
+  return out;
+}
+
+// Tick every track under the heading at row `k`, or untick them all when they
+// are all ticked already (#794).
+function toggleSection(card, k) {
+  const state = tracklistState.get(card);
+  if (!state || state.rows[k]?.section === undefined) return;
+  const under = sectionTracks(state, k);
+  if (!under.length) return;
+  const on = under.some((i) => !state.checked[i]) ? 1 : 0;
+  for (const i of under) state.checked[i] = on;
+  renderWindow(card, true);
+  updateTracklistCount(card);
 }
 
 function spacerRowHtml(px) {
@@ -1150,7 +1174,7 @@ function rowsHtml(state, from, to) {
   let html = "";
   for (let k = from; k < to; k++) {
     const row = state.rows[k];
-    html += row.section !== undefined ? sectionRowHtml(row.section) : trackRowHtml(state, row.i);
+    html += row.section !== undefined ? sectionRowHtml(row.section, k) : trackRowHtml(state, row.i);
   }
   return html;
 }
@@ -2067,9 +2091,25 @@ el("release-list").addEventListener("click", (e) => {
     saveReleaseImages(card, act === "save-all");
   } else if (act === "import") {
     importRelease(card);
+  } else if (e.target.closest(".release-tracklist tr.tk-section")) {
+    // A disc heading ticks or unticks the tracks under it (#794).
+    toggleSection(card, Number(e.target.closest("tr.tk-section").dataset.k));
   } else if (e.target.closest(".release-head")) {
     toggleCard(card);
   }
+});
+
+// Enter or Space on a disc heading does what a click does (#794).
+el("release-list").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const label = e.target.closest?.(".release-tracklist .tk-section-label");
+  const card = label?.closest(".release-card");
+  if (!card) return;
+  e.preventDefault();
+  const k = label.closest("tr.tk-section").dataset.k;
+  toggleSection(card, Number(k));
+  // The rows were drawn again, so the focus goes back to the same heading.
+  card.querySelector(`.release-tracklist tr.tk-section[data-k="${k}"] .tk-section-label`)?.focus();
 });
 
 // Live "N / M selected" as track checkboxes toggle, plus the master checkbox

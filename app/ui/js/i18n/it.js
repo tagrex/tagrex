@@ -178,6 +178,7 @@ export const it = {
   "online.saveAsFolder": "Salva come folder.jpg",
   "online.saveAll": "Salva tutte le {images}",
   "online.selectAllTitle": "Seleziona tutte le tracce / nessuna",
+  "online.sectionTickTitle": "Fai clic per spuntare tutte le tracce sotto questa intestazione, o toglierle tutte",
   "online.selectAllAria": "Seleziona tutte le tracce",
   "online.fitTitle": "Quante durate di questa release coprono i file selezionati",
   "online.lengthsMatch": "{hits} durate su {stated} corrispondono",

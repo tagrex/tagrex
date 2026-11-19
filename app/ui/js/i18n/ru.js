@@ -178,6 +178,7 @@ export const ru = {
   "online.saveAsFolder": "Сохранить как folder.jpg",
   "online.saveAll": "Сохранить все: {images}",
   "online.selectAllTitle": "Выбрать все треки / ни одного",
+  "online.sectionTickTitle": "Нажмите, чтобы отметить все треки под этим заголовком или снять с них отметки",
   "online.selectAllAria": "Выбрать все треки",
   "online.fitTitle": "Сколько длительностей этого релиза совпадает с выбранными файлами",
   "online.lengthsMatch": "совпадает {hits} из {stated} длительностей",
