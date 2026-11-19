@@ -6804,11 +6804,14 @@ pub fn builtin_action_groups() -> Vec<ActionGroupDto> {
         group(
             "FTP format",
             "filename",
-            "Plain ASCII, no spaces — a file name that survives any server.",
+            "Plain ASCII, no spaces or dots — a file name that survives any server.",
             vec![
                 step("transliterate"),
                 step("diacritics"),
-                re(r"[^A-Za-z0-9._()-]+", "_"),
+                // #793: dots are cut out of the name; the extension is not part
+                // of what a file-name rule sees, so it keeps its own.
+                re(r"\.+", ""),
+                re(r"[^A-Za-z0-9_()-]+", "_"),
                 re(r"_{2,}", "_"),
                 re(r"^_+|_+$", ""),
             ],
@@ -12311,6 +12314,20 @@ mod tests {
         assert_eq!(
             run("FTP format", "Björk — Jóga (12\" Mix)"),
             "Bjork_Joga_(12_Mix)"
+        );
+        assert_eq!(
+            run(
+                "FTP format",
+                "102_k.c.y.c._-_under_control_(shelter_mix_-_dj_t._edit)"
+            ),
+            "102_kcyc_-_under_control_(shelter_mix_-_dj_t_edit)"
+        );
+        assert_eq!(
+            run(
+                "FTP format",
+                "105_dj_pierre_-_love_trax_(love_izz..._-_dj_t._edit)"
+            ),
+            "105_dj_pierre_-_love_trax_(love_izz_-_dj_t_edit)"
         );
         assert_eq!(run("File extension", "FLAC"), "flac");
     }

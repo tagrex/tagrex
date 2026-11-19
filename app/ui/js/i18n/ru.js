@@ -509,7 +509,7 @@ export const ru = {
   "preset.file-extension.name": "Расширение файла",
   "preset.file-extension.note": "Переводит в нижний регистр только расширение: «.FLAC» станет «.flac».",
   "preset.ftp-format.name": "Формат FTP",
-  "preset.ftp-format.note": "Только ASCII и без пробелов: имя файла, которое примет любой сервер.",
+  "preset.ftp-format.note": "Только ASCII, без пробелов и точек: имя файла, которое примет любой сервер.",
   "chain.scopeTitle": "На что действует этот шаг",
   "chain.find": "найти",
   "chain.replaceWith": "заменить на",

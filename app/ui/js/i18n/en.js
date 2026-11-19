@@ -511,7 +511,7 @@ export const en = {
   "preset.file-extension.name": "File extension",
   "preset.file-extension.note": "Lower-case the extension alone: “.FLAC” becomes “.flac”.",
   "preset.ftp-format.name": "FTP format",
-  "preset.ftp-format.note": "Plain ASCII, no spaces: a file name that survives any server.",
+  "preset.ftp-format.note": "Plain ASCII, no spaces or dots: a file name that survives any server.",
   "chain.scopeTitle": "What this step acts on",
   "chain.find": "find",
   "chain.replaceWith": "replace with",

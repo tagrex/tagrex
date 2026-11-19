@@ -111,7 +111,7 @@ compose into one rename instead of the second discarding the first.
 | No underscore | all tags | Underscores to spaces, then collapse the gaps that leaves |
 | Lower case | file name | Lower-case the stem, extension untouched |
 | File extension | file extension | `.FLAC` → `.flac` |
-| FTP format | file name | Plain ASCII, no spaces — a name that survives any server |
+| FTP format | file name | Plain ASCII, no spaces or dots (the extension keeps its own) — a name that survives any server |
 
 Every one of these is a chain you could have built by hand; none of them needs a
 rule kind that isn't in the list above.

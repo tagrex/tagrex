@@ -505,7 +505,7 @@ export const de = {
   "preset.file-extension.name": "Dateiendung",
   "preset.file-extension.note": "Schreibt nur die Endung klein: „.FLAC“ wird zu „.flac“.",
   "preset.ftp-format.name": "FTP-Format",
-  "preset.ftp-format.note": "Nur ASCII, keine Leerzeichen: ein Dateiname, den jeder Server annimmt.",
+  "preset.ftp-format.note": "Nur ASCII, keine Leerzeichen oder Punkte: ein Dateiname, den jeder Server annimmt.",
   "chain.scopeTitle": "Worauf dieser Schritt wirkt",
   "chain.find": "suchen",
   "chain.replaceWith": "ersetzen durch",

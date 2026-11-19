@@ -510,7 +510,7 @@ export const uk = {
   "preset.file-extension.name": "Розширення файлу",
   "preset.file-extension.note": "Переводить у нижній регістр лише розширення: «.FLAC» стане «.flac».",
   "preset.ftp-format.name": "Формат FTP",
-  "preset.ftp-format.note": "Лише ASCII і без пробілів: назва файлу, яку прийме будь-який сервер.",
+  "preset.ftp-format.note": "Лише ASCII, без пробілів і крапок: назва файлу, яку прийме будь-який сервер.",
   "chain.scopeTitle": "На що діє цей крок",
   "chain.find": "знайти",
   "chain.replaceWith": "замінити на",

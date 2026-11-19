@@ -509,7 +509,7 @@ export const it = {
   "preset.file-extension.name": "Estensione del file",
   "preset.file-extension.note": "Mette in minuscolo solo l'estensione: «.FLAC» diventa «.flac».",
   "preset.ftp-format.name": "Formato FTP",
-  "preset.ftp-format.note": "Solo ASCII, senza spazi: un nome di file che qualsiasi server accetta.",
+  "preset.ftp-format.note": "Solo ASCII, senza spazi né punti: un nome di file che qualsiasi server accetta.",
   "chain.scopeTitle": "Su cosa agisce questo passaggio",
   "chain.find": "trova",
   "chain.replaceWith": "sostituisci con",

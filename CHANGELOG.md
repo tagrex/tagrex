@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The FTP format preset cuts dots out of the file name as well, so `k.c.y.c._-_under_control_(dj_t._edit)` becomes `kcyc_-_under_control_(dj_t_edit)`; the extension keeps its own dot ([#793](https://github.com/tagrex/tagrex/issues/793)).
 - On Linux and macOS, a damaged history journal that is set aside is replaced by a new one with the same permissions, so a journal its owner made private (`0600`) no longer comes back readable by other users ([#791](https://github.com/tagrex/tagrex/pull/791)).
 - Setting aside a damaged history journal that was read-only no longer leaves an empty read-only journal that stops every later start: the new journal always lets its owner read and write it, still without widening anyone else's access, and if it cannot be opened the empty file is removed so the next start tries again ([#792](https://github.com/tagrex/tagrex/issues/792)).
 
