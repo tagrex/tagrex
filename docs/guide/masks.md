@@ -220,7 +220,7 @@ one of them a width (`%disc:1%%track:2%`) and it becomes unambiguous.
 %track% - %title%
 %albumartist% - %album%[ (%year%)]/%track% - %title%
 %albumartist%/[%year% - ]%album%/%track% - %title%
-%side%%track:1% - %artist% - %title%
+%position% - %artist% - %title%
 [%catalognumber% - ]%album%
 ```
 

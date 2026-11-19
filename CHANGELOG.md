@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `%side%` reads the side from the POSITION field and falls back to the disc
   number only for files without one, so it still names side B of a record
   numbered as one disc ([#798](https://github.com/tagrex/tagrex/issues/798)).
+- The mask guide's practical patterns name a vinyl file by `%position%` instead
+  of `%side%%track%`, which gives side B's first track as B3 on a record
+  numbered by record ([#799](https://github.com/tagrex/tagrex/issues/799)).
 
 ## [1.7.1] - 2026-11-19
 
