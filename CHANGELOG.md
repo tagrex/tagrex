@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-19
+
+Vinyl releases are now numbered by record: each record is a disc and the track
+number runs on across both of its sides, so a double LP no longer imports as
+1, 2, 1, 2 on one disc and a 4xLP reads as four discs. The per-import checkbox
+gives way to a Vinyl numbering setting with three choices, and the Position
+column, the GENERATOR Vinyl sides block and `%side%` all follow the stored
+position.
+
 ### Changed
 
 - A vinyl release is numbered by record on import: each record is a disc and the

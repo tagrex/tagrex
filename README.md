@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 1.7.x.** Stable for day-to-day use: table editing, rename masks
+> **Status: 1.8.x.** Stable for day-to-day use: table editing, rename masks
 > with a function language, tags read back out of file names and text lists,
 > text transforms, online lookups, BPM detection from the audio, cover art, tag
 > block conversion, duplicate detection, exports, a preview player, a
@@ -174,7 +174,7 @@ with a count; choosing one narrows the table to the files it flags.
   notation. Rules are grouped into named presets, made in their own editor,
   which tries them on a sample as you build them; every rule names the field it
   acts on, so one preset can upper-case a catalogue number while title-casing
-  the titles. Track numbering (with the total) and vinyl sides → disc sit beside
+  the titles. Track numbering (with the total) and vinyl side numbering sit beside
   them, each with a switch: the switched-on blocks preview as one plan, so
   numbering a set and title-casing it is one Apply.
 
@@ -241,11 +241,13 @@ headphone controls drive it too; on Linux the media keys, the desktop's media
 widget and `playerctl` do, over MPRIS; on Windows the media keys and the media
 flyout do.
 
-**Vinyl-aware** — side letters can map to disc numbers (`A1` → disc 1, track 1),
-with a `MediaType` tag, a render-only `%side%` mask placeholder and a derived
-Position column. An import writes the numeric track number the tag standards
-define by default, or the position itself (`A1`) if you prefer it that way, and
-a position can be typed into the track number by hand.
+**Vinyl-aware** — an import numbers a vinyl release by record: each record is a
+disc and the track number runs on across both of its sides, so a 4xLP reads as
+four discs. The position itself (`B2`) is kept in a `POSITION` field and shown in
+a Position column, with `%position%` and `%side%` mask placeholders and a
+`MediaType` tag. A setting writes the position as the track number instead, or
+makes every side a disc of its own, and a position can be typed into the track
+number by hand.
 
 **Formats** — MP3, FLAC, Ogg Vorbis, Opus, Speex, M4A/MP4, AAC, AIFF, WAV,
 Musepack, Monkey's Audio, WavPack. ID3v2 writes go through the concrete tag type
