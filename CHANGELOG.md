@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-11-19
+
+A small release. A disc or section heading in a release's tracklist now ticks
+or unticks every track under it, so importing one disc of a set takes a click
+per other disc. The FTP format preset cuts dots out of file names, and
+recovering a damaged history journal keeps its permissions on Linux and macOS.
+
 ### Added
 
 - Clicking a disc or section heading in a release's tracklist, such as "Disc 3 (Unmixed)", ticks every track under it, or unticks them all when they are all ticked already; Enter or Space on the heading does the same. Importing one disc of a set no longer means unticking the others track by track ([#794](https://github.com/tagrex/tagrex/issues/794)).
