@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   numbering chooses between By record (the default), Position as is and
   Side = disc, which now also writes the number of sides as the disc total
   ([#795](https://github.com/tagrex/tagrex/issues/795)).
+- The Position column shows the position an import stored in the POSITION
+  field, falling back to the side letter of the disc plus the track number only
+  when the file has none, so a record numbered as one disc still reads B1, not
+  A3 ([#796](https://github.com/tagrex/tagrex/issues/796)).
 
 ## [1.7.1] - 2026-11-19
 

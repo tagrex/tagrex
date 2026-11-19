@@ -21,11 +21,19 @@ function sideLetterOf(media, disc) {
   return d >= 1 && d <= 26 ? String.fromCharCode(64 + d) : null;
 }
 
-// The reconstructed position shown in the Position column: vinyl/cassette get the
-// side letter + track ("B" + "3" = "B3"); everything else just the track number.
-// Reads pending edits first so it tracks staged changes to media/disc/track.
+// A stored position that names a side (#796): "A1", a bare "B", a doubled "AA2"
+// past side Z or on a double A-side, or the reverse "1A".
+const SIDE_POSITION = /^(?:([A-Za-z])\1{0,2}\d*|\d+[A-Za-z])$/;
+
+// The position shown in the Position column. The one the import stored in the
+// POSITION field comes first (#796): once a record is one disc (#795), disc +
+// track would turn B1 into A3. Without one, vinyl/cassette get the side letter
+// + track ("B" + "3" = "B3"); everything else just the track number. Reads
+// pending edits first so it tracks staged changes to media/disc/track.
 function vinylPositionOf(track, pending) {
   const get = (key) => (pending && pending.has(key) ? pending.get(key) : track.tags[key] || "");
+  const stored = String(get("custom:POSITION")).trim();
+  if (SIDE_POSITION.test(stored)) return stored;
   const letter = sideLetterOf(get("media"), get("disc"));
   const trackNo = get("track");
   return letter ? letter + trackNo : trackNo;
