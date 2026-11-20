@@ -21,8 +21,14 @@ LAB are live controls, so theirs applies at once. The Discogs token and the
 Beatport account have no default and no reset, and Shortcuts keep their own
 *Reset all*.
 
-The footer reads *Saved to this machine* as a reminder that none of this travels
-with your music or syncs anywhere.
+Everything here is stored on this machine, in the app's own config directory:
+none of it travels with your music or syncs anywhere.
+
+**Version and About** — the footer shows which version of TagRex is running.
+Clicking it opens the About dialog, as clicking the `/tagrex/` wordmark at the
+top left does (on macOS, so does *About TagRex* in the app menu). The dialog
+links to the source code, this guide, the releases and what changed in them,
+the acknowledgements and the license.
 
 ## Discogs
 

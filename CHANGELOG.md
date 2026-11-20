@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   was empty ([#805](https://github.com/tagrex/tagrex/issues/805)).
 - The Settings footer shows the app version, which opens About, in place of the
   "Saved to this machine" note ([#805](https://github.com/tagrex/tagrex/issues/805)).
+- The Settings page of the user guide describes the version in the footer and
+  the About dialog it opens, in place of the note that used to be there
+  ([#807](https://github.com/tagrex/tagrex/issues/807)).
 
 ### Fixed
 
