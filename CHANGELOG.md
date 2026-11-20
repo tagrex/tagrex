@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-11-20
+
+A documentation release. The mask guide now shows how one rename mask names
+vinyl files by their position and CD files by disc and track number, choosing
+by the Media Type tag, and its description of `%side%` matches how the
+placeholder has worked since 1.8.0.
+
 ### Added
 
 - The mask guide shows how one mask names a vinyl file by its position and a CD
