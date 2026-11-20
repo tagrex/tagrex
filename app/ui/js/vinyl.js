@@ -13,6 +13,25 @@ function isSideMedium(media) {
   return ["vinyl", "lp", "shellac", "cassette", "tape", '"', "acetate"].some((k) => m.includes(k));
 }
 
+// The medium a provider's free `format` text names (#98): "cassette", "vinyl",
+// "cd", "digital" or "generic". First hit wins in that order, case-insensitive.
+// Explicit medium names are substrings ("12\" Vinyl", "CDr"); EP and LP are
+// whole words and come after CD and file (#803), so "CD, EP" is a CD,
+// "File, FLAC, EP" is digital and "Repress" is no record, while a bare "EP" or
+// "LP" still reads as one.
+function mediaKind(format) {
+  const f = (format || "").toLowerCase();
+  const has = (...ks) => ks.some((k) => f.includes(k));
+  const words = new Set(f.split(/[^a-z0-9]+/));
+  const word = (...ks) => ks.some((k) => words.has(k));
+  if (has("cassette", "tape")) return "cassette";
+  if (has("vinyl", '7"', '10"', '12"', "shellac")) return "vinyl";
+  if (has("sacd", "hdcd", "cdr", "compact disc", "cd")) return "cd";
+  if (has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming")) return "digital";
+  if (word("lp", "ep")) return "vinyl";
+  return "generic";
+}
+
 // The side letter for a disc on side-based media (disc 1 → A, …, 26 → Z), else
 // null. Mirrors `side_letter_for` in the backend.
 function sideLetterOf(media, disc) {
@@ -114,6 +133,7 @@ function layoutVinylPositions(positions, numbering) {
 
 export {
   isSideMedium,
+  mediaKind,
   sideLetterOf,
   vinylPositionOf,
   parseVinylPosition,

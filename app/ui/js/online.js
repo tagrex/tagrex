@@ -15,6 +15,7 @@ import { refreshFieldEditor } from "./editor.js";
 import { updateSettingsDot } from "./settings.js";
 import { MEDIA_GLYPH_SETS } from "./mediaglyphs.js";
 import { mediaGlyphSet } from "./prefs.js";
+import { mediaKind } from "./vinyl.js";
 import {
   edits,
   previewPlan,
@@ -248,17 +249,8 @@ function discCount(release) {
 }
 
 // ---- media-type badge on the cover (#98, per the Design spec) ----
-// Infer the medium from the provider's free `format` text; first hit wins in
-// this order (vinyl → cd → digital → generic). Case-insensitive substring.
-function mediaKind(format) {
-  const f = (format || "").toLowerCase();
-  const has = (...ks) => ks.some((k) => f.includes(k));
-  if (has("cassette", "tape")) return "cassette";
-  if (has("vinyl", "lp", "ep", '7"', '10"', '12"', "shellac")) return "vinyl";
-  if (has("sacd", "hdcd", "cdr", "compact disc", "cd")) return "cd";
-  if (has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming")) return "digital";
-  return "generic";
-}
+// The medium is inferred from the provider's `format` text by `mediaKind`
+// (vinyl.js, #803).
 
 // What is WRITTEN to the MEDIA tag (see mediaTagValue): data, so it stays as it is
 // in every language. What the badge's tooltip says is `mediaTitle`.

@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   track number when the file has none
   ([#802](https://github.com/tagrex/tagrex/issues/802)).
 
+### Fixed
+
+- An import no longer takes a CD or digital EP for vinyl: EP and LP in a
+  provider's format count only as whole words and only when no CD or file
+  medium is named, so `CD, EP` writes CD, `File, FLAC, EP` writes Digital, and a
+  `Repress` reissue is no record. The release badge, `%side%`, the Position
+  column and the disc total follow the corrected medium
+  ([#803](https://github.com/tagrex/tagrex/issues/803)).
+
 ## [1.8.1] - 2026-11-20
 
 A documentation release. The mask guide now shows how one rename mask names
