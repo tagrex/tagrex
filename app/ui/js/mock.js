@@ -1211,7 +1211,7 @@ function mockInvoke(cmd, args) {
           ["foldername", "Containing folder", "File", true, false],
           ["_bitrate", "Bitrate, kbps", "Technical", true, false],
           ["_length", "Duration, m:ss", "Technical", true, false],
-          ["side", "Vinyl side letter, from the disc number", "Special", true, false],
+          ["side", "Vinyl side letter, from POSITION or the disc number", "Special", true, false],
           ["skip", "Matches and discards a run of text", "Special", false, true],
           // Functions (#73) are written `$name(…)`, not `%name%`, and one that
           // takes several arguments arrives with a slot per argument — both

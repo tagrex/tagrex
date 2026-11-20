@@ -205,7 +205,7 @@ A few placeholders work in one direction only, and the reference marks which:
 
 | | Direction | Why |
 | --- | --- | --- |
-| `%side%` | name only | computed from the disc number, so there is no tag to read it back into |
+| `%side%` | name only | computed from the `POSITION` field or the disc number, so there is no tag of its own to read it back into |
 | File and technical (`%filename%`, `%_bitrate%`, …) | name only | properties of the file, not tags |
 | `%skip%` | read only | it discards text, so there is nothing to render |
 

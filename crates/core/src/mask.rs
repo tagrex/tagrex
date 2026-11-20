@@ -1336,7 +1336,7 @@ pub fn placeholder_reference() -> Vec<PlaceholderDoc> {
     docs.push(PlaceholderDoc {
         token: "%side%".to_string(),
         name: "side",
-        description: "Vinyl side letter, from the disc number",
+        description: "Vinyl side letter, from POSITION or the disc number",
         group: PlaceholderGroup::Special,
         render: true,
         extract: false,

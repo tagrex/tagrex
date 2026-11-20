@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   file by disc and track number, choosing by the Media Type tag with `$if`,
   `$in` and `$lower` ([#800](https://github.com/tagrex/tagrex/issues/800)).
 
+### Fixed
+
+- The mask guide and the placeholder reference's built-in English text say that
+  `%side%` comes from the POSITION field or the disc number, not from the disc
+  number alone ([#801](https://github.com/tagrex/tagrex/issues/801)).
+
 ## [1.8.0] - 2026-11-19
 
 Vinyl releases are now numbered by record: each record is a disc and the track
