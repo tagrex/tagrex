@@ -885,7 +885,6 @@ export const es = {
   "settings.tracklistFontHint": "Las filas de la lista de pistas de la tarjeta del lanzamiento. Arrastra para verlo en directo.",
   "settings.badgeFont": "Fuente de la insignia del lanzamiento",
   "settings.badgeFontHint": "El número de catálogo y el número de pistas de una tarjeta de lanzamiento. Mono distingue el 0 del 8 y alinea los números a lo largo de la lista.",
-  "settings.savedHere": "Guardado en este equipo.",
   "action.save": "Guardar",
   "settings.discogs.tokenPlaceholder": "Token personal de Discogs",
   "settings.proxyPlaceholder": "http://host:puerto  (vacío = ninguno)",
@@ -1189,4 +1188,14 @@ export const es = {
   "health.spellingMore": "+{n} más",
   "settings.general": "General",
   "settings.tagsAndCovers": "Etiquetas y portadas",
+  // ---- About (#805) ----
+  "about.open": "Acerca de TagRex",
+  "about.title": "Acerca de",
+  "about.version": "Versión {version}",
+  "about.tagline": "Un editor de etiquetas gratuito para tu biblioteca musical en Windows, macOS y Linux.",
+  "about.repository": "Código fuente en GitHub",
+  "about.guide": "Guía de usuario",
+  "about.releases": "Versiones y novedades",
+  "about.acknowledgements": "Agradecimientos",
+  "about.license": "Licencia: GPL-3.0",
 };

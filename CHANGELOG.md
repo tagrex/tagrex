@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and CD that names a record or tape by its position and falls back to disc and
   track number when the file has none
   ([#802](https://github.com/tagrex/tagrex/issues/802)).
+- An About dialog on every platform: clicking the `/tagrex/` wordmark or the
+  version in the Settings footer opens it, and on macOS the app menu's About
+  item opens it in place of the stock window. It shows the version and links
+  to the source code, the user guide, releases, the acknowledgements and the
+  license ([#805](https://github.com/tagrex/tagrex/issues/805)).
+
+### Changed
+
+- The macOS menu bar keeps only the TagRex, Edit and Window menus: File held
+  a second Close Window, View only Full Screen, which moves to Window, and Help
+  was empty ([#805](https://github.com/tagrex/tagrex/issues/805)).
+- The Settings footer shows the app version, which opens About, in place of the
+  "Saved to this machine" note ([#805](https://github.com/tagrex/tagrex/issues/805)).
 
 ### Fixed
 

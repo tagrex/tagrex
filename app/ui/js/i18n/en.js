@@ -889,7 +889,6 @@ export const en = {
   "settings.tracklistFontHint": "The release card's tracklist rows. Drag to preview live.",
   "settings.badgeFont": "Release badge font",
   "settings.badgeFontHint": "The catalogue number and track count on a release card. Mono tells 0 from 8 apart and lines the numbers up down the list.",
-  "settings.savedHere": "Saved to this machine.",
   "action.save": "Save",
   "settings.discogs.tokenPlaceholder": "Personal Discogs token",
   "settings.proxyPlaceholder": "http://host:port  (blank = none)",
@@ -1193,4 +1192,14 @@ export const en = {
   "health.spellingMore": "+{n} more",
   "settings.general": "General",
   "settings.tagsAndCovers": "Tags and covers",
+  // ---- About (#805) ----
+  "about.open": "About TagRex",
+  "about.title": "About",
+  "about.version": "Version {version}",
+  "about.tagline": "A free tag editor for your music library on Windows, macOS and Linux.",
+  "about.repository": "Source code on GitHub",
+  "about.guide": "User guide",
+  "about.releases": "Releases and what's new",
+  "about.acknowledgements": "Acknowledgements",
+  "about.license": "License: GPL-3.0",
 };

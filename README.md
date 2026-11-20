@@ -322,6 +322,8 @@ Linux additionally needs the usual WebKitGTK development packages; see the
 
 </details>
 
+<a id="acknowledgements"></a>
+
 <details>
 <summary><b>Tech stack</b></summary>
 

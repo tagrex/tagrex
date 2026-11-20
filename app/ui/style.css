@@ -405,6 +405,23 @@ select,
   height: calc(20px * 0.9361);
   width: auto;
 }
+/* The wordmark opens the About dialog (#805), the only way to it on Linux and
+   Windows besides Settings. A button with none of a button's chrome, so the
+   logo keeps its place to the pixel; the hover patch is a spread shadow, not
+   padding, for the same reason. */
+button.brand {
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  box-shadow: none;
+  font: inherit;
+  cursor: pointer;
+}
+button.brand:hover:not(:disabled) {
+  background: var(--row-hover);
+  box-shadow: 0 0 0 var(--space-1) var(--row-hover);
+}
 
 /* Overlay title bar (#362): the traffic lights float over the page instead
    of sitting in their own strip. Rather than stretch row 1 to chase
@@ -5894,6 +5911,75 @@ td[data-field="year"],
 #colmask-align .seg-btn {
   flex: none;
   min-width: 64px;
+}
+/* About (#805): who the app is, then where its project lives. */
+.modal.about {
+  max-width: 360px;
+}
+.about-id {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  text-align: center;
+}
+.about-logo {
+  width: 64px;
+  height: 64px;
+  margin-bottom: var(--space-2);
+}
+.about-name {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+.about-version {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+/* The version in the Settings footer: quiet until pointed at. */
+.text-btn.about-settings-version {
+  color: var(--muted);
+}
+.text-btn.about-settings-version:hover {
+  color: var(--accent-ink);
+}
+.about-tagline {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  line-height: var(--lh-snug);
+  color: var(--muted);
+}
+.about-links {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+.about-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: none;
+  font-size: var(--text-sm);
+  text-align: start;
+}
+.about-link + .about-link {
+  border-top: 1px solid var(--border);
+}
+.about-link .ico {
+  color: var(--muted);
+}
+.about-link:focus-visible {
+  border-radius: 0;
+  box-shadow: var(--ring-inset);
 }
 .colmask > .settings-hint {
   margin: 0;

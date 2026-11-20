@@ -35,6 +35,7 @@ import {
   retranslateHealth,
 } from "./js/health.js";
 import { initUpdateCheck } from "./js/updatecheck.js";
+import { initAbout } from "./js/about.js";
 import "./js/tablegestures.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
 import "./js/maskbuilder.js";
@@ -3799,6 +3800,7 @@ initHealth(() => {
   updateStatus();
 });
 initUpdateCheck();
+initAbout();
 // Open whatever the OS handed the app on the way in (#51) — a folder from
 // "Open With", from the Dock icon, or from a second launch. After the hooks
 // above, since it opens through the same one a drop does.

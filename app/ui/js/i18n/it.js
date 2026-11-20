@@ -887,7 +887,6 @@ export const it = {
   "settings.tracklistFontHint": "Le righe tracklist della scheda release. Trascina per anteprima live.",
   "settings.badgeFont": "Font badge release",
   "settings.badgeFontHint": "Il numero catalogo e il conteggio tracce su una scheda release. Mono distingue 0 da 8 e allinea i numeri lungo la lista.",
-  "settings.savedHere": "Salvato su questa macchina.",
   "action.save": "Salva",
   "settings.discogs.tokenPlaceholder": "Token personale Discogs",
   "settings.proxyPlaceholder": "http://host:port  (vuoto = nessuno)",
@@ -1191,4 +1190,14 @@ export const it = {
   "health.spellingMore": "+{n} in più",
   "settings.general": "Generale",
   "settings.tagsAndCovers": "Tag e copertine",
+  // ---- About (#805) ----
+  "about.open": "Informazioni su TagRex",
+  "about.title": "Informazioni",
+  "about.version": "Versione {version}",
+  "about.tagline": "Un editor di tag gratuito per la tua libreria musicale su Windows, macOS e Linux.",
+  "about.repository": "Codice sorgente su GitHub",
+  "about.guide": "Guida utente",
+  "about.releases": "Versioni e novità",
+  "about.acknowledgements": "Riconoscimenti",
+  "about.license": "Licenza: GPL-3.0",
 };

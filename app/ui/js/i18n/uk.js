@@ -888,7 +888,6 @@ export const uk = {
   "settings.tracklistFontHint": "Рядки треклиста на картці релізу. Тягніть, щоб бачити результат одразу.",
   "settings.badgeFont": "Шрифт значків релізу",
   "settings.badgeFontHint": "Каталожний номер і кількість треків на картці релізу. Моноширинний відрізняє 0 від 8 і вирівнює числа по списку.",
-  "settings.savedHere": "Зберігається на цій машині.",
   "action.save": "Зберегти",
   "settings.discogs.tokenPlaceholder": "Особистий токен Discogs",
   "settings.proxyPlaceholder": "http://host:port  (порожньо = без проксі)",
@@ -1191,4 +1190,14 @@ export const uk = {
   "health.spellingMore": "та ще {n}",
   "settings.general": "Загальні",
   "settings.tagsAndCovers": "Теги й обкладинки",
+  // ---- About (#805) ----
+  "about.open": "Про TagRex",
+  "about.title": "Про програму",
+  "about.version": "Версія {version}",
+  "about.tagline": "Безкоштовний редактор тегів для музичної бібліотеки на Windows, macOS і Linux.",
+  "about.repository": "Вихідний код на GitHub",
+  "about.guide": "Посібник користувача",
+  "about.releases": "Релізи та що нового",
+  "about.acknowledgements": "Подяки",
+  "about.license": "Ліцензія: GPL-3.0",
 };

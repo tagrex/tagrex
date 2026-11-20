@@ -887,7 +887,6 @@ export const ru = {
   "settings.tracklistFontHint": "Строки треклиста на карточке релиза. Тяните, чтобы видеть результат сразу.",
   "settings.badgeFont": "Шрифт значков релиза",
   "settings.badgeFontHint": "Каталожный номер и число треков на карточке релиза. Моноширинный отличает 0 от 8 и выравнивает числа по списку.",
-  "settings.savedHere": "Сохраняется на этом компьютере.",
   "action.save": "Сохранить",
   "settings.discogs.tokenPlaceholder": "Личный токен Discogs",
   "settings.proxyPlaceholder": "http://host:port  (пусто = без прокси)",
@@ -1190,4 +1189,14 @@ export const ru = {
   "health.spellingMore": "и ещё {n}",
   "settings.general": "Общие",
   "settings.tagsAndCovers": "Теги и обложки",
+  // ---- About (#805) ----
+  "about.open": "О TagRex",
+  "about.title": "О программе",
+  "about.version": "Версия {version}",
+  "about.tagline": "Бесплатный редактор тегов для музыкальной библиотеки на Windows, macOS и Linux.",
+  "about.repository": "Исходный код на GitHub",
+  "about.guide": "Руководство пользователя",
+  "about.releases": "Релизы и что нового",
+  "about.acknowledgements": "Благодарности",
+  "about.license": "Лицензия: GPL-3.0",
 };

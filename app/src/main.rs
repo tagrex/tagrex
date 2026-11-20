@@ -1838,6 +1838,120 @@ async fn open_mask_guide() -> Result<(), ErrorDto> {
         .await
 }
 
+/// The places the About dialog links to (#805). The frontend names one of these
+/// and the address is chosen here, like the mask guide and the releases page,
+/// so nothing it sends can make the app open anything else.
+///
+/// The project has no website yet. When it has one, add a `Website` variant with
+/// its address and a link for it in the dialog (index.html, `#about-modal`).
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum AboutLink {
+    Repository,
+    Guide,
+    Releases,
+    License,
+    Acknowledgements,
+}
+
+impl AboutLink {
+    fn address(&self) -> &'static str {
+        match self {
+            AboutLink::Repository => "https://github.com/tagrex/tagrex",
+            AboutLink::Guide => "https://github.com/tagrex/tagrex/blob/main/docs/guide/README.md",
+            AboutLink::Releases => update::RELEASES_PAGE,
+            AboutLink::License => "https://github.com/tagrex/tagrex/blob/main/LICENSE",
+            AboutLink::Acknowledgements => {
+                "https://github.com/tagrex/tagrex/blob/main/README.md#acknowledgements"
+            }
+        }
+    }
+}
+
+/// The menu item and the event that open the About dialog from the macOS app
+/// menu (#805), in place of the stock About window that showed only the version.
+#[cfg(target_os = "macos")]
+const ABOUT_MENU_ID: &str = "about";
+#[cfg(target_os = "macos")]
+const ABOUT_EVENT: &str = "tagrex://about";
+
+/// The macOS menu bar (#805): the stock one cut down to what the app uses. The
+/// app menu's About opens the app's own dialog; Edit stays whole, since the
+/// webview's text fields only get Cut, Copy, Paste and Select All through it;
+/// Window takes Full Screen from View. File (a second Close Window), View and
+/// the empty Help are gone. Linux and Windows have no menu bar, as before.
+#[cfg(target_os = "macos")]
+fn app_menu(app: &tauri::AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu, WINDOW_SUBMENU_ID};
+    let name = app.package_info().name.clone();
+    let about = MenuItem::with_id(
+        app,
+        ABOUT_MENU_ID,
+        format!("About {name}"),
+        true,
+        None::<&str>,
+    )?;
+    let app_submenu = Submenu::with_items(
+        app,
+        &name,
+        true,
+        &[
+            &about,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::quit(app, None)?,
+        ],
+    )?;
+    let edit = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+    let window = Submenu::with_id_and_items(
+        app,
+        WINDOW_SUBMENU_ID,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::fullscreen(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::close_window(app, None)?,
+        ],
+    )?;
+    Menu::with_items(app, &[&app_submenu, &edit, &window])
+}
+
+/// Open one of the About dialog's links in the system browser (#805).
+#[tauri::command]
+async fn open_about_link(link: AboutLink) -> Result<(), ErrorDto> {
+    let address = link.address();
+    BROWSER_QUEUE
+        .run(move || open::that(address).map_err(ErrorDto::from))
+        .await
+}
+
+/// The version the About dialog shows (#805): the one the app was built as.
+#[tauri::command]
+fn app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
 /// The small-word lists a title-case rule can keep lowercase (#537), as
 /// `[language, words]` pairs in the core's order, so the rule card offers the
 /// same lists the transform applies.
@@ -2049,6 +2163,13 @@ fn main() {
         );
     }));
 
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(app_menu).on_menu_event(|app, event| {
+        if event.id() == ABOUT_MENU_ID {
+            let _ = tauri::Emitter::emit(app, ABOUT_EVENT, ());
+        }
+    });
+
     builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -2102,6 +2223,8 @@ fn main() {
             find_duplicates,
             open_release_page,
             open_mask_guide,
+            open_about_link,
+            app_version,
             close_button_side,
             small_word_lists,
             preview_rename,
