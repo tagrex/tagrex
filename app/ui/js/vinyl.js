@@ -18,13 +18,15 @@ function isSideMedium(media) {
 // Explicit medium names are substrings ("12\" Vinyl", "CDr"); EP and LP are
 // whole words and come after CD and file (#803), so "CD, EP" is a CD,
 // "File, FLAC, EP" is digital and "Repress" is no record, while a bare "EP" or
-// "LP" still reads as one.
+// "LP" still reads as one. Tape is a whole word too (#804), so a "Mixtape" on
+// CD or as files is not a cassette; "cassette" stays a substring for
+// "Microcassette".
 function mediaKind(format) {
   const f = (format || "").toLowerCase();
   const has = (...ks) => ks.some((k) => f.includes(k));
   const words = new Set(f.split(/[^a-z0-9]+/));
   const word = (...ks) => ks.some((k) => words.has(k));
-  if (has("cassette", "tape")) return "cassette";
+  if (has("cassette") || word("tape")) return "cassette";
   if (has("vinyl", '7"', '10"', '12"', "shellac")) return "vinyl";
   if (has("sacd", "hdcd", "cdr", "compact disc", "cd")) return "cd";
   if (has("file", "flac", "mp3", "wav", "aac", "digital", "download", "streaming")) return "digital";

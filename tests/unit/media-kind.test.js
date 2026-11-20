@@ -16,6 +16,14 @@ test('EP and LP count only as whole words (#803)', () => {
   assert.equal(mediaKind('LP'), 'vinyl');
 });
 
+test('a mixtape on CD or as files is not a cassette (#804)', () => {
+  assert.equal(mediaKind('CD, Mixtape'), 'cd');
+  assert.equal(mediaKind('File, MP3, Mixtape'), 'digital');
+  assert.equal(mediaKind('Cassette, Mixtape'), 'cassette');
+  assert.equal(mediaKind('Microcassette'), 'cassette');
+  assert.equal(mediaKind('Tape'), 'cassette');
+});
+
 test('the usual provider formats keep their medium', () => {
   assert.equal(mediaKind('Vinyl, 12", 33 ⅓ RPM, EP'), 'vinyl');
   assert.equal(mediaKind('Vinyl, LP, Album'), 'vinyl');

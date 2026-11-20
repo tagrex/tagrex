@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `Repress` reissue is no record. The release badge, `%side%`, the Position
   column and the disc total follow the corrected medium
   ([#803](https://github.com/tagrex/tagrex/issues/803)).
+- An import no longer takes a CD or digital mixtape for a cassette: "tape" in a
+  provider's format counts only as a whole word, so `CD, Mixtape` writes CD and
+  `File, MP3, Mixtape` writes Digital, while Microcassette still reads as a
+  cassette ([#804](https://github.com/tagrex/tagrex/issues/804)).
 
 ## [1.8.1] - 2026-11-20
 
