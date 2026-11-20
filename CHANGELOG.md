@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The mask guide's media-type example gains one full mask for vinyl, cassette
+  and CD that names a record or tape by its position and falls back to disc and
+  track number when the file has none
+  ([#802](https://github.com/tagrex/tagrex/issues/802)).
+
 ## [1.8.1] - 2026-11-20
 
 A documentation release. The mask guide now shows how one rename mask names

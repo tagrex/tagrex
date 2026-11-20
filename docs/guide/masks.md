@@ -255,6 +255,23 @@ to the disc and track number for a vinyl file without a stored position, wrap
 the first branch: `$if2(%position%,%disc%%track%)`. To treat cassettes like
 vinyl, test both: `$or($in(vinyl,$lower(%media%)),$in(cassette,$lower(%media%)))`.
 
+Both together, in one mask: vinyl and cassettes by their stored position, or by
+disc and track number when the file has none, and everything else by disc and
+track number:
+
+```
+%albumartist% - %album%[ (%catalognumber%)][ (%year%)]/$if($or($in(vinyl,$lower(%media%)),$in(cassette,$lower(%media%))),$if2(%position%,%disc%%track%),%disc%%track%) %artist% - %title%
+```
+
+```
+Vinyl, POSITION B2         →  Artist - Album (CAT 001) (1999)/B2 Artist - Title
+Vinyl, no POSITION, disc 2 →  Artist - Album (CAT 001) (1999)/205 Artist - Title
+Cassette, POSITION A3      →  Artist - Album (CAT 001) (1999)/A3 Artist - Title
+CD, disc 1 track 5         →  Artist - Album (CAT 001) (1999)/105 Artist - Title
+```
+
+A CD file is numbered by disc and track even when it carries a POSITION.
+
 ## Saved masks
 
 The bookmark beside a mask field keeps masks under a name, in one list shared
