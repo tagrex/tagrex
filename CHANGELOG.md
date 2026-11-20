@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The mask guide shows how one mask names a vinyl file by its position and a CD
+  file by disc and track number, choosing by the Media Type tag with `$if`,
+  `$in` and `$lower` ([#800](https://github.com/tagrex/tagrex/issues/800)).
+
 ## [1.8.0] - 2026-11-19
 
 Vinyl releases are now numbered by record: each record is a disc and the track

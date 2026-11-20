@@ -233,6 +233,28 @@ Read the other way, in **Tags from the file name**:
 %skip% - %artist% - %title%
 ```
 
+### Choosing a field by media type
+
+One mask can name vinyl and CD releases differently by testing `%media%` (the
+Media Type tag) with the conditional functions. This one numbers a vinyl track
+by its stored position and anything else by disc and track number:
+
+```
+%albumartist% - %album%[ (%catalognumber%)][ (%year%)]/$if($in(vinyl,$lower(%media%)),%position%,%disc%%track%) %artist% - %title%
+```
+
+```
+Vinyl, POSITION B2  →  Artist - Album (CAT 001) (1999)/B2 Artist - Title
+CD, disc 1 track 5  →  Artist - Album (CAT 001) (1999)/105 Artist - Title
+```
+
+`$in(vinyl,…)` is true when the text contains `vinyl`. It matches case
+exactly, so `$lower` lowers the media type first, and `12" Vinyl` and `VINYL`
+match as well. A file with no media type takes the second branch. To fall back
+to the disc and track number for a vinyl file without a stored position, wrap
+the first branch: `$if2(%position%,%disc%%track%)`. To treat cassettes like
+vinyl, test both: `$or($in(vinyl,$lower(%media%)),$in(cassette,$lower(%media%)))`.
+
 ## Saved masks
 
 The bookmark beside a mask field keeps masks under a name, in one list shared
