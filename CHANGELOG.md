@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-20
+
+TagRex now has an About dialog on Windows and Linux as well as macOS: click the
+`/tagrex/` wordmark or the version in the Settings footer to see which version
+runs and to reach the source code, the user guide, the releases and the
+license. Imports also stop reading a CD or digital release as vinyl or a
+cassette when its format merely mentions EP, LP or tape.
+
 ### Added
 
 - The mask guide's media-type example gains one full mask for vinyl, cassette
