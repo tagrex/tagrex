@@ -71,6 +71,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   open becomes a file set rooted at the shared parent folder, and a folder
   that is already open adds nothing
   ([#846](https://github.com/tagrex/tagrex/issues/846)).
+- The add-folder button sits next to the re-read button, framed like it,
+  instead of inside the path field beside the folder chooser, and its icon
+  shows the plus clear of the folder's corner
+  ([#847](https://github.com/tagrex/tagrex/issues/847)).
 
 ### Fixed
 

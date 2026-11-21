@@ -18,7 +18,7 @@ dropped folders become table groups, and anything not under one of them collects
 under "Files".
 
 To bring in more music without losing what is already open, press the
-folder-with-a-plus button next to **Browse…** and pick another folder. Its files
+folder-with-a-plus button next to **Re-read** and pick another folder. Its files
 join the table; the files already there keep their pending edits, the selection
 and the sort stay, and what is open becomes a file set rooted at the folder the
 two have in common. A folder whose files are all open already adds nothing.
