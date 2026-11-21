@@ -159,16 +159,16 @@ pub fn definitions() -> Value {
         {
             "name": "propose_rename",
             "title": "Propose renaming files",
-            "description": "Stage a rename of files in TagRex's preview for the user to review, built by TagRex's own renamer from a mask (see list_fields for placeholders; try it with render_mask first). Nothing moves until the user clicks Apply, and Undo takes it back. mode \"rename\" (default) renames each file in its folder; a / in the mask makes subfolders under the file's current folder. mode \"reorganize\" builds the path from the library root, e.g. \"%albumartist%/[%catalognumber%] %album%/%track% - %title%\", and removes folders it leaves empty; a folder outside the library cannot be targeted, and the folder that is the library root itself cannot be renamed this way. Never rename or move files or folders yourself instead: if a proposal cannot express the change, tell the user. Refused while other changes are staged. The answer shows example renames, placeholders that were empty, and a `proposal` id for proposal_status.",
+            "description": "Stage a rename of files in TagRex's preview for the user to review, built by TagRex's own renamer from a mask (see list_fields for placeholders; try it with render_mask first). Nothing moves until the user clicks Apply, and Undo takes it back. mode \"rename\" (default) renames each file in its folder; a / in the mask makes subfolders under the file's current folder. mode \"reorganize\" builds the path from the library root, e.g. \"%albumartist%/[%catalognumber%] %album%/%track% - %title%\", and removes folders it leaves empty; a folder outside the library cannot be targeted. mode \"folder\" renames the open folder itself (the library root), e.g. \"%albumartist% - %album% (%catalognumber%) (%year%)\": the mask is rendered from the tags every file in it shares, `paths` is not needed, and it is refused when the files give different names; once applied, TagRex reopens the folder under its new name. Never rename or move files or folders yourself instead: if a proposal cannot express the change, tell the user. Refused while other changes are staged. The answer shows example renames, placeholders that were empty, and a `proposal` id for proposal_status.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "summary": { "type": "string", "maxLength": MAX_SUMMARY, "description": "One line the user sees next to the changes." },
-                    "paths": { "type": "array", "minItems": 1, "maxItems": MAX_EDITS, "items": { "type": "string" } },
-                    "mask": { "type": "string", "maxLength": MAX_MASK, "description": "The new name or path, without the file extension." },
-                    "mode": { "type": "string", "enum": ["rename", "reorganize"], "default": "rename" }
+                    "paths": { "type": "array", "minItems": 1, "maxItems": MAX_EDITS, "items": { "type": "string" }, "description": "The files to rename; required except in mode folder." },
+                    "mask": { "type": "string", "maxLength": MAX_MASK, "description": "The new name or path, without the file extension; in mode folder, the folder's new name." },
+                    "mode": { "type": "string", "enum": ["rename", "reorganize", "folder"], "default": "rename" }
                 },
-                "required": ["summary", "paths", "mask"],
+                "required": ["summary", "mask"],
                 "additionalProperties": false
             },
             "annotations": {
@@ -830,6 +830,7 @@ pub fn resolve_import(
 #[serde(deny_unknown_fields)]
 struct RenameArgs {
     summary: String,
+    #[serde(default)]
     paths: Vec<String>,
     mask: String,
     #[serde(default)]
@@ -870,9 +871,10 @@ fn prepare_rename(app: &App, args: RenameArgs) -> Result<PreparedRename, ErrorDt
     let reorganize = match args.mode.as_deref().unwrap_or("rename") {
         "rename" => false,
         "reorganize" => true,
+        "folder" => return prepare_folder_rename(app, summary, mask),
         other => {
             return Err(ErrorDto::plain(format!(
-                "unknown mode {other:?}; use rename or reorganize"
+                "unknown mode {other:?}; use rename, reorganize or folder"
             )))
         }
     };
@@ -949,6 +951,7 @@ fn prepare_rename(app: &App, args: RenameArgs) -> Result<PreparedRename, ErrorDt
         prune_empty_dirs: false,
         locked_skipped: Vec::new(),
         unrendered: Vec::new(),
+        folder_rename: None,
     });
     Ok(PreparedRename {
         summary,
@@ -960,6 +963,30 @@ fn prepare_rename(app: &App, args: RenameArgs) -> Result<PreparedRename, ErrorDt
             "empty_placeholders": unrendered,
             "not_in_library": outside,
             "unreadable": unreadable,
+        }),
+    })
+}
+
+/// The open folder itself renamed from a mask (#841): the RENAMER's own plan,
+/// so the files have to agree on the name.
+fn prepare_folder_rename(
+    app: &App,
+    summary: String,
+    mask: &str,
+) -> Result<PreparedRename, ErrorDto> {
+    let plan = app.preview_folder_rename(mask).map_err(ErrorDto::from)?;
+    let folder = plan
+        .folder_rename
+        .clone()
+        .ok_or_else(|| ErrorDto::plain("the folder rename did not build"))?;
+    let files = plan.changes.len();
+    Ok(PreparedRename {
+        summary,
+        plan,
+        report: json!({
+            "mode": "folder",
+            "folder": { "from": folder.from, "to": folder.to },
+            "files": files,
         }),
     })
 }
@@ -1362,6 +1389,25 @@ mod tests {
             json!({ "summary": "x", "paths": [a], "mask": "m", "destination": "/tmp" })
         )
         .is_err());
+
+        // The open folder itself (#841): no paths, and the files must agree.
+        let folder = prepare_rename(
+            &app,
+            args(json!({ "summary": "Name the folder", "mask": "Demo Library", "mode": "folder" })),
+        )
+        .unwrap();
+        assert_eq!(folder.report["mode"], "folder");
+        assert_eq!(
+            folder.report["folder"]["to"],
+            base.join("Demo Library").to_string_lossy().as_ref()
+        );
+        assert_eq!(folder.report["files"], 2);
+        assert!(folder.plan.folder_rename.is_some());
+        let disagree = prepare_rename(
+            &app,
+            args(json!({ "summary": "x", "mask": "%title%", "mode": "folder" })),
+        );
+        assert!(disagree.is_err());
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

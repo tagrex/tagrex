@@ -13,7 +13,7 @@ use thiserror::Error;
 use crate::model::{
     CoverArt, CoverKind, Id3v2Revision, TagBlockContent, TagBlockKind, TagField, TagMap,
 };
-use crate::plan::{BlockChange, ChangePlan, CoverChange, FieldChange, FileChange};
+use crate::plan::{BlockChange, ChangePlan, CoverChange, FieldChange, FileChange, FolderRename};
 
 /// Identifier of an applied batch, stable across restarts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -506,6 +506,12 @@ impl SqliteJournal {
                  batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
                  path     TEXT NOT NULL,
                  revision TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS folder_renames (
+                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                 batch_id  INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+                 from_path TEXT NOT NULL,
+                 to_path   TEXT NOT NULL
              );",
         )?;
         // `copied` (#153) arrived after the table did, and a journal from an
@@ -561,7 +567,8 @@ impl SqliteJournal {
              CREATE INDEX IF NOT EXISTS idx_allowed_roots_batch ON allowed_roots(batch_id);
              CREATE INDEX IF NOT EXISTS idx_copy_stamps_batch ON copy_stamps(batch_id);
              CREATE INDEX IF NOT EXISTS idx_applied_values_batch ON applied_values(batch_id);
-             CREATE INDEX IF NOT EXISTS idx_id3v2_revisions_batch ON id3v2_revisions(batch_id);",
+             CREATE INDEX IF NOT EXISTS idx_id3v2_revisions_batch ON id3v2_revisions(batch_id);
+             CREATE INDEX IF NOT EXISTS idx_folder_renames_batch ON folder_renames(batch_id);",
         )?;
         Ok(Self { conn })
     }
@@ -707,6 +714,18 @@ impl UndoJournal for SqliteJournal {
                     batch_id,
                     file.path.to_string_lossy(),
                     file.revision.to_storage_key(),
+                ],
+            )?;
+        }
+
+        // The open folder renamed as a whole (#841), known before the write.
+        if let Some(folder) = &batch.plan.folder_rename {
+            tx.execute(
+                "INSERT INTO folder_renames (batch_id, from_path, to_path) VALUES (?1, ?2, ?3)",
+                rusqlite::params![
+                    batch_id,
+                    folder.from.to_string_lossy(),
+                    folder.to.to_string_lossy(),
                 ],
             )?;
         }
@@ -909,6 +928,19 @@ impl SqliteJournal {
                     .push(PathBuf::from(path));
             }
         }
+        // A batch that renamed the open folder (#841) belongs to the folder
+        // under its new name: that is where the library is open now, and where
+        // its files came from no longer exists.
+        let mut renamed = self
+            .conn
+            .prepare("SELECT batch_id, to_path FROM folder_renames")?;
+        let mut rows = renamed.query([])?;
+        while let Some(row) = rows.next()? {
+            let id = BatchId(row.get(0)?);
+            if let Some(header) = headers.iter_mut().find(|header| header.id == id) {
+                header.paths = vec![PathBuf::from(row.get::<_, String>(1)?)];
+            }
+        }
         // #153: membership is judged by where the files CAME FROM, not where
         // they went. A reorganize can move files outside the library; its batch
         // must still appear in history so those changes can be undone.
@@ -953,6 +985,7 @@ impl SqliteJournal {
                 changes,
                 // Apply-time only: what it caused is in `removed_dirs`.
                 prune_empty_dirs: false,
+                folder_rename: self.load_folder_rename(id)?,
             },
             created_dirs: self.load_paths("created_dirs", id)?,
             removed_dirs: self.load_paths("removed_dirs", id)?,
@@ -963,6 +996,26 @@ impl SqliteJournal {
             // Set by the caller, which read the batch row.
             interrupted: false,
         })
+    }
+
+    /// The open folder this batch renamed as a whole (#841), if it did.
+    fn load_folder_rename(&self, batch_id: i64) -> Result<Option<FolderRename>, JournalError> {
+        self.conn
+            .query_row(
+                "SELECT from_path, to_path FROM folder_renames WHERE batch_id = ?1",
+                rusqlite::params![batch_id],
+                |row| {
+                    Ok(FolderRename {
+                        from: PathBuf::from(row.get::<_, String>(0)?),
+                        to: PathBuf::from(row.get::<_, String>(1)?),
+                    })
+                },
+            )
+            .map(Some)
+            .or_else(|error| match error {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.into()),
+            })
     }
 
     fn load_copy_stamps(&self, batch_id: i64) -> Result<Vec<CopyStamp>, JournalError> {

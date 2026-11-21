@@ -390,7 +390,58 @@ function mockInvoke(cmd, args) {
           text: `no such folder: ${args.root}`,
         });
       }
+      s.root = args.root;
       return Promise.resolve();
+    case "library_root":
+      return Promise.resolve(s.root || null);
+    // The open folder renamed from its tags (#841). The mock's tracks all sit in
+    // one folder, which stands in for the open one; every track must render
+    // the same name, as the backend requires.
+    case "preview_folder_rename": {
+      if (maskError(args.mask)) return Promise.reject(maskError(args.mask));
+      const refuse = (code, values = {}) =>
+        Promise.reject({ message: { code, args: values, count: null }, text: code });
+      const readable = s.tracks.filter((t) => !t.unreadable);
+      if (!readable.length) return refuse("error.folderRename.noTracks");
+      const names = new Set();
+      for (const t of readable) {
+        const missing = missingRequired(args.mask, t);
+        if (missing) return refuse("error.folderRename.missing", { field: String(missing).replace(/%/g, "") });
+        names.add(
+          args.mask
+            .replace("%albumartist%", t.tags.albumartist || t.tags.artist || "")
+            .replace("%artist%", t.tags.artist || "")
+            .replace("%album%", t.tags.album || "")
+            .replace("%year%", t.tags.year || "")
+            .replace("%catalognumber%", t.tags.catalognumber || "")
+            .trim(),
+        );
+      }
+      if (names.size > 1) {
+        const [first, second] = [...names];
+        return refuse("error.folderRename.disagree", { first, second });
+      }
+      const [name] = names;
+      if (!name || /[/\\]/.test(name)) return refuse("error.folderRename.notAName");
+      const from = readable[0].path.slice(0, readable[0].path.lastIndexOf("/"));
+      const parent = from.slice(0, from.lastIndexOf("/"));
+      if (from.slice(parent.length + 1) === name) return refuse("error.folderRename.same");
+      const to = `${parent}/${name}`;
+      const changes = s.tracks
+        .filter((t) => t.path.startsWith(`${from}/`))
+        .map((t) => ({
+          path: t.path,
+          rename_to: to + t.path.slice(from.length),
+          rename_root: parent || "/",
+          creates_folder: true,
+          tag_changes: [],
+        }));
+      const folder = from.slice(parent.length + 1);
+      return Promise.resolve({
+        ...plan(`Rename folder ${folder} to ${name}`, { code: "plan.renameFolder", args: { from: folder, to: name } }, changes),
+        folder_rename: { from, to },
+      });
+    }
     case "read_cover_image":
       // Browser-dev stand-in: echo a tiny 1x1 PNG as the "read" cover so the
       // embed flow can be exercised without touching disk (#133).
@@ -857,7 +908,15 @@ function mockInvoke(cmd, args) {
         if (c.rename_to) t.path = c.rename_to;
         for (const tc of c.tag_changes) t.tags[tc.field] = tc.new || "";
       }
-      s.history.unshift({ id: s.history.length + 1, description: args.plan.description, applied_at: 0 });
+      // A folder rename (#841) moves the session to the folder's new name.
+      if (args.plan.folder_rename) s.root = args.plan.folder_rename.to;
+      s.history.unshift({
+        id: s.history.length + 1,
+        description: args.plan.description,
+        message: args.plan.message,
+        applied_at: 0,
+        folder_rename: args.plan.folder_rename || null,
+      });
       s.redo = []; // a new change ends what could be redone (#775)
       return Promise.resolve({ id: s.history.length, description: args.plan.description, applied_at: 0 });
     case "cancel_apply":
@@ -906,14 +965,31 @@ function mockInvoke(cmd, args) {
       return Promise.resolve(null);
     case "take_settings_notice":
       return Promise.resolve(null);
-    case "undo":
-      (s.redo = s.redo || []).push(s.history.shift());
+    case "undo": {
+      const batch = s.history.shift();
+      (s.redo = s.redo || []).push(batch);
+      // A folder rename (#841) goes back, and the session with it.
+      const folder = batch && batch.folder_rename;
+      if (folder) {
+        for (const t of s.tracks) {
+          if (t.path.startsWith(`${folder.to}/`)) t.path = folder.from + t.path.slice(folder.to.length);
+        }
+        s.root = folder.from;
+      }
       return Promise.resolve({ kept: [] });
+    }
     // Redo (#775): the batch undone last comes back on top of the history. The
     // mock does not rewrite tags either way, as its undo does not.
     case "redo": {
       const batch = (s.redo || []).pop();
       if (batch) s.history.unshift(batch);
+      const folder = batch && batch.folder_rename;
+      if (folder) {
+        for (const t of s.tracks) {
+          if (t.path.startsWith(`${folder.from}/`)) t.path = folder.to + t.path.slice(folder.from.length);
+        }
+        s.root = folder.to;
+      }
       return Promise.resolve(batch || null);
     }
     case "redo_count":

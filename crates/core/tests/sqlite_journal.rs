@@ -8,7 +8,7 @@ use tagrex_core::journal::{
     AppliedBatch, AppliedValue, BatchId, CopyStamp, FileRevision, SqliteJournal, UndoJournal,
 };
 use tagrex_core::model::{Id3v2Revision, TagEngine, TagField};
-use tagrex_core::plan::{ChangePlan, Executor, FieldChange, FileChange};
+use tagrex_core::plan::{ChangePlan, Executor, FieldChange, FileChange, FolderRename};
 
 const MINIMAL_FLAC: [u8; 76] = [
     0x66, 0x4c, 0x61, 0x43, 0x00, 0x00, 0x00, 0x22, 0x10, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -397,6 +397,7 @@ fn the_journal_tables_are_indexed_by_their_parent() {
         "SELECT * FROM allowed_roots WHERE batch_id = 1",
         "SELECT * FROM copy_stamps WHERE batch_id = 1",
         "SELECT * FROM applied_values WHERE batch_id = 1",
+        "SELECT * FROM folder_renames WHERE batch_id = 1",
     ] {
         let plan: String = conn
             .query_row(&format!("EXPLAIN QUERY PLAN {query}"), [], |row| row.get(3))
@@ -792,4 +793,98 @@ fn recovering_a_read_only_journal_gives_a_writable_one_and_no_wider_access() {
     assert!(journal.batches().unwrap().is_empty());
     drop(journal);
     assert!(SqliteJournal::open_or_recover(&db).unwrap().1.is_none());
+}
+
+/// The plan that renames `from` to `to` (#841): the folder rename, and each
+/// listed file's new path for the preview.
+fn rename_folder(from: &Path, to: &Path, files: &[&str]) -> ChangePlan {
+    ChangePlan {
+        description: "rename folder".to_string(),
+        changes: files
+            .iter()
+            .map(|name| FileChange {
+                path: from.join(name),
+                rename_to: Some(to.join(name)),
+                ..FileChange::default()
+            })
+            .collect(),
+        folder_rename: Some(FolderRename {
+            from: from.to_path_buf(),
+            to: to.to_path_buf(),
+        }),
+        ..ChangePlan::default()
+    }
+}
+
+/// The open folder renamed as a whole (#841): everything in it goes along,
+/// the batch belongs to the folder under its new name, and undo after a restart
+/// puts the old name back.
+#[test]
+fn a_renamed_folder_is_undone_after_a_restart() {
+    let dir = TempDir::new("folder-rename");
+    let from = dir.path().join("Album");
+    let to = dir.path().join("Artist - Album (1996)");
+    std::fs::create_dir_all(from.join("Scans")).unwrap();
+    std::fs::write(from.join("01.flac"), MINIMAL_FLAC).unwrap();
+    std::fs::write(from.join("front.jpg"), b"jpeg").unwrap();
+    std::fs::write(from.join("Scans").join("back.jpg"), b"jpeg").unwrap();
+    let db = dir.path().join("journal.sqlite");
+    let plan = rename_folder(&from, &to, &["01.flac"]);
+    {
+        let mut journal = SqliteJournal::open(&db).unwrap();
+        Executor::apply(&plan, &mut journal, std::slice::from_ref(&from)).unwrap();
+    }
+    assert!(!from.exists());
+    assert!(to.join("01.flac").is_file());
+    assert!(to.join("front.jpg").is_file());
+    assert!(to.join("Scans").join("back.jpg").is_file());
+
+    let mut journal = SqliteJournal::open(&db).unwrap();
+    let headers = journal.headers(std::slice::from_ref(&to)).unwrap();
+    assert_eq!(headers.len(), 1, "the batch shows where the folder is now");
+    assert!(journal
+        .headers(std::slice::from_ref(&from))
+        .unwrap()
+        .is_empty());
+    let batch = journal.batch(headers[0].id).unwrap().unwrap();
+    assert_eq!(batch.plan.folder_rename, plan.folder_rename);
+
+    Executor::undo(&mut journal, headers[0].id, std::slice::from_ref(&to)).unwrap();
+    assert!(!to.exists());
+    assert!(from.join("Scans").join("back.jpg").is_file());
+    assert!(journal.batches().unwrap().is_empty());
+}
+
+/// A folder rename renames the open folder and nothing else (#841): not onto
+/// a folder that is there, not a folder that is not a root, not into another
+/// parent, and not with a change that does something besides moving a file.
+#[test]
+fn a_folder_rename_is_refused_unless_it_only_renames_the_root() {
+    let dir = TempDir::new("folder-refused");
+    let from = dir.path().join("Album");
+    std::fs::create_dir_all(&from).unwrap();
+    let track = from.join("01.flac");
+    std::fs::write(&track, MINIMAL_FLAC).unwrap();
+    let taken = dir.path().join("Taken");
+    std::fs::create_dir_all(&taken).unwrap();
+    let mut journal = SqliteJournal::open(&dir.path().join("journal.sqlite")).unwrap();
+    let root = [from.clone()];
+
+    let onto_existing = rename_folder(&from, &taken, &["01.flac"]);
+    assert!(Executor::apply(&onto_existing, &mut journal, &root).is_err());
+
+    let elsewhere = rename_folder(&from, &taken.join("Album"), &["01.flac"]);
+    assert!(Executor::apply(&elsewhere, &mut journal, &root).is_err());
+
+    let not_a_root = rename_folder(&from, &dir.path().join("New"), &["01.flac"]);
+    assert!(Executor::apply(&not_a_root, &mut journal, &roots(dir.path())).is_err());
+
+    let mut with_tags = rename_folder(&from, &dir.path().join("New"), &["01.flac"]);
+    with_tags.changes[0].tag_changes = set_artist(&track, None, Some("A")).changes[0]
+        .tag_changes
+        .clone();
+    assert!(Executor::apply(&with_tags, &mut journal, &root).is_err());
+
+    assert!(track.is_file(), "nothing moved");
+    assert!(journal.batches().unwrap().is_empty(), "nothing journaled");
 }

@@ -33,6 +33,8 @@ const REORGANIZE_STORAGE_KEY = "tagrex.reorganizeEnabled";
 // The mask itself (#402): the pattern last typed or picked, the way FROM NAME
 // keeps its own (#141) — a relaunch used to put the markup's default back.
 const MASK_STORAGE_KEY = "tagrex.renameMask";
+// The open folder's own mask (#841), kept the same way.
+const FOLDER_MASK_STORAGE_KEY = "tagrex.folderMask";
 
 let moveMode = "move";
 let reorganize = false;
@@ -107,6 +109,49 @@ function unrenderedParts(plan) {
   return (plan?.unrendered || [])
     .map((u) => t("renamer.unrenderedPart", { field: `%${u.field}%`, files: tn("unit.file", u.files) }))
     .join(", ");
+}
+
+// ---- the open folder itself (#841) ----
+// Named from the tags every file in it shares. The plan renames the folder in
+// one step and lists each file under its new path, so the preview reads like a
+// move; it applies as a whole, and no rule chain runs over it, since a cleaned
+// file path would no longer be the folder's.
+function folderPlan(mask = el("folder-mask").value) {
+  return invoke("preview_folder_rename", { mask });
+}
+
+async function previewFolder() {
+  try {
+    const plan = await folderPlan();
+    setPreviewPlan(plan);
+    setPreviewSource("folder");
+    hooks.renderPreview(previewPlan);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// What the mask makes of the folder's name, or why it cannot: the files give
+// different names, a placeholder is empty, the name is taken.
+async function refreshFolderExample() {
+  const box = el("folder-example");
+  if (!box) return;
+  try {
+    const plan = await folderPlan();
+    const to = plan.folder_rename?.to || "";
+    box.textContent = to.split(/[\\/]/).filter(Boolean).pop() || "";
+    box.classList.remove("muted");
+  } catch (e) {
+    box.textContent = String(e);
+    box.classList.add("muted");
+  }
+}
+
+let folderExampleTimer = null;
+function scheduleFolderExample() {
+  if (el("panel-renamer").hidden) return;
+  clearTimeout(folderExampleTimer);
+  folderExampleTimer = setTimeout(refreshFolderExample, 250);
 }
 
 // ---- reorganize on/off (#153 destination + copy, unified in #382) ----
@@ -287,6 +332,7 @@ function scheduleMaskExample() {
   if (el("panel-renamer").hidden) return;
   clearTimeout(maskExampleTimer);
   maskExampleTimer = setTimeout(refreshMaskExample, 180);
+  scheduleFolderExample();
 }
 
 // ---- wire up ----
@@ -294,6 +340,11 @@ el("preview").addEventListener("click", preview);
 el("mask").addEventListener("input", () => {
   writeStored(MASK_STORAGE_KEY, el("mask").value);
   scheduleMaskExample();
+});
+el("preview-folder").addEventListener("click", previewFolder);
+el("folder-mask").addEventListener("input", () => {
+  writeStored(FOLDER_MASK_STORAGE_KEY, el("folder-mask").value);
+  scheduleFolderExample();
 });
 el("reorganize-toggle").addEventListener("change", (e) => setReorganize(e.target.checked));
 el("move-dest-pick").addEventListener("click", pickDestination);
@@ -316,6 +367,7 @@ el("move-prune").addEventListener("change", () => {
 // (#153, #382). An empty stored mask is not restored: the markup's default is a
 // better start than a blank field.
 el("mask").value = readStored(MASK_STORAGE_KEY) || el("mask").value;
+el("folder-mask").value = readStored(FOLDER_MASK_STORAGE_KEY) || el("folder-mask").value;
 el("move-dest").value = readStored(MOVE_DEST_STORAGE_KEY) || "";
 syncDestinationField();
 el("move-prune").checked = !!readStored(MOVE_PRUNE_STORAGE_KEY);

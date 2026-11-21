@@ -148,6 +148,15 @@ pub struct FileChange {
     pub sidecar_renames: Vec<(PathBuf, PathBuf)>,
 }
 
+/// The open folder renamed as a whole (#841): `from` becomes `to`, a sibling
+/// under the same parent. One directory rename, so everything in the folder
+/// goes with it, files the library does not list included.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolderRename {
+    pub from: PathBuf,
+    pub to: PathBuf,
+}
+
 /// A complete, previewable plan of changes over a set of files.
 #[derive(Debug, Clone, Default)]
 pub struct ChangePlan {
@@ -170,6 +179,11 @@ pub struct ChangePlan {
     /// on. Only directories this batch actually emptied are removed, and undo
     /// puts them back — see [`AppliedBatch::removed_dirs`].
     pub prune_empty_dirs: bool,
+    /// Set when the plan renames the open folder itself (#841). Its changes are
+    /// then only what that does to each listed file's path, for the preview:
+    /// the executor renames the folder once instead of moving them one by one,
+    /// and refuses a plan whose changes do anything else.
+    pub folder_rename: Option<FolderRename>,
 }
 
 impl ChangePlan {
@@ -252,6 +266,9 @@ impl Executor {
         cancel: &AtomicBool,
     ) -> Result<AppliedBatch, PlanError> {
         let roots = canonical_roots(allowed_roots)?;
+        if let Some(folder) = &plan.folder_rename {
+            return Self::apply_folder_rename(plan, folder, journal, &roots, progress, cancel);
+        }
 
         // Pre-flight: validate the WHOLE plan before touching disk. Rename
         // targets are collected so two files can't be planned onto the same
@@ -360,6 +377,110 @@ impl Executor {
             return Err(error);
         }
         Ok(batch)
+    }
+
+    /// [`Executor::apply_with`] for a plan that renames the open folder (#841).
+    ///
+    /// The folder must be one of the roots itself, and the new name a sibling
+    /// that is free, so the rename cannot reach anywhere else; each change must
+    /// be nothing but the path that rename gives its file. Journaled before the
+    /// rename like any batch (#659), and dropped from the journal again if the
+    /// rename fails, since a failed rename has changed nothing.
+    fn apply_folder_rename(
+        plan: &ChangePlan,
+        folder: &FolderRename,
+        journal: &mut dyn UndoJournal,
+        roots: &[PathBuf],
+        progress: &mut dyn FnMut(&ApplyProgress),
+        cancel: &AtomicBool,
+    ) -> Result<AppliedBatch, PlanError> {
+        let canonical = std::fs::canonicalize(&folder.from).map_err(PlanError::Io)?;
+        if !canonical.is_dir() || !roots.contains(&canonical) {
+            return Err(PlanError::OutsideRoot(folder.from.clone()));
+        }
+        ensure_sibling(folder)?;
+        ensure_target_free(&folder.from, &folder.to, false)?;
+        for change in &plan.changes {
+            let moved = change
+                .path
+                .strip_prefix(&folder.from)
+                .map(|rest| folder.to.join(rest))
+                .map_err(|_| PlanError::OutsideRoot(change.path.clone()))?;
+            let only_moved = change.tag_changes.is_empty()
+                && change.cover_change.is_none()
+                && change.block_changes.is_empty()
+                && change.sidecar_renames.is_empty()
+                && !change.copy
+                && change.rename_to.as_deref() == Some(moved.as_path());
+            if !only_moved {
+                return Err(PlanError::OutsideRoot(change.path.clone()));
+            }
+        }
+        if cancel.load(Ordering::SeqCst) {
+            return Err(PlanError::Cancelled);
+        }
+        progress(&ApplyProgress {
+            done: 0,
+            total: 1,
+            path: folder.from.clone(),
+        });
+
+        let mut batch = AppliedBatch {
+            id: BatchId(0),
+            description: plan.description.clone(),
+            message: plan.message.clone(),
+            applied_at: now_unix_secs(),
+            plan: plan.clone(),
+            created_dirs: Vec::new(),
+            removed_dirs: Vec::new(),
+            allowed_roots: roots.to_vec(),
+            copy_stamps: Vec::new(),
+            applied_values: Vec::new(),
+            interrupted: true,
+            id3v2_revisions: Vec::new(),
+        };
+        batch.id = journal.record(&batch)?;
+        if let Err(error) = std::fs::rename(&folder.from, &folder.to) {
+            let _ = journal.rollback(batch.id);
+            return Err(PlanError::Io(error));
+        }
+        batch.interrupted = false;
+        if let Err(error) = journal.finish(batch.id, &batch) {
+            if std::fs::rename(&folder.to, &folder.from).is_ok() {
+                let _ = journal.rollback(batch.id);
+            }
+            return Err(error.into());
+        }
+        Ok(batch)
+    }
+
+    /// [`Executor::undo_with_mode`] for a batch that renamed the open folder
+    /// (#841): the folder goes back to its old name. The folder under its new
+    /// name has to sit inside a root, which it does while it is open, and the
+    /// old name has to be free again. Already back under the old name, as an
+    /// interrupted batch whose rename never happened is, means nothing to do.
+    fn undo_folder_rename(
+        journal: &mut dyn UndoJournal,
+        batch_id: BatchId,
+        folder: &FolderRename,
+        roots: &[PathBuf],
+        progress: &mut dyn FnMut(&ApplyProgress),
+    ) -> Result<UndoReport, PlanError> {
+        ensure_sibling(folder)?;
+        let undone =
+            folder.from.is_dir() && (!folder.to.exists() || folds_onto(&folder.from, &folder.to));
+        if !undone {
+            ensure_within_roots(&folder.to, roots)?;
+            ensure_target_free(&folder.to, &folder.from, false)?;
+            progress(&ApplyProgress {
+                done: 0,
+                total: 1,
+                path: folder.to.clone(),
+            });
+            std::fs::rename(&folder.to, &folder.from).map_err(PlanError::Io)?;
+        }
+        journal.rollback(batch_id)?;
+        Ok(UndoReport::default())
     }
 
     /// The write half of [`Executor::apply`]: tags, then moves and copies, then
@@ -508,6 +629,9 @@ impl Executor {
             if !roots.contains(root) {
                 roots.push(root.clone());
             }
+        }
+        if let Some(folder) = &batch.plan.folder_rename {
+            return Self::undo_folder_rename(journal, batch_id, folder, &roots, progress);
         }
 
         // Put back the folders the batch emptied, before anything moves: a file
@@ -1285,6 +1409,22 @@ fn resolve_target_within_roots(target: &Path, roots: &[PathBuf]) -> Result<PathB
         resolved.push(name);
     }
     Ok(resolved)
+}
+
+/// A folder rename only renames (#841): the new name sits in the same parent
+/// as the old one, and is a name rather than a path.
+fn ensure_sibling(folder: &FolderRename) -> Result<(), PlanError> {
+    let parent = folder.from.parent();
+    let renames = parent.is_some()
+        && folder.to.parent() == parent
+        && folder.to.file_name().is_some()
+        && folder.from.file_name().is_some()
+        && folder.to.file_name() != folder.from.file_name();
+    if renames {
+        Ok(())
+    } else {
+        Err(PlanError::OutsideRoot(folder.to.clone()))
+    }
 }
 
 /// Create `dir` and any missing ancestors, returning the directories actually

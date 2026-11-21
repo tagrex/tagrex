@@ -190,9 +190,10 @@ delete anything.
 
 A rename is built by the RENAMER from a mask, exactly as if you had typed it
 there: either in place, or reorganized into folders from the library root, with
-the folders it empties removed. An assistant cannot move files outside the open
-library, and cannot rename the library folder itself: open its parent folder
-first.
+the folders it empties removed, or the open folder itself renamed from the tags
+its files share, as **Rename the open folder** does. An assistant cannot move
+files outside the open library, and never renames, moves or deletes files
+itself: when TagRex cannot make a change, it is told to say so.
 
 To tag files from a release, the assistant proposes an import: it names the
 release and which file is which track, and TagRex fetches the release and fills

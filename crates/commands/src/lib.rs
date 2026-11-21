@@ -38,7 +38,7 @@ use tagrex_core::model::{
 };
 use tagrex_core::plan::{
     ApplyProgress, BlockChange, ChangePlan, CoverChange, Executor, FieldChange, FileChange,
-    UndoMode, UndoReport,
+    FolderRename, UndoMode, UndoReport,
 };
 use tagrex_core::provider::{FetchedImage, MetadataProvider, ReleaseId, SearchQuery};
 use tagrex_core::scanner::{self, ScanOptions};
@@ -652,6 +652,11 @@ pub enum PlanMessage {
         copy: bool,
         mask: String,
     },
+    /// The open folder renamed as a whole (#841), by folder names.
+    RenameFolder {
+        from: String,
+        to: String,
+    },
     EditTags,
     EditTagsWithCover {
         files: usize,
@@ -711,6 +716,7 @@ impl PlanMessage {
             Self::Transform { .. } => "plan.transform",
             Self::ReorganizeByMask { copy: false, .. } => "plan.reorganizeByMask",
             Self::ReorganizeByMask { copy: true, .. } => "plan.copyByMask",
+            Self::RenameFolder { .. } => "plan.renameFolder",
             Self::EditTags => "plan.editTags",
             Self::EditTagsWithCover { .. } => "plan.editTagsWithCover",
             Self::ClearTags => "plan.clearTags",
@@ -759,7 +765,7 @@ impl PlanMessage {
             Self::ConvertToRevision { revision } => {
                 args.insert("revision".to_string(), revision.clone());
             }
-            Self::ConvertBlock { from, to } => {
+            Self::ConvertBlock { from, to } | Self::RenameFolder { from, to } => {
                 args.insert("from".to_string(), from.clone());
                 args.insert("to".to_string(), to.clone());
             }
@@ -794,6 +800,7 @@ impl PlanMessage {
                     if *copy { "Copy" } else { "Reorganize" }
                 )
             }
+            Self::RenameFolder { from, to } => format!("Rename folder {from} to {to}"),
             Self::EditTags => "Edit tags".to_string(),
             Self::EditTagsWithCover { files } => match files {
                 1 => "Edit tags + cover on 1 file".to_string(),
@@ -1081,6 +1088,23 @@ fn error_message(error: &AppError) -> MessageDto {
         AppError::Trash(detail) => coded("error.trash", arg("detail", detail)),
         AppError::NoLibraryOpen => coded("error.noLibraryOpen", BTreeMap::new()),
         AppError::BeatportReauth(detail) => coded("error.beatportReauth", arg("detail", detail)),
+        AppError::FolderRename(refusal) => match refusal {
+            FolderRenameRefusal::FileSet => coded("error.folderRename.fileSet", BTreeMap::new()),
+            FolderRenameRefusal::NoTracks => coded("error.folderRename.noTracks", BTreeMap::new()),
+            FolderRenameRefusal::Disagree { first, second } => {
+                let mut args = arg("first", first);
+                args.insert("second".to_string(), second.clone());
+                coded("error.folderRename.disagree", args)
+            }
+            FolderRenameRefusal::Missing { field } => {
+                coded("error.folderRename.missing", arg("field", field))
+            }
+            FolderRenameRefusal::NotAName => coded("error.folderRename.notAName", BTreeMap::new()),
+            FolderRenameRefusal::Same => coded("error.folderRename.same", BTreeMap::new()),
+            FolderRenameRefusal::Exists { name } => {
+                coded("error.folderRename.exists", arg("name", name))
+            }
+        },
     }
 }
 
@@ -1117,6 +1141,52 @@ pub struct PlanDto {
     /// matched what was already there.
     #[serde(default)]
     pub unrendered: Vec<UnrenderedDto>,
+    /// Set when the plan renames the open folder itself (#841); its changes are
+    /// then each listed file's path under the new name, for the preview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folder_rename: Option<FolderRenameDto>,
+}
+
+/// The open folder's old and new path (#841).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FolderRenameDto {
+    pub from: String,
+    pub to: String,
+}
+
+/// Why the open folder cannot be renamed from a mask (#841).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FolderRenameRefusal {
+    /// The session lists a drop of files, which has no one folder.
+    FileSet,
+    /// The folder lists no file to render the mask from.
+    NoTracks,
+    /// The files render the mask to different names.
+    Disagree { first: String, second: String },
+    /// A placeholder the mask needs is empty in a file.
+    Missing { field: String },
+    /// The mask renders to nothing, or to a path rather than a name.
+    NotAName,
+    /// The folder already has that name.
+    Same,
+    /// A file or folder with that name is already there.
+    Exists { name: String },
+}
+
+impl std::fmt::Display for FolderRenameRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::FileSet => write!(f, "a drop of files has no one folder to rename"),
+            Self::NoTracks => write!(f, "it lists no file to take the name from"),
+            Self::Disagree { first, second } => {
+                write!(f, "its files give different names ({first:?}, {second:?})")
+            }
+            Self::Missing { field } => write!(f, "%{field}% is empty in a file"),
+            Self::NotAName => write!(f, "the mask does not give a folder name"),
+            Self::Same => write!(f, "it already has that name"),
+            Self::Exists { name } => write!(f, "{name:?} is already there"),
+        }
+    }
 }
 
 /// One required placeholder left empty, and on how many files (#411).
@@ -2676,6 +2746,9 @@ impl App {
         plan.notes = notes;
         // What the mask couldn't render is still true of the cleaned plan.
         plan.unrendered = previous.unrendered.clone();
+        // A cleaned folder rename no longer matches it, and the executor refuses
+        // it rather than moving the files out one by one (#841).
+        plan.folder_rename = previous.folder_rename.clone();
         plan
     }
 
@@ -2759,6 +2832,7 @@ impl App {
             prune_empty_dirs,
             locked_skipped: skipped,
             unrendered: Vec::new(),
+            folder_rename: None,
         }
     }
 
@@ -3231,6 +3305,104 @@ impl App {
             false,
         );
         plan.unrendered = unrendered;
+        Ok(plan)
+    }
+
+    /// Rename the open folder itself from a mask (#841), rendered from the tags
+    /// its files share: `%albumartist% - %album% (%year%)`. Every listed file
+    /// must render the same name, or the mask is not saying what the folder is
+    /// called; a placeholder empty in a file, a name that is taken or already
+    /// the folder's, and a rendered path rather than a name are refused before
+    /// anything is staged. The plan renames the folder in one step, and lists
+    /// each file under its new path so the preview shows where it goes.
+    pub fn preview_folder_rename(&self, mask_pattern: &str) -> Result<PlanDto, AppError> {
+        let refuse = |refusal| Err(AppError::FolderRename(refusal));
+        if self.is_file_set() {
+            return refuse(FolderRenameRefusal::FileSet);
+        }
+        let mask = Mask::parse(mask_pattern)?;
+        let paths = self.source_paths();
+        let mut rendered: Option<String> = None;
+        for path in &paths {
+            let Ok(track) = self.read_cached(path) else {
+                continue;
+            };
+            let name = match mask.render_with(&track.tags, &self.file_context(&mask, &track)) {
+                Ok(name) => name,
+                Err(MaskError::MissingTag(field)) => {
+                    return refuse(FolderRenameRefusal::Missing { field });
+                }
+                Err(error) => return Err(error.into()),
+            };
+            match &rendered {
+                None => rendered = Some(name),
+                Some(first) if *first != name => {
+                    return refuse(FolderRenameRefusal::Disagree {
+                        first: first.clone(),
+                        second: name,
+                    });
+                }
+                Some(_) => {}
+            }
+        }
+        let Some(rendered) = rendered else {
+            return refuse(FolderRenameRefusal::NoTracks);
+        };
+        let from = self.library_root.clone();
+        let (Some(parent), Some(current)) = (from.parent(), from.file_name()) else {
+            return refuse(FolderRenameRefusal::NotAName);
+        };
+        if rendered.contains(['/', '\\']) {
+            return refuse(FolderRenameRefusal::NotAName);
+        }
+        let name = self.safe_name(rendered.trim());
+        if name.is_empty() || name == "." || name == ".." {
+            return refuse(FolderRenameRefusal::NotAName);
+        }
+        if std::ffi::OsStr::new(&name) == current {
+            return refuse(FolderRenameRefusal::Same);
+        }
+        let to = parent.join(&name);
+        // The one entry allowed to be there is the folder itself, reached by
+        // a name the file system folds: a change of case only (#707).
+        let same_folder = || match (std::fs::canonicalize(&to), std::fs::canonicalize(&from)) {
+            (Ok(target), Ok(source)) => target == source,
+            _ => false,
+        };
+        if std::fs::symlink_metadata(&to).is_ok() && !same_folder() {
+            return refuse(FolderRenameRefusal::Exists { name });
+        }
+        let changes = paths
+            .iter()
+            .filter_map(|path| {
+                let rest = path.strip_prefix(&from).ok()?;
+                Some(FileChangeDto {
+                    path: path.to_string_lossy().into_owned(),
+                    rename_to: Some(to.join(rest).to_string_lossy().into_owned()),
+                    tag_changes: Vec::new(),
+                    cover_change: None,
+                    sidecar_renames: Vec::new(),
+                    block_changes: Vec::new(),
+                    copy: false,
+                    rename_root: Some(parent.to_string_lossy().into_owned()),
+                    creates_folder: true,
+                    folder_extras: Vec::new(),
+                })
+            })
+            .collect();
+        let mut plan = self.plan(
+            PlanMessage::RenameFolder {
+                from: current.to_string_lossy().into_owned(),
+                to: name,
+            },
+            Vec::new(),
+            changes,
+            false,
+        );
+        plan.folder_rename = Some(FolderRenameDto {
+            from: from.to_string_lossy().into_owned(),
+            to: to.to_string_lossy().into_owned(),
+        });
         Ok(plan)
     }
 
@@ -5436,6 +5608,7 @@ impl App {
         let change_plan = plan.to_change_plan();
         let roots = self.allowed_roots();
         let batch = Executor::apply(&change_plan, &mut self.journal, &roots)?;
+        self.follow_folder_rename(&change_plan, false);
         Ok(BatchDto::from(&batch))
     }
 
@@ -5454,7 +5627,24 @@ impl App {
         let roots = self.allowed_roots();
         let batch =
             Executor::apply_with(&change_plan, &mut self.journal, &roots, progress, cancel)?;
+        self.follow_folder_rename(&change_plan, false);
         Ok(BatchDto::from(&batch))
+    }
+
+    /// After a batch that renamed the open folder (#841), the session is rooted
+    /// at the folder under its new name, or its old one again when `undone`.
+    fn follow_folder_rename(&mut self, plan: &ChangePlan, undone: bool) {
+        if let Some(folder) = &plan.folder_rename {
+            let (old, new) = if undone {
+                (&folder.to, &folder.from)
+            } else {
+                (&folder.from, &folder.to)
+            };
+            if self.library_root == *old {
+                self.library_root = new.clone();
+            }
+            self.read_cache.borrow_mut().clear();
+        }
     }
 
     /// Where the undo journal was set aside because it was damaged, the first
@@ -5499,6 +5689,9 @@ impl App {
             .map(|batch| batch.plan);
         let report =
             Executor::undo_with_mode(&mut self.journal, BatchId(batch_id), &roots, mode, progress)?;
+        if let Some(plan) = &plan {
+            self.follow_folder_rename(plan, true);
+        }
         // An undo that kept some newer values left the files neither as the
         // batch found them nor as it left them: there is nothing exact to redo,
         // and what was stacked before it no longer follows on.
@@ -5530,6 +5723,7 @@ impl App {
         let roots = self.allowed_roots();
         let never = AtomicBool::new(false);
         let batch = Executor::apply_with(&plan, &mut self.journal, &roots, progress, &never)?;
+        self.follow_folder_rename(&plan, false);
         self.redo_plans.pop();
         Ok(Some(BatchDto::from(&batch)))
     }
@@ -7519,6 +7713,10 @@ impl PlanDto {
             // one that knows the shape; the core only stores the string.
             message: encode_plan_message(self),
             prune_empty_dirs: self.prune_empty_dirs,
+            folder_rename: self.folder_rename.as_ref().map(|folder| FolderRename {
+                from: PathBuf::from(&folder.from),
+                to: PathBuf::from(&folder.to),
+            }),
             changes: self
                 .changes
                 .iter()
@@ -7743,6 +7941,8 @@ pub enum AppError {
     NoLibraryOpen,
     #[error("{0} — sign in to Beatport again")]
     BeatportReauth(String),
+    #[error("the open folder cannot be renamed: {0}")]
+    FolderRename(FolderRenameRefusal),
 }
 
 #[cfg(test)]
@@ -8316,6 +8516,7 @@ mod tests {
             prune_empty_dirs: false,
             locked_skipped: Vec::new(),
             unrendered: Vec::new(),
+            folder_rename: None,
             changes: vec![FileChangeDto {
                 path: track.to_string_lossy().into_owned(),
                 rename_to: Some(elsewhere.join("stolen.flac").to_string_lossy().into_owned()),
@@ -12915,6 +13116,80 @@ mod tests {
             app.preview_transform(std::slice::from_ref(&track), &bad_regex, "tags"),
             Err(AppError::Transform(_))
         ));
+    }
+
+    /// #841: the open folder renamed from the tags its files share, the session
+    /// following it to the new name, and back again on undo and forth on redo.
+    #[test]
+    fn the_open_folder_is_renamed_from_its_tags() {
+        let dir = TempDir::new("folder-rename");
+        let album = dir.0.join("incoming");
+        std::fs::create_dir_all(&album).unwrap();
+        for (name, title) in [("a.flac", "One"), ("b.flac", "Two")] {
+            let track = dir.tagged_flac(name, "Various", title);
+            let mut file = TagEngine::read(&track).unwrap();
+            file.tags.insert(TagField::Album, "La Bush".into());
+            file.tags.insert(TagField::Year, "1996".into());
+            TagEngine::write(&file).unwrap();
+            std::fs::rename(&track, album.join(name)).unwrap();
+        }
+        std::fs::write(album.join("front.jpg"), b"jpeg").unwrap();
+        std::fs::create_dir_all(dir.0.join("Taken")).unwrap();
+        let mut app = App::open(album.clone(), &dir.0.join("journal.sqlite")).unwrap();
+        let refusal = |result: Result<PlanDto, AppError>| match result {
+            Err(AppError::FolderRename(refusal)) => refusal,
+            other => panic!("expected a refusal, got {other:?}"),
+        };
+
+        assert!(matches!(
+            refusal(app.preview_folder_rename("%title%")),
+            FolderRenameRefusal::Disagree { .. }
+        ));
+        assert_eq!(
+            refusal(app.preview_folder_rename("%catalognumber%")),
+            FolderRenameRefusal::Missing {
+                field: "catalognumber".into()
+            }
+        );
+        assert_eq!(
+            refusal(app.preview_folder_rename("Taken")),
+            FolderRenameRefusal::Exists {
+                name: "Taken".into()
+            }
+        );
+        assert_eq!(
+            refusal(app.preview_folder_rename("incoming")),
+            FolderRenameRefusal::Same
+        );
+
+        let to = dir.0.join("Various - La Bush (1996)");
+        let plan = app
+            .preview_folder_rename("%artist% - %album% (%year%)")
+            .unwrap();
+        assert_eq!(
+            plan.folder_rename.as_ref().map(|folder| folder.to.clone()),
+            Some(to.to_string_lossy().into_owned())
+        );
+        assert_eq!(plan.changes.len(), 2);
+        assert_eq!(
+            plan.description,
+            "Rename folder incoming to Various - La Bush (1996)"
+        );
+
+        app.apply(&plan).unwrap();
+        assert_eq!(app.library_root(), to.as_path());
+        assert!(!album.exists());
+        assert!(to.join("a.flac").is_file() && to.join("front.jpg").is_file());
+        let history = app.history().unwrap();
+        assert_eq!(history.len(), 1);
+
+        app.undo(history[0].id).unwrap();
+        assert_eq!(app.library_root(), album.as_path());
+        assert!(album.join("b.flac").is_file() && !to.exists());
+
+        app.redo_with(&mut |_| {}).unwrap();
+        assert_eq!(app.library_root(), to.as_path());
+        assert!(to.join("b.flac").is_file());
     }
 
     #[test]

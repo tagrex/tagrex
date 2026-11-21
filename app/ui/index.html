@@ -374,6 +374,26 @@
               <button id="preview" class="primary" data-i18n="renamer.previewRename">Preview rename</button>
             </div>
           </div>
+
+          <!-- The open folder itself (#841): named from the tags its files share,
+               and reopened under the new name once applied. -->
+          <div class="panel-block" id="folder-rename-block">
+            <h2 data-i18n="renamer.folderHeading">Rename the open folder</h2>
+            <div class="mask-row">
+              <div class="field">
+                <input id="folder-mask" type="text" value="%albumartist% - %album% (%year%)" spellcheck="false" placeholder="%albumartist% - %album% (%year%)" data-i18n-aria-label="renamer.folderHeading" aria-label="Rename the open folder" />
+                <div class="field-tools">
+                  <button class="icon ph-btn" type="button" data-ph-target="folder-mask" data-i18n-title="mask.placeholders" title="Placeholders" data-i18n-aria-label="mask.placeholdersAria" aria-label="Placeholder reference"><svg class="ico"><use href="#i-help"/></svg></button>
+                  <button class="icon preset-btn" type="button" data-preset-target="folder-mask" data-i18n-title="preset.title" title="Mask presets" data-i18n-aria-label="preset.title" aria-label="Mask presets"><svg class="ico"><use href="#i-presets"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <p id="folder-example" class="hint mono mask-example" aria-live="polite"></p>
+            <p class="hint mask-hint" data-i18n="renamer.folderHint">Every file in the folder must give the same name. Everything in it goes along, and TagRex reopens it under the new name.</p>
+            <div class="panel-actions">
+              <button id="preview-folder" data-i18n="renamer.previewFolder">Preview folder rename</button>
+            </div>
+          </div>
         </section>
 
         <!-- TAGGER: tags from two angles — ONLINE (a metadata source) and EDITOR

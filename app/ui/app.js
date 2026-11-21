@@ -2022,6 +2022,27 @@ async function libraryRootGone(always = false) {
 }
 window.addEventListener("focus", () => libraryRootGone());
 
+// The open folder renamed by a batch (#841), or renamed back by its undo: the
+// session is rooted at the new path, and the window follows it there, in the
+// path field and among the recent folders, instead of saying the folder has gone.
+const FOLDER_RENAME_CODE = "plan.renameFolder";
+async function followLibraryRoot() {
+  let root = null;
+  try {
+    root = await invoke("library_root", {});
+  } catch (e) {
+    return;
+  }
+  if (!root || root === openedRoot) return;
+  if (openedRoot) forgetRoot(openedRoot);
+  rememberRoot(root);
+  setSessionRoot(root);
+  openedRoot = root;
+  rootInput.value = root;
+  goneRoot = "";
+  renderRootDisplay();
+}
+
 // Show the input over the indicator, with the current path selected so a paste
 // replaces it outright.
 function editRootPath() {
@@ -2209,14 +2230,18 @@ let undoing = false;
 
 async function apply() {
   if (!previewPlan || previewPlan.changes.length === 0) return;
-  const wasRename = previewSource === "rename";
+  const wasRename = previewSource === "rename" || previewSource === "folder";
   const wasEdits = previewSource === "edits";
   // Only the ticked rows are applied (#81). The apply scope is the sel-column
   // tick set (`applySelection`) while diffing. The plan the backend gets — and
-  // undo journals — is exactly this subset.
+  // undo journals — is exactly this subset. A folder rename (#841) is one step
+  // that takes every file along, so it applies whole.
+  const folderRename = !!previewPlan.folder_rename;
   const appliedPlan = {
     ...previewPlan,
-    changes: previewPlan.changes.filter((c) => applySelection.has(c.path)),
+    changes: folderRename
+      ? previewPlan.changes
+      : previewPlan.changes.filter((c) => applySelection.has(c.path)),
   };
   if (appliedPlan.changes.length === 0) {
     toast(msg("app.tickOneRow"), true);
@@ -2243,6 +2268,7 @@ async function apply() {
       appliedPlan.changes.filter((c) => c.rename_to && !c.copy).map((c) => [c.path, c.rename_to]),
     );
     const order = handOrder(renamed);
+    if (folderRename) await followLibraryRoot();
     setTracks(await invoke("list_tracks", {}));
     sortKeepingHandOrder(order); // the list came back in scan order (#196)
     // Mask columns render from disk, and an apply is exactly when what is on
@@ -2292,6 +2318,8 @@ async function undo() {
   try {
     const batches = await invoke("history", {});
     if (batches.length === 0) return;
+    // What is being undone, read before the undo takes it off the history.
+    const undoneBatch = batches[0];
     await beginUndoProgress();
     let result;
     try {
@@ -2319,6 +2347,7 @@ async function undo() {
     if (kept.length === 0) toast(msg("app.undid"));
     else report(msg("app.undid"), undoKeptParts(kept));
     resetEdits();
+    if (undoneBatch.message?.code === FOLDER_RENAME_CODE) await followLibraryRoot();
     const order = handOrder();
     setTracks(await invoke("list_tracks", {}));
     sortKeepingHandOrder(order); // the list came back in scan order (#196)
@@ -2348,6 +2377,7 @@ async function redo() {
     if (!batch) return;
     toast(msg("app.redid"));
     resetEdits();
+    if (batch.message?.code === FOLDER_RENAME_CODE) await followLibraryRoot();
     const order = handOrder();
     setTracks(await invoke("list_tracks", {}));
     sortKeepingHandOrder(order); // the list came back in scan order (#196)

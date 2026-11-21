@@ -167,7 +167,9 @@ with a count; choosing one narrows the table to the files it flags.
   copied into a different folder; the preview groups files under the folder
   they land in. Folder moves create and clean up directories, and same-named
   sidecar files (`.lrc`, `.cue`, per-track covers…) — and, if you like, the rest
-  of the folder — travel with the track.
+  of the folder — travel with the track. The open folder itself can be renamed
+  from the tags its files share (`%albumartist% - %album% (%year%)`), and
+  TagRex reopens it under the new name.
 - **GENERATOR** — text transforms: case conversion (title case can keep small
   words such as `of` and `the` lowercase), find/replace, remove
   diacritics, transliterate Cyrillic and Greek to Latin, musical ⇄ Camelot key

@@ -272,6 +272,21 @@ async fn library_root_missing(state: State<'_, AppState>) -> Result<Option<Strin
         .await
 }
 
+/// The folder the session is rooted at now, which a batch that renamed the
+/// open folder moves (#841); `None` with no library open.
+#[tauri::command]
+async fn library_root(state: State<'_, AppState>) -> Result<Option<String>, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let guard = state.lock().map_err(shell_error)?;
+            Ok(guard
+                .as_ref()
+                .map(|app| app.library_root().to_string_lossy().into_owned()))
+        })
+        .await
+}
+
 /// Move files to the system Trash (#213). Returns what actually went, so the
 /// table drops exactly those rows. Refuses the whole call if any path is not a
 /// file this session lists inside the open library — nothing is moved then.
@@ -586,6 +601,22 @@ async fn preview_rename(
             let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
             with_app(&state, |app| {
                 app.preview_rename(&mask, &paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
+}
+
+/// Rename the open folder itself from a mask (#841).
+#[tauri::command]
+async fn preview_folder_rename(
+    state: State<'_, AppState>,
+    mask: String,
+) -> Result<PlanDto, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.preview_folder_rename(&mask).map_err(ErrorDto::from)
             })
         })
         .await
@@ -2569,6 +2600,7 @@ fn main() {
             open_drop,
             list_tracks,
             library_root_missing,
+            library_root,
             trash_files,
             set_locked_fields,
             locked_fields,
@@ -2583,6 +2615,7 @@ fn main() {
             close_button_side,
             small_word_lists,
             preview_rename,
+            preview_folder_rename,
             preview_tags_from_name,
             probe_tags_from_name,
             probe_tags_from_names,

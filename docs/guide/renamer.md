@@ -106,6 +106,29 @@ operating system's own bookkeeping files (`.DS_Store`, `._*`, `Thumbs.db`,
 `desktop.ini`) are never carried, and don't keep an emptied folder from being
 tidied away.
 
+## Rename the open folder
+
+When the folder you opened is one release, the last step is often to rename the
+folder itself, say to `Various - La Bush (AS 5606) (1996)`. **Rename the open
+folder**, below the rename mask, does that from a mask of its own, such as
+`%albumartist% - %album% (%catalognumber%) (%year%)`. The line under the mask
+shows the name it gives, or why it cannot give one.
+
+The name comes from the tags every file in the folder shares, so they have to
+agree: a mask that gives different names for different files (a per-track
+title, two albums in one folder) is refused and both names are shown, as is a
+placeholder left empty in a file, a name already taken next to the folder, and
+the name the folder already has.
+
+**Preview folder rename** shows every file under the new folder name. Apply
+renames the folder in one step, so everything in it goes along, files TagRex
+does not list included, and TagRex reopens it under the new name, in the path
+field and among the recent folders. It applies as a whole, whatever rows are
+ticked. Undo puts the old name back and reopens the folder there.
+
+A drop of files has no one folder to rename, so the action is refused there:
+open the folder itself.
+
 ## Order of operations
 
 Renaming by tags and fixing tags are the same job approached from two ends, and

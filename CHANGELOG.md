@@ -39,6 +39,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   cover its own Import button would, following the import settings, instead of
   the assistant typing every field by hand
   ([#839](https://github.com/tagrex/tagrex/issues/839)).
+- The RENAMER can rename the open folder itself from a mask, such as
+  `%albumartist% - %album% (%year%)`, rendered from the tags its files share.
+  The folder is renamed in one step with everything in it, TagRex reopens it
+  under the new name, and Undo puts the old name back. A mask that gives the
+  files different names is refused. An AI assistant can propose the same with
+  `propose_rename` in folder mode
+  ([#841](https://github.com/tagrex/tagrex/issues/841)).
 
 ### Fixed
 
