@@ -73,6 +73,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- An image picked with Replace, dropped on the cover panel, fetched from a
+  provider or taken from the folder is embedded as the front cover again, not
+  with the picture type "other", which players looking for the front cover
+  did not find; embedding an image a file already has as its front cover no
+  longer plans a change ([#825](https://github.com/tagrex/tagrex/issues/825)).
 - Duplicate groups found by identical bytes, identical audio, file size or
   duration are labelled in the interface language (the size with the locale's
   digit grouping, the length as m:ss) instead of in English, and the results

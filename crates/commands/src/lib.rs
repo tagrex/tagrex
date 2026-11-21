@@ -7249,7 +7249,14 @@ fn cover_dto_to_art(dto: &CoverArtDto) -> Option<CoverArt> {
     Some(CoverArt {
         mime: dto.mime.clone(),
         data,
-        kind: CoverKind::from_storage_key(&dto.kind),
+        // No kind means the front cover, as the DTO documents: an image picked,
+        // dropped, fetched or found in the folder is meant as "the cover"
+        // (#825). `from_storage_key` alone reads an empty key as Other.
+        kind: if dto.kind.is_empty() {
+            CoverKind::Front
+        } else {
+            CoverKind::from_storage_key(&dto.kind)
+        },
         description: dto.description.clone(),
     })
 }
@@ -13006,6 +13013,42 @@ mod tests {
             .decode(&found.data_base64)
             .unwrap();
         assert_eq!(bytes, vec![1, 2, 3]);
+    }
+
+    // #825: an image sent without a kind goes in as the front cover, so a
+    // file that already has it as its front cover needs no change.
+    #[test]
+    fn an_image_without_a_kind_is_embedded_as_the_front_cover() {
+        let dir = TempDir::new("embed-front");
+        let a = dir.tagged_flac("a.flac", "Artist", "Title");
+        let b = dir.tagged_flac("b.flac", "Artist", "Title");
+        let data = vec![0xFF, 0xD8, 0xFF, 0xE0, 7];
+        TagEngine::write_covers(
+            &b,
+            &[CoverArt {
+                mime: "image/jpeg".to_string(),
+                data: data.clone(),
+                kind: CoverKind::Front,
+                ..CoverArt::default()
+            }],
+        )
+        .unwrap();
+        let mut app = open_app(&dir);
+        let cover = CoverArtDto {
+            mime: "image/jpeg".to_string(),
+            data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
+            ..CoverArtDto::default()
+        };
+        let plan = app.preview_cover_embed(&[a.clone(), b], &cover).unwrap();
+        assert_eq!(plan.changes.len(), 1, "b already has this front cover");
+        let new = &plan.changes[0].cover_change.as_ref().unwrap().new;
+        assert_eq!(new[0].kind, "front");
+
+        app.apply(&plan).unwrap();
+        assert_eq!(
+            TagEngine::read_covers(&a).unwrap()[0].kind,
+            CoverKind::Front
+        );
     }
 
     #[test]
