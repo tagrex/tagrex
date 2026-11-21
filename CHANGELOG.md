@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   reports it as discarded, so the assistant no longer hears "staged" for a
   proposal that left the screen, and the next plan of your own is not marked
   with its name ([#832](https://github.com/tagrex/tagrex/issues/832)).
+- The test for an assistant's rename proposals builds its paths the way
+  Windows spells them, so the Windows build passes again
+  ([#836](https://github.com/tagrex/tagrex/issues/836)).
 - The Windows build of the AI assistant connection no longer trips the lint
   over a call timeout that only applies on macOS and Linux
   ([#829](https://github.com/tagrex/tagrex/issues/829)).
