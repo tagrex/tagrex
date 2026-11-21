@@ -1248,15 +1248,25 @@ function updateStatus() {
     return;
   }
   const selected = selectedPaths().length;
-  const files =
-    filterText || activeHealthLabel()
-      ? `${tracks.filter(matchesFilter).length}/${tn("unit.file", total)}`
-      : tn("unit.file", total);
+  const filtering = filterText || activeHealthLabel();
+  const files = filtering
+    ? `${tracks.filter(matchesFilter).length}/${tn("unit.file", total)}`
+    : tn("unit.file", total);
   // The active check names itself in the filter field's chip (#559).
   // While a preview is staged, the rows outside it recede and the selection
   // alone reads as wrong (#777): the count the action bar applies goes beside it.
   const staged = diffByPath ? ` · ${applySelection.size} ${msg("diff.toApply")}` : "";
   statusSel.textContent = `${files} · ${tn("count.selected", selected)}${staged}`;
+  // A filter hides rows without deselecting them (#809): selected files out of
+  // sight still take part in the next action, so the bar counts them.
+  const hidden = filtering && selected ? tracks.filter((track) => selection.has(track.path) && !matchesFilter(track)).length : 0;
+  if (hidden) {
+    const note = document.createElement("span");
+    note.className = "status-hidden";
+    note.textContent = ` · ${tn("count.hiddenByFilter", hidden)}`;
+    note.title = msg("status.hiddenByFilterTitle");
+    statusSel.append(note);
+  }
 }
 
 function resetEdits() {

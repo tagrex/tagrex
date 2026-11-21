@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The status bar counts the selected files a filter or a library health check
+  hides, `· 2 hidden by the filter` in red with a tooltip, since a filter hides
+  rows without deselecting them and those files still take part in the next
+  action ([#809](https://github.com/tagrex/tagrex/issues/809)).
+
 ### Fixed
 
 - A settings file cut short by a crash, a power loss or a full disk is no longer

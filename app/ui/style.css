@@ -5083,6 +5083,11 @@ td[data-field="year"],
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* Selected files a filter hides (#809) still take part in the next action,
+   so their count takes the problem colour. */
+#status-sel .status-hidden {
+  color: var(--del);
+}
 
 /* ---- TAGGER sub-tabs: ONLINE / EDITOR (#77) ----
    The tagger panel fills the mode column and manages its own scroll, so the
