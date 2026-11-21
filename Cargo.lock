@@ -4714,6 +4714,7 @@ dependencies = [
  "rten",
  "rten-tensor",
  "serde",
+ "sha2",
  "tagrex-core",
 ]
 

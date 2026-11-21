@@ -19,10 +19,10 @@ use tauri::{Manager, State};
 
 use tagrex_commands::{
     ActionGroupDto, AlignMatchDto, App, AppError, BatchDto, BlockTargetsDto, CandidateDto,
-    CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateGroupDto, ErrorDto,
-    ImportFieldDto, ImportSelectionDto, ImportTrackDto, NameProbeDto, NameProbesDto,
-    PlaceholderDto, PlanDto, ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto, SettingsDto,
-    TagEditDto, TextLinesDto, TextProbeDto, TrackDto, TransformRuleDto, UndoReportDto,
+    CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateFileDto,
+    DuplicateGroupDto, ErrorDto, ImportFieldDto, ImportSelectionDto, ImportTrackDto, NameProbeDto,
+    NameProbesDto, PlaceholderDto, PlanDto, ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto,
+    SettingsDto, TagEditDto, TextLinesDto, TextProbeDto, TrackDto, TransformRuleDto, UndoReportDto,
 };
 use tagrex_core::plan::UndoMode;
 use tagrex_player::{Player, PlayerStatus};
@@ -112,6 +112,9 @@ const APPLY_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_m
 /// Emitted while BPM detection runs (#536): `{ done, total, path }`, before each
 /// file and once at the end.
 const BPM_PROGRESS_EVENT: &str = "tagrex://bpm-progress";
+/// Emitted while the identical-audio scan decodes files (#821):
+/// `{ stage, done, total }`, `stage` being `"quick"` or `"full"`.
+const DUPLICATE_PROGRESS_EVENT: &str = "tagrex://duplicate-progress";
 /// Emitted while an update downloads (#602): `{ downloaded, total }` in bytes,
 /// `total` null when the server does not say.
 const UPDATE_PROGRESS_EVENT: &str = "tagrex://update-progress";
@@ -312,6 +315,164 @@ async fn find_duplicates(
             })
         })
         .await
+}
+
+/// Asks a running identical-audio scan to stop (#821). Shared with the
+/// threads the scan decodes on, hence the `Arc`.
+#[derive(Default)]
+struct DuplicateControl(Arc<AtomicBool>);
+
+/// Progress of the identical-audio scan (#821).
+#[derive(Clone, serde::Serialize)]
+struct DuplicateProgressDto {
+    /// `"quick"` while the start of each file is compared, `"full"` while the
+    /// likely copies are decoded in full.
+    stage: &'static str,
+    done: usize,
+    total: usize,
+}
+
+/// What the identical-audio scan found (#821).
+#[derive(serde::Serialize)]
+struct AudioDuplicatesDto {
+    groups: Vec<DuplicateGroupDto>,
+    /// Files that could not be decoded, by path.
+    failed: Vec<String>,
+    /// The scan was stopped; `groups` holds what was confirmed before that.
+    cancelled: bool,
+}
+
+/// Seconds of audio the quick pass of the identical-audio scan compares.
+const QUICK_DIGEST_SECS: u32 = 10;
+
+/// The audio digest of each file, on several threads, in the order given.
+/// `None` for a file not reached before a cancel.
+fn digest_files(
+    files: &[DuplicateFileDto],
+    seconds: Option<u32>,
+    cancel: &AtomicBool,
+    report: &(dyn Fn(usize, usize) + Sync),
+) -> Vec<Option<Result<[u8; 32], tagrex_player::digest::DigestError>>> {
+    use std::sync::atomic::AtomicUsize;
+    let next = AtomicUsize::new(0);
+    let done = AtomicUsize::new(0);
+    let results: Vec<Mutex<Option<_>>> = files.iter().map(|_| Mutex::new(None)).collect();
+    // One core is left to the window; decoding is all CPU.
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(2)
+        .saturating_sub(1)
+        .clamp(1, 8)
+        .min(files.len().max(1));
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| loop {
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                let index = next.fetch_add(1, Ordering::Relaxed);
+                let Some(file) = files.get(index) else {
+                    break;
+                };
+                let digest =
+                    tagrex_player::digest::audio_digest(Path::new(&file.path), seconds, cancel);
+                *results[index].lock().unwrap() = Some(digest);
+                report(done.fetch_add(1, Ordering::Relaxed) + 1, files.len());
+            });
+        }
+    });
+    results
+        .into_iter()
+        .map(|slot| slot.into_inner().unwrap())
+        .collect()
+}
+
+/// The identical-audio scan over `candidates` (#821): the opening seconds of
+/// each first, then in full only the files whose openings match another's.
+/// `report` hears `(stage, done, total)` as files are decoded.
+fn audio_duplicates(
+    candidates: Vec<DuplicateFileDto>,
+    cancel: &AtomicBool,
+    report: &(dyn Fn(&'static str, usize, usize) + Sync),
+) -> AudioDuplicatesDto {
+    use tagrex_player::digest::DigestError;
+    type Digests = Vec<Option<Result<[u8; 32], DigestError>>>;
+    let mut failed = Vec::new();
+    let mut sort = |files: Vec<DuplicateFileDto>, digests: Digests| {
+        let mut decoded = Vec::new();
+        for (file, digest) in files.into_iter().zip(digests) {
+            match digest {
+                Some(Ok(digest)) => decoded.push((file, digest)),
+                Some(Err(DigestError::Failed(_))) => failed.push(file.path),
+                Some(Err(DigestError::Cancelled)) | None => {}
+            }
+        }
+        decoded
+    };
+
+    let quick = digest_files(
+        &candidates,
+        Some(QUICK_DIGEST_SECS),
+        cancel,
+        &|done, total| report("quick", done, total),
+    );
+    let opened = sort(candidates, quick);
+    let mut groups = Vec::new();
+    if !cancel.load(Ordering::SeqCst) {
+        let likely: Vec<DuplicateFileDto> = tagrex_commands::group_by_digest(opened, "")
+            .into_iter()
+            .flat_map(|group| group.files)
+            .collect();
+        let full = digest_files(&likely, None, cancel, &|done, total| {
+            report("full", done, total)
+        });
+        groups = tagrex_commands::group_by_digest(sort(likely, full), "identical audio");
+    }
+    failed.sort();
+    AudioDuplicatesDto {
+        groups,
+        failed,
+        cancelled: cancel.load(Ordering::SeqCst),
+    }
+}
+
+/// Find files holding identical decoded audio, whatever their tags and covers
+/// (#821). Read-only, like [`find_duplicates`].
+///
+/// Only the files that could have a copy are decoded at all (same sample rate,
+/// channel count and length as another file), first just their opening
+/// seconds, and only the files whose openings match are decoded in full. The
+/// decoding runs outside the session lock on several threads; a cancel keeps
+/// the groups already confirmed.
+#[tauri::command]
+async fn find_audio_duplicates(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    control: State<'_, DuplicateControl>,
+) -> Result<AudioDuplicatesDto, ErrorDto> {
+    control.0.store(false, Ordering::SeqCst);
+    let cancel = control.0.clone();
+    let session = state.inner().clone();
+    let candidates = SESSION_QUEUE
+        .run(move || with_app(&session, |app| Ok(app.audio_duplicate_candidates())))
+        .await?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let report = |stage: &'static str, done: usize, total: usize| {
+            let _ = tauri::Emitter::emit(
+                &app_handle,
+                DUPLICATE_PROGRESS_EVENT,
+                DuplicateProgressDto { stage, done, total },
+            );
+        };
+        audio_duplicates(candidates, &cancel, &report)
+    })
+    .await
+    .map_err(shell_error)
+}
+
+#[tauri::command]
+fn cancel_find_duplicates(control: State<DuplicateControl>) {
+    control.0.store(true, Ordering::SeqCst);
 }
 
 /// Build a provider *release* page URL from a hard-coded host plus a
@@ -2274,6 +2435,7 @@ fn main() {
         .manage(ProviderState::default())
         .manage(ApplyControl::default())
         .manage(BpmControl::default())
+        .manage(DuplicateControl::default())
         .manage(update::PendingUpdate::default())
         .manage(SettingsNotice::default())
         // What the app was started with, waiting for the frontend to ask (#51).
@@ -2312,6 +2474,8 @@ fn main() {
             set_locked_fields,
             locked_fields,
             find_duplicates,
+            find_audio_duplicates,
+            cancel_find_duplicates,
             open_release_page,
             open_mask_guide,
             open_about_link,
@@ -2678,5 +2842,114 @@ mod tests {
         assert_eq!(contents, "token");
         // A missing file is no error.
         tighten_secret(&path);
+    }
+
+    /// A 16-bit mono PCM WAV of `samples` at 8 kHz, with `extra` chunks after
+    /// the data, as a tagger appends a LIST chunk.
+    fn wav(samples: &[i16], extra: &[u8]) -> Vec<u8> {
+        let data_len = (samples.len() * 2) as u32;
+        let mut out = Vec::new();
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&(36 + data_len + extra.len() as u32).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        for field in [16u32, 1 | (1 << 16), 8_000, 16_000, 2 | (16 << 16)] {
+            out.extend_from_slice(&field.to_le_bytes());
+        }
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&data_len.to_le_bytes());
+        for sample in samples {
+            out.extend_from_slice(&sample.to_le_bytes());
+        }
+        out.extend_from_slice(extra);
+        out
+    }
+
+    // #821: the same samples under other tags make a group; a file that only
+    // shares the opening seconds passes the quick pass and is dropped by the
+    // full one; a file that will not decode is reported, not left out quietly.
+    #[test]
+    fn identical_audio_is_grouped_and_a_shared_opening_is_not() {
+        use super::{audio_duplicates, DuplicateFileDto};
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Mutex;
+
+        let dir = std::env::temp_dir().join(format!("tagrex-audio-dups-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tone = |step: i32| -> Vec<i16> {
+            (0..8_000 * 12)
+                .map(|i| ((i * step) % 16_000 - 8_000) as i16)
+                .collect()
+        };
+        let base = tone(37);
+        let mut opening = base.clone();
+        opening[8_000 * 11..].copy_from_slice(&tone(41)[8_000 * 11..]);
+        let list = b"LIST\x0c\x00\x00\x00INFOINAM\x00\x00\x00\x00";
+        let files = [
+            ("plain.wav", wav(&base, &[])),
+            ("tagged.wav", wav(&base, list)),
+            ("opening.wav", wav(&opening, &[])),
+            ("other.wav", wav(&tone(43), &[])),
+            ("broken.wav", b"RIFF\x04\x00\x00\x00WAVE".to_vec()),
+        ];
+        let candidates = files
+            .iter()
+            .map(|(name, bytes)| {
+                let path = dir.join(name);
+                std::fs::write(&path, bytes).unwrap();
+                DuplicateFileDto {
+                    path: path.to_string_lossy().into_owned(),
+                    artist: String::new(),
+                    title: String::new(),
+                    album: String::new(),
+                    duration_secs: 12,
+                    size_bytes: bytes.len() as u64,
+                    bitrate_kbps: None,
+                }
+            })
+            .collect();
+
+        let heard = Mutex::new(Vec::new());
+        let found = audio_duplicates(
+            candidates,
+            &AtomicBool::new(false),
+            &|stage, done, total| heard.lock().unwrap().push((stage, done, total)),
+        );
+        let names: Vec<Vec<String>> = found
+            .groups
+            .iter()
+            .map(|group| {
+                group
+                    .files
+                    .iter()
+                    .map(|file| {
+                        file.path
+                            .rsplit(std::path::MAIN_SEPARATOR)
+                            .next()
+                            .unwrap()
+                            .to_string()
+                    })
+                    .collect()
+            })
+            .collect();
+        assert_eq!(names, [["plain.wav", "tagged.wav"]]);
+        assert_eq!(found.failed.len(), 1);
+        assert!(found.failed[0].ends_with("broken.wav"));
+        assert!(!found.cancelled);
+        let heard = heard.into_inner().unwrap();
+        // All five opened, and only the three sharing an opening decoded in full.
+        assert!(heard.contains(&("quick", 5, 5)));
+        assert!(heard.contains(&("full", 3, 3)));
+        assert!(!heard
+            .iter()
+            .any(|(stage, _, total)| *stage == "full" && *total != 3));
+
+        // A scan stopped before it starts confirms nothing and says so.
+        let stopped = audio_duplicates(
+            vec![found.groups[0].files[0].clone()],
+            &AtomicBool::new(true),
+            &|_, _, _| {},
+        );
+        assert!(stopped.cancelled && stopped.groups.is_empty() && stopped.failed.is_empty());
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

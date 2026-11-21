@@ -675,8 +675,12 @@
                 <option value="duration" data-i18n="dedup.criterion.duration">Duration</option>
                 <option value="size" data-i18n="dedup.criterion.size">File size</option>
                 <option value="hash" data-i18n="dedup.criterion.hash">Identical bytes</option>
+                <option value="audio" data-i18n="dedup.criterion.audio">Identical audio</option>
               </select>
             </label>
+            <p id="dup-audio-hint" class="hint muted" style="padding: 0" data-i18n="dedup.audioHint" hidden>
+              Compares the decoded sound, so tags and covers do not matter. Takes longer on a big library.
+            </p>
             <!-- The lock line shares the button's line (#571). -->
             <div class="panel-actions">
               <p class="ro-note panel-note"><svg class="ico"><use href="#i-lock"/></svg> <span data-i18n="dedup.readonly">Read-only — nothing is changed.</span></p>

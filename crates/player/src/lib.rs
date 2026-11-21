@@ -15,9 +15,11 @@
 //! the previous WebView `<audio>` player couldn't play.
 //!
 //! The same decoder feeds the two analyses of the audio: the waveform drawn in
-//! the player bar, and the tempo detection in [`tempo`] (#536).
+//! the player bar, and the tempo detection in [`tempo`] (#536). The duplicate
+//! scan compares files by a digest of the same samples, in [`digest`] (#821).
 
 mod aiff;
+pub mod digest;
 mod mp4;
 pub mod tempo;
 

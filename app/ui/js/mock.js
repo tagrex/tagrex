@@ -16,6 +16,7 @@ import { fileName, plural } from "./dom.js";
 // the backend, so it has to hand over both or the browser path would exercise
 // only the fallback.
 let mockBpmCancel = false;
+let mockDupCancel = false;
 function plan(description, message, changes, notes = []) {
   return { description, message: { args: {}, count: null, ...message }, notes, changes };
 }
@@ -1147,6 +1148,27 @@ function mockInvoke(cmd, args) {
           ],
         })),
       );
+    // Identical audio (#821): after a pause long enough to press Stop, the
+    // second track turns out to have a copy under other tags.
+    case "find_audio_duplicates":
+      mockDupCancel = false;
+      return (async () => {
+        for (let step = 0; step < 15 && !mockDupCancel; step += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        if (mockDupCancel) return { groups: [], failed: [], cancelled: true };
+        const groups = (mockInvoke.state?.tracks || []).slice(1, 2).map((t) => ({
+          key: "identical audio",
+          files: [
+            { path: t.path, artist: t.tags.artist, title: t.tags.title, album: t.tags.album || "", duration_secs: 312, size_bytes: 9123456, bitrate_kbps: 320 },
+            { path: `/music/downloads/${fileName(t.path)}`, artist: "Unknown", title: "Track 02", album: "", duration_secs: 312, size_bytes: 9187001, bitrate_kbps: 320 },
+          ],
+        }));
+        return { groups, failed: ["/music/broken.mp3"], cancelled: false };
+      })();
+    case "cancel_find_duplicates":
+      mockDupCancel = true;
+      return Promise.resolve();
     case "auto_align": {
       // Mock: an equal ISRC is an exact match (#54); otherwise fall back to an
       // exact title match, mirroring the backend. Returns { track, by_isrc }.

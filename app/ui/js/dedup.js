@@ -8,9 +8,97 @@ import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { selectedPaths } from "./state.js";
 
+const AUDIO_EVENT = "tagrex://duplicate-progress";
+let audioRunning = false;
+let audioStopping = false;
+
+// The Scan button is Stop while an identical-audio scan runs. Its data-i18n
+// key is swapped along with the text, so a language change mid-run keeps the
+// right label (#287).
+function paintScanButton() {
+  const button = el("dup-scan");
+  const key = audioRunning ? "dedup.stop" : "dedup.scan";
+  button.dataset.i18n = key;
+  button.textContent = t(key);
+  button.disabled = audioStopping;
+}
+
+function paintAudioProgress(stage, done, total) {
+  el("busy-fill").style.width = total ? `${Math.round((done / total) * 100)}%` : "0%";
+  el("busy-text").textContent = audioStopping
+    ? t("dedup.stopping")
+    : t(stage === "full" ? "dedup.progress.full" : "dedup.progress.quick", { done, total });
+}
+
+function stopAudioScan() {
+  if (!audioRunning || audioStopping) return;
+  audioStopping = true;
+  paintScanButton();
+  el("busy-pill").classList.add("stopping");
+  el("busy-stop").disabled = true;
+  el("busy-text").textContent = t("dedup.stopping");
+  invoke("cancel_find_duplicates", {});
+}
+
+// Identical decoded audio (#821): decoding takes a while on a big library, so
+// it reports progress in the status bar's busy pill and can be stopped there
+// or from the Scan button, keeping the groups confirmed so far.
+async function runAudioScan() {
+  audioRunning = true;
+  audioStopping = false;
+  paintScanButton();
+  paintAudioProgress("quick", 0, 0);
+  el("busy-stop").hidden = false;
+  el("busy-stop").disabled = false;
+  el("busy-pill").hidden = false;
+  const events = window.__TAURI__ && window.__TAURI__.event;
+  const unlisten = events
+    ? await events.listen(AUDIO_EVENT, (e) => paintAudioProgress(e.payload.stage, e.payload.done, e.payload.total))
+    : null;
+  try {
+    const result = await invoke("find_audio_duplicates", {});
+    if (result.cancelled && !result.groups.length) {
+      // Stopped before anything was confirmed: that is not a clean library.
+      el("dup-summary").textContent = t("dedup.stoppedEarly");
+      el("dup-results").innerHTML = `<p class="empty inert-panel">${t("dedup.pickKey")}</p>`;
+      return;
+    }
+    renderDuplicates(result.groups);
+    const notes = [];
+    if (result.cancelled) notes.push(t("dedup.stopped"));
+    if (result.failed.length) notes.push(tn("dedup.failed", result.failed.length));
+    if (notes.length) el("dup-summary").textContent += ` · ${notes.join(" · ")}`;
+  } catch (e) {
+    el("dup-summary").textContent = "";
+    toast(String(e), true);
+  } finally {
+    if (unlisten) unlisten();
+    audioRunning = false;
+    audioStopping = false;
+    el("busy-pill").hidden = true;
+    el("busy-pill").classList.remove("stopping");
+    el("busy-stop").hidden = true;
+    paintScanButton();
+  }
+}
+
+// What the identical-audio criterion costs, under the picker.
+function paintCriterionHint() {
+  el("dup-audio-hint").hidden = el("dup-criterion").value !== "audio";
+}
+
 async function runDuplicateScan() {
+  if (audioRunning) {
+    stopAudioScan();
+    return;
+  }
   const criterion = el("dup-criterion").value;
   el("dup-summary").textContent = t("dedup.scanning");
+  if (criterion === "audio") {
+    el("dup-results").innerHTML = "";
+    await runAudioScan();
+    return;
+  }
   el("dup-results").innerHTML = "";
   try {
     const groups = await invoke("find_duplicates", { criterion });
@@ -84,5 +172,9 @@ function renderDuplicates(groups) {
     <thead><tr><th>${escapeHtml(t("column.file"))}</th><th>${escapeHtml(t("field.artist"))}</th><th>${escapeHtml(t("field.title"))}</th><th>${escapeHtml(t("field.album"))}</th><th class="num">${escapeHtml(t("field.length"))}</th><th class="num">${escapeHtml(t("dedup.sizeRate"))}</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
+
+el("dup-criterion").addEventListener("change", paintCriterionHint);
+el("busy-stop").addEventListener("click", stopAudioScan);
+paintCriterionHint();
 
 export { refreshDeduplicator, runDuplicateScan };

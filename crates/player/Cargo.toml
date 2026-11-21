@@ -34,3 +34,6 @@ beat-this = { version = "1.1", default-features = false }
 rten = "0.24"
 rten-tensor = "0.24"
 anyhow = "1"
+# The duplicate scan's digest of the decoded audio (#821). Already in the
+# dependency tree through Tauri.
+sha2 = "0.10.9"

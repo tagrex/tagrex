@@ -1198,6 +1198,43 @@ pub struct DuplicateGroupDto {
     pub files: Vec<DuplicateFileDto>,
 }
 
+/// How far apart, in whole seconds, two files' stated lengths may be and still
+/// hold identical audio (#821). Lossless formats state the exact length; some
+/// lossy ones estimate it from the bitrate and the stream size.
+pub const AUDIO_LENGTH_SLACK_SECS: u64 = 1;
+
+/// Group files by a digest of their content (#821): every digest two or more
+/// files share becomes a group under `key`, the same shape and order as
+/// [`App::find_duplicates`] gives, largest groups first.
+pub fn group_by_digest<D: Ord>(
+    members: impl IntoIterator<Item = (DuplicateFileDto, D)>,
+    key: &str,
+) -> Vec<DuplicateGroupDto> {
+    let mut by_digest: std::collections::BTreeMap<D, Vec<DuplicateFileDto>> =
+        std::collections::BTreeMap::new();
+    for (file, digest) in members {
+        by_digest.entry(digest).or_default().push(file);
+    }
+    let mut groups: Vec<DuplicateGroupDto> = by_digest
+        .into_values()
+        .filter(|files| files.len() >= 2)
+        .map(|mut files| {
+            files.sort_by(|a, b| a.path.cmp(&b.path));
+            DuplicateGroupDto {
+                key: key.to_string(),
+                files,
+            }
+        })
+        .collect();
+    groups.sort_by(|a, b| {
+        b.files
+            .len()
+            .cmp(&a.files.len())
+            .then_with(|| a.files[0].path.cmp(&b.files[0].path))
+    });
+    groups
+}
+
 /// App-wide preferences (Settings, #79), persisted as JSON in the config dir.
 /// Every field has a serde default so an older/partial file still loads.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2829,6 +2866,68 @@ impl App {
         // Largest groups first; stable by key.
         result.sort_by(|a, b| b.files.len().cmp(&a.files.len()).then(a.key.cmp(&b.key)));
         Ok(result)
+    }
+
+    /// The files worth decoding for the identical-audio scan (#821): those
+    /// sharing the sample rate and channel count with another file and lying
+    /// within [`AUDIO_LENGTH_SLACK_SECS`] of its length. Identical audio has the
+    /// same sample rate, channel count and length, and the length is allowed a
+    /// little slack only because some formats estimate it. Everything else
+    /// cannot have a copy, so it is never decoded. Unreadable files and files
+    /// with no length are left out, as in [`Self::find_duplicates`].
+    pub fn audio_duplicate_candidates(&self) -> Vec<DuplicateFileDto> {
+        use std::collections::BTreeMap;
+
+        let mut shapes: BTreeMap<(Option<u32>, Option<u8>), Vec<DuplicateFileDto>> =
+            BTreeMap::new();
+        for path in self.source_paths() {
+            let Ok(read) = self.read_snapshot(&path) else {
+                continue;
+            };
+            if read.props.duration_secs == 0 {
+                continue;
+            }
+            let field = |key| read.file.tags.get(key).cloned().unwrap_or_default();
+            shapes
+                .entry((read.props.sample_rate_hz, read.props.channels))
+                .or_default()
+                .push(DuplicateFileDto {
+                    path: path.to_string_lossy().into_owned(),
+                    artist: field(&TagField::Artist),
+                    title: field(&TagField::Title),
+                    album: field(&TagField::Album),
+                    duration_secs: read.props.duration_secs,
+                    size_bytes: std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0),
+                    bitrate_kbps: read.props.bitrate_kbps,
+                });
+        }
+        let mut candidates = Vec::new();
+        for mut files in shapes.into_values() {
+            files.sort_by(|a, b| {
+                a.duration_secs
+                    .cmp(&b.duration_secs)
+                    .then_with(|| natural_cmp(&a.path, &b.path))
+            });
+            let near = |a: &DuplicateFileDto, b: &DuplicateFileDto| {
+                a.duration_secs.abs_diff(b.duration_secs) <= AUDIO_LENGTH_SLACK_SECS
+            };
+            // Sorted by length, a file has a near neighbour only next to it.
+            let keep: Vec<bool> = (0..files.len())
+                .map(|i| {
+                    (i > 0 && near(&files[i - 1], &files[i]))
+                        || (i + 1 < files.len() && near(&files[i], &files[i + 1]))
+                })
+                .collect();
+            candidates.extend(
+                files
+                    .into_iter()
+                    .zip(keep)
+                    .filter(|(_, k)| *k)
+                    .map(|(f, _)| f),
+            );
+        }
+        candidates.sort_by(|a, b| natural_cmp(&a.path, &b.path));
+        candidates
     }
 
     /// Build a rename plan from a mask over the given files, without writing.
@@ -13007,6 +13106,90 @@ mod tests {
 
         // A criterion the files can't satisfy (no album/track) yields nothing.
         assert!(app.find_duplicates("album_track").unwrap().is_empty());
+    }
+
+    /// A silent 16-bit mono PCM WAV of `secs` seconds at `rate`.
+    fn silent_wav(rate: u32, secs: u32) -> Vec<u8> {
+        let data_len = rate * secs * 2;
+        let mut out = Vec::new();
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&(36 + data_len).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        out.extend_from_slice(&16u32.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&rate.to_le_bytes());
+        out.extend_from_slice(&(rate * 2).to_le_bytes());
+        out.extend_from_slice(&2u16.to_le_bytes());
+        out.extend_from_slice(&16u16.to_le_bytes());
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&data_len.to_le_bytes());
+        out.resize(out.len() + data_len as usize, 0);
+        out
+    }
+
+    // #821: only files that could hold the same audio as another file are
+    // decoded: same sample rate and channel count, lengths within a second.
+    #[test]
+    fn audio_candidates_share_the_shape_and_length_of_another_file() {
+        let dir = TempDir::new("audio-candidates");
+        for (name, rate, secs) in [
+            ("a.wav", 8_000, 2),
+            ("b.wav", 8_000, 3),
+            ("far.wav", 8_000, 6),
+            ("rate.wav", 11_025, 2),
+        ] {
+            std::fs::write(dir.0.join(name), silent_wav(rate, secs)).unwrap();
+        }
+        let app = open_app(&dir);
+        let names: Vec<String> = app
+            .audio_duplicate_candidates()
+            .iter()
+            .map(|f| {
+                f.path
+                    .rsplit(std::path::MAIN_SEPARATOR)
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(names, ["a.wav", "b.wav"]);
+    }
+
+    #[test]
+    fn files_sharing_a_digest_make_a_group() {
+        let file = |path: &str| DuplicateFileDto {
+            path: path.to_string(),
+            artist: String::new(),
+            title: String::new(),
+            album: String::new(),
+            duration_secs: 1,
+            size_bytes: 1,
+            bitrate_kbps: None,
+        };
+        let groups = group_by_digest(
+            [
+                (file("/m/d.wav"), 2),
+                (file("/m/a.wav"), 1),
+                (file("/m/c.wav"), 2),
+                (file("/m/b.wav"), 1),
+                (file("/m/e.wav"), 2),
+                (file("/m/lone.wav"), 3),
+            ],
+            "identical audio",
+        );
+        let paths: Vec<Vec<&str>> = groups
+            .iter()
+            .map(|g| g.files.iter().map(|f| f.path.as_str()).collect())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                vec!["/m/c.wav", "/m/d.wav", "/m/e.wav"],
+                vec!["/m/a.wav", "/m/b.wav"]
+            ]
+        );
+        assert!(groups.iter().all(|g| g.key == "identical audio"));
     }
 
     #[test]

@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- The duplicate scan can find files with identical audio whatever their tags
+  and covers: the same track saved twice under different tags, or the same
+  lossless audio as FLAC, WAV and AIFF. Only files sharing the sample rate,
+  channel count and length of another are decoded, first their opening seconds
+  and then in full only where those match, on several threads, with progress
+  in the status bar and a Stop that keeps the matches confirmed so far
+  ([#821](https://github.com/tagrex/tagrex/issues/821)).
 - A TagRex Next build marks itself in yellow, so its window is not taken for
   the regular app's: a "Next" badge beside the wordmark and in the About
   dialog, the wordmark, the About logo and its link icons in yellow, and a
