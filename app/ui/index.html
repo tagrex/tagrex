@@ -51,6 +51,7 @@
       <symbol id="i-alert" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><line x1="8" y1="5" x2="8" y2="8.6"/><circle cx="8" cy="11" r=".75" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-plus" viewBox="0 0 16 16"><line x1="8" y1="3.5" x2="8" y2="12.5"/><line x1="3.5" y1="8" x2="12.5" y2="8"/></symbol>
       <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2.5 5.3a1 1 0 0 1 1-1h2.7l1.2 1.4h5.1a1 1 0 0 1 1 1v4.6a1 1 0 0 1-1 1h-9.1a1 1 0 0 1-1-1Z"/></symbol>
+      <symbol id="i-folder-plus" viewBox="0 0 16 16"><path d="M2.5 5.3a1 1 0 0 1 1-1h2.7l1.2 1.4h5.1a1 1 0 0 1 1 1v4.6a1 1 0 0 1-1 1h-9.1a1 1 0 0 1-1-1Z"/><path d="M8.4 7.4v3.2M6.8 9h3.2"/></symbol>
       <symbol id="i-tag" viewBox="0 0 16 16"><path d="M2.8 3.3h4.4L13 9l-4 4-5.8-5.8Z"/><circle cx="5.6" cy="6.1" r="1" fill="currentColor" stroke="none"/></symbol>
       <!-- Group keys (#844): one glyph per common grouping. -->
       <symbol id="i-grp-none" viewBox="0 0 16 16"><line x1="3" y1="4.5" x2="13" y2="4.5"/><line x1="3" y1="8" x2="13" y2="8"/><line x1="3" y1="11.5" x2="13" y2="11.5"/></symbol>
@@ -170,6 +171,9 @@
             <button id="root-recent" class="icon" type="button" data-i18n-title="topbar.recent" title="Recently opened folders" data-i18n-aria-label="topbar.recent" aria-label="Recently opened folders" aria-expanded="false" hidden><svg class="ico"><use href="#i-caret-down"/></svg></button>
             <span class="field-sep" aria-hidden="true"></span>
             <button id="lib-action" class="icon" data-i18n-title="topbar.chooseFolder" title="Choose a folder to open" data-i18n-aria-label="topbar.chooseFolder" aria-label="Choose a folder to open"><svg class="ico"><use id="lib-action-glyph" href="#i-folder"/></svg></button>
+            <!-- Add a folder to what is open (#846): the files already in the
+                 table stay, with their edits, and the folder's join them. -->
+            <button id="lib-add" class="icon" type="button" data-i18n-title="topbar.addFolder" title="Add a folder to the open files" data-i18n-aria-label="topbar.addFolder" aria-label="Add a folder to the open files" hidden><svg class="ico"><use href="#i-folder-plus"/></svg></button>
           </div>
           <div id="root-recent-menu" class="col-menu" hidden></div>
         </div>

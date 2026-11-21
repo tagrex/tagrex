@@ -65,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Escape). Escape closes only the list, never a staged plan. The duplicate
   finder's criteria now explain themselves under each option
   ([#845](https://github.com/tagrex/tagrex/issues/845)).
+- A folder can be added to the files already open: the folder-with-a-plus
+  button next to the folder chooser brings its files into the table while
+  pending edits, the selection, the sort, field locks and Redo stay. What is
+  open becomes a file set rooted at the shared parent folder, and a folder
+  that is already open adds nothing
+  ([#846](https://github.com/tagrex/tagrex/issues/846)).
 
 ### Fixed
 

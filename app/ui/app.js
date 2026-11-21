@@ -1956,6 +1956,19 @@ function updateRefreshButton() {
     ? msg("app.rereadBlocked")
     : msg("topbar.reread");
   btn.setAttribute("aria-label", msg("topbar.reread"));
+  updateAddFolderButton();
+}
+
+// Add a folder (#846): offered once something is open, under the same rule as
+// Refresh, since a staged diff is about the list it was built on.
+function updateAddFolderButton() {
+  const btn = el("lib-add");
+  const staged = Boolean(diffByPath);
+  btn.hidden = !openedRoot;
+  btn.disabled = staged;
+  btn.title = staged ? msg("app.addBlocked") : msg("topbar.addFolder");
+  btn.setAttribute("aria-label", msg("topbar.addFolder"));
+  if (btn.dataset.tipText) btn.dataset.tipText = btn.title;
 }
 
 // Re-read the open folder (#212).
@@ -2190,6 +2203,65 @@ async function afterOpen(label) {
     ]);
   } else {
     toast(opened);
+  }
+}
+
+// Add `folder`'s files to the files already open (#846). Not a reopen: the
+// backend extends the session, and here the edits, the selection, the sort,
+// the grouping and the history all stay. What is open becomes a set of files
+// rooted at their common folder, the same shape a drop of several folders
+// opens as, so drop grouping gains the folder that was open and the new one.
+// With nothing open yet it is simply Open.
+async function addFolderPath(folder) {
+  if (!folder) return;
+  if (!openedRoot) {
+    rootInput.value = folder;
+    await openLibrary();
+    return;
+  }
+  if (diffByPath) return;
+  try {
+    const result = await invoke("add_folder", { folder });
+    if (!result.added) {
+      toast(msg("toast.folderAddedNothing", { folder: folderName(folder) }));
+      return;
+    }
+    const known = new Set(dropFolders || []);
+    setDropFolders([...(dropFolders || []), ...result.folders.filter((f) => !known.has(f))]);
+    setSessionRoot(result.root);
+    openedRoot = result.root;
+    rootInput.value = result.root;
+    leaveRootEdit();
+    const order = handOrder();
+    setTracks(await invoke("list_tracks", {}));
+    sortKeepingHandOrder(order);
+    carrySelection();
+    renderTracks();
+    refreshCustomColumnCells();
+    syncSelectionUI();
+    toast(
+      msg("toast.folderAdded", {
+        tracks: tn("unit.track", result.added),
+        folder: folderName(folder),
+      })
+    );
+  } catch (e) {
+    toast(String(e), true);
+  } finally {
+    updateRefreshButton();
+  }
+}
+
+async function chooseFolderToAdd() {
+  const dialog = window.__TAURI__ && window.__TAURI__.dialog;
+  try {
+    // Browser development has no native chooser; a prompt stands in for it.
+    const picked = dialog
+      ? await dialog.open({ directory: true, multiple: false })
+      : window.prompt(msg("topbar.addFolder"));
+    if (picked) await addFolderPath(picked);
+  } catch (e) {
+    toast(String(e), true);
   }
 }
 
@@ -2759,6 +2831,7 @@ el("lib-action").addEventListener("click", () =>
   libraryIsDirty() ? openLibrary() : browseForFolder()
 );
 el("lib-refresh").addEventListener("click", refreshLibrary);
+el("lib-add").addEventListener("click", chooseFolderToAdd);
 el("root-display").addEventListener("click", editRootPath);
 el("root-recent").addEventListener("click", (e) => {
   e.stopPropagation();

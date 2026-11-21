@@ -398,6 +398,7 @@ function mockInvoke(cmd, args) {
         });
       }
       s.root = args.root;
+      s.fileSet = false;
       return Promise.resolve();
     case "library_root":
       return Promise.resolve(s.root || null);
@@ -483,6 +484,8 @@ function mockInvoke(cmd, args) {
           mk(`${root}/CD2/01 c.mp3`, "Library", "C"),
           mk(`${root}/00 root note.mp3`, "Library", "Root file"),
         ];
+        s.root = root;
+        s.fileSet = false;
         return Promise.resolve({ mode: "library", root, folders: [] });
       }
       const all = [];
@@ -492,7 +495,42 @@ function mockInvoke(cmd, args) {
       });
       files.forEach((f) => all.push(mk(`/dropped/${f}`, "Loose", f)));
       s.tracks = all;
+      s.root = "/dropped";
+      s.fileSet = true;
       return Promise.resolve({ mode: "files", root: "/dropped", folders: dirs });
+    }
+    // Add a folder (#846): two tracks per new folder under it, nothing for a
+    // folder already listed; the root becomes the shared parent.
+    case "add_folder": {
+      const folder = String(args.folder || "").replace(/[\\/]+$/, "");
+      if (!folder || folder.includes("does-not-exist")) {
+        return Promise.reject({
+          message: { code: "error.missingLibrary", args: { path: folder }, count: null },
+          text: `no such folder: ${folder}`,
+        });
+      }
+      const present = new Set(s.tracks.map((t) => t.path));
+      const fresh = [`${folder}/01 added.mp3`, `${folder}/02 added.mp3`]
+        .filter((path) => !present.has(path))
+        .map((path, i) => ({
+          path,
+          format: "Mp3",
+          tags: { artist: "Added", title: `Added ${i + 1}`, album: folder.split("/").pop(), year: "2021" },
+        }));
+      const oldRoot = s.root || "/";
+      if (!fresh.length) return Promise.resolve({ root: oldRoot, added: 0, folders: [] });
+      const wasSet = Boolean(s.fileSet);
+      s.tracks.push(...fresh);
+      s.fileSet = true;
+      const dirs = s.tracks.map((t) => t.path.split("/").slice(0, -1));
+      let common = dirs[0];
+      for (const d of dirs) {
+        let n = 0;
+        while (n < common.length && n < d.length && common[n] === d[n]) n++;
+        common = common.slice(0, n);
+      }
+      s.root = common.join("/") || "/";
+      return Promise.resolve({ root: s.root, added: fresh.length, folders: wasSet ? [folder] : [oldRoot, folder] });
     }
     case "open_mask_guide":
       return Promise.resolve();

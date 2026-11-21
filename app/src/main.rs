@@ -19,8 +19,8 @@ mod window_controls;
 use tauri::{Manager, State};
 
 use tagrex_commands::{
-    ActionGroupDto, AlignMatchDto, App, AppError, BatchDto, BlockTargetsDto, CandidateDto,
-    CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateFileDto,
+    ActionGroupDto, AddFolderDto, AlignMatchDto, App, AppError, BatchDto, BlockTargetsDto,
+    CandidateDto, CoverArtDto, CoverExportDto, CoverSummaryDto, DropResultDto, DuplicateFileDto,
     DuplicateGroupDto, ErrorDto, ImportFieldDto, ImportSelectionDto, ImportTrackDto, NameProbeDto,
     NameProbesDto, PlaceholderDto, PlanDto, ProviderHub, ReleaseDto, SaveImagesDto, SearchQueryDto,
     SettingsDto, TagEditDto, TextLinesDto, TextProbeDto, TrackDto, TransformRuleDto, UndoReportDto,
@@ -229,6 +229,21 @@ async fn open_drop(
             *session = Some(opened);
             LIBRARY_GENERATION.fetch_add(1, Ordering::SeqCst);
             Ok(result)
+        })
+        .await
+}
+
+/// Add a folder's files to the files already open (#846). The session is
+/// extended rather than reopened, so locks and redo stay.
+#[tauri::command]
+async fn add_folder(state: State<'_, AppState>, folder: String) -> Result<AddFolderDto, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app_mut(&state, |app| {
+                app.add_folder(PathBuf::from(folder))
+                    .map_err(ErrorDto::from)
+            })
         })
         .await
 }
@@ -2598,6 +2613,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             open_library,
             open_drop,
+            add_folder,
             list_tracks,
             library_root_missing,
             library_root,

@@ -17,6 +17,12 @@ while a mix of loose files and several folders opens as a *file set* — the
 dropped folders become table groups, and anything not under one of them collects
 under "Files".
 
+To bring in more music without losing what is already open, press the
+folder-with-a-plus button next to **Browse…** and pick another folder. Its files
+join the table; the files already there keep their pending edits, the selection
+and the sort stay, and what is open becomes a file set rooted at the folder the
+two have in common. A folder whose files are all open already adds nothing.
+
 If the open folder is renamed, moved or deleted outside TagRex, the window says
 so as soon as you come back to it, and **Re-read** says the same: open the
 folder again from its new place.

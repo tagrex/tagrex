@@ -1846,6 +1846,19 @@ pub struct DropResultDto {
     pub folders: Vec<String>,
 }
 
+/// What adding a folder to the open files did (#846).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AddFolderDto {
+    /// The session root afterwards: the common ancestor of every listed file.
+    pub root: String,
+    /// How many files the folder added; 0 when all of them were already open.
+    pub added: usize,
+    /// Folders the frontend adds to its drop-origin groups: the library that
+    /// was open (when it was one) and the added folder. Empty when nothing
+    /// was added.
+    pub folders: Vec<String>,
+}
+
 /// How a set of dropped paths resolves into a session (#127).
 #[derive(Debug)]
 enum DropPlan {
@@ -2623,6 +2636,53 @@ impl App {
             }
             DropPlan::Empty => Err(AppError::EmptyDrop),
         }
+    }
+
+    /// Add `folder`'s audio files to the files already open (#846), keeping
+    /// the session itself: locks, authorized destinations and redo stay as
+    /// they are. The session becomes a file-set over the union, rooted at the
+    /// common ancestor, the same shape a drop of several folders opens as.
+    /// Files already listed are not listed twice, so a folder inside what is
+    /// open adds nothing and leaves the session untouched.
+    pub fn add_folder(&mut self, folder: impl Into<PathBuf>) -> Result<AddFolderDto, AppError> {
+        let folder = folder.into();
+        if !folder.is_dir() {
+            return Err(AppError::MissingLibrary(
+                folder.to_string_lossy().into_owned(),
+            ));
+        }
+        let was_file_set = self.is_file_set();
+        let mut all = self.source_paths();
+        let present: HashSet<PathBuf> = all.iter().cloned().collect();
+        let mut fresh: Vec<PathBuf> = scanner::scan(&folder, &ScanOptions::default())
+            .filter_map(Result::ok)
+            .filter(|path| !present.contains(path))
+            .collect();
+        fresh.sort();
+        fresh.dedup();
+        if fresh.is_empty() {
+            return Ok(AddFolderDto {
+                root: self.library_root.to_string_lossy().into_owned(),
+                added: 0,
+                folders: Vec::new(),
+            });
+        }
+        let added = fresh.len();
+        // What was open stays one group: the library folder itself, or, for a
+        // file-set, the groups the frontend already has for it.
+        let mut folders = Vec::new();
+        if !was_file_set {
+            folders.push(self.library_root.to_string_lossy().into_owned());
+        }
+        folders.push(folder.to_string_lossy().into_owned());
+        all.extend(fresh);
+        self.library_root = common_ancestor(&all).unwrap_or_else(|| PathBuf::from("/"));
+        self.file_filter = Some(all);
+        Ok(AddFolderDto {
+            root: self.library_root.to_string_lossy().into_owned(),
+            added,
+            folders,
+        })
     }
 
     /// The files this session operates on: the explicit filter when set (a
@@ -14378,6 +14438,64 @@ mod tests {
         assert!(paths.contains(&c.to_string_lossy().into_owned()));
         // The un-listed file is on disk — filtered out of the session, not gone.
         assert!(dir.0.join("02.flac").exists());
+    }
+
+    #[test]
+    fn add_folder_joins_a_library_and_keeps_the_session() {
+        let dir = TempDir::new("add-folder");
+        let a = dir.tagged_flac_at("one/01.flac", "A", "One");
+        let b = dir.tagged_flac_at("two/01.flac", "B", "Two");
+        let c = dir.tagged_flac_at("two/sub/02.flac", "C", "Three");
+        let mut app = App::open(dir.0.join("one"), &dir.0.join("j.sqlite")).unwrap();
+        app.set_locked_fields(&["artist".to_string()]);
+        let added = app.add_folder(dir.0.join("two")).unwrap();
+        assert_eq!(added.added, 2);
+        assert_eq!(added.root, dir.0.to_string_lossy());
+        assert_eq!(
+            added.folders,
+            vec![
+                dir.0.join("one").to_string_lossy().into_owned(),
+                dir.0.join("two").to_string_lossy().into_owned(),
+            ]
+        );
+        assert!(app.is_file_set());
+        assert_eq!(app.library_root(), dir.0.as_path());
+        let mut paths: Vec<String> = app.list_tracks().into_iter().map(|t| t.path).collect();
+        paths.sort();
+        let mut want: Vec<String> = [a, b, c]
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        want.sort();
+        assert_eq!(paths, want);
+        // The session was extended, not reopened: the locks are still there.
+        assert_eq!(app.locked_fields(), vec!["artist".to_string()]);
+        // Adding a folder that is already open adds nothing and changes nothing.
+        let again = app.add_folder(dir.0.join("two/sub")).unwrap();
+        assert_eq!(again.added, 0);
+        assert!(again.folders.is_empty());
+        assert_eq!(app.list_tracks().len(), 3);
+        // A folder that is not there is refused.
+        assert!(matches!(
+            app.add_folder(dir.0.join("ghost")),
+            Err(AppError::MissingLibrary(_))
+        ));
+    }
+
+    #[test]
+    fn add_folder_to_a_file_set_reports_only_the_new_folder() {
+        let dir = TempDir::new("add-folder-set");
+        let a = dir.tagged_flac_at("x/01.flac", "A", "One");
+        let _b = dir.tagged_flac_at("y/01.flac", "B", "Two");
+        let mut app =
+            App::open_file_set(dir.0.join("x"), vec![a], &dir.0.join("j.sqlite")).unwrap();
+        let added = app.add_folder(dir.0.join("y")).unwrap();
+        assert_eq!(added.added, 1);
+        assert_eq!(
+            added.folders,
+            vec![dir.0.join("y").to_string_lossy().into_owned()]
+        );
+        assert_eq!(app.list_tracks().len(), 2);
     }
 
     #[test]
