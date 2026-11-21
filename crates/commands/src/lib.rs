@@ -14460,12 +14460,15 @@ mod tests {
         );
         assert!(app.is_file_set());
         assert_eq!(app.library_root(), dir.0.as_path());
-        let mut paths: Vec<String> = app.list_tracks().into_iter().map(|t| t.path).collect();
-        paths.sort();
-        let mut want: Vec<String> = [a, b, c]
-            .iter()
-            .map(|p| p.to_string_lossy().into_owned())
+        // Compared as paths: the fixtures are joined with `/`, and Windows lists
+        // them with `\`.
+        let mut paths: Vec<PathBuf> = app
+            .list_tracks()
+            .into_iter()
+            .map(|t| PathBuf::from(t.path))
             .collect();
+        paths.sort();
+        let mut want = vec![a, b, c];
         want.sort();
         assert_eq!(paths, want);
         // The session was extended, not reopened: the locks are still there.
