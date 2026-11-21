@@ -659,6 +659,8 @@ pub enum PlanMessage {
     ClearTags,
     DetectBpm,
     EmbedCover,
+    /// Each file's own folder image as its front cover (#824).
+    EmbedFolderCovers,
     SetCoverImages {
         images: usize,
     },
@@ -690,6 +692,10 @@ pub enum PlanMessage {
     CoverNotShrunk {
         images: usize,
     },
+    /// A note: files whose folder holds no image to embed (#824).
+    NoFolderImage {
+        files: usize,
+    },
     /// A note on a History entry: the batch never finished, the app having
     /// stopped part-way through it (#659).
     Interrupted,
@@ -710,6 +716,7 @@ impl PlanMessage {
             Self::ClearTags => "plan.clearTags",
             Self::DetectBpm => "plan.detectBpm",
             Self::EmbedCover => "plan.embedCover",
+            Self::EmbedFolderCovers => "plan.embedFolderCovers",
             Self::SetCoverImages { .. } => "plan.setCoverImages",
             Self::RemoveCover => "plan.removeCover",
             Self::RemoveBlock { .. } => "plan.removeBlock",
@@ -728,6 +735,7 @@ impl PlanMessage {
             Self::CarryingExtras { .. } => "plan.carryingExtras",
             Self::CleanedUp => "plan.cleanedUp",
             Self::CoverNotShrunk { .. } => "plan.coverNotShrunk",
+            Self::NoFolderImage { .. } => "plan.noFolderImage",
             Self::Interrupted => "plan.interrupted",
         }
     }
@@ -763,9 +771,9 @@ impl PlanMessage {
     /// The number the wording turns on, for the languages that need one.
     fn count(&self) -> Option<u64> {
         match self {
-            Self::EditTagsWithCover { files } | Self::CarryingExtras { files } => {
-                Some(*files as u64)
-            }
+            Self::EditTagsWithCover { files }
+            | Self::CarryingExtras { files }
+            | Self::NoFolderImage { files } => Some(*files as u64),
             Self::SetCoverImages { images } | Self::CoverNotShrunk { images } => {
                 Some(*images as u64)
             }
@@ -794,6 +802,7 @@ impl PlanMessage {
             Self::ClearTags => "Clear tags".to_string(),
             Self::DetectBpm => "Detect BPM".to_string(),
             Self::EmbedCover => "Embed cover art".to_string(),
+            Self::EmbedFolderCovers => "Embed each folder's image".to_string(),
             Self::SetCoverImages { images } => format!("Set {images} cover image(s)"),
             Self::RemoveCover => "Remove cover art".to_string(),
             Self::RemoveBlock { block } => format!("Remove {block} tag"),
@@ -817,6 +826,10 @@ impl PlanMessage {
             Self::CoverNotShrunk { images } => match images {
                 1 => "1 image too large to shrink goes in at full size".to_string(),
                 n => format!("{n} images too large to shrink go in at full size"),
+            },
+            Self::NoFolderImage { files } => match files {
+                1 => "1 file has no image in its folder".to_string(),
+                n => format!("{n} files have no image in their folder"),
             },
             Self::Interrupted => "interrupted before it finished".to_string(),
         }
@@ -4464,39 +4477,9 @@ impl App {
         });
         let mut changes = Vec::new();
         for path in paths {
-            let old = TagEngine::read_covers(path)?;
-            // Front cover in, every other image left as it is (#56): a picked,
-            // dropped or fetched image means "this is the cover", never "throw
-            // away the back and the disc".
-            let mut new = old.clone();
-            match &new_art {
-                Some(art) => {
-                    let front = art.clone();
-                    match new.iter().position(|c| c.kind == CoverKind::Front) {
-                        Some(at) => new[at] = front,
-                        None => new.insert(0, front),
-                    }
-                }
-                None => new.retain(|c| c.kind != CoverKind::Front),
+            if let Some(change) = front_cover_change(path, new_art.as_ref())? {
+                changes.push(change);
             }
-            if old == new {
-                continue; // already this exact cover
-            }
-            changes.push(FileChangeDto {
-                path: path.to_string_lossy().into_owned(),
-                rename_to: None,
-                tag_changes: Vec::new(),
-                cover_change: Some(CoverChangeDto {
-                    old: cover_arts_to_dto(&old),
-                    new: cover_arts_to_dto(&new),
-                }),
-                sidecar_renames: Vec::new(),
-                block_changes: Vec::new(),
-                copy: false,
-                rename_root: None,
-                creates_folder: false,
-                folder_extras: Vec::new(),
-            });
         }
         let notes = if changes.is_empty() {
             Vec::new()
@@ -4504,6 +4487,93 @@ impl App {
             self.unshrunk_cover_notes(new_art.iter())
         };
         Ok(self.plan(PlanMessage::EmbedCover, notes, changes, false))
+    }
+
+    /// Preview giving each file the image from its own folder as its front
+    /// cover (#824), picked by [`pick_folder_image`]. A selection spanning
+    /// several albums gets each album's own image, not the first one found.
+    /// Each image is read and shrunk once, however many files share it. Files
+    /// whose folder has no image are left out and counted in a note.
+    pub fn preview_folder_covers(&self, paths: &[PathBuf]) -> Result<PlanDto, AppError> {
+        use std::collections::HashMap;
+        let mut listings: HashMap<PathBuf, Vec<PathBuf>> = HashMap::new();
+        let mut arts: HashMap<PathBuf, Option<CoverArt>> = HashMap::new();
+        let mut used: Vec<PathBuf> = Vec::new();
+        let mut changes = Vec::new();
+        let mut without = 0;
+        for path in paths {
+            let Some(image) = self.folder_image_for(path, &mut listings) else {
+                without += 1;
+                continue;
+            };
+            let art = arts
+                .entry(image.clone())
+                .or_insert_with(|| {
+                    let data = std::fs::read(&image).ok()?;
+                    let dto = CoverArtDto {
+                        mime: mime_for_cover_path(&image).to_string(),
+                        data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
+                        ..CoverArtDto::default()
+                    };
+                    cover_dto_to_art(&dto).map(|art| {
+                        tagrex_core::cover::resize_cover(
+                            &art,
+                            self.cover_max_px.get(),
+                            self.cover_quality.get(),
+                        )
+                    })
+                })
+                .clone();
+            let Some(art) = art else {
+                without += 1;
+                continue;
+            };
+            if let Some(change) = front_cover_change(path, Some(&art))? {
+                changes.push(change);
+                if !used.contains(&image) {
+                    used.push(image);
+                }
+            }
+        }
+        let mut notes = Vec::new();
+        if !changes.is_empty() {
+            notes = self.unshrunk_cover_notes(used.iter().filter_map(|image| arts[image].as_ref()));
+        }
+        if without > 0 {
+            notes.push(PlanMessage::NoFolderImage { files: without });
+        }
+        Ok(self.plan(PlanMessage::EmbedFolderCovers, notes, changes, false))
+    }
+
+    /// Whether any of `paths` has an image in its folder to embed (#824): what
+    /// decides if the cover panel offers the folder image at all.
+    pub fn has_folder_cover(&self, paths: &[PathBuf]) -> bool {
+        let mut listings = std::collections::HashMap::new();
+        paths
+            .iter()
+            .any(|path| self.folder_image_for(path, &mut listings).is_some())
+    }
+
+    /// The image in `track`'s folder to embed into it (#824), the folder's
+    /// listing kept in `listings` for the next track in the same folder.
+    fn folder_image_for(
+        &self,
+        track: &Path,
+        listings: &mut std::collections::HashMap<PathBuf, Vec<PathBuf>>,
+    ) -> Option<PathBuf> {
+        let dir = track.parent()?;
+        let images = listings
+            .entry(dir.to_path_buf())
+            .or_insert_with(|| folder_images(dir));
+        if images.is_empty() {
+            return None;
+        }
+        let album = self
+            .read_cached(track)
+            .ok()
+            .and_then(|file| file.tags.get(&TagField::Album).cloned())
+            .unwrap_or_default();
+        pick_folder_image(track, &album, images).cloned()
     }
 
     /// Preview replacing every selected file's whole image set with `covers`
@@ -6342,6 +6412,110 @@ fn external_cover_in(dir: &Path) -> Option<PathBuf> {
         }
     }
     best.map(|(_, path)| path)
+}
+
+/// The change that puts `new_art` in as `path`'s front cover, every other image
+/// left as it is (#56), or takes the front cover out when `new_art` is None.
+/// None when the file already has exactly that.
+fn front_cover_change(
+    path: &Path,
+    new_art: Option<&CoverArt>,
+) -> Result<Option<FileChangeDto>, AppError> {
+    let old = TagEngine::read_covers(path)?;
+    // Front cover in, every other image left as it is (#56): a picked,
+    // dropped or fetched image means "this is the cover", never "throw
+    // away the back and the disc".
+    let mut new = old.clone();
+    match new_art {
+        Some(art) => {
+            let front = art.clone();
+            match new.iter().position(|c| c.kind == CoverKind::Front) {
+                Some(at) => new[at] = front,
+                None => new.insert(0, front),
+            }
+        }
+        None => new.retain(|c| c.kind != CoverKind::Front),
+    }
+    if old == new {
+        return Ok(None); // already this exact cover
+    }
+    Ok(Some(FileChangeDto {
+        path: path.to_string_lossy().into_owned(),
+        rename_to: None,
+        tag_changes: Vec::new(),
+        cover_change: Some(CoverChangeDto {
+            old: cover_arts_to_dto(&old),
+            new: cover_arts_to_dto(&new),
+        }),
+        sidecar_renames: Vec::new(),
+        block_changes: Vec::new(),
+        copy: false,
+        rename_root: None,
+        creates_folder: false,
+        folder_extras: Vec::new(),
+    }))
+}
+
+/// The images in `dir` that can be embedded (#824): `.jpg`, `.jpeg` and
+/// `.png` files, in natural name order.
+fn folder_images(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut images: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path.extension().and_then(|e| e.to_str()).is_some_and(|e| {
+                    ["jpg", "jpeg", "png"].contains(&e.to_ascii_lowercase().as_str())
+                })
+        })
+        .collect();
+    images.sort_by(|a, b| natural_cmp(&a.to_string_lossy(), &b.to_string_lossy()));
+    images
+}
+
+/// Which of a folder's `images` goes into `track` (#824), in this order: one
+/// named like the track itself, as stores that ship art per track do; then
+/// `cover`, `folder`, `front`, as [`external_cover_in`] ranks them; then one
+/// named like the track's `album`, ignoring case, spaces and punctuation;
+/// then the folder's only image. None when nothing fits.
+fn pick_folder_image<'a>(track: &Path, album: &str, images: &'a [PathBuf]) -> Option<&'a PathBuf> {
+    let stem = |path: &Path| {
+        path.file_stem()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default()
+    };
+    let squash = |text: &str| -> String {
+        text.chars()
+            .filter(|c| c.is_alphanumeric())
+            .flat_map(char::to_lowercase)
+            .collect()
+    };
+    let own = stem(track);
+    if let Some(image) = images.iter().find(|image| stem(image) == own) {
+        return Some(image);
+    }
+    const PREFERRED: [&str; 3] = ["cover", "folder", "front"];
+    if let Some(image) = images
+        .iter()
+        .filter_map(|image| Some((PREFERRED.iter().position(|p| *p == stem(image))?, image)))
+        .min_by_key(|(rank, _)| *rank)
+        .map(|(_, image)| image)
+    {
+        return Some(image);
+    }
+    let album = squash(album);
+    if !album.is_empty() {
+        if let Some(image) = images.iter().find(|image| squash(&stem(image)) == album) {
+            return Some(image);
+        }
+    }
+    match images {
+        [only] => Some(only),
+        _ => None,
+    }
 }
 
 /// The MIME type for an external cover path, by extension (defaults to JPEG).
@@ -13049,6 +13223,102 @@ mod tests {
             TagEngine::read_covers(&a).unwrap()[0].kind,
             CoverKind::Front
         );
+    }
+
+    // #824: the image a track gets from its folder, in order of preference.
+    #[test]
+    fn a_folder_image_is_picked_by_track_name_cover_name_album_or_alone() {
+        let track = Path::new("/m/01 Intro.flac");
+        let paths = |names: &[&str]| -> Vec<PathBuf> {
+            names
+                .iter()
+                .map(|name| Path::new("/m").join(name))
+                .collect()
+        };
+        let pick = |names: &[&str], album: &str| -> Option<String> {
+            let images = paths(names);
+            pick_folder_image(track, album, &images)
+                .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+        };
+        let album = "Night & Day!";
+        let all = [
+            "back.jpg",
+            "Folder.PNG",
+            "cover.jpg",
+            "night day.jpg",
+            "01 intro.JPG",
+        ];
+        assert_eq!(pick(&all, album).as_deref(), Some("01 intro.JPG"));
+        assert_eq!(pick(&all[..4], album).as_deref(), Some("cover.jpg"));
+        assert_eq!(
+            pick(&["back.jpg", "Folder.PNG"], album).as_deref(),
+            Some("Folder.PNG")
+        );
+        assert_eq!(
+            pick(&["back.jpg", "night day.jpg"], album).as_deref(),
+            Some("night day.jpg")
+        );
+        assert_eq!(pick(&["back.jpg", "night day.jpg"], "").as_deref(), None);
+        assert_eq!(pick(&["scan 1.jpg"], album).as_deref(), Some("scan 1.jpg"));
+        assert_eq!(pick(&["scan 1.jpg", "scan 2.jpg"], album), None);
+        assert_eq!(pick(&[], album), None);
+    }
+
+    // #824: across several album folders each track gets its own folder's
+    // image, and a folder without one is counted rather than given another's.
+    #[test]
+    fn folder_covers_give_each_track_its_own_folders_image() {
+        let dir = TempDir::new("folder-covers");
+        let a1 = dir.tagged_flac_at("A/1.flac", "Artist", "One");
+        let a2 = dir.tagged_flac_at("A/2.flac", "Artist", "Two");
+        let b1 = dir.tagged_flac_at("B/1.flac", "Artist", "Three");
+        let c1 = dir.tagged_flac_at("C/1.flac", "Artist", "Four");
+        let image_a = vec![0xFF, 0xD8, 0xFF, 0xE0, 1];
+        let image_b = vec![0xFF, 0xD8, 0xFF, 0xE0, 2];
+        std::fs::write(dir.0.join("A/cover.jpg"), &image_a).unwrap();
+        std::fs::write(dir.0.join("B/folder.jpg"), &image_b).unwrap();
+        // B/1 already has its folder's image: nothing to change there.
+        TagEngine::write_covers(
+            &b1,
+            &[CoverArt {
+                mime: "image/jpeg".to_string(),
+                data: image_b.clone(),
+                kind: CoverKind::Front,
+                ..CoverArt::default()
+            }],
+        )
+        .unwrap();
+        let app = open_app(&dir);
+
+        assert!(app.has_folder_cover(&[c1.clone(), a1.clone()]));
+        assert!(!app.has_folder_cover(std::slice::from_ref(&c1)));
+
+        let plan = app
+            .preview_folder_covers(&[a1.clone(), a2.clone(), b1.clone(), c1.clone()])
+            .unwrap();
+        let embedded: Vec<(String, Vec<u8>)> = plan
+            .changes
+            .iter()
+            .map(|change| {
+                let front = &change.cover_change.as_ref().unwrap().new[0];
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(&front.data_base64)
+                    .unwrap();
+                (change.path.clone(), bytes)
+            })
+            .collect();
+        assert_eq!(
+            embedded,
+            [
+                (a1.to_string_lossy().into_owned(), image_a.clone()),
+                (a2.to_string_lossy().into_owned(), image_a.clone()),
+            ]
+        );
+        assert_eq!(
+            plan.notes,
+            [MessageDto::from(&PlanMessage::NoFolderImage { files: 1 })]
+        );
+        assert_eq!(plan.message.unwrap().code, "plan.embedFolderCovers");
     }
 
     #[test]

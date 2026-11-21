@@ -847,6 +847,38 @@ async fn read_cover_summary(
         .await
 }
 
+/// Each file's own folder image as its front cover (#824).
+#[tauri::command]
+async fn preview_folder_covers(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<PlanDto, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| {
+                app.preview_folder_covers(&paths).map_err(ErrorDto::from)
+            })
+        })
+        .await
+}
+
+/// Whether any of the files has an image in its folder to embed (#824).
+#[tauri::command]
+async fn has_folder_cover(
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<bool, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
+            with_app(&state, |app| Ok(app.has_folder_cover(&paths)))
+        })
+        .await
+}
+
 #[tauri::command]
 async fn read_external_cover(
     state: State<'_, AppState>,
@@ -2554,6 +2586,8 @@ fn main() {
             export_cover,
             read_cover_summary,
             read_external_cover,
+            preview_folder_covers,
+            has_folder_cover,
             read_cover_image,
             preview_cover_remove,
             preview_remove_tag_block,

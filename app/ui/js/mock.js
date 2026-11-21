@@ -924,6 +924,22 @@ function mockInvoke(cmd, args) {
       }));
       return Promise.resolve(plan("Embed cover art", { code: "plan.embedCover" }, changes));
     }
+    // Each track's own folder image (#824). The mock pretends every folder but
+    // the last track's has one, so the "no image" note shows too.
+    case "has_folder_cover":
+      return Promise.resolve(args.paths.length > 0);
+    case "preview_folder_covers": {
+      const withImage = args.paths.slice(0, Math.max(1, args.paths.length - 1));
+      const changes = withImage.map((p) => ({
+        path: p,
+        rename_to: null,
+        tag_changes: [],
+        cover_change: { old: null, new: [mockCoverImage("#c8a040", "front")] },
+      }));
+      const missing = args.paths.length - withImage.length;
+      const notes = missing ? [{ code: "plan.noFolderImage", args: {}, count: missing }] : [];
+      return Promise.resolve(plan("Embed each folder's image", { code: "plan.embedFolderCovers" }, changes, notes));
+    }
     case "read_cover_summary": {
       // Mock: a track's `cover` colour becomes its image set (#56) — the front
       // cover, plus whatever `coverSet` a previous preview_cover_set left on it.

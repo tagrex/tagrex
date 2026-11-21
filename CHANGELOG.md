@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Use folder image gives each selected track the image from its own folder,
+  so a selection spanning several albums gets each album's own cover instead
+  of the first one found. The image is the one named like the track, else
+  `cover`/`folder`/`front`, else one named like the album, else the folder's
+  only image; the preview says how many files had none
+  ([#824](https://github.com/tagrex/tagrex/issues/824)).
 - A repeated identical-audio duplicate scan reuses what the last one decoded:
   each file's audio digests are kept for the session and checked against the
   file's size, date and identity, so after a copy is deleted or moved the next

@@ -239,20 +239,17 @@ async function refreshCoverWell() {
   }
 }
 
-// The external cover (folder.jpg/cover.jpg next to the tracks), when present —
-// offered as a one-click embed under the well (#41).
-let externalCover = null;
-
+// An image in the tracks' folders (cover.jpg, folder.jpg, one named like the
+// track or the album), when there is one, offered as a one-click embed under
+// the well (#41). Each track gets the image from its own folder (#824).
 async function showExternalCoverAction(paths) {
-  externalCover = null;
   let found;
   try {
-    found = await invoke("read_external_cover", { paths });
+    found = await invoke("has_folder_cover", { paths });
   } catch (e) {
     return; // best-effort; the well already rendered
   }
   if (!found) return;
-  externalCover = found;
   // Join the action row so it flows with Replace…/Remove/Export as an equal
   // button (#134), not a full-width slab. Falls back to the body in the no-cover
   // state, which has no action row.
@@ -266,17 +263,16 @@ async function showExternalCoverAction(paths) {
   host.appendChild(note);
 }
 
-// Embed the external cover file (folder.jpg/cover.jpg) into the selection (#41),
-// through the same preview/apply/undo path as any other cover.
+// Embed each selected track's folder image into it (#41, #824), through the
+// same preview/apply/undo path as any other cover.
 async function embedExternalCover() {
-  if (!externalCover) return;
   const paths = selectedPaths();
   if (paths.length === 0) {
     toast(t("toast.cover.selectEmbed"), true);
     return;
   }
   try {
-    setPreviewPlan(await invoke("preview_cover_embed", { paths, cover: externalCover }));
+    setPreviewPlan(await invoke("preview_folder_covers", { paths }));
     setPreviewSource("cover");
     hooks.renderPreview(previewPlan);
     toast(
