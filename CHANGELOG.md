@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- With no folder open, the "Open a library to list its tracks." panel stays in
+  place when the columns are scrolled sideways, instead of sliding off with
+  them ([#827](https://github.com/tagrex/tagrex/issues/827)).
+
 ## [1.10.0] - 2026-11-21
 
 The duplicate scan can now find the same track saved twice with different tags

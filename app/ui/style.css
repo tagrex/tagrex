@@ -8221,6 +8221,11 @@ body:not(.show-checkbox) #tracks :is(th[data-key="file"], td.file) {
 }
 #files-view .empty.inert-panel {
   margin-inline: 14px;
+  /* The placeholder stays in view while wide columns scroll sideways past it
+     (#827): it is as wide as the visible area, and sticky on the same edge
+     its margin keeps it off. */
+  position: sticky;
+  inset-inline-start: 14px;
 }
 /* ONLINE's Vinyl side checkbox sat on the baseline, 3px above its label's centre. */
 .release-toolbar label:has(> input[type="checkbox"]) {
