@@ -996,6 +996,15 @@
         </div>
       </div>
     </div>
+    <!-- A cover at full size (#811), opened from a cover thumbnail. A
+         .modal-backdrop, so Escape closes it without letting go of a staged plan. -->
+    <div id="cover-view" class="modal-backdrop cover-view" hidden>
+      <figure class="cover-view-frame" role="dialog" aria-modal="true" data-i18n-aria-label="editor.coverArt" aria-label="Cover art">
+        <img id="cover-view-img" alt="" />
+        <figcaption id="cover-view-meta"></figcaption>
+      </figure>
+      <button id="cover-view-close" class="icon" type="button" data-i18n-title="action.close" title="Close" data-i18n-aria-label="action.close" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+    </div>
 
     <!-- Confirm dialog (#102): a small modal for yes/no prompts (e.g. overwriting
          existing cover files). Driven by confirmDialog() in app.js. -->

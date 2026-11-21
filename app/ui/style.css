@@ -3483,6 +3483,52 @@ td.unreadable-note {
 .cover-thumb.inert {
   background: var(--inert-stripes);
 }
+/* A cover that opens at full size (#811). */
+.cover-thumb.viewable {
+  cursor: zoom-in;
+}
+.cover-thumb.viewable:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* The full-size viewer: the image alone on a dark veil, no dialog card. */
+.modal-backdrop.cover-view {
+  z-index: 90;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+}
+.cover-view-frame {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: calc(100vw - 96px);
+  max-height: calc(100vh - 96px);
+}
+#cover-view-img {
+  display: block;
+  max-width: calc(100vw - 96px);
+  max-height: calc(100vh - 136px);
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, 0.45);
+  transform-origin: center;
+}
+#cover-view-meta {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+#cover-view-close {
+  position: fixed;
+  top: var(--space-4);
+  right: var(--space-4);
+  background: var(--panel);
+  color: var(--text);
+}
 
 /* mixed selection — a small fan of covers so it never implies one shared image */
 .cover-stack {

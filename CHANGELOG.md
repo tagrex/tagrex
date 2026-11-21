@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `<multiple values>`, which typing alone could not clear. It stages like
   deleting the text, so preview, Apply and Undo work as usual
   ([#810](https://github.com/tagrex/tagrex/issues/810)).
+- A click on a cover thumbnail, in the cover well or the image list, opens the
+  cover at full size over the window, with its pixel size, format and file size
+  underneath. It grows out of the thumbnail and back into it, and Escape closes
+  only the viewer, leaving a staged plan staged
+  ([#811](https://github.com/tagrex/tagrex/issues/811)).
 
 ### Fixed
 

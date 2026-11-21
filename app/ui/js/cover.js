@@ -15,6 +15,7 @@ import { t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
 import { enablePointerReorder } from "./reorder.js";
+import { makeViewable } from "./coverview.js";
 import { previewPlan, selectedPaths, setPreviewPlan, setPreviewSource } from "./state.js";
 
 const coverWell = el("cover-well");
@@ -229,6 +230,8 @@ async function refreshCoverWell() {
   try {
     const summary = await invoke("read_cover_summary", { paths });
     renderCoverWell(summary);
+    // Any cover shown in the well opens at full size (#811).
+    coverWell.querySelectorAll("img.cover-thumb").forEach(makeViewable);
     renderCoverSet(summary);
     await showExternalCoverAction(paths);
   } catch (e) {
@@ -389,6 +392,7 @@ function renderCoverSet(summary) {
     thumb.className = "cover-thumb cover-row-thumb";
     thumb.alt = image.description || t("cover.altEmbedded");
     thumb.src = `data:${image.mime};base64,${image.data_base64}`;
+    makeViewable(thumb);
 
     const kind = document.createElement("select");
     kind.className = "cover-kind";

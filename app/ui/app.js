@@ -36,6 +36,7 @@ import {
 } from "./js/health.js";
 import { initUpdateCheck } from "./js/updatecheck.js";
 import { initAbout } from "./js/about.js";
+import { initCoverView } from "./js/coverview.js";
 import "./js/tablegestures.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
 import "./js/maskbuilder.js";
@@ -3811,6 +3812,7 @@ initHealth(() => {
 });
 initUpdateCheck();
 initAbout();
+initCoverView();
 // A damaged settings file was set aside at startup (#808): say so, and where.
 // The red line keeps the report up until it is dismissed.
 invoke("take_settings_notice", {})
