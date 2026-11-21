@@ -952,14 +952,18 @@ mod tests {
         let root = base.join("library");
         std::fs::create_dir_all(root.join("in")).unwrap();
         std::fs::write(
-            root.join("in/a.wav"),
+            root.join("in").join("a.wav"),
             tagged_wav(&[(b"IART", "Alpha"), (b"INAM", "First"), (b"IPRD", "Demo")]),
         )
         .unwrap();
-        std::fs::write(root.join("in/b.wav"), tagged_wav(&[(b"INAM", "Second")])).unwrap();
+        std::fs::write(
+            root.join("in").join("b.wav"),
+            tagged_wav(&[(b"INAM", "Second")]),
+        )
+        .unwrap();
         let app = App::open(&root, &base.join("journal.sqlite")).unwrap();
-        let a = root.join("in/a.wav").to_string_lossy().into_owned();
-        let b = root.join("in/b.wav").to_string_lossy().into_owned();
+        let a = root.join("in").join("a.wav").to_string_lossy().into_owned();
+        let b = root.join("in").join("b.wav").to_string_lossy().into_owned();
         let args = |value: Value| parse::<RenameArgs>(value).unwrap();
 
         let renamed = prepare_rename(
@@ -979,7 +983,7 @@ mod tests {
             .collect();
         assert_eq!(
             targets,
-            vec![root.join("in/Alpha - First.wav").to_string_lossy()]
+            vec![root.join("in").join("Alpha - First.wav").to_string_lossy()]
         );
         assert_eq!(renamed.report["mode"], "rename");
         assert_eq!(
@@ -1005,7 +1009,12 @@ mod tests {
         assert!(moved.plan.prune_empty_dirs);
         assert_eq!(
             moved.plan.changes[0].rename_to.as_deref(),
-            Some(root.join("Demo/First.wav").to_string_lossy().as_ref())
+            Some(
+                root.join("Demo")
+                    .join("First.wav")
+                    .to_string_lossy()
+                    .as_ref()
+            )
         );
 
         for bad in [
