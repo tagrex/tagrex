@@ -64,6 +64,14 @@ trash = { version = "5.3.0", default-features = false, features = [
 # itself — a second `open` of the bundle goes to the running instance as the
 # same Apple Event a double-click sends, which is what `RunEvent::Opened`
 # receives.
+# Read access for AI assistants over MCP (#828). The window listens on a local
+# socket (a named pipe on Windows) on the async runtime Tauri already runs, so
+# these are tokio features rather than another crate; the secrets are random
+# bytes kept only as their SHA-256.
+tokio = { version = "1.53", features = ["net", "io-util", "time", "sync"] }
+getrandom = "0.3.4"
+sha2 = "0.10.9"
+
 [target.'cfg(any(windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
 

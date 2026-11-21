@@ -1396,6 +1396,22 @@
             <p class="settings-hint" data-i18n="settings.portableNamesHint">Names a rename or a transform creates also work on Windows and on USB sticks and SD cards.</p>
           </div>
 
+          <!-- AI assistants (#828): pairing for read access over MCP, built by
+               js/assistants.js. Applies at once, like the Beatport account. -->
+          <div class="settings-group" data-icon="i-sparkle">
+            <h3 data-i18n="settings.assistants">AI assistants</h3>
+            <p class="settings-hint" data-i18n="settings.assistants.intro">Lets Claude Code or Claude Desktop read the library open in TagRex over MCP: tracks and tags, mask previews, duplicates. Read-only: an assistant cannot change, rename or delete anything, and it only works while TagRex is running.</p>
+            <div class="settings-row">
+              <label data-i18n="settings.assistants.connect">Connect</label>
+              <div class="settings-inline">
+                <button id="mcp-pair-code" class="btn" type="button">Claude Code</button>
+                <button id="mcp-pair-desktop" class="btn" type="button">Claude Desktop</button>
+              </div>
+            </div>
+            <div id="mcp-clients" class="mcp-clients"></div>
+            <p class="settings-hint" data-i18n="settings.assistants.hint">Each connection has its own key, kept in TagRex's settings folder and never shown. Remove a connection to cut that assistant off at its next request.</p>
+          </div>
+
           <!-- Keyboard shortcuts (#432): one row per action in the registry
                (js/shortcuts.js), built by settings.js. A binding applies and is
                stored at once, like the theme — Cancel does not take it back. -->

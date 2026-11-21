@@ -2762,6 +2762,18 @@ impl App {
         }
     }
 
+    /// The folder this session is rooted at (#828): the opened library, or the
+    /// common ancestor of a drop of files.
+    pub fn library_root(&self) -> &Path {
+        &self.library_root
+    }
+
+    /// Whether this session lists an explicit drop of files rather than
+    /// everything under [`App::library_root`] (#127, #828).
+    pub fn is_file_set(&self) -> bool {
+        self.file_filter.is_some()
+    }
+
     /// Scan the library and read each file's tags. A file whose tags can't be
     /// parsed (e.g. a malformed frame) is still listed — as an `unreadable`
     /// placeholder — rather than silently dropped, so it never looks like the

@@ -160,6 +160,31 @@ current theme. The green of confirmed states and the red of errors do not change
 select-all checkbox in its header. Off by default, since rows select on click.
 Unlike the two controls above it, this one takes effect on **Save**.
 
+## AI assistants
+
+Lets an AI assistant read the library that is open in TagRex, over the Model
+Context Protocol (MCP). Supported: **Claude Code** and **Claude Desktop**.
+
+Access is **read-only**. An assistant can list tracks and their tags, read a
+file's tag blocks, see what a mask renders to, list the mask placeholders and
+look for duplicates. It cannot change, rename, move or delete anything, and it
+only sees files the open library lists. It works while TagRex is running; with
+no library open, it is told to ask you to open one.
+
+Click **Claude Code** or **Claude Desktop** to make a connection. Its card shows
+what to do next:
+
+- **Claude Code**: a `claude mcp add` command. Run it in a terminal, then start
+  a new Claude Code session.
+- **Claude Desktop**: a snippet for `claude_desktop_config.json` (in Claude
+  Desktop: Settings, Developer, Edit Config). Merge it into the file and restart
+  Claude Desktop. TagRex never edits that file itself.
+
+The command names TagRex itself, started with `--mcp-stdio`, and a credential
+file. Each connection has its own random key in that file; TagRex keeps only a
+hash of it. **Copy** shows the same setup again at any time. **Remove** deletes
+the connection, and the assistant is refused from its next request on.
+
 ## Shortcuts
 
 Every keyboard shortcut in the app, one row per action. Click a combination and
@@ -231,6 +256,7 @@ platform, under `com.tagrex.desktop`:
 | `settings.json` | Everything on this page that lives in the backend |
 | `journal.sqlite` | The undo journal — every applied batch, across libraries |
 | `discogs_token` | Your saved Discogs token |
+| `mcp/` | AI assistant connections: their keys (hashed), the credential files and where the running window listens |
 
 A few purely visual preferences — theme, accent colour, column layout and widths, filter flags,
 grouping key, volume, keyboard shortcuts, the LAB fonts — are stored by the

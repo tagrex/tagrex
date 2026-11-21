@@ -4641,6 +4641,7 @@ name = "tagrex"
 version = "1.10.0"
 dependencies = [
  "block2",
+ "getrandom 0.3.4",
  "objc2",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -4649,6 +4650,7 @@ dependencies = [
  "open",
  "serde",
  "serde_json",
+ "sha2",
  "tagrex-commands",
  "tagrex-core",
  "tagrex-player",
@@ -4661,6 +4663,7 @@ dependencies = [
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
  "thiserror 2.0.21",
+ "tokio",
  "trash",
  "ureq",
  "windows",

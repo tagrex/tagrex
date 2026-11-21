@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 mod blocking;
+mod mcp;
 mod media_session;
 mod update;
 mod window_controls;
@@ -2458,6 +2459,14 @@ async fn save_settings_at(
 }
 
 fn main() {
+    // Started by an AI assistant as its MCP server (#828): answer on stdio and
+    // exit, before anything of the window (or the single-instance hand-over)
+    // starts.
+    let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
+    if mcp::is_connector(&args) {
+        std::process::exit(mcp::connector::run(args.into_iter()));
+    }
+
     let builder = tauri::Builder::default();
 
     // Windows and Linux start a second process for a second launch; the folder
@@ -2508,6 +2517,7 @@ fn main() {
         .manage(DigestCache::default())
         .manage(update::PendingUpdate::default())
         .manage(SettingsNotice::default())
+        .manage(mcp::McpState::default())
         // What the app was started with, waiting for the frontend to ask (#51).
         .manage(PendingOpen::new(paths_from_args(
             std::env::args_os().skip(1),
@@ -2527,6 +2537,7 @@ fn main() {
                 .apply_settings(&settings)
                 .map_err(|error| std::io::Error::other(error.text))?;
             media_session::install(app.handle());
+            mcp::install(app.handle());
             // The title follows the product name, so a TagRex Next build
             // (#818) says which app it is without repeating the window config.
             if let Some(window) = app.get_webview_window("main") {
@@ -2630,7 +2641,10 @@ fn main() {
             transform_field_values,
             player_status,
             media_session_update,
-            take_launch_paths
+            take_launch_paths,
+            mcp::mcp_clients,
+            mcp::mcp_pair,
+            mcp::mcp_revoke
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

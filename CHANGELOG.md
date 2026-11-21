@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- AI assistants can read the open library over MCP: Settings connects Claude
+  Code (a ready `claude mcp add` command) or Claude Desktop (a configuration
+  snippet), each with its own key, and removes them. Read-only tools list
+  tracks with a missing-field filter, read a file's tag blocks, render a mask,
+  list the placeholders and find duplicates, limited to the files the library
+  lists ([#828](https://github.com/tagrex/tagrex/issues/828)).
+
 ### Fixed
 
 - With no folder open, the "Open a library to list its tracks." panel stays in

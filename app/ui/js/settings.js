@@ -56,6 +56,7 @@ import {
 import { MEDIA_GLYPH_SET_OPTIONS } from "./mediaglyphs.js";
 import { checkUpdateNow } from "./updatecheck.js";
 import { setBpmEnabled } from "./bpm.js";
+import { refreshAssistants, retranslateAssistants } from "./assistants.js";
 import {
   clearSettingsSearch,
   renderSettingsNav,
@@ -121,6 +122,7 @@ function setLanguageChoice(mode) {
     relabelImportFields();
     renderShortcuts();
     setMediaGlyphChoice();
+    retranslateAssistants();
   });
 }
 
@@ -395,6 +397,7 @@ async function beatportSignOut() {
 
 async function openSettings() {
   await refreshBeatportAccount();
+  await refreshAssistants();
   // Populate from saved values (the token is already in #discogs-token).
   try {
     const s = await invoke("load_settings", {});

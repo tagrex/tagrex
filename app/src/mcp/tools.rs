@@ -1,0 +1,455 @@
+//! The tools an assistant can call (#828). Read-only, and limited to the files
+//! the open library lists: a path that is not one of them is reported back,
+//! never read.
+
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+
+use serde::Deserialize;
+use serde_json::{json, Value};
+
+use tagrex_commands::{App, ErrorDto, TrackDto};
+
+use crate::{shell_error, AppState};
+
+/// The most tracks one `list_tracks` page holds.
+const MAX_PAGE: usize = 500;
+const DEFAULT_PAGE: usize = 100;
+/// The most files one `read_tracks` or `render_mask` call takes.
+const MAX_READ: usize = 200;
+const MAX_RENDER: usize = 500;
+/// The duplicate criteria offered. Identical audio is left out: it decodes the
+/// whole library and reports progress in the window.
+const DUPLICATE_CRITERIA: [&str; 5] = ["artist_title", "album_track", "duration", "size", "hash"];
+
+/// Every tool, in the shape MCP's `tools/list` answers with.
+pub fn definitions() -> Value {
+    let read_only = json!({
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+    });
+    json!([
+        {
+            "name": "library_status",
+            "title": "Library status",
+            "description": "Whether a library is open in TagRex, its folder, and how many audio files it lists. Call this first: every other tool works on the open library only.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
+            "annotations": read_only
+        },
+        {
+            "name": "list_tracks",
+            "title": "List tracks",
+            "description": "A page of the open library's tracks in TagRex's order, each with its path, format, length, whether it has a cover, and its tags as field -> value. Narrow it with `search` (case-insensitive text in the path or any tag value) and `missing` (a field that is empty or absent, or \"cover\" for files without a picture). `total` is the number of matching tracks; page through with `offset`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "offset": { "type": "integer", "minimum": 0, "default": 0 },
+                    "limit": { "type": "integer", "minimum": 1, "maximum": MAX_PAGE, "default": DEFAULT_PAGE },
+                    "search": { "type": "string", "description": "Case-insensitive text to find in the path or any tag value." },
+                    "missing": { "type": "string", "description": "A field key (see list_fields), or \"cover\"." },
+                    "fields": { "type": "array", "items": { "type": "string" }, "description": "Only return these tag fields." }
+                },
+                "additionalProperties": false
+            },
+            "annotations": read_only
+        },
+        {
+            "name": "read_tracks",
+            "title": "Read tracks",
+            "description": "Full details of the given files: every tag, the tag blocks each file carries (ID3v2.4, Vorbis Comments, ...), length, cover. Paths must be ones list_tracks returned; others are listed under `not_in_library`.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": MAX_READ }
+                },
+                "required": ["paths"],
+                "additionalProperties": false
+            },
+            "annotations": read_only
+        },
+        {
+            "name": "list_fields",
+            "title": "List fields and mask placeholders",
+            "description": "The tag fields TagRex knows and the placeholders and functions a mask can use, with what each means. Field keys are what list_tracks shows in `tags`.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
+            "annotations": read_only
+        },
+        {
+            "name": "render_mask",
+            "title": "Render a mask",
+            "description": "What a TagRex mask (for example \"%artist% - %title%\" or \"$upper(%album%)\") renders to for each given file, the same way a rename or a mask column would. Nothing is renamed.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "mask": { "type": "string" },
+                    "paths": { "type": "array", "items": { "type": "string" }, "minItems": 1, "maxItems": MAX_RENDER }
+                },
+                "required": ["mask", "paths"],
+                "additionalProperties": false
+            },
+            "annotations": read_only
+        },
+        {
+            "name": "find_duplicates",
+            "title": "Find duplicates",
+            "description": "Groups of files in the open library that look like copies of each other: same artist and title, same album and track number, same length, same size, or identical bytes (hash, slower).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "criterion": { "type": "string", "enum": DUPLICATE_CRITERIA }
+                },
+                "required": ["criterion"],
+                "additionalProperties": false
+            },
+            "annotations": read_only
+        }
+    ])
+}
+
+/// Whether `name` is a tool [`definitions`] lists.
+pub fn exists(name: &str) -> bool {
+    definitions()
+        .as_array()
+        .is_some_and(|tools| tools.iter().any(|tool| tool["name"] == name))
+}
+
+/// Run one tool against the window's session. Blocking: called on the session
+/// queue, like every command that reads the library.
+pub fn call(state: &AppState, name: &str, arguments: Value) -> Result<Value, ErrorDto> {
+    let guard = state.lock().map_err(shell_error)?;
+    if name == "library_status" {
+        return Ok(library_status(guard.as_ref()));
+    }
+    let app = guard
+        .as_ref()
+        .ok_or_else(|| ErrorDto::from(tagrex_commands::AppError::NoLibraryOpen))?;
+    run(app, name, arguments)
+}
+
+fn run(app: &App, name: &str, arguments: Value) -> Result<Value, ErrorDto> {
+    match name {
+        "list_tracks" => list_tracks(app, parse(arguments)?),
+        "read_tracks" => read_tracks(app, parse(arguments)?),
+        "list_fields" => Ok(list_fields()),
+        "render_mask" => render_mask(app, parse(arguments)?),
+        "find_duplicates" => find_duplicates(app, parse(arguments)?),
+        _ => Err(ErrorDto::plain(format!("unknown tool: {name}"))),
+    }
+}
+
+fn parse<T: for<'de> Deserialize<'de>>(arguments: Value) -> Result<T, ErrorDto> {
+    let arguments = if arguments.is_null() {
+        json!({})
+    } else {
+        arguments
+    };
+    serde_json::from_value(arguments)
+        .map_err(|error| ErrorDto::plain(format!("invalid arguments: {error}")))
+}
+
+fn library_status(app: Option<&App>) -> Value {
+    match app {
+        None => json!({ "open": false }),
+        Some(app) => json!({
+            "open": true,
+            "root": app.library_root().to_string_lossy(),
+            "file_set": app.is_file_set(),
+            "track_count": app.list_tracks().len(),
+        }),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ListArgs {
+    #[serde(default)]
+    offset: usize,
+    #[serde(default)]
+    limit: Option<usize>,
+    #[serde(default)]
+    search: Option<String>,
+    #[serde(default)]
+    missing: Option<String>,
+    #[serde(default)]
+    fields: Option<Vec<String>>,
+}
+
+fn is_missing(track: &TrackDto, field: &str) -> bool {
+    if field == "cover" {
+        return !track.has_cover;
+    }
+    track
+        .tags
+        .get(field)
+        .is_none_or(|value| value.trim().is_empty())
+}
+
+fn matches_search(track: &TrackDto, needle: &str) -> bool {
+    track.path.to_lowercase().contains(needle)
+        || track
+            .tags
+            .values()
+            .any(|value| value.to_lowercase().contains(needle))
+}
+
+fn list_tracks(app: &App, args: ListArgs) -> Result<Value, ErrorDto> {
+    let limit = args.limit.unwrap_or(DEFAULT_PAGE).clamp(1, MAX_PAGE);
+    let needle = args
+        .search
+        .as_deref()
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_lowercase);
+    let missing = args
+        .missing
+        .as_deref()
+        .map(str::trim)
+        .filter(|field| !field.is_empty());
+    let matching: Vec<TrackDto> = app
+        .list_tracks()
+        .into_iter()
+        .filter(|track| needle.as_deref().is_none_or(|n| matches_search(track, n)))
+        .filter(|track| missing.is_none_or(|field| is_missing(track, field)))
+        .collect();
+    let total = matching.len();
+    let tracks: Vec<Value> = matching
+        .into_iter()
+        .skip(args.offset)
+        .take(limit)
+        .map(|mut track| {
+            if let Some(fields) = &args.fields {
+                track.tags.retain(|key, _| fields.iter().any(|f| f == key));
+            }
+            json!({
+                "path": track.path,
+                "format": track.format,
+                "duration_secs": track.duration_secs,
+                "has_cover": track.has_cover,
+                "unreadable": track.unreadable,
+                "tags": track.tags,
+            })
+        })
+        .collect();
+    Ok(json!({
+        "total": total,
+        "offset": args.offset,
+        "returned": tracks.len(),
+        "tracks": tracks,
+    }))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ReadArgs {
+    paths: Vec<String>,
+}
+
+fn read_tracks(app: &App, args: ReadArgs) -> Result<Value, ErrorDto> {
+    if args.paths.len() > MAX_READ {
+        return Err(ErrorDto::plain(format!(
+            "at most {MAX_READ} paths per call; got {}",
+            args.paths.len()
+        )));
+    }
+    let mut listed: HashMap<String, TrackDto> = app
+        .list_tracks()
+        .into_iter()
+        .map(|track| (track.path.clone(), track))
+        .collect();
+    let mut tracks = Vec::new();
+    let mut outside = Vec::new();
+    for path in args.paths {
+        match listed.remove(&path) {
+            Some(track) => tracks.push(track),
+            None => outside.push(path),
+        }
+    }
+    Ok(json!({ "tracks": tracks, "not_in_library": outside }))
+}
+
+fn list_fields() -> Value {
+    let placeholders: Vec<Value> = tagrex_commands::mask_placeholders()
+        .into_iter()
+        .map(|p| json!({ "token": p.token, "name": p.name, "description": p.description }))
+        .collect();
+    json!({ "placeholders": placeholders })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RenderArgs {
+    mask: String,
+    paths: Vec<String>,
+}
+
+fn render_mask(app: &App, args: RenderArgs) -> Result<Value, ErrorDto> {
+    if args.paths.len() > MAX_RENDER {
+        return Err(ErrorDto::plain(format!(
+            "at most {MAX_RENDER} paths per call; got {}",
+            args.paths.len()
+        )));
+    }
+    let listed: HashSet<String> = app
+        .list_tracks()
+        .into_iter()
+        .map(|track| track.path)
+        .collect();
+    let (inside, outside): (Vec<String>, Vec<String>) = args
+        .paths
+        .into_iter()
+        .partition(|path| listed.contains(path));
+    let paths: Vec<PathBuf> = inside.iter().map(PathBuf::from).collect();
+    let rendered = app
+        .render_column(&args.mask, &paths)
+        .map_err(ErrorDto::from)?;
+    let values: Vec<Value> = inside
+        .into_iter()
+        .zip(rendered)
+        .map(|(path, value)| json!({ "path": path, "value": value }))
+        .collect();
+    Ok(json!({ "values": values, "not_in_library": outside }))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DuplicateArgs {
+    criterion: String,
+}
+
+fn find_duplicates(app: &App, args: DuplicateArgs) -> Result<Value, ErrorDto> {
+    if !DUPLICATE_CRITERIA.contains(&args.criterion.as_str()) {
+        return Err(ErrorDto::plain(format!(
+            "criterion must be one of {}",
+            DUPLICATE_CRITERIA.join(", ")
+        )));
+    }
+    let groups = app
+        .find_duplicates(&args.criterion)
+        .map_err(ErrorDto::from)?;
+    Ok(json!({ "groups": groups }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_tool_is_read_only_and_has_an_object_schema() {
+        for tool in definitions().as_array().unwrap() {
+            assert_eq!(tool["annotations"]["readOnlyHint"], true, "{tool}");
+            assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
+            assert!(exists(tool["name"].as_str().unwrap()));
+        }
+        assert!(!exists("write_tags"));
+    }
+
+    #[test]
+    fn arguments_of_the_wrong_shape_are_refused() {
+        assert!(parse::<ReadArgs>(json!({})).is_err());
+        assert!(parse::<ListArgs>(json!({ "limit": "ten" })).is_err());
+        assert!(parse::<ListArgs>(json!({ "unknown": 1 })).is_err());
+        assert!(parse::<ListArgs>(Value::Null).is_ok());
+    }
+
+    #[test]
+    fn library_status_without_a_library_says_so() {
+        assert_eq!(library_status(None), json!({ "open": false }));
+    }
+
+    /// A short silent WAV whose RIFF INFO chunk holds `tags` (four-letter id,
+    /// value).
+    fn tagged_wav(tags: &[(&[u8; 4], &str)]) -> Vec<u8> {
+        let mut info = b"INFO".to_vec();
+        for (id, value) in tags {
+            let mut data = value.as_bytes().to_vec();
+            data.push(0);
+            info.extend_from_slice(*id);
+            info.extend_from_slice(&(data.len() as u32).to_le_bytes());
+            if data.len() % 2 == 1 {
+                data.push(0);
+            }
+            info.extend_from_slice(&data);
+        }
+        let samples = vec![0u8; 16_000];
+        let mut out = b"RIFF".to_vec();
+        out.extend_from_slice(&((36 + samples.len() + 8 + info.len()) as u32).to_le_bytes());
+        out.extend_from_slice(b"WAVEfmt ");
+        for field in [16u32, 1 | (1 << 16), 8_000, 16_000, 2 | (16 << 16)] {
+            out.extend_from_slice(&field.to_le_bytes());
+        }
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&(samples.len() as u32).to_le_bytes());
+        out.extend_from_slice(&samples);
+        out.extend_from_slice(b"LIST");
+        out.extend_from_slice(&(info.len() as u32).to_le_bytes());
+        out.extend_from_slice(&info);
+        out
+    }
+
+    // #828: the tools see the open library and nothing else.
+    #[test]
+    fn the_tools_read_the_open_library_only() {
+        let base = std::env::temp_dir().join(format!("tagrex-mcp-tools-{}", std::process::id()));
+        let root = base.join("library");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("a.wav"),
+            tagged_wav(&[(b"IART", "Alpha"), (b"INAM", "First")]),
+        )
+        .unwrap();
+        std::fs::write(root.join("b.wav"), tagged_wav(&[(b"IART", "Beta")])).unwrap();
+        let outside = base.join("outside.wav");
+        std::fs::write(&outside, tagged_wav(&[(b"IART", "Gamma")])).unwrap();
+        let app = App::open(&root, &base.join("journal.sqlite")).unwrap();
+        let a = root.join("a.wav").to_string_lossy().into_owned();
+        let b = root.join("b.wav").to_string_lossy().into_owned();
+        let outside = outside.to_string_lossy().into_owned();
+
+        let status = library_status(Some(&app));
+        assert_eq!(status["open"], true);
+        assert_eq!(status["track_count"], 2);
+
+        let all = run(&app, "list_tracks", json!({})).unwrap();
+        assert_eq!(all["total"], 2);
+        assert_eq!(all["tracks"][0]["tags"]["artist"], "Alpha");
+        let untitled = run(&app, "list_tracks", json!({ "missing": "title" })).unwrap();
+        assert_eq!(untitled["total"], 1);
+        assert_eq!(untitled["tracks"][0]["path"], b);
+        let found = run(&app, "list_tracks", json!({ "search": "alpha" })).unwrap();
+        assert_eq!(found["total"], 1);
+        let page = run(
+            &app,
+            "list_tracks",
+            json!({ "offset": 1, "limit": 1, "fields": ["title"] }),
+        )
+        .unwrap();
+        assert_eq!(page["returned"], 1);
+        assert_eq!(page["tracks"][0]["tags"], json!({}));
+
+        let read = run(&app, "read_tracks", json!({ "paths": [a, outside] })).unwrap();
+        assert_eq!(read["tracks"].as_array().unwrap().len(), 1);
+        assert_eq!(read["not_in_library"], json!([outside]));
+
+        let rendered = run(
+            &app,
+            "render_mask",
+            json!({ "mask": "%artist% - %title%", "paths": [a, outside] }),
+        )
+        .unwrap();
+        assert_eq!(rendered["values"][0]["value"], "Alpha - First");
+        assert_eq!(rendered["not_in_library"], json!([outside]));
+
+        assert!(run(&app, "find_duplicates", json!({ "criterion": "audio" })).is_err());
+        let groups = run(&app, "find_duplicates", json!({ "criterion": "duration" })).unwrap();
+        assert_eq!(groups["groups"][0]["files"].as_array().unwrap().len(), 2);
+        assert!(run(&app, "list_fields", json!({})).unwrap()["placeholders"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["name"] == "artist"));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}

@@ -1367,6 +1367,36 @@ function mockInvoke(cmd, args) {
     // Beatport sign-in (#162). The real flow opens an OAuth window, which a
     // plain browser page can't do, so the mock just flips a flag — enough to
     // exercise the settings row and the "signed out" search gate.
+    // AI assistants (#828): pairings kept in memory for the session.
+    case "mcp_clients":
+    case "mcp_pair":
+    case "mcp_revoke": {
+      mockInvoke.state = mockInvoke.state || {};
+      const clients = (mockInvoke.state.mcp = mockInvoke.state.mcp || []);
+      const exe = "/Applications/TagRex.app/Contents/MacOS/tagrex";
+      const credential = (id) => `/Users/demo/Library/Application Support/com.tagrex.app/mcp/credentials/${id}.json`;
+      if (cmd === "mcp_pair") {
+        const id = Math.random().toString(16).slice(2, 18).padEnd(16, "0");
+        const now = Math.floor(Date.now() / 1000);
+        clients.push({ id, kind: args.kind, created: now, last_used: null });
+      }
+      if (cmd === "mcp_revoke") {
+        const at = clients.findIndex((c) => c.id === args.id);
+        if (at >= 0) clients.splice(at, 1);
+      }
+      const setup = (c) =>
+        c.kind === "claude-code"
+          ? `claude mcp add --scope user tagrex -- '${exe}' --mcp-stdio --mcp-credential '${credential(c.id)}'`
+          : JSON.stringify(
+              { mcpServers: { tagrex: { command: exe, args: ["--mcp-stdio", "--mcp-credential", credential(c.id)] } } },
+              null,
+              2,
+            );
+      return Promise.resolve({
+        clients: clients.map((c) => ({ ...c, setup: setup(c) })),
+        desktop_config: "~/Library/Application Support/Claude/claude_desktop_config.json",
+      });
+    }
     case "beatport_status":
       return Promise.resolve({
         authorized: !!mockInvoke.state?.beatport,

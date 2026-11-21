@@ -5724,6 +5724,54 @@ td[data-field="year"],
 .bp-auth .settings-hint {
   margin: 0;
 }
+/* AI assistants (#828): one card per connection, its setup text below in the
+   value font, wrapped rather than scrolled so a long path stays readable. */
+.mcp-clients {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.mcp-client {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.mcp-client.fresh {
+  border-color: var(--accent);
+}
+.mcp-client-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.mcp-client-name {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text);
+}
+.mcp-client-when {
+  flex: 1;
+  min-width: 0;
+}
+.mcp-setup {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--font-mono-bundled);
+  font-size: var(--text-2xs);
+  line-height: var(--lh-snug);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
 .settings-row input[type="text"],
 .settings-row input[type="password"],
 .settings-row input[type="number"] {
