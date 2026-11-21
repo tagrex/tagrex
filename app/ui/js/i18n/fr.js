@@ -869,7 +869,7 @@ export const fr = {
   "settings.portableNames": "Noms de fichier sûrs",
   "settings.portableNamesHint": "Les noms créés par un renommage ou une transformation fonctionnent aussi sous Windows et sur les clés USB et cartes SD : \":\" devient \" -\", \"?\" et \"*\" sont retirés, \" < > | deviennent _, et un point ou une espace final est supprimé. Désactivé, ces caractères sont conservés là où ce système les accepte. Sous Windows, ils sont toujours remplacés.",
   "settings.assistants": "Assistants IA",
-  "settings.assistants.intro": "Permet à Claude Code ou Claude Desktop de travailler avec la bibliothèque ouverte dans TagRex via MCP : lire les pistes et les tags, prévisualiser des masques, trouver les doublons et proposer des modifications de tags. Une proposition apparaît seulement dans l'aperçu ; rien n'est écrit avant que vous cliquiez sur Appliquer. Fonctionne tant que TagRex est ouvert.",
+  "settings.assistants.intro": "Permet à Claude Code ou Claude Desktop de travailler avec la bibliothèque ouverte dans TagRex via MCP : lire les pistes et les tags, rechercher des sorties, prévisualiser des masques, trouver les doublons et proposer des modifications de tags et des renommages. Une proposition apparaît seulement dans l'aperçu ; rien n'est écrit avant que vous cliquiez sur Appliquer. Fonctionne tant que TagRex est ouvert.",
   "agent.proposedBy": "Proposé par {assistant}",
   "agent.staged": "{assistant} propose des modifications sur {files}. Vérifiez-les, puis Appliquer ou Abandonner.",
   "plan.byAssistant": "proposé par {assistant}",

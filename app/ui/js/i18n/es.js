@@ -867,7 +867,7 @@ export const es = {
   "settings.portableNames": "Nombres de archivo seguros",
   "settings.portableNamesHint": "Los nombres que crea un renombrado o una transformación también funcionan en Windows y en memorias USB y tarjetas SD: \":\" pasa a \" -\", \"?\" y \"*\" se omiten, \" < > | pasan a _, y se quita un punto o espacio final. Desactivado conserva estos caracteres donde este sistema los admite. En Windows siempre se sustituyen.",
   "settings.assistants": "Asistentes de IA",
-  "settings.assistants.intro": "Permite que Claude Code o Claude Desktop trabajen con la biblioteca abierta en TagRex mediante MCP: leer pistas y etiquetas, previsualizar máscaras, buscar duplicados y proponer cambios de etiquetas. Una propuesta solo aparece en la vista previa; no se escribe nada hasta que pulses Aplicar. Funciona mientras TagRex está abierto.",
+  "settings.assistants.intro": "Permite que Claude Code o Claude Desktop trabajen con la biblioteca abierta en TagRex mediante MCP: leer pistas y etiquetas, consultar lanzamientos, previsualizar máscaras, buscar duplicados y proponer cambios de etiquetas y de nombres. Una propuesta solo aparece en la vista previa; no se escribe nada hasta que pulses Aplicar. Funciona mientras TagRex está abierto.",
   "agent.proposedBy": "Propuesto por {assistant}",
   "agent.staged": "{assistant} propone cambios en {files}. Revísalos y luego Aplicar o Descartar.",
   "plan.byAssistant": "propuesto por {assistant}",

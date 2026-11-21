@@ -22,6 +22,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   outside the library, are marked with the assistant's name in the history, and
   the assistant can ask whether they were applied or discarded
   ([#830](https://github.com/tagrex/tagrex/issues/830)).
+- An AI assistant can search releases and read a release's tracklist through
+  TagRex's online sources, with the Discogs token and Beatport sign-in saved in
+  the app, which it never sees
+  ([#833](https://github.com/tagrex/tagrex/issues/833)).
+- An AI assistant can read the settings that decide what TagRex writes, such
+  as vinyl numbering, the genre source, the separator and the saved mask
+  presets, without the connection settings
+  ([#834](https://github.com/tagrex/tagrex/issues/834)).
+- An AI assistant can propose renaming files, in place or reorganized into
+  folders inside the library, built by the RENAMER from a mask and staged in
+  the preview like its tag proposals
+  ([#835](https://github.com/tagrex/tagrex/issues/835)).
 
 ### Fixed
 

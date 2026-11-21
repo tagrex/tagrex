@@ -240,9 +240,11 @@ doubles the result for libraries that write a 174 BPM drum & bass track as 87.
 **AI assistants can read the library and propose edits.** Settings connects
 Claude Code or Claude Desktop over MCP: an assistant can list tracks and tags,
 filter for missing fields, preview what a mask renders to and look for
-duplicates in the library open in TagRex. It never writes a file itself: the
-tag changes it proposes land in the ordinary preview, and nothing is written
-until you click Apply.
+duplicates in the library open in TagRex, look releases up through TagRex's
+online sources without ever seeing your tokens, and read the settings your
+imports follow. It never writes a file itself: the tag changes and renames it
+proposes land in the ordinary preview, and nothing is written until you click
+Apply.
 
 **A preview player** — gapless playback with prev/next, a three-state repeat and
 volume, for checking that a file is what its tags claim. The seek bar draws the

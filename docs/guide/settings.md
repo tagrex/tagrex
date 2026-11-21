@@ -170,14 +170,29 @@ what a mask renders to, list the mask placeholders and look for duplicates. It
 only sees files the open library lists. It works while TagRex is running; with
 no library open, it is told to ask you to open one.
 
-**It never writes a file itself.** When you ask it to change tags, it proposes
-the changes: they appear in the file table as an ordinary preview, with a chip
+It can also look releases up through TagRex's online sources (Discogs,
+MusicBrainz, Beatport, Bandcamp, Soundeo) and read a release's tracklist. The
+search uses the Discogs token and Beatport sign-in saved in TagRex, and the
+proxy and rate limit set here; neither the token nor the sign-in is ever handed
+to the assistant. And it can read the settings that decide what TagRex writes,
+such as the ID3v2 version, how an import numbers vinyl and fills the genre, the
+multi-value separator and your saved mask presets, so its proposals match your
+imports. Connection settings such as the proxy are not shared.
+
+**It never writes a file itself.** When you ask it to change tags, or to rename
+or move files, it proposes the changes: they appear in the file table as an ordinary preview, with a chip
 above the Apply bar naming the assistant and what it proposes, and TagRex asks
 for your attention. Review them like any other edit, untick files or change a
 value, then click **Apply** or **Discard**. Applied changes go into the history
 marked with the assistant's name and can be undone like any other batch. The
-assistant can ask whether you applied or discarded its proposal, but it cannot
-rename, move or delete anything.
+assistant can ask whether you applied or discarded its proposal, and it cannot
+delete anything.
+
+A rename is built by the RENAMER from a mask, exactly as if you had typed it
+there: either in place, or reorganized into folders from the library root, with
+the folders it empties removed. An assistant cannot move files outside the open
+library, and cannot rename the library folder itself: open its parent folder
+first.
 
 A proposal is refused while the table already shows unapplied changes, your own
 or an earlier proposal, so it never mixes into work you have staged. Values a

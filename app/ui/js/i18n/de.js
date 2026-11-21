@@ -865,7 +865,7 @@ export const de = {
   "settings.portableNames": "Sichere Dateinamen",
   "settings.portableNamesHint": "Namen, die eine Umbenennung oder Transformation erzeugt, funktionieren auch unter Windows und auf USB-Sticks und SD-Karten: \":\" wird zu \" -\", \"?\" und \"*\" entfallen, \" < > | werden zu _, und ein Punkt oder Leerzeichen am Ende wird entfernt. Aus behält diese Zeichen, wo dieses System sie erlaubt. Unter Windows werden sie immer ersetzt.",
   "settings.assistants": "KI-Assistenten",
-  "settings.assistants.intro": "Lässt Claude Code oder Claude Desktop über MCP mit der in TagRex geöffneten Bibliothek arbeiten: Titel und Tags lesen, Masken voransehen, Duplikate finden und Tag-Änderungen vorschlagen. Ein Vorschlag erscheint nur in der Vorschau; geschrieben wird erst, wenn du auf Anwenden klickst. Funktioniert, solange TagRex läuft.",
+  "settings.assistants.intro": "Lässt Claude Code oder Claude Desktop über MCP mit der in TagRex geöffneten Bibliothek arbeiten: Titel und Tags lesen, Releases nachschlagen, Masken voransehen, Duplikate finden sowie Tag-Änderungen und Umbenennungen vorschlagen. Ein Vorschlag erscheint nur in der Vorschau; geschrieben wird erst, wenn du auf Anwenden klickst. Funktioniert, solange TagRex läuft.",
   "agent.proposedBy": "Vorgeschlagen von {assistant}",
   "agent.staged": "{assistant} schlägt Änderungen an {files} vor. Prüfe sie, dann Anwenden oder Verwerfen.",
   "plan.byAssistant": "vorgeschlagen von {assistant}",

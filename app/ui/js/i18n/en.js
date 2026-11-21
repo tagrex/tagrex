@@ -871,7 +871,7 @@ export const en = {
   "settings.portableNames": "Safe file names",
   "settings.portableNamesHint": "Names a rename or a transform creates also work on Windows and on USB sticks and SD cards: \":\" becomes \" -\", \"?\" and \"*\" are left out, \" < > | become _, and a trailing dot or space is dropped. Off keeps these characters where this system allows them. On Windows they are always replaced.",
   "settings.assistants": "AI assistants",
-  "settings.assistants.intro": "Lets Claude Code or Claude Desktop work with the library open in TagRex over MCP: read tracks and tags, preview masks, find duplicates, and propose tag changes. A proposal only appears in the preview; nothing is written until you click Apply. It works while TagRex is running.",
+  "settings.assistants.intro": "Lets Claude Code or Claude Desktop work with the library open in TagRex over MCP: read tracks and tags, look up releases, preview masks, find duplicates, and propose tag changes and renames. A proposal only appears in the preview; nothing is written until you click Apply. It works while TagRex is running.",
   "agent.proposedBy": "Proposed by {assistant}",
   "agent.staged": "{assistant} proposed changes to {files}. Review them, then Apply or Discard.",
   "plan.byAssistant": "proposed by {assistant}",

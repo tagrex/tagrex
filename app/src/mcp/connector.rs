@@ -26,8 +26,11 @@ const INSTRUCTIONS: &str =
 open in the TagRex window and never change a file themselves. Start with library_status; if no \
 library is open, ask the user to open one in TagRex. Page through list_tracks rather than asking \
 for everything at once, and use read_tracks for the full details of a few files. To change tags, \
-call propose_tag_edits: the changes appear in TagRex's preview and the user applies or discards \
-them there. Tell the user what you proposed and that it is waiting for them in TagRex.";
+call propose_tag_edits; to rename or move files, call propose_rename. The changes appear in \
+TagRex's preview and the user applies or discards them there. Tell the user what you proposed and \
+that it is waiting for them in TagRex. To identify a release, use search_releases and read_release, \
+which go through TagRex's own sources and credentials; read_settings tells how TagRex's imports fill \
+tags, so a proposal can match them. Do not read TagRex's data files or call the sources yourself.";
 
 const NOT_RUNNING: &str =
     "TagRex is not running. Ask the user to open TagRex and a library in it, then try again.";

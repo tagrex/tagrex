@@ -7,6 +7,7 @@
 
 pub mod connector;
 mod host;
+pub mod lookup;
 pub mod proposals;
 mod store;
 mod tools;

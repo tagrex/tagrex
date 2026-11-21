@@ -1,15 +1,17 @@
-// Tag edits an AI assistant proposes over MCP (#830).
+// Tag edits (#830) and renames (#835) an AI assistant proposes over MCP.
 //
-// The backend checks a proposal and sends it here; it is staged in the same
-// pending-edits buffer typed edits and imports use, so the person reviews it in
-// the ordinary diff and decides with Apply or Discard. Nothing an assistant
-// sends is written by itself. A proposal never joins edits the person has
-// staged: it is refused instead, and the assistant is told why.
+// The backend checks a proposal and sends it here. Tag edits are staged in the
+// same pending-edits buffer typed edits and imports use; a rename arrives as
+// the plan the RENAMER builds for the same mask and is staged as it is. Either
+// way the person reviews it in the ordinary diff and decides with Apply or
+// Discard. Nothing an assistant sends is written by itself. A proposal never
+// joins edits the person has staged: it is refused instead, and the assistant
+// is told why.
 import { el, escapeHtml, toast } from "./dom.js";
 import { t, tn } from "./i18n.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
-import { edits, previewPlan, previewSource } from "./state.js";
+import { edits, previewPlan, previewSource, setPreviewPlan, setPreviewSource } from "./state.js";
 import { refreshFieldEditor } from "./editor.js";
 
 const EVENT = "tagrex://agent-proposal";
@@ -48,6 +50,10 @@ async function receiveProposal(proposal) {
     reply(id, { staged: false, reason: "pending" });
     return;
   }
+  if (proposal.kind === "rename") {
+    stageRename(proposal);
+    return;
+  }
   for (const { path, field, value } of proposal.edits) {
     if (!edits.has(path)) edits.set(path, new Map());
     edits.get(path).set(field, value ?? "");
@@ -67,6 +73,25 @@ async function receiveProposal(proposal) {
   // A field without a column of its own shows in a temporary one (#831).
   toast(t("agent.staged", { assistant, files: tn("unit.file", files) }));
   reply(id, { staged: true, files, changes });
+}
+
+// A rename is staged as the plan it came with: the backend built it with the
+// RENAMER's own code, and the panel's mask and chain have no part in it.
+function stageRename({ id, assistant, summary, plan }) {
+  active = { id, assistant, summary };
+  decorateAgentPlan(plan);
+  setPreviewPlan(plan);
+  setPreviewSource("agent");
+  hooks.renderPreview(previewPlan);
+  if (!previewPlan) {
+    active = null;
+    reply(id, { staged: false, reason: "nothing" });
+    return;
+  }
+  paintBanner();
+  const files = previewPlan.changes.length;
+  toast(t("agent.staged", { assistant, files: tn("unit.file", files) }));
+  reply(id, { staged: true, files, changes: files });
 }
 
 // The person applied the staged proposal, to `files` of its files.

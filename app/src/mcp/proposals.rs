@@ -1,4 +1,5 @@
-//! Tag edits an assistant proposes and a person applies (#830).
+//! Tag edits (#830) and renames (#835) an assistant proposes and a person
+//! applies.
 //!
 //! The window stages a proposal in its ordinary preview; nothing is written
 //! here. A proposal travels as an event to the interface, which answers with
@@ -89,10 +90,6 @@ pub async fn propose(
         answer["reason"] = json!("nothing would change");
         return Ok(answer);
     }
-    let id = store::random_hex(8).map_err(shell_error)?;
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    let proposals = app.state::<Proposals>();
-    proposals.lock().waiting.insert(id.clone(), sender);
     let edits: Vec<Value> = prepared
         .edits
         .iter()
@@ -104,15 +101,53 @@ pub async fn propose(
             })
         })
         .collect();
-    let sent = app.emit(
-        PROPOSAL_EVENT,
-        json!({
-            "id": id,
-            "assistant": assistant_name(&client.kind),
-            "summary": prepared.summary,
-            "edits": edits,
-        }),
-    );
+    let payload = json!({
+        "kind": "tags",
+        "assistant": assistant_name(&client.kind),
+        "summary": prepared.summary,
+        "edits": edits,
+    });
+    stage(app, client, answer, payload).await
+}
+
+/// `propose_rename` for `client` (#835): the RENAMER's plan, staged as is.
+pub async fn propose_rename(
+    app: &tauri::AppHandle,
+    client: &Client,
+    arguments: Value,
+) -> Result<Value, ErrorDto> {
+    let state = app.state::<AppState>().inner().clone();
+    let prepared = SESSION_QUEUE
+        .run(move || tools::prepare_rename_proposal(&state, arguments))
+        .await?;
+    let mut answer = prepared.report.clone();
+    if prepared.plan.changes.is_empty() {
+        answer["staged"] = json!(false);
+        answer["reason"] = json!("nothing would change");
+        return Ok(answer);
+    }
+    let payload = json!({
+        "kind": "rename",
+        "assistant": assistant_name(&client.kind),
+        "summary": prepared.summary,
+        "plan": prepared.plan,
+    });
+    stage(app, client, answer, payload).await
+}
+
+/// Send a checked proposal to the window and report what it did with it.
+async fn stage(
+    app: &tauri::AppHandle,
+    client: &Client,
+    mut answer: Value,
+    mut payload: Value,
+) -> Result<Value, ErrorDto> {
+    let id = store::random_hex(8).map_err(shell_error)?;
+    payload["id"] = json!(id);
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let proposals = app.state::<Proposals>();
+    proposals.lock().waiting.insert(id.clone(), sender);
+    let sent = app.emit(PROPOSAL_EVENT, payload);
     let reply = match sent {
         Ok(()) => tokio::time::timeout(REPLY_TIMEOUT, receiver)
             .await

@@ -8,9 +8,10 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use tagrex_commands::{App, ErrorDto, TagEditDto, TrackDto};
+use tagrex_commands::{App, ErrorDto, PlanDto, TagEditDto, TrackDto};
 use tagrex_core::model::TagField;
 
+use super::lookup::{FORMATS, MAX_PER_PAGE, SOURCES};
 use crate::{shell_error, AppState};
 
 /// The most tracks one `list_tracks` page holds.
@@ -26,6 +27,10 @@ const DUPLICATE_CRITERIA: [&str; 5] = ["artist_title", "album_track", "duration"
 const MAX_EDITS: usize = 5000;
 const MAX_SUMMARY: usize = 200;
 const MAX_VALUE: usize = 10_000;
+/// The longest rename mask, and how many renames a rename proposal's answer
+/// lists as examples.
+const MAX_MASK: usize = 1000;
+const RENAME_EXAMPLES: usize = 20;
 
 /// Every tool, in the shape MCP's `tools/list` answers with.
 pub fn definitions() -> Value {
@@ -34,6 +39,13 @@ pub fn definitions() -> Value {
         "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": false
+    });
+    // Asks a website, so the world it reads is open; still changes nothing.
+    let online = json!({
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
     });
     json!([
         {
@@ -145,15 +157,80 @@ pub fn definitions() -> Value {
             }
         },
         {
+            "name": "propose_rename",
+            "title": "Propose renaming files",
+            "description": "Stage a rename of files in TagRex's preview for the user to review, built by TagRex's own renamer from a mask (see list_fields for placeholders; try it with render_mask first). Nothing moves until the user clicks Apply, and Undo takes it back. mode \"rename\" (default) renames each file in its folder; a / in the mask makes subfolders under the file's current folder. mode \"reorganize\" builds the path from the library root, e.g. \"%albumartist%/[%catalognumber%] %album%/%track% - %title%\", and removes folders it leaves empty; a folder outside the library cannot be targeted, and the folder that is the library root itself cannot be renamed (ask the user to open its parent folder in TagRex first). Refused while other changes are staged. The answer shows example renames, placeholders that were empty, and a `proposal` id for proposal_status.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "summary": { "type": "string", "maxLength": MAX_SUMMARY, "description": "One line the user sees next to the changes." },
+                    "paths": { "type": "array", "minItems": 1, "maxItems": MAX_EDITS, "items": { "type": "string" } },
+                    "mask": { "type": "string", "maxLength": MAX_MASK, "description": "The new name or path, without the file extension." },
+                    "mode": { "type": "string", "enum": ["rename", "reorganize"], "default": "rename" }
+                },
+                "required": ["summary", "paths", "mask"],
+                "additionalProperties": false
+            },
+            "annotations": {
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            }
+        },
+        {
             "name": "proposal_status",
             "title": "Proposal status",
-            "description": "What happened to a proposal from propose_tag_edits: still staged, applied (to how many files) or discarded.",
+            "description": "What happened to a proposal from propose_tag_edits or propose_rename: still staged, applied (to how many files) or discarded.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "proposal": { "type": "string" } },
                 "required": ["proposal"],
                 "additionalProperties": false
             },
+            "annotations": read_only
+        },
+        {
+            "name": "search_releases",
+            "title": "Search releases",
+            "description": "Search an online source for releases through TagRex, with its saved Discogs token or Beatport sign-in (neither is ever returned). Works without an open library. Give at least one of artist, title, album or catalog_number. Results are scored against the query; use read_release for the tracklist. read_settings says which sources are ready.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source": { "type": "string", "enum": SOURCES },
+                    "artist": { "type": "string" },
+                    "title": { "type": "string", "description": "A track title." },
+                    "album": { "type": "string", "description": "The release title." },
+                    "catalog_number": { "type": "string" },
+                    "format": { "type": "string", "enum": FORMATS },
+                    "page": { "type": "integer", "minimum": 1, "default": 1 },
+                    "per_page": { "type": "integer", "minimum": 1, "maximum": MAX_PER_PAGE }
+                },
+                "required": ["source"],
+                "additionalProperties": false
+            },
+            "annotations": online
+        },
+        {
+            "name": "read_release",
+            "title": "Read release",
+            "description": "One release from an online source, by the id search_releases gave: tracklist with positions, discs, titles, artists, lengths and, where the source has them, ISRC, BPM and key; labels with catalogue numbers, genres and styles, country, format, page URL and images.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "source": { "type": "string", "enum": SOURCES },
+                    "release_id": { "type": "string" }
+                },
+                "required": ["source", "release_id"],
+                "additionalProperties": false
+            },
+            "annotations": online
+        },
+        {
+            "name": "read_settings",
+            "title": "Read settings",
+            "description": "The TagRex settings that decide what it writes: ID3v2 version, how an online import fills tags (cover, vinyl numbering, skipped fields, where the genre comes from), the multi-value separator, portable file names, what travels with a renamed file, the saved mask presets, and which online sources are ready. Use it to tag the way the user's imports do.",
+            "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
             "annotations": read_only
         }
     ])
@@ -542,6 +619,144 @@ fn prepare(app: &App, args: ProposeArgs) -> Result<Prepared, ErrorDto> {
     })
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RenameArgs {
+    summary: String,
+    paths: Vec<String>,
+    mask: String,
+    #[serde(default)]
+    mode: Option<String>,
+}
+
+/// A rename proposal checked against the open library (#835): the plan the
+/// RENAMER would stage for the same mask, and what was left out.
+pub struct PreparedRename {
+    pub summary: String,
+    pub plan: PlanDto,
+    pub report: Value,
+}
+
+/// Check a rename proposal (#835). Blocking: run on the session queue.
+pub fn prepare_rename_proposal(
+    state: &AppState,
+    arguments: Value,
+) -> Result<PreparedRename, ErrorDto> {
+    let guard = state.lock().map_err(shell_error)?;
+    let app = guard
+        .as_ref()
+        .ok_or_else(|| ErrorDto::from(tagrex_commands::AppError::NoLibraryOpen))?;
+    prepare_rename(app, parse(arguments)?)
+}
+
+fn prepare_rename(app: &App, args: RenameArgs) -> Result<PreparedRename, ErrorDto> {
+    let summary: String = args.summary.trim().chars().take(MAX_SUMMARY).collect();
+    if summary.is_empty() {
+        return Err(ErrorDto::plain("a summary is required"));
+    }
+    let mask = args.mask.trim();
+    if mask.is_empty() || mask.chars().count() > MAX_MASK {
+        return Err(ErrorDto::plain(format!(
+            "a mask of 1 to {MAX_MASK} characters is required"
+        )));
+    }
+    let reorganize = match args.mode.as_deref().unwrap_or("rename") {
+        "rename" => false,
+        "reorganize" => true,
+        other => {
+            return Err(ErrorDto::plain(format!(
+                "unknown mode {other:?}; use rename or reorganize"
+            )))
+        }
+    };
+    if args.paths.is_empty() || args.paths.len() > MAX_EDITS {
+        return Err(ErrorDto::plain(format!(
+            "between 1 and {MAX_EDITS} files per proposal; got {}",
+            args.paths.len()
+        )));
+    }
+    let listed: HashMap<String, bool> = app
+        .list_tracks()
+        .into_iter()
+        .map(|track| (track.path, track.unreadable))
+        .collect();
+    let mut outside = Vec::new();
+    let mut unreadable = Vec::new();
+    let mut paths: Vec<PathBuf> = Vec::new();
+    let mut seen = HashSet::new();
+    for path in args.paths {
+        match listed.get(&path) {
+            None => outside.push(path),
+            Some(true) => unreadable.push(path),
+            Some(false) => {
+                if seen.insert(path.clone()) {
+                    paths.push(PathBuf::from(path));
+                }
+            }
+        }
+    }
+    // The RENAMER's own plans. A reorganize stays inside the library and
+    // removes the folders it empties; a destination elsewhere is the user's
+    // own pick in the panel, never an assistant's.
+    let plan = if paths.is_empty() {
+        None
+    } else if reorganize {
+        Some(
+            app.preview_move(mask, &paths, None, false, true)
+                .map_err(ErrorDto::from)?,
+        )
+    } else {
+        Some(app.preview_rename(mask, &paths).map_err(ErrorDto::from)?)
+    };
+    let examples: Vec<Value> = plan
+        .iter()
+        .flat_map(|plan| plan.changes.iter())
+        .filter_map(|change| {
+            let to = change.rename_to.as_ref()?;
+            Some(json!({ "from": change.path, "to": to }))
+        })
+        .take(RENAME_EXAMPLES)
+        .collect();
+    let unrendered: Vec<Value> = plan
+        .iter()
+        .flat_map(|plan| plan.unrendered.iter())
+        .map(|missing| json!({ "placeholder": format!("%{}%", missing.field), "files": missing.files }))
+        .collect();
+    let renamed = plan.as_ref().map_or(0, |plan| {
+        plan.changes
+            .iter()
+            .filter(|c| c.rename_to.is_some())
+            .count()
+    });
+    let unrendered_files: usize = plan
+        .iter()
+        .flat_map(|plan| plan.unrendered.iter())
+        .map(|missing| missing.files)
+        .sum();
+    let unchanged = paths.len().saturating_sub(renamed + unrendered_files);
+    let plan = plan.unwrap_or_else(|| PlanDto {
+        description: String::new(),
+        message: None,
+        notes: Vec::new(),
+        changes: Vec::new(),
+        prune_empty_dirs: false,
+        locked_skipped: Vec::new(),
+        unrendered: Vec::new(),
+    });
+    Ok(PreparedRename {
+        summary,
+        plan,
+        report: json!({
+            "mode": if reorganize { "reorganize" } else { "rename" },
+            "renames": examples,
+            "unchanged": unchanged,
+            "empty_placeholders": unrendered,
+            "not_in_library": outside,
+            "unreadable": unreadable,
+        }),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -550,7 +765,7 @@ mod tests {
     fn no_tool_writes_and_every_one_has_an_object_schema() {
         for tool in definitions().as_array().unwrap() {
             // A proposal changes what the window has staged, never a file.
-            let read_only = tool["name"] != "propose_tag_edits";
+            let read_only = !tool["name"].as_str().unwrap().starts_with("propose_");
             assert_eq!(tool["annotations"]["readOnlyHint"], read_only, "{tool}");
             assert_eq!(tool["annotations"]["destructiveHint"], false, "{tool}");
             assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
@@ -726,6 +941,85 @@ mod tests {
 
         let nothing = parse::<ProposeArgs>(json!({ "summary": " ", "edits": [] })).unwrap();
         assert!(prepare(&app, nothing).is_err());
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // #835: a rename proposal is the RENAMER's plan, scoped to the library.
+    #[test]
+    fn a_rename_proposal_builds_the_renamers_plan() {
+        let base = std::env::temp_dir().join(format!("tagrex-mcp-rename-{}", std::process::id()));
+        let root = base.join("library");
+        std::fs::create_dir_all(root.join("in")).unwrap();
+        std::fs::write(
+            root.join("in/a.wav"),
+            tagged_wav(&[(b"IART", "Alpha"), (b"INAM", "First"), (b"IPRD", "Demo")]),
+        )
+        .unwrap();
+        std::fs::write(root.join("in/b.wav"), tagged_wav(&[(b"INAM", "Second")])).unwrap();
+        let app = App::open(&root, &base.join("journal.sqlite")).unwrap();
+        let a = root.join("in/a.wav").to_string_lossy().into_owned();
+        let b = root.join("in/b.wav").to_string_lossy().into_owned();
+        let args = |value: Value| parse::<RenameArgs>(value).unwrap();
+
+        let renamed = prepare_rename(
+            &app,
+            args(json!({
+                "summary": "Name by artist",
+                "paths": [a, b, a, "/elsewhere/c.wav"],
+                "mask": "%artist% - %title%"
+            })),
+        )
+        .unwrap();
+        let targets: Vec<&str> = renamed
+            .plan
+            .changes
+            .iter()
+            .filter_map(|c| c.rename_to.as_deref())
+            .collect();
+        assert_eq!(
+            targets,
+            vec![root.join("in/Alpha - First.wav").to_string_lossy()]
+        );
+        assert_eq!(renamed.report["mode"], "rename");
+        assert_eq!(
+            renamed.report["not_in_library"],
+            json!(["/elsewhere/c.wav"])
+        );
+        assert_eq!(
+            renamed.report["empty_placeholders"],
+            json!([{ "placeholder": "%artist%", "files": 1 }])
+        );
+        assert_eq!(renamed.report["unchanged"], 0);
+
+        let moved = prepare_rename(
+            &app,
+            args(json!({
+                "summary": "File by album",
+                "paths": [a],
+                "mask": "%album%/%title%",
+                "mode": "reorganize"
+            })),
+        )
+        .unwrap();
+        assert!(moved.plan.prune_empty_dirs);
+        assert_eq!(
+            moved.plan.changes[0].rename_to.as_deref(),
+            Some(root.join("Demo/First.wav").to_string_lossy().as_ref())
+        );
+
+        for bad in [
+            json!({ "summary": "x", "paths": [a], "mask": "  " }),
+            json!({ "summary": "x", "paths": [a], "mask": "%title%", "mode": "copy" }),
+            json!({ "summary": " ", "paths": [a], "mask": "%title%" }),
+            json!({ "summary": "x", "paths": [], "mask": "%title%" }),
+        ] {
+            assert!(prepare_rename(&app, args(bad)).is_err());
+        }
+        assert!(parse::<RenameArgs>(
+            json!({ "summary": "x", "paths": [a], "mask": "m", "destination": "/tmp" })
+        )
+        .is_err());
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

@@ -16,7 +16,7 @@ use tauri::Manager;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::store::{self, Store};
-use super::{proposals, tools, wire};
+use super::{lookup, proposals, tools, wire};
 use crate::{AppState, SESSION_QUEUE};
 
 /// A connector that has not sent its request by then is dropped.
@@ -188,7 +188,12 @@ async fn respond(body: &[u8], app: &tauri::AppHandle, store: Arc<Store>) -> wire
     // A proposal waits on the interface (#830); the rest only read the session.
     let outcome = match tool.as_str() {
         "propose_tag_edits" => proposals::propose(app, &client, arguments).await,
+        "propose_rename" => proposals::propose_rename(app, &client, arguments).await,
         "proposal_status" => proposals::status(app, &client, arguments),
+        // Online lookups and settings (#833, #834) need no library.
+        "search_releases" => lookup::search(app, arguments).await,
+        "read_release" => lookup::release(app, arguments).await,
+        "read_settings" => lookup::settings(app).await,
         _ => {
             let state = app.state::<AppState>().inner().clone();
             SESSION_QUEUE
