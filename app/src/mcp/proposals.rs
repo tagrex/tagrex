@@ -17,13 +17,14 @@ use tauri::{Emitter, Manager, State};
 use tagrex_commands::ErrorDto;
 
 use super::store::{self, Client};
-use super::tools;
+use super::{lookup, tools};
 use crate::{shell_error, AppState, SESSION_QUEUE};
 
 /// Emitted with a proposal for the interface to stage.
 const PROPOSAL_EVENT: &str = "tagrex://agent-proposal";
-/// How long the interface has to say whether it staged a proposal.
-const REPLY_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long the interface has to say whether it staged a proposal. An import
+/// (#839) fetches the release cover first, so it is generous.
+const REPLY_TIMEOUT: Duration = Duration::from_secs(60);
 /// Outcomes kept for `proposal_status`; the oldest go first.
 const KEEP: usize = 200;
 
@@ -131,6 +132,44 @@ pub async fn propose_rename(
         "assistant": assistant_name(&client.kind),
         "summary": prepared.summary,
         "plan": prepared.plan,
+    });
+    stage(app, client, answer, payload).await
+}
+
+/// `propose_import` for `client` (#839): the release and the pairs go to the
+/// window, which builds the import with the ONLINE panel's own code.
+pub async fn propose_import(
+    app: &tauri::AppHandle,
+    client: &Client,
+    arguments: Value,
+) -> Result<Value, ErrorDto> {
+    let args = tools::parse_import(arguments)?;
+    let release = lookup::fetch_release(app, &args.source, args.release_id.trim()).await?;
+    let state = app.state::<AppState>().inner().clone();
+    let listed = SESSION_QUEUE
+        .run(move || tools::listed_paths(&state))
+        .await?;
+    let source = args.source.clone();
+    let resolved = tools::resolve_import(&release, &listed, args)?;
+    let mut answer = resolved.report.clone();
+    if resolved.pairs.is_empty() {
+        answer["staged"] = json!(false);
+        answer["reason"] = json!("no file could be paired with a track of this release");
+        return Ok(answer);
+    }
+    let pairs: Vec<Value> = resolved
+        .pairs
+        .iter()
+        .map(|(path, track)| json!({ "path": path, "track": track }))
+        .collect();
+    let payload = json!({
+        "kind": "import",
+        "assistant": assistant_name(&client.kind),
+        "summary": resolved.summary,
+        "source": source,
+        "release": release,
+        "pairs": pairs,
+        "catalog_number": resolved.catalog_number,
     });
     stage(app, client, answer, payload).await
 }

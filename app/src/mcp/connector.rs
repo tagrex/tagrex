@@ -29,8 +29,9 @@ for everything at once, and use read_tracks for the full details of a few files.
 call propose_tag_edits; to rename or move files, call propose_rename. The changes appear in \
 TagRex's preview and the user applies or discards them there. Tell the user what you proposed and \
 that it is waiting for them in TagRex. To identify a release, use search_releases and read_release, \
-which go through TagRex's own sources and credentials; read_settings tells how TagRex's imports fill \
-tags, so a proposal can match them. Do not read TagRex's data files or call the sources yourself.";
+which go through TagRex's own sources and credentials, and tag files from a release with \
+propose_import, which fills tags exactly as TagRex's own import does; read_settings tells how that \
+import fills tags. Do not read TagRex's data files or call the sources yourself.";
 
 const NOT_RUNNING: &str =
     "TagRex is not running. Ask the user to open TagRex and a library in it, then try again.";

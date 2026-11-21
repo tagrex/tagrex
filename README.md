@@ -242,9 +242,9 @@ Claude Code or Claude Desktop over MCP: an assistant can list tracks and tags,
 filter for missing fields, preview what a mask renders to and look for
 duplicates in the library open in TagRex, look releases up through TagRex's
 online sources without ever seeing your tokens, and read the settings your
-imports follow. It never writes a file itself: the tag changes and renames it
-proposes land in the ordinary preview, and nothing is written until you click
-Apply.
+imports follow. It never writes a file itself: the tag changes, release imports
+and renames it proposes land in the ordinary preview, and nothing is written
+until you click Apply.
 
 **A preview player** — gapless playback with prev/next, a three-state repeat and
 volume, for checking that a file is what its tags claim. The seek bar draws the

@@ -1,8 +1,10 @@
-// Tag edits (#830) and renames (#835) an AI assistant proposes over MCP.
+// Tag edits (#830), renames (#835) and release imports (#839) an AI assistant
+// proposes over MCP.
 //
 // The backend checks a proposal and sends it here. Tag edits are staged in the
 // same pending-edits buffer typed edits and imports use; a rename arrives as
-// the plan the RENAMER builds for the same mask and is staged as it is. Either
+// the plan the RENAMER builds for the same mask and is staged as it is; an
+// import is built by the ONLINE panel's own import code. Either
 // way the person reviews it in the ordinary diff and decides with Apply or
 // Discard. Nothing an assistant sends is written by itself. A proposal never
 // joins edits the person has staged: it is refused instead, and the assistant
@@ -13,6 +15,7 @@ import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
 import { edits, previewPlan, previewSource, setPreviewPlan, setPreviewSource } from "./state.js";
 import { refreshFieldEditor } from "./editor.js";
+import { importSelection, importTrack, stageImport } from "./online.js";
 
 const EVENT = "tagrex://agent-proposal";
 
@@ -54,6 +57,10 @@ async function receiveProposal(proposal) {
     stageRename(proposal);
     return;
   }
+  if (proposal.kind === "import") {
+    await stageImportProposal(proposal);
+    return;
+  }
   for (const { path, field, value } of proposal.edits) {
     if (!edits.has(path)) edits.set(path, new Map());
     edits.get(path).set(field, value ?? "");
@@ -92,6 +99,40 @@ function stageRename({ id, assistant, summary, plan }) {
   const files = previewPlan.changes.length;
   toast(t("agent.staged", { assistant, files: tn("unit.file", files) }));
   reply(id, { staged: true, files, changes: files });
+}
+
+// An import goes through the same steps as the Import button: the same fields,
+// the import settings, the ONLINE chain and the release cover.
+async function stageImportProposal({ id, assistant, summary, source, release, pairs, catalog_number }) {
+  active = { id, assistant, summary };
+  const labels = release.labels || [];
+  const chosen = labels.find((label) => catalog_number && label.catalog_number === catalog_number) || labels[0];
+  const tracks = pairs.map((pair) => importTrack(release, release.tracks[pair.track]));
+  const selection = importSelection(release, source, tracks, chosen);
+  try {
+    await stageImport(
+      pairs.map((pair) => pair.path),
+      selection,
+      { id: `${source}:${release.id}`, url: release.cover_image_url, source },
+    );
+  } catch (e) {
+    active = null;
+    edits.clear();
+    reply(id, { staged: false, reason: String(e) });
+    return;
+  }
+  if (!previewPlan || previewSource !== "edits") {
+    active = null;
+    edits.clear();
+    reply(id, { staged: false, reason: "nothing" });
+    return;
+  }
+  refreshFieldEditor();
+  paintBanner();
+  const files = previewPlan.changes.length;
+  const changes = previewPlan.changes.reduce((n, c) => n + c.tag_changes.length + (c.cover_change ? 1 : 0), 0);
+  toast(t("agent.staged", { assistant, files: tn("unit.file", files) }));
+  reply(id, { staged: true, files, changes });
 }
 
 // The person applied the staged proposal, to `files` of its files.

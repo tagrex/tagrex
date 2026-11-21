@@ -189,6 +189,7 @@ async fn respond(body: &[u8], app: &tauri::AppHandle, store: Arc<Store>) -> wire
     let outcome = match tool.as_str() {
         "propose_tag_edits" => proposals::propose(app, &client, arguments).await,
         "propose_rename" => proposals::propose_rename(app, &client, arguments).await,
+        "propose_import" => proposals::propose_import(app, &client, arguments).await,
         "proposal_status" => proposals::status(app, &client, arguments),
         // Online lookups and settings (#833, #834) need no library.
         "search_releases" => lookup::search(app, arguments).await,

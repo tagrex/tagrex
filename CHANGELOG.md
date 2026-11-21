@@ -34,6 +34,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   folders inside the library, built by the RENAMER from a mask and staged in
   the preview like its tag proposals
   ([#835](https://github.com/tagrex/tagrex/issues/835)).
+- An AI assistant can propose importing a release: it pairs files with the
+  release's tracks, and TagRex fetches the release and stages the same tags and
+  cover its own Import button would, following the import settings, instead of
+  the assistant typing every field by hand
+  ([#839](https://github.com/tagrex/tagrex/issues/839)).
 
 ### Fixed
 

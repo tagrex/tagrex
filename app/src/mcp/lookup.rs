@@ -8,7 +8,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use tauri::Manager;
 
-use tagrex_commands::{ErrorDto, SearchQueryDto};
+use tagrex_commands::{ErrorDto, ReleaseDto, SearchQueryDto};
 
 use crate::ProviderState;
 
@@ -163,20 +163,31 @@ pub async fn release(app: &tauri::AppHandle, arguments: Value) -> Result<Value, 
     if id.is_empty() {
         return Err(ErrorDto::plain("a release_id is required"));
     }
-    let token = token(app, &args.source).await?;
-    let release = crate::provider_fetch_release(
-        app.state::<ProviderState>(),
-        args.source.clone(),
-        token,
-        id.clone(),
-    )
-    .await?;
+    let release = fetch_release(app, &args.source, &id).await?;
     let mut answer = serde_json::to_value(&release).map_err(crate::shell_error)?;
     if answer["url"].is_null() {
         answer["url"] = json!(crate::release_url(&args.source, &id).ok());
     }
     answer["source"] = json!(args.source);
     Ok(answer)
+}
+
+/// One release from `source`, with TagRex's own credentials. Also what an
+/// import proposal (#839) is checked against.
+pub async fn fetch_release(
+    app: &tauri::AppHandle,
+    source: &str,
+    id: &str,
+) -> Result<ReleaseDto, ErrorDto> {
+    known_source(source)?;
+    let token = token(app, source).await?;
+    crate::provider_fetch_release(
+        app.state::<ProviderState>(),
+        source.to_string(),
+        token,
+        id.to_string(),
+    )
+    .await
 }
 
 /// `read_settings` (#834): what decides the tags and names TagRex writes.

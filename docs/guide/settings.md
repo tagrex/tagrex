@@ -194,6 +194,12 @@ the folders it empties removed. An assistant cannot move files outside the open
 library, and cannot rename the library folder itself: open its parent folder
 first.
 
+To tag files from a release, the assistant proposes an import: it names the
+release and which file is which track, and TagRex fetches the release and fills
+the tags exactly as the **Import** button on the ONLINE panel does, following
+the import settings here, cover included. Files it could not pair with a track
+of that release are left out, and the assistant is told which.
+
 A proposal is refused while the table already shows unapplied changes, your own
 or an earlier proposal, so it never mixes into work you have staged. Values a
 field cannot hold, locked fields and files outside the library are left out,

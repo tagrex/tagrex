@@ -1453,31 +1453,34 @@ function enabledTracksOf(card) {
   state.checked.forEach((on, i) => {
     if (on) ticked.push(i);
   });
-  return ticked.map((i) => {
-    const t = release.tracks[i];
-    return {
-      position: t.position,
-      // The disc the release puts this track on (#146), when it says.
-      disc: t.disc ?? null,
-      artist: t.artist || release.artist,
-      title: t.title,
-      duration_secs: t.duration_secs ?? null,
-      isrc: t.isrc ?? null,
-      // Tempo and key (#162) — stated only by a source that measures them.
-      bpm: t.bpm ?? null,
-      key: t.key ?? null,
-    };
-  });
+  return ticked.map((i) => importTrack(release, release.tracks[i]));
+}
+
+// One release track as an import takes it.
+function importTrack(release, t) {
+  return {
+    position: t.position,
+    // The disc the release puts this track on (#146), when it says.
+    disc: t.disc ?? null,
+    artist: t.artist || release.artist,
+    title: t.title,
+    duration_secs: t.duration_secs ?? null,
+    isrc: t.isrc ?? null,
+    // Tempo and key (#162) — stated only by a source that measures them.
+    bpm: t.bpm ?? null,
+    key: t.key ?? null,
+  };
 }
 
 // Fetch the full-size cover once (for embedding) and upgrade the card thumbnail.
-async function loadFullCover(id, url, card) {
+async function loadFullCover(id, url, card, source = releaseSource) {
   if (!url || coverCache.has(id)) return;
-  const token = await providerToken(releaseSource);
+  const token = await providerToken(source);
   try {
-    const cover = await invoke("provider_fetch_image", { source: releaseSource, token, url });
+    const cover = await invoke("provider_fetch_image", { source, token, url });
     coverCache.set(id, cover);
-    const coverEl = card.querySelector(".release-cover");
+    // An assistant's import (#839) has no card to show it on.
+    const coverEl = card && card.querySelector(".release-cover");
     // Swap in the full-res cover without wiping the media badge (#98).
     if (coverEl) setCoverImage(coverEl, `data:${cover.mime};base64,${cover.data_base64}`);
   } catch (e) {
@@ -1962,23 +1965,48 @@ async function importRelease(card) {
       paths = selectedPaths();
     }
   }
-  // Prefer Discogs "styles" over the coarse "genres" for the genre tag (#26),
-  // joined with "/" to match the user's library convention.
-  const genreValues = release.styles.length ? release.styles : release.genres;
   // The chosen label / catalogue-number pair (#90): the picker's selection, or
   // the first pair when there's no picker (0 or 1 label).
   const labels = release.labels || [];
   const picker = card.querySelector(".label-picker");
   const chosen = labels[picker ? Number(picker.value) : 0];
-  const selection = {
+  const selection = importSelection(release, releaseSource, enabledTracksOf(card), chosen);
+  try {
+    const { merged, covered } = await stageImport(paths, selection, {
+      id: card.dataset.id,
+      url: release.cover_image_url,
+      card,
+    });
+    const coverNote = covered ? ", " + t("import.coverOn", { files: tn("unit.file", covered) }) : "";
+    toast(
+      merged || covered
+        ? t("toast.import.merged", {
+            changes: tn("unit.fieldChange", merged),
+            cover: coverNote,
+          })
+        : t("toast.import.nothingNew"),
+    );
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+// What an import of `release` writes (#27), for `tracks` in file order and the
+// chosen label pair. Shared with an assistant's import (#839), so both fill
+// the same fields the same way.
+function importSelection(release, source, tracks, chosen) {
+  // Prefer Discogs "styles" over the coarse "genres" for the genre tag (#26),
+  // joined with "/" to match the user's library convention.
+  const genreValues = release.styles.length ? release.styles : release.genres;
+  return {
     album: release.title,
     album_artist: release.artist,
     year: release.year ? String(release.year) : null,
     genre: genreValues.join("/") || null,
-    tracks: enabledTracksOf(card),
+    tracks,
     // Store the release id so the table can group by release (#20).
     release_id: release.id || null,
-    source: releaseSource,
+    source,
     label: chosen ? chosen.name : null,
     catalog_number: chosen ? chosen.catalog_number || null : null,
     country: release.country || null,
@@ -1996,64 +2024,59 @@ async function importRelease(card) {
     // numbered by record from all of it (#795).
     release_positions: (release.tracks || []).map((track) => track.position || ""),
   };
-  try {
-    const imported = await invoke("preview_import", { paths, selection });
-    // ONLINE's chain runs on what the provider gave, before any of it reaches
-    // the edit buffer (#237). This is where the shipped "Discogs cleanup" group
-    // was always meant to be used: trusting a source is not the same as taking
-    // its disambiguators verbatim.
-    const plan = await runChainOverPlan(imported, "online");
-    // Merge into the pending-edits buffer; a field the user already edited by
-    // hand wins (we don't overwrite an existing entry).
-    let merged = 0;
-    for (const change of plan.changes) {
-      if (!edits.has(change.path)) edits.set(change.path, new Map());
-      const fields = edits.get(change.path);
-      for (const tc of change.tag_changes) {
-        if (!fields.has(tc.field)) {
-          fields.set(tc.field, tc.new ?? "");
-          merged += 1;
-        }
+}
+
+// Stage an import (#27): the plan, through the ONLINE chain, merged into the
+// pending edits with the release cover, and previewed. `cover` names the
+// release's image: its id, url, the card showing it if any, and the source.
+// Returns how many field changes were merged and how many files gain a cover.
+async function stageImport(paths, selection, cover) {
+  const imported = await invoke("preview_import", { paths, selection });
+  // ONLINE's chain runs on what the provider gave, before any of it reaches
+  // the edit buffer (#237). This is where the shipped "Discogs cleanup" group
+  // was always meant to be used: trusting a source is not the same as taking
+  // its disambiguators verbatim.
+  const plan = await runChainOverPlan(imported, "online");
+  // Merge into the pending-edits buffer; a field the user already edited by
+  // hand wins (we don't overwrite an existing entry).
+  let merged = 0;
+  for (const change of plan.changes) {
+    if (!edits.has(change.path)) edits.set(change.path, new Map());
+    const fields = edits.get(change.path);
+    for (const tc of change.tag_changes) {
+      if (!fields.has(tc.field)) {
+        fields.set(tc.field, tc.new ?? "");
+        merged += 1;
       }
-      if (fields.size === 0) edits.delete(change.path);
     }
-    // Hand the release's cover to the staging step (#207) so the tags and the
-    // artwork become ONE plan — one Apply, one undo. Whether any of it is
-    // written is the backend's call: the import-cover setting decides, per
-    // file, and "only when the file has none" is the default.
-    //
-    // Awaited, unlike the fire-and-forget fetch that expanding a card starts:
-    // importing straight after expanding would otherwise race it and drop the
-    // artwork silently, which is the one failure this feature must not have.
-    await loadFullCover(card.dataset.id, release.cover_image_url, card);
-    // Only for the files the import paired with a track (#773): another file
-    // with an edit pending is not on the release. With no track ticked, the
-    // album-only import goes to every selected file, and so does the cover.
-    const cover = coverCache.get(card.dataset.id) || null;
-    const paired = selection.tracks.length ? paths.slice(0, selection.tracks.length) : paths;
-    setPendingImportCover(cover ? { cover, paths: paired } : null);
-    // No plain render here: `previewEdits` stages the plan and repaints the
-    // table as a diff a moment later, so rendering first only builds a few
-    // thousand rows to throw them away (#186).
-    refreshFieldEditor();
-    await hooks.previewEdits();
-    // The cover has to be named. The table shows changes per column and
-    // artwork has none, so a file that only gains a cover is a staged row that
-    // says nothing — this line is the only place a few hundred KB about to be
-    // written gets announced (#207).
-    const covered = (previewPlan?.changes || []).filter((c) => c.cover_change).length;
-    const coverNote = covered ? ", " + t("import.coverOn", { files: tn("unit.file", covered) }) : "";
-    toast(
-      merged || covered
-        ? t("toast.import.merged", {
-            changes: tn("unit.fieldChange", merged),
-            cover: coverNote,
-          })
-        : t("toast.import.nothingNew"),
-    );
-  } catch (e) {
-    toast(String(e), true);
+    if (fields.size === 0) edits.delete(change.path);
   }
+  // Hand the release's cover to the staging step (#207) so the tags and the
+  // artwork become ONE plan — one Apply, one undo. Whether any of it is
+  // written is the backend's call: the import-cover setting decides, per
+  // file, and "only when the file has none" is the default.
+  //
+  // Awaited, unlike the fire-and-forget fetch that expanding a card starts:
+  // importing straight after expanding would otherwise race it and drop the
+  // artwork silently, which is the one failure this feature must not have.
+  await loadFullCover(cover.id, cover.url, cover.card || null, cover.source || releaseSource);
+  // Only for the files the import paired with a track (#773): another file
+  // with an edit pending is not on the release. With no track ticked, the
+  // album-only import goes to every selected file, and so does the cover.
+  const image = coverCache.get(cover.id) || null;
+  const paired = selection.tracks.length ? paths.slice(0, selection.tracks.length) : paths;
+  setPendingImportCover(image ? { cover: image, paths: paired } : null);
+  // No plain render here: `previewEdits` stages the plan and repaints the
+  // table as a diff a moment later, so rendering first only builds a few
+  // thousand rows to throw them away (#186).
+  refreshFieldEditor();
+  await hooks.previewEdits();
+  // The cover has to be named. The table shows changes per column and
+  // artwork has none, so a file that only gains a cover is a staged row that
+  // says nothing — this line is the only place a few hundred KB about to be
+  // written gets announced (#207).
+  const covered = (previewPlan?.changes || []).filter((c) => c.cover_change).length;
+  return { merged, covered };
 }
 
 // ---- wire up ----
@@ -2216,4 +2239,4 @@ function retranslateOnline() {
   if (releaseCandidates.length > 0) renderReleaseList();
 }
 
-export { loadSavedToken, refreshReleaseMatches, retranslateOnline, searchBusy, searchPerPage, stopLoading };
+export { importSelection, importTrack, stageImport, loadSavedToken, refreshReleaseMatches, retranslateOnline, searchBusy, searchPerPage, stopLoading };

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use tagrex_commands::{App, ErrorDto, PlanDto, TagEditDto, TrackDto};
+use tagrex_commands::{App, ErrorDto, PlanDto, ReleaseDto, TagEditDto, TrackDto};
 use tagrex_core::model::TagField;
 
 use super::lookup::{FORMATS, MAX_PER_PAGE, SOURCES};
@@ -179,9 +179,46 @@ pub fn definitions() -> Value {
             }
         },
         {
+            "name": "propose_import",
+            "title": "Propose importing a release",
+            "description": "Stage an import of a release onto files, exactly as TagRex's own Import button does: the same fields (titles, artists, album, year, genre, label, catalogue number, country, media, track and disc numbers, release id, URL), the user's import settings and ONLINE rules, and the release cover per the import-cover setting, as one plan in the preview. Prefer this over propose_tag_edits when tagging from a release. Take source and release_id from search_releases, and pair each file with a release track by `position` as read_release spells it or by `track`, its 1-based number in the tracklist. When the release lists several labels, `catalog_number` picks one; otherwise the first is used. Refused while other changes are staged. The answer reports files or tracks it could not pair and a `proposal` id for proposal_status.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "summary": { "type": "string", "maxLength": MAX_SUMMARY },
+                    "source": { "type": "string", "enum": SOURCES },
+                    "release_id": { "type": "string" },
+                    "pairs": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": MAX_EDITS,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string" },
+                                "position": { "type": "string" },
+                                "track": { "type": "integer", "minimum": 1 }
+                            },
+                            "required": ["path"],
+                            "additionalProperties": false
+                        }
+                    },
+                    "catalog_number": { "type": "string" }
+                },
+                "required": ["summary", "source", "release_id", "pairs"],
+                "additionalProperties": false
+            },
+            "annotations": {
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": true
+            }
+        },
+        {
             "name": "proposal_status",
             "title": "Proposal status",
-            "description": "What happened to a proposal from propose_tag_edits or propose_rename: still staged, applied (to how many files) or discarded.",
+            "description": "What happened to a proposal from propose_tag_edits, propose_rename or propose_import: still staged, applied (to how many files) or discarded.",
             "inputSchema": {
                 "type": "object",
                 "properties": { "proposal": { "type": "string" } },
@@ -629,6 +666,168 @@ fn prepare(app: &App, args: ProposeArgs) -> Result<Prepared, ErrorDto> {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct ImportArgs {
+    summary: String,
+    pub source: String,
+    pub release_id: String,
+    pairs: Vec<PairArg>,
+    #[serde(default)]
+    catalog_number: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PairArg {
+    path: String,
+    #[serde(default)]
+    position: Option<String>,
+    #[serde(default)]
+    track: Option<usize>,
+}
+
+/// An import proposal's arguments (#839), checked before the release is
+/// fetched.
+pub fn parse_import(arguments: Value) -> Result<ImportArgs, ErrorDto> {
+    let args: ImportArgs = parse(arguments)?;
+    if args.summary.trim().is_empty() {
+        return Err(ErrorDto::plain("a summary is required"));
+    }
+    if args.release_id.trim().is_empty() {
+        return Err(ErrorDto::plain("a release_id is required"));
+    }
+    if args.pairs.is_empty() || args.pairs.len() > MAX_EDITS {
+        return Err(ErrorDto::plain(format!(
+            "between 1 and {MAX_EDITS} file and track pairs per proposal; got {}",
+            args.pairs.len()
+        )));
+    }
+    Ok(args)
+}
+
+/// An import proposal resolved against its release and the library: each
+/// file with the index of its release track, in the order given.
+pub struct ResolvedImport {
+    pub summary: String,
+    pub pairs: Vec<(String, usize)>,
+    pub catalog_number: Option<String>,
+    pub report: Value,
+}
+
+/// The paths the open library lists, and whether each is unreadable.
+/// Blocking: run on the session queue.
+pub fn listed_paths(state: &AppState) -> Result<HashMap<String, bool>, ErrorDto> {
+    let guard = state.lock().map_err(shell_error)?;
+    let app = guard
+        .as_ref()
+        .ok_or_else(|| ErrorDto::from(tagrex_commands::AppError::NoLibraryOpen))?;
+    Ok(app
+        .list_tracks()
+        .into_iter()
+        .map(|track| (track.path, track.unreadable))
+        .collect())
+}
+
+/// Pair files with release tracks (#839): by `position` as the release spells
+/// it, or by `track`, the 1-based number in its tracklist.
+pub fn resolve_import(
+    release: &ReleaseDto,
+    listed: &HashMap<String, bool>,
+    args: ImportArgs,
+) -> Result<ResolvedImport, ErrorDto> {
+    let catalog_number = match args
+        .catalog_number
+        .map(|c| c.trim().to_string())
+        .filter(|c| !c.is_empty())
+    {
+        None => None,
+        Some(wanted) => {
+            let found = release
+                .labels
+                .iter()
+                .any(|label| label.catalog_number.as_deref() == Some(wanted.as_str()));
+            if !found {
+                let listed: Vec<&str> = release
+                    .labels
+                    .iter()
+                    .filter_map(|label| label.catalog_number.as_deref())
+                    .collect();
+                return Err(ErrorDto::plain(format!(
+                    "catalogue number {wanted:?} is not on this release; it lists: {}",
+                    if listed.is_empty() {
+                        "none".to_string()
+                    } else {
+                        listed.join(", ")
+                    }
+                )));
+            }
+            Some(wanted)
+        }
+    };
+    let mut outside = Vec::new();
+    let mut unreadable = Vec::new();
+    let mut unknown = Vec::new();
+    let mut repeated = Vec::new();
+    let mut pairs: Vec<(String, usize)> = Vec::new();
+    for pair in args.pairs {
+        match listed.get(&pair.path) {
+            None => {
+                outside.push(pair.path);
+                continue;
+            }
+            Some(true) => {
+                unreadable.push(pair.path);
+                continue;
+            }
+            Some(false) => {}
+        }
+        let index = match (&pair.position, pair.track) {
+            (Some(position), None) => {
+                let matching: Vec<usize> = release
+                    .tracks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, track)| track.position == *position)
+                    .map(|(index, _)| index)
+                    .collect();
+                // An ambiguous position (some releases repeat or omit them) has
+                // to be named by number instead.
+                (matching.len() == 1).then(|| matching[0])
+            }
+            (None, Some(number)) => (1..=release.tracks.len())
+                .contains(&number)
+                .then(|| number - 1),
+            _ => None,
+        };
+        let Some(index) = index else {
+            unknown
+                .push(json!({ "path": pair.path, "position": pair.position, "track": pair.track }));
+            continue;
+        };
+        if pairs
+            .iter()
+            .any(|(path, used)| *path == pair.path || *used == index)
+        {
+            repeated.push(json!({ "path": pair.path, "track": index + 1 }));
+            continue;
+        }
+        pairs.push((pair.path, index));
+    }
+    Ok(ResolvedImport {
+        summary: args.summary.trim().chars().take(MAX_SUMMARY).collect(),
+        pairs,
+        catalog_number,
+        report: json!({
+            "release": { "id": release.id, "artist": release.artist, "title": release.title },
+            "not_in_library": outside,
+            "unreadable": unreadable,
+            "unknown_tracks": unknown,
+            "repeated": repeated,
+        }),
+    })
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct RenameArgs {
     summary: String,
     paths: Vec<String>,
@@ -793,6 +992,112 @@ mod tests {
     #[test]
     fn library_status_without_a_library_says_so() {
         assert_eq!(library_status(None), json!({ "open": false }));
+    }
+
+    // #839: files pair with release tracks by position or by number.
+    #[test]
+    fn an_import_pairs_files_with_tracks_and_reports_the_rest() {
+        use tagrex_commands::{ReleaseLabelDto, ReleaseTrackDto};
+        let track = |position: &str, title: &str| ReleaseTrackDto {
+            position: position.into(),
+            disc: None,
+            artist: None,
+            title: title.into(),
+            duration_secs: None,
+            isrc: None,
+            bpm: None,
+            key: None,
+            section: None,
+        };
+        let release = ReleaseDto {
+            id: "1".into(),
+            artist: "Artist".into(),
+            title: "Release".into(),
+            year: None,
+            genres: vec![],
+            styles: vec![],
+            tracks: vec![
+                track("A1", "One"),
+                track("A2", "Two"),
+                track("", "Three"),
+                track("", "Four"),
+            ],
+            labels: vec![ReleaseLabelDto {
+                name: "Label".into(),
+                catalog_number: Some("CAT 1".into()),
+            }],
+            country: None,
+            format: None,
+            disc_total: None,
+            url: None,
+            cover_image_url: None,
+            images: vec![],
+        };
+        let listed: HashMap<String, bool> = [
+            ("/l/a", false),
+            ("/l/b", false),
+            ("/l/c", false),
+            ("/l/d", false),
+            ("/l/bad", true),
+        ]
+        .into_iter()
+        .map(|(path, unreadable)| (path.to_string(), unreadable))
+        .collect();
+        let args = |value: Value| parse_import(value).unwrap();
+        let resolved = resolve_import(
+            &release,
+            &listed,
+            args(json!({
+                "summary": " Tag it ",
+                "source": "discogs",
+                "release_id": "1",
+                "catalog_number": "CAT 1",
+                "pairs": [
+                    { "path": "/l/a", "position": "A2" },
+                    { "path": "/l/b", "track": 1 },
+                    { "path": "/l/c", "position": "" },
+                    { "path": "/l/d", "track": 3 },
+                    { "path": "/l/c", "track": 2 },
+                    { "path": "/l/bad", "track": 4 },
+                    { "path": "/elsewhere", "track": 4 },
+                    { "path": "/l/a", "track": 9 }
+                ]
+            })),
+        )
+        .unwrap();
+        assert_eq!(resolved.summary, "Tag it");
+        assert_eq!(
+            resolved.pairs,
+            vec![
+                ("/l/a".to_string(), 1),
+                ("/l/b".to_string(), 0),
+                ("/l/d".to_string(), 2)
+            ]
+        );
+        assert_eq!(resolved.catalog_number.as_deref(), Some("CAT 1"));
+        assert_eq!(resolved.report["not_in_library"], json!(["/elsewhere"]));
+        assert_eq!(resolved.report["unreadable"], json!(["/l/bad"]));
+        // An ambiguous empty position and a number past the tracklist.
+        assert_eq!(
+            resolved.report["unknown_tracks"].as_array().unwrap().len(),
+            2
+        );
+        // The second pair for /l/c names a track already used.
+        assert_eq!(
+            resolved.report["repeated"],
+            json!([{ "path": "/l/c", "track": 2 }])
+        );
+
+        let wrong_label = args(json!({
+            "summary": "x", "source": "discogs", "release_id": "1",
+            "catalog_number": "NOPE", "pairs": [{ "path": "/l/a", "track": 1 }]
+        }));
+        assert!(resolve_import(&release, &listed, wrong_label).is_err());
+        assert!(parse_import(json!({ "summary": " ", "source": "discogs", "release_id": "1", "pairs": [{ "path": "/l/a" }] })).is_err());
+        assert!(parse_import(
+            json!({ "summary": "x", "source": "discogs", "release_id": "1", "pairs": [] })
+        )
+        .is_err());
     }
 
     // #838: a library folder renamed behind the app's back is reported as gone.
