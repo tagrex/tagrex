@@ -12,8 +12,10 @@
 //! than core types, so `tagrex-core` stays serialization-agnostic. Tag map
 //! keys use [`TagField`]'s lossless storage-key codec.
 
+mod field_rules;
 mod output;
 mod read_cache;
+pub use field_rules::FieldRuleError;
 pub use read_cache::Fingerprint as FileFingerprint;
 mod sidecars;
 
@@ -701,6 +703,10 @@ pub enum PlanMessage {
     NoFolderImage {
         files: usize,
     },
+    /// A note: files a rule's extraction mask did not fit (#851).
+    NotExtracted {
+        files: usize,
+    },
     /// A note on a History entry: the batch never finished, the app having
     /// stopped part-way through it (#659).
     Interrupted,
@@ -742,6 +748,7 @@ impl PlanMessage {
             Self::CleanedUp => "plan.cleanedUp",
             Self::CoverNotShrunk { .. } => "plan.coverNotShrunk",
             Self::NoFolderImage { .. } => "plan.noFolderImage",
+            Self::NotExtracted { .. } => "plan.notExtracted",
             Self::Interrupted => "plan.interrupted",
         }
     }
@@ -779,7 +786,8 @@ impl PlanMessage {
         match self {
             Self::EditTagsWithCover { files }
             | Self::CarryingExtras { files }
-            | Self::NoFolderImage { files } => Some(*files as u64),
+            | Self::NoFolderImage { files }
+            | Self::NotExtracted { files } => Some(*files as u64),
             Self::SetCoverImages { images } | Self::CoverNotShrunk { images } => {
                 Some(*images as u64)
             }
@@ -837,6 +845,10 @@ impl PlanMessage {
             Self::NoFolderImage { files } => match files {
                 1 => "1 file has no image in its folder".to_string(),
                 n => format!("{n} files have no image in their folder"),
+            },
+            Self::NotExtracted { files } => match files {
+                1 => "1 file the extraction mask does not fit".to_string(),
+                n => format!("{n} files the extraction mask does not fit"),
             },
             Self::Interrupted => "interrupted before it finished".to_string(),
         }
@@ -1072,6 +1084,19 @@ fn error_message(error: &AppError) -> MessageDto {
         AppError::OutsideRoot(path) => coded("error.outsideLibrary", arg("path", path)),
         AppError::InvalidFileName(name) => coded("error.invalidFileName", arg("name", name)),
         AppError::UnknownTransform(name) => coded("error.unknownTransform", arg("name", name)),
+        AppError::FieldRule(inner) => match inner {
+            FieldRuleError::NeedsField => coded("error.fieldRule.needsField", BTreeMap::new()),
+            FieldRuleError::NotMultiValue(field) => {
+                coded("error.fieldRule.notMultiValue", arg("field", field))
+            }
+            FieldRuleError::NothingToExtract => {
+                coded("error.fieldRule.nothingToExtract", BTreeMap::new())
+            }
+            FieldRuleError::EmptyDelimiter => {
+                coded("error.fieldRule.emptyDelimiter", BTreeMap::new())
+            }
+            FieldRuleError::JoinerSplits => coded("error.fieldRule.joinerSplits", BTreeMap::new()),
+        },
         AppError::UnknownGrouping(name) => coded("error.unknownGrouping", arg("name", name)),
         AppError::UnknownTagBlock(name) => coded("error.unknownTagBlock", arg("name", name)),
         AppError::BlockNotWritable { kind, format } => {
@@ -3970,17 +3995,13 @@ impl App {
         groups: &[ActionGroupDto],
         base: &[TagEditDto],
     ) -> Result<PlanDto, AppError> {
-        // Build every chain up front: a malformed rule should be an error before
-        // anything is previewed, not halfway through the file list.
-        let chains = groups
-            .iter()
-            .map(build_segments)
-            .collect::<Result<Vec<_>, AppError>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        // Build every step up front: a malformed rule should be an error before
+        // anything is previewed, not halfway through the file list. Field rules
+        // (#850) are steps of their own, in their place in the order.
+        let steps = field_rules::build_all_steps(groups)?;
 
         let mut changes = Vec::new();
+        let mut not_extracted = 0;
         // One listing per source folder for this preview (#58).
         let mut scan = sidecars::SidecarScan::default();
         for path in paths {
@@ -4008,7 +4029,15 @@ impl App {
                 };
             }
 
-            for (scope, chain) in &chains {
+            let mut run = field_rules::FieldRun::default();
+            for step in &steps {
+                let (scope, chain) = match step {
+                    field_rules::Step::Chain(scope, chain) => (scope, chain),
+                    field_rules::Step::Field(field) => {
+                        self.run_field_step(field, &track, &mut tags, None, &mut run)?;
+                        continue;
+                    }
+                };
                 match scope.as_str() {
                     "filename" => {
                         let next = chain.apply(&name);
@@ -4033,6 +4062,7 @@ impl App {
                     }
                 }
             }
+            not_extracted += run.not_extracted;
 
             let mut tag_changes: Vec<FieldChangeDto> = tags
                 .iter()
@@ -4045,7 +4075,7 @@ impl App {
                     )
                 })
                 .collect();
-            // A field `base` removed is a change too; the groups never remove one.
+            // A field `base` or a field rule removed is a change too.
             tag_changes.extend(
                 track
                     .tags
@@ -4055,6 +4085,8 @@ impl App {
                         FieldChangeDto::new(field.to_storage_key(), Some(old.clone()), None)
                     }),
             );
+            // What a rule meant for a locked field, for the gate to report.
+            run.add_blocked(&mut tag_changes, &track.tags);
 
             let file_name = match &ext {
                 Some(ext) => format!("{name}.{ext}"),
@@ -4089,11 +4121,18 @@ impl App {
         }
 
         let names: Vec<&str> = groups.iter().map(|g| g.name.as_str()).collect();
+        let notes = if not_extracted > 0 {
+            vec![PlanMessage::NotExtracted {
+                files: not_extracted,
+            }]
+        } else {
+            Vec::new()
+        };
         Ok(self.plan(
             PlanMessage::Transform {
                 scope: names.join(", "),
             },
-            Vec::new(),
+            notes,
             changes,
             false,
         ))
@@ -4157,17 +4196,13 @@ impl App {
         plan: &PlanDto,
         groups: &[ActionGroupDto],
     ) -> Result<PlanDto, AppError> {
-        // Same as the on-disk runner: build every chain up front so a malformed
+        // Same as the on-disk runner: build every step up front so a malformed
         // rule is an error before anything is revised.
-        let chains = groups
-            .iter()
-            .map(build_segments)
-            .collect::<Result<Vec<_>, AppError>>()?
-            .into_iter()
-            .flatten()
-            .collect::<Vec<_>>();
+        let steps = field_rules::build_all_steps(groups)?;
+        let with_fields = field_rules::has_field_steps(&steps);
 
         let mut changes = Vec::new();
+        let mut not_extracted = 0;
         // One listing per source folder for this preview (#58).
         let mut scan = sidecars::SidecarScan::default();
         for change in &plan.changes {
@@ -4220,7 +4255,41 @@ impl App {
                 .map(str::to_string);
 
             let mut tag_changes = change.tag_changes.clone();
-            for (scope, chain) in &chains {
+            // A field rule (#850) reads and writes the file's fields together,
+            // so with one in the run the file's own values stand behind the
+            // plan's: what the plan proposes laid over what is on disk. The
+            // text rules still clean only the values the plan proposes, plus
+            // the ones a field rule has since set, never the rest of the file.
+            let mut full = if with_fields {
+                self.read_cached(path).ok().map(|track| {
+                    let mut tags = track.tags.clone();
+                    let mut touched: Vec<TagField> = Vec::new();
+                    for edit in &change.tag_changes {
+                        let field = TagField::from_storage_key(&edit.field);
+                        match edit.new.clone().filter(|value| !value.is_empty()) {
+                            Some(value) => tags.insert(field.clone(), value),
+                            None => tags.remove(&field),
+                        };
+                        if !touched.contains(&field) {
+                            touched.push(field);
+                        }
+                    }
+                    (track, tags, touched)
+                })
+            } else {
+                None
+            };
+            let mut run = field_rules::FieldRun::default();
+            for step in &steps {
+                let (scope, chain) = match step {
+                    field_rules::Step::Chain(scope, chain) => (scope, chain),
+                    field_rules::Step::Field(field) => {
+                        if let Some((track, tags, touched)) = full.as_mut() {
+                            self.run_field_step(field, track, tags, Some(touched), &mut run)?;
+                        }
+                        continue;
+                    }
+                };
                 match scope.as_str() {
                     "filename" => {
                         let next = chain.apply(&name);
@@ -4255,6 +4324,17 @@ impl App {
                         }
                     }
                     scope => {
+                        if let Some((_, tags, touched)) = full.as_mut() {
+                            for field in touched.iter() {
+                                if scope != "tags" && scope != field.to_storage_key() {
+                                    continue;
+                                }
+                                if let Some(value) = tags.get_mut(field) {
+                                    *value = chain.apply(value);
+                                }
+                            }
+                            continue;
+                        }
                         for field in tag_changes.iter_mut() {
                             if scope != "tags" && scope != field.field {
                                 continue;
@@ -4267,6 +4347,27 @@ impl App {
                         }
                     }
                 }
+            }
+            not_extracted += run.not_extracted;
+            // Back from the file's values to changes: every field the plan
+            // proposed or a rule set, against what the plan said was on disk
+            // (or, for a field it did not touch, what is).
+            if let Some((track, tags, touched)) = &full {
+                let mut rebuilt: Vec<FieldChangeDto> = touched
+                    .iter()
+                    .map(|field| {
+                        let key = field.to_storage_key();
+                        let old = change
+                            .tag_changes
+                            .iter()
+                            .find(|edit| edit.field == key)
+                            .map(|edit| edit.old.clone())
+                            .unwrap_or_else(|| track.tags.get(field).cloned());
+                        FieldChangeDto::new(key, old, tags.get(field).cloned())
+                    })
+                    .collect();
+                run.add_blocked(&mut rebuilt, &track.tags);
+                tag_changes = rebuilt;
             }
 
             // Re-validate, then drop what the cleanup turned back into a no-op.
@@ -4366,7 +4467,15 @@ impl App {
             changes.push(revised);
         }
 
-        Ok(self.cleaned_up_plan(plan, changes))
+        let mut revised = self.cleaned_up_plan(plan, changes);
+        let note = PlanMessage::NotExtracted {
+            files: not_extracted,
+        };
+        revised.notes.retain(|kept| kept.code != note.code());
+        if not_extracted > 0 {
+            revised.notes.push(MessageDto::from(&note));
+        }
+        Ok(revised)
     }
 
     /// Build a plan that moves files into a folder structure rendered from a
@@ -7578,6 +7687,10 @@ fn build_chain(rules: &[TransformRuleDto]) -> Result<TransformChain, AppError> {
                 };
                 chain.push(Box::new(KeyNotation::new(style)));
             }
+            // A field rule (#850) is not a text transform: the runs that take
+            // it build it themselves, and a run over one value has no fields
+            // for it to work on.
+            kind if field_rules::is_field_rule(kind) => {}
             other => return Err(AppError::UnknownTransform(other.to_string())),
         }
     }
@@ -7975,6 +8088,8 @@ pub enum AppError {
     InvalidFileName(String),
     #[error("unknown transformation: {0}")]
     UnknownTransform(String),
+    #[error(transparent)]
+    FieldRule(#[from] FieldRuleError),
     #[error("unknown playlist grouping: {0}")]
     UnknownGrouping(String),
     #[error("unknown tag block: {0}")]
@@ -12879,6 +12994,350 @@ mod tests {
             .preview_transform(std::slice::from_ref(&shouty), &escaping, "fileext")
             .unwrap();
         assert!(refused.changes.is_empty());
+    }
+
+    // ---- field rules (#850, #851, #852) ----
+
+    fn flac_with(dir: &TempDir, name: &str, tags: &[(TagField, &str)]) -> PathBuf {
+        let path = dir.0.join(name);
+        std::fs::write(&path, MINIMAL_FLAC).unwrap();
+        let tags = tags
+            .iter()
+            .map(|(field, value)| (field.clone(), value.to_string()))
+            .collect();
+        TagEngine::write(&tagrex_core::model::TrackFile {
+            path: path.clone(),
+            format: tagrex_core::model::AudioFormat::Flac,
+            tags,
+        })
+        .unwrap();
+        path
+    }
+
+    fn field_rule(kind: &str, scope: Option<&str>, from: &str, to: &str) -> TransformRuleDto {
+        TransformRuleDto {
+            kind: kind.into(),
+            scope: scope.map(str::to_string),
+            ..replace_rule(from, to)
+        }
+    }
+
+    fn one_group(rules: Vec<TransformRuleDto>) -> Vec<ActionGroupDto> {
+        vec![ActionGroupDto {
+            name: "recipe".into(),
+            scope: "tags".into(),
+            rules,
+            note: String::new(),
+        }]
+    }
+
+    /// The new value of each field a change proposes, `None` for a removal.
+    fn proposed(change: &FileChangeDto) -> BTreeMap<String, Option<String>> {
+        change
+            .tag_changes
+            .iter()
+            .map(|edit| (edit.field.clone(), edit.new.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_format_rule_sets_a_field_from_the_files_own_values() {
+        let dir = TempDir::new("field-format");
+        let bare = flac_with(
+            &dir,
+            "a.flac",
+            &[(TagField::Artist, "AC/DC"), (TagField::Title, "Thunder")],
+        );
+        let held = flac_with(
+            &dir,
+            "b.flac",
+            &[
+                (TagField::Artist, "Guest"),
+                (TagField::AlbumArtist, "Various"),
+                (TagField::TrackNumber, "5"),
+            ],
+        );
+        let app = open_app(&dir);
+        let groups = one_group(vec![
+            field_rule(
+                "format",
+                Some("albumartist"),
+                "",
+                "$if2(%albumartist%,%artist%)",
+            ),
+            // Missing tags render empty, a stated width pads, no file-name rules.
+            field_rule(
+                "format",
+                Some("comment"),
+                "",
+                "%publisher%[ / ]%artist% #%track:2%",
+            ),
+            // A text rule after it sees what it set.
+            TransformRuleDto {
+                scope: Some("albumartist".into()),
+                ..case_rule("upper")
+            },
+        ]);
+        let plan = app
+            .preview_transform_groups(&[bare.clone(), held.clone()], &groups)
+            .unwrap();
+        let by_path = |path: &Path| {
+            plan.changes
+                .iter()
+                .find(|change| change.path == path.to_string_lossy())
+                .map(proposed)
+                .unwrap()
+        };
+        let first = by_path(&bare);
+        assert_eq!(first["albumartist"].as_deref(), Some("AC/DC"));
+        assert_eq!(first["comment"].as_deref(), Some("AC/DC #"));
+        let second = by_path(&held);
+        assert_eq!(second["albumartist"].as_deref(), Some("VARIOUS"));
+        assert_eq!(second["comment"].as_deref(), Some("Guest #05"));
+    }
+
+    #[test]
+    fn remove_and_keep_rules_drop_fields_and_an_empty_format_removes() {
+        let dir = TempDir::new("field-select");
+        let path = flac_with(
+            &dir,
+            "a.flac",
+            &[
+                (TagField::Artist, "A"),
+                (TagField::Title, "T"),
+                (TagField::Comment, "ripped by"),
+                (TagField::Custom("MOOD".into()), "dark"),
+                (TagField::Genre, "House"),
+            ],
+        );
+        let app = open_app(&dir);
+        let remove = one_group(vec![field_rule("remove_fields", None, "Comment; mood", "")]);
+        let plan = app
+            .preview_transform_groups(std::slice::from_ref(&path), &remove)
+            .unwrap();
+        let changes = proposed(&plan.changes[0]);
+        assert_eq!(changes.len(), 2, "{changes:?}");
+        assert_eq!(changes["comment"], None);
+        assert_eq!(changes["custom:MOOD"], None);
+
+        let keep = one_group(vec![field_rule("keep_fields", None, "artist;TITLE", "")]);
+        let plan = app
+            .preview_transform_groups(std::slice::from_ref(&path), &keep)
+            .unwrap();
+        let changes = proposed(&plan.changes[0]);
+        assert_eq!(changes.len(), 3, "{changes:?}");
+        assert!(changes.values().all(Option::is_none));
+        assert!(!changes.contains_key("artist") && !changes.contains_key("title"));
+
+        let empty = one_group(vec![field_rule("format", Some("genre"), "", "%bpm%")]);
+        let plan = app
+            .preview_transform_groups(std::slice::from_ref(&path), &empty)
+            .unwrap();
+        assert_eq!(proposed(&plan.changes[0])["genre"], None);
+    }
+
+    #[test]
+    fn a_field_rule_on_a_locked_field_is_reported_and_feeds_nothing() {
+        let dir = TempDir::new("field-locked");
+        let path = flac_with(
+            &dir,
+            "a.flac",
+            &[(TagField::Artist, "A"), (TagField::Title, "T")],
+        );
+        let app = open_app(&dir);
+        app.set_locked_fields(&["albumartist".to_string()]);
+        let groups = one_group(vec![
+            field_rule("format", Some("albumartist"), "", "%artist%"),
+            field_rule("format", Some("comment"), "", "[%albumartist%]"),
+        ]);
+        let plan = app
+            .preview_transform_groups(std::slice::from_ref(&path), &groups)
+            .unwrap();
+        // Nothing to write: the album artist is locked, and the comment read
+        // the album artist as it is on disk (absent), not the blocked value.
+        assert!(plan.changes.is_empty(), "{:?}", plan.changes);
+        assert_eq!(plan.locked_skipped.len(), 1);
+        assert_eq!(plan.locked_skipped[0].field, "albumartist");
+    }
+
+    #[test]
+    fn field_rules_run_over_a_staged_plan_with_the_files_values_behind_it() {
+        let dir = TempDir::new("field-over-plan");
+        let path = flac_with(
+            &dir,
+            "a.flac",
+            &[
+                (TagField::Artist, "Old"),
+                (TagField::Title, "t"),
+                (TagField::Genre, "House"),
+            ],
+        );
+        let app = open_app(&dir);
+        let staged = app
+            .preview_tag_edits(&[TagEditDto {
+                path: path.to_string_lossy().into_owned(),
+                field: "artist".into(),
+                value: Some("new artist".into()),
+            }])
+            .unwrap();
+        let groups = one_group(vec![
+            field_rule("format", Some("albumartist"), "", "%artist% (%genre%)"),
+            // A text rule cleans what the plan proposes and what a rule set,
+            // never the rest of the file: the title stays lower case.
+            case_rule("title"),
+        ]);
+        let plan = app.preview_transform_over_plan(&staged, &groups).unwrap();
+        let changes = proposed(&plan.changes[0]);
+        assert_eq!(changes.len(), 2, "{changes:?}");
+        assert_eq!(changes["artist"].as_deref(), Some("New Artist"));
+        assert_eq!(
+            changes["albumartist"].as_deref(),
+            Some("New Artist (House)")
+        );
+        let artist = plan.changes[0]
+            .tag_changes
+            .iter()
+            .find(|edit| edit.field == "artist")
+            .unwrap();
+        assert_eq!(artist.old.as_deref(), Some("Old"));
+    }
+
+    #[test]
+    fn an_extract_rule_reads_fields_out_of_another_one() {
+        let dir = TempDir::new("field-extract");
+        let joined = flac_with(
+            &dir,
+            "a.flac",
+            &[(TagField::Title, "Sunbeam - Outside World")],
+        );
+        let plain = flac_with(&dir, "b.flac", &[(TagField::Title, "Just A Title")]);
+        let app = open_app(&dir);
+        let groups = one_group(vec![field_rule(
+            "extract",
+            None,
+            "%title%",
+            "%artist% - %title%",
+        )]);
+        let plan = app
+            .preview_transform_groups(&[joined.clone(), plain], &groups)
+            .unwrap();
+        assert_eq!(plan.changes.len(), 1);
+        let changes = proposed(&plan.changes[0]);
+        assert_eq!(changes["artist"].as_deref(), Some("Sunbeam"));
+        assert_eq!(changes["title"].as_deref(), Some("Outside World"));
+        assert_eq!(plan.notes.len(), 1);
+        assert_eq!(plan.notes[0].code, "plan.notExtracted");
+        assert!(matches!(
+            app.preview_transform_groups(
+                std::slice::from_ref(&joined),
+                &one_group(vec![field_rule(
+                    "extract",
+                    None,
+                    "%title%",
+                    "%artist%%title%"
+                )])
+            ),
+            Err(AppError::Mask(MaskError::Ambiguous))
+        ));
+    }
+
+    #[test]
+    fn value_rules_split_merge_and_remove_repeats() {
+        let dir = TempDir::new("field-values");
+        let path = flac_with(
+            &dir,
+            "a.flac",
+            &[
+                (TagField::Artist, "A & B; A"),
+                (TagField::Genre, "House; Techno"),
+            ],
+        );
+        let app = open_app(&dir);
+        let run = |rules| {
+            let plan = app
+                .preview_transform_groups(std::slice::from_ref(&path), &one_group(rules))
+                .unwrap();
+            proposed(&plan.changes[0])
+        };
+        let split = run(vec![
+            field_rule("split_values", Some("artist"), " & ", ""),
+            field_rule("dedupe_values", Some("artist"), "", ""),
+        ]);
+        assert_eq!(split["artist"].as_deref(), Some("A; B"));
+        let merged = run(vec![field_rule("merge_values", Some("genre"), "", " / ")]);
+        assert_eq!(merged["genre"].as_deref(), Some("House / Techno"));
+    }
+
+    #[test]
+    fn a_field_rule_that_cannot_run_says_so_before_reading_files() {
+        let errors = [
+            (field_rule("format", Some("tags"), "", "%artist%"), "needs"),
+            (field_rule("format", None, "", "%artist%"), "needs"),
+            (
+                field_rule("split_values", Some("title"), " & ", ""),
+                "multi",
+            ),
+            (
+                field_rule("split_values", Some("artist"), "", ""),
+                "delimiter",
+            ),
+            (
+                field_rule("merge_values", Some("artist"), "", ";"),
+                "joiner",
+            ),
+            (
+                field_rule("extract", None, "%title%", "plain text"),
+                "extract",
+            ),
+        ];
+        for (rule, what) in errors {
+            let result = field_rules::build_all_steps(&one_group(vec![rule]));
+            let ok = matches!(
+                (what, &result),
+                (
+                    "needs",
+                    Err(AppError::FieldRule(FieldRuleError::NeedsField))
+                ) | (
+                    "multi",
+                    Err(AppError::FieldRule(FieldRuleError::NotMultiValue(_)))
+                ) | (
+                    "delimiter",
+                    Err(AppError::FieldRule(FieldRuleError::EmptyDelimiter))
+                ) | (
+                    "joiner",
+                    Err(AppError::FieldRule(FieldRuleError::JoinerSplits))
+                ) | (
+                    "extract",
+                    Err(AppError::FieldRule(FieldRuleError::NothingToExtract))
+                )
+            );
+            assert!(ok, "{what}: {:?}", result.err());
+        }
+        // A disabled rule is not even checked, and a run over one value (EDITOR)
+        // leaves a field rule out rather than failing.
+        let off = TransformRuleDto {
+            enabled: false,
+            ..field_rule("format", Some("tags"), "", "")
+        };
+        assert!(field_rules::build_all_steps(&one_group(vec![off])).is_ok());
+        assert!(
+            build_segments(&one_group(vec![field_rule("keep_fields", None, "artist", "")])[0])
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn field_names_are_read_the_way_people_write_them() {
+        use field_rules::field_from_name as name;
+        assert_eq!(name("Album Artist"), Some(TagField::AlbumArtist));
+        assert_eq!(name("TRACKNUMBER"), Some(TagField::TrackNumber));
+        assert_eq!(name("label"), Some(TagField::Publisher));
+        assert_eq!(
+            name("custom:Artist"),
+            Some(TagField::Custom("Artist".into()))
+        );
+        assert_eq!(name("MOOD"), Some(TagField::Custom("MOOD".into())));
+        assert_eq!(name("  "), None);
     }
 
     #[test]

@@ -79,6 +79,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   grouping) are drawn at the size of the other toolbar glyphs instead of
   noticeably smaller than the re-read arrow beside them
   ([#848](https://github.com/tagrex/tagrex/issues/848)).
+- Presets take field rules: set a field from a mask over the file's own
+  values (a stated custom field included, an empty result removes it),
+  remove the listed fields, or keep only the listed ones. A rule on a locked
+  field is reported like any other locked change
+  ([#850](https://github.com/tagrex/tagrex/issues/850)).
+- A field rule can extract fields out of another one: render a source mask
+  and read it with a pattern such as `%artist% - %title%`; files the pattern
+  does not fit are counted in the preview notes
+  ([#851](https://github.com/tagrex/tagrex/issues/851)).
+- Field rules for multi-value fields (artist, album artist, genre, composer):
+  split a value on a delimiter, merge the values with a joiner, or remove
+  repeated values ([#852](https://github.com/tagrex/tagrex/issues/852)).
 
 ### Fixed
 

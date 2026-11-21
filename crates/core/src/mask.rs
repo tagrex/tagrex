@@ -284,8 +284,46 @@ impl Mask {
             return Err(MaskError::ExtractOnly);
         }
         let mut out = String::new();
-        render_segments(&self.segments, tags, file, false, &mut out)?;
+        render_segments(&self.segments, tags, file, false, false, &mut out)?;
         Ok(out)
+    }
+
+    /// Tags + the file -> a tag value (#850), for a rule that fills a field
+    /// from a mask. Not a file name, so nothing is made safe for one: a `/` in
+    /// a value stays a `/`. Track numbers are padded only to a width the
+    /// pattern states, since an implicit two-digit pad is a file-name habit and
+    /// would rewrite `5` as `05` in the tag. A tag the file does not have is
+    /// empty rather than an error: `%label% %catalognumber%` on a file without
+    /// a catalogue number is the label alone.
+    pub fn render_value_with(
+        &self,
+        tags: &TagMap,
+        file: &FileContext<'_>,
+    ) -> Result<String, MaskError> {
+        if self.extract_only {
+            return Err(MaskError::ExtractOnly);
+        }
+        let mut out = String::new();
+        render_segments(&self.segments, tags, file, true, true, &mut out)?;
+        Ok(out)
+    }
+
+    /// Whether the pattern holds a `%skip%`, which only extracts (#70).
+    pub fn is_extract_only(&self) -> bool {
+        self.extract_only
+    }
+
+    /// Whether [`extract`](Self::extract) can work with this pattern at all,
+    /// asked before any text is at hand (#851): the same refusals it gives for
+    /// adjacent placeholders and render-only values.
+    pub fn check_extractable(&self) -> Result<(), MaskError> {
+        if self.adjacent_placeholders {
+            return Err(MaskError::Ambiguous);
+        }
+        if self.render_only {
+            return Err(MaskError::RenderOnly);
+        }
+        Ok(())
     }
 
     /// Whether rendering this pattern needs [`FileContext::props`], which costs
@@ -651,31 +689,43 @@ fn collect_captures(
 /// `optional` is set inside a conditional section: there a missing tag simply
 /// means the section contributes nothing, whereas outside one it is a genuinely
 /// unsatisfiable pattern and stays an error.
+///
+/// `value` renders a tag value rather than a file name (#850): no separator is
+/// replaced and only a stated width pads.
 fn render_segments(
     segments: &[Segment],
     tags: &TagMap,
     file: &FileContext<'_>,
     optional: bool,
+    value: bool,
     out: &mut String,
 ) -> Result<bool, MaskError> {
+    let clean_text = |text: &'_ str| -> String {
+        if value {
+            text.to_string()
+        } else {
+            sanitize_for_filename(text).into_owned()
+        }
+    };
     let mut produced = false;
     for segment in segments {
         match segment {
             Segment::Literal(text) => out.push_str(text),
-            Segment::Placeholder(field, width, _) => match tags.get(field) {
-                Some(value) => {
-                    let clean = sanitize_for_filename(value);
+            Segment::Placeholder(field, width, stated) => match tags.get(field) {
+                Some(text) => {
+                    let clean = clean_text(text);
                     if !clean.is_empty() {
                         produced = true;
                     }
-                    out.push_str(&pad_numeric(&clean, *width));
+                    let width = if value && !*stated { 1 } else { *width };
+                    out.push_str(&pad_numeric(&clean, width));
                 }
-                None if optional => {}
+                None if optional || value => {}
                 None => return Err(MaskError::MissingTag(field_name(field).to_string())),
             },
             Segment::Section(inner) => {
                 let mut buffer = String::new();
-                if render_segments(inner, tags, file, true, &mut buffer)? {
+                if render_segments(inner, tags, file, true, value, &mut buffer)? {
                     out.push_str(&buffer);
                     produced = true;
                 }
@@ -693,9 +743,8 @@ fn render_segments(
             // import stored it under, and nothing when the file has none -- like
             // `%side%`, empty is a valid outcome, never an error (#352).
             Segment::Position => {
-                if let Some(value) = tags.get(&TagField::Custom(POSITION_CUSTOM_FIELD.to_string()))
-                {
-                    let clean = sanitize_for_filename(value);
+                if let Some(text) = tags.get(&TagField::Custom(POSITION_CUSTOM_FIELD.to_string())) {
+                    let clean = clean_text(text);
                     if !clean.is_empty() {
                         produced = true;
                     }
@@ -708,9 +757,9 @@ fn render_segments(
             // A file property (#147). Sanitized like a tag value, since it lands
             // in the same filename; empty whenever the caller had nothing to give
             // (no path, no probe) — never an error, same as `%side%` on a CD.
-            Segment::File(value) => {
-                let rendered = render_file_value(*value, file);
-                let clean = sanitize_for_filename(&rendered);
+            Segment::File(file_value) => {
+                let rendered = render_file_value(*file_value, file);
+                let clean = clean_text(&rendered);
                 if !clean.is_empty() {
                     produced = true;
                 }
@@ -737,18 +786,18 @@ fn render_segments(
             // again, so a separator a *pattern* puts there deliberately still
             // means what it does everywhere else in the mask.
             Segment::Call(function, arguments) => {
-                let tolerant = optional || function.tolerates_missing_tags();
+                let tolerant = optional || value || function.tolerates_missing_tags();
                 let mut values = Vec::with_capacity(arguments.len());
                 for argument in arguments {
                     let mut buffer = String::new();
-                    render_segments(argument, tags, file, tolerant, &mut buffer)?;
+                    render_segments(argument, tags, file, tolerant, value, &mut buffer)?;
                     values.push(buffer);
                 }
-                let value = function.apply(&values)?;
-                if !value.is_empty() {
+                let result = function.apply(&values)?;
+                if !result.is_empty() {
                     produced = true;
                 }
-                out.push_str(&value);
+                out.push_str(&result);
             }
         }
     }
@@ -1823,6 +1872,58 @@ mod tests {
         let mask = Mask::parse("%position% %title%").unwrap();
         assert!(matches!(
             mask.extract("A1 Rose"),
+            Err(MaskError::RenderOnly)
+        ));
+    }
+
+    #[test]
+    fn a_value_render_keeps_text_and_pads_only_a_stated_width() {
+        let mut tags = TagMap::new();
+        tags.insert(TagField::TrackNumber, "5".into());
+        tags.insert(TagField::Artist, "AC/DC".into());
+        let file = FileContext::default();
+        let value = |pattern: &str| {
+            Mask::parse(pattern)
+                .unwrap()
+                .render_value_with(&tags, &file)
+                .unwrap()
+        };
+        // A tag value is not a file name: the slash stays, `5` stays `5`.
+        assert_eq!(value("%artist%"), "AC/DC");
+        assert_eq!(value("%track%"), "5");
+        assert_eq!(value("%track:3%"), "005");
+        // A missing tag is empty rather than an error, inside a call too.
+        assert_eq!(value("%artist% %catalognumber%"), "AC/DC ");
+        assert_eq!(value("$upper(%album%)"), "");
+        assert_eq!(value("$if2(%albumartist%,%artist%)"), "AC/DC");
+        // A section still drops out whole when nothing in it is there.
+        assert_eq!(value("%artist%[ (%year%)]"), "AC/DC");
+        // The file-name render is unchanged.
+        let name = Mask::parse("%track% %artist%")
+            .unwrap()
+            .render(&tags)
+            .unwrap();
+        assert_eq!(name, "05 AC_DC");
+        assert!(matches!(
+            Mask::parse("%skip%")
+                .unwrap()
+                .render_value_with(&tags, &file),
+            Err(MaskError::ExtractOnly)
+        ));
+    }
+
+    #[test]
+    fn extractability_is_known_before_any_text() {
+        assert!(Mask::parse("%artist% - %title%")
+            .unwrap()
+            .check_extractable()
+            .is_ok());
+        assert!(matches!(
+            Mask::parse("%artist%%title%").unwrap().check_extractable(),
+            Err(MaskError::Ambiguous)
+        ));
+        assert!(matches!(
+            Mask::parse("%side% - %title%").unwrap().check_extractable(),
             Err(MaskError::RenderOnly)
         ));
     }

@@ -28,7 +28,7 @@
 // ran it on every import, where the values were already right. A preset with
 // nothing for a job can't be ticked there.
 import { invoke } from "./invoke.js";
-import { persistActionGroups, renderAllGroupsMenus, ruleForGroup, uniquePresetName } from "./chain.js";
+import { isFieldRule, persistActionGroups, renderAllGroupsMenus, ruleForGroup, uniquePresetName } from "./chain.js";
 import { actionGroups, builtinGroups, setActionGroups } from "./state.js";
 
 // One list of ticked presets per job (#555), as { context: [keys] }.
@@ -137,7 +137,9 @@ function rulesFor(group, context) {
   return (group.rules || [])
     .filter((r) => r.enabled !== false)
     .map((r) => ({ ...ruleForGroup(r), scope: r.scope || group.scope || "tags" }))
-    .filter((r) => contextTakes(context, r.scope));
+    // A field rule needs a file behind it (#850), and EDITOR's values belong
+    // to none yet.
+    .filter((r) => contextTakes(context, r.scope) && !(context === "editor" && isFieldRule(r.kind)));
 }
 
 // The ticked presets as the groups a run takes, cut down to what `context`

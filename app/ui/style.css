@@ -3944,6 +3944,15 @@ td.unreadable-note {
 .rule-fields .field > input {
   font-family: var(--font-mono-bundled);
 }
+/* A field rule's single box (#850) takes the row, and its custom-field row
+   is hidden until the target asks for one: `display: grid` above outranks the
+   `hidden` attribute. */
+.rule-fields > .field:only-child {
+  grid-column: 1 / -1;
+}
+.rule-fields[hidden] {
+  display: none;
+}
 .rule-arrow {
   color: var(--muted);
   font-size: var(--text-xs);

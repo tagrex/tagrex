@@ -78,6 +78,47 @@ no extension rather than giving it one.
 - **Key notation** — converts a musical key between musical, Camelot and Open Key
   notation. Best pointed at the Key field; unrecognized values are left alone.
 
+### Field rules
+
+The rules above rewrite one value from itself. These work on the file's fields
+together, in the same ordered pass: a field rule sees what the rules before it
+left, and the rules after it see what it set.
+
+- **Set field from a mask**: the target field gets what a
+  [mask](masks.md) renders from the file's current values, so
+  `$if2(%albumartist%,%artist%)` fills a missing album artist from the artist
+  and `%publisher% %catalognumber%` builds a comment. A placeholder the file
+  has no value for is empty rather than an error, nothing is made safe for a
+  file name (a `/` stays a `/`), and a track number pads only to a width the
+  mask states (`%track:2%`). An empty result removes the field. **Custom
+  field…** in the target list sets a field the app does not model.
+- **Extract from a field**: renders the first mask (usually one field, like
+  `%title%`) and reads fields out of the result with the second, the way FROM
+  NAME reads a file name: `%artist% - %title%` takes the artist out of a title
+  that carries it. A file the mask does not fit is left as it is, and the
+  preview says how many there were.
+- **Remove fields**: removes the fields listed, separated by `;`. Names can be
+  written as the app shows them or as tag frames name them: `Album Artist`,
+  `TRACKNUMBER`, `LABEL`, and `custom:NAME` for a custom field.
+- **Keep only fields**: removes every text field not listed. Cover art and the
+  binary frames (DJ cue points, ReplayGain) stay, as with Clear tags.
+
+For the fields written as several values (artist, album artist, genre,
+composer):
+
+- **Split values** turns a value holding a delimiter (` & `, `, `, ` feat. `)
+  into separate values.
+- **Merge values** joins the values into one with the text you give.
+- **Remove repeated values** keeps the first of each value, in order.
+
+Field rules run in GENERATOR and in the cleanup after an import, FROM NAME and
+FROM TEXT, where they read the file's values with the staged ones laid over
+them. There the other rules still clean only the values the job produced and
+the ones a field rule set, never the rest of the file. EDITOR leaves field
+rules out: the values typed there belong to no file yet. A rule aimed at a
+locked field leaves it alone and the preview reports the lock, and nothing
+later in the chain reads the value it was refused.
+
 ### The preset editor
 
 **Edit presets…** opens it, and the › at the end of a preset's row in the

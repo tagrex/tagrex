@@ -24,6 +24,39 @@ import {
   setSavedSettings,
 } from "./state.js";
 
+// Rules that read and write a file's fields together (#850-#852) rather than
+// rewrite one value from itself. They need a file behind them, so a run over
+// typed values (EDITOR) leaves them out, and they act on tags, never on names.
+const FIELD_RULE_KINDS = [
+  "format",
+  "remove_fields",
+  "keep_fields",
+  "extract",
+  "split_values",
+  "merge_values",
+  "dedupe_values",
+];
+const FIELD_RULE_LABELS = {
+  format: "rule.format",
+  remove_fields: "rule.removeFields",
+  keep_fields: "rule.keepFields",
+  extract: "rule.extract",
+  split_values: "rule.splitValues",
+  merge_values: "rule.mergeValues",
+  dedupe_values: "rule.dedupeValues",
+};
+// The fields written as several values: what the value rules work on.
+const MULTI_VALUE_FIELDS = ["artist", "albumartist", "genre", "composer"];
+const VALUE_RULE_KINDS = ["split_values", "merge_values", "dedupe_values"];
+// The rules that name their fields in the body, so the header has no target.
+const UNTARGETED_RULE_KINDS = ["remove_fields", "keep_fields", "extract"];
+// The target picker's entry for a field the app does not model.
+const CUSTOM_TARGET = "__custom";
+
+export function isFieldRule(kind) {
+  return FIELD_RULE_KINDS.includes(kind);
+}
+
 // ---- the shared group library (#57, #137) ----
 // Saved groups live in settings.json and the shipped presets come from the
 // backend; both are global, so every chain instance offers the same shelf.
@@ -240,6 +273,8 @@ function createRuleChain({ ids }) {
 
   function addRule() {
     const kind = el(ids.kind).value;
+    const inherited = rules.length ? rules[rules.length - 1].scope || "tags" : "tags";
+    const single = !["tags", "filename", "fileext"].includes(inherited);
     rules.push({
       id: ++ruleIdCounter,
       kind,
@@ -254,8 +289,25 @@ function createRuleChain({ ids }) {
       // one field, so inheriting costs one choice for the whole run — and when
       // it is wrong it is wrong in the row you are already looking at.
       scope: rules.length ? rules[rules.length - 1].scope || "tags" : "tags",
+      ...fieldRuleDefaults(kind, inherited, single),
     });
     render();
+  }
+
+  // Where a new field rule starts (#850-#852): a target it can take, and the
+  // text that shows what goes in its boxes.
+  function fieldRuleDefaults(kind, inherited, single) {
+    if (kind === "format") return { scope: single ? inherited : "albumartist" };
+    if (UNTARGETED_RULE_KINDS.includes(kind)) {
+      return kind === "extract" ? { scope: "tags", from: "%title%", to: "%artist% - %title%" } : { scope: "tags" };
+    }
+    if (VALUE_RULE_KINDS.includes(kind)) {
+      const scope = MULTI_VALUE_FIELDS.includes(inherited) ? inherited : "artist";
+      if (kind === "split_values") return { scope, from: " & " };
+      if (kind === "merge_values") return { scope, to: ", " };
+      return { scope };
+    }
+    return {};
   }
 
   function moveRule(from, to) {
@@ -318,8 +370,9 @@ function createRuleChain({ ids }) {
 
       const kind = document.createElement("span");
       kind.className = "rule-kind";
-      kind.textContent =
-        rule.kind === "replace"
+      kind.textContent = FIELD_RULE_LABELS[rule.kind]
+        ? t(FIELD_RULE_LABELS[rule.kind])
+        : rule.kind === "replace"
           ? t("rule.replace")
           : rule.kind === "case"
             ? t("rule.case")
@@ -374,29 +427,80 @@ function createRuleChain({ ids }) {
       const scope = document.createElement("select");
       scope.className = "rule-scope";
       scope.title = t("chain.scopeTitle");
-      for (const [value, label] of scopeOptions()) {
+      // A field rule takes the one field it writes (#850), and the value rules
+      // only the fields written as several values (#852).
+      const customTarget = rule.kind === "format" && String(rule.scope || "").startsWith("custom:");
+      const targets = VALUE_RULE_KINDS.includes(rule.kind)
+        ? MULTI_VALUE_FIELDS.map((key) => [key, fieldLabel(key)])
+        : rule.kind === "format"
+          ? [...EXTENDED_FIELDS.map(([key]) => [key, fieldLabel(key)]), [CUSTOM_TARGET, t("chain.customField")]]
+          : scopeOptions();
+      for (const [value, label] of targets) {
         const opt = document.createElement("option");
         opt.value = value;
         opt.textContent = label;
         scope.appendChild(opt);
       }
-      scope.value = rule.scope || "tags";
+      scope.value = customTarget ? CUSTOM_TARGET : rule.scope || "tags";
       // A group may name something this picker doesn't list — a field added
       // later, or one this build doesn't model. Keep it rather than silently
       // re-aiming the rule at every tag.
-      if (scope.value !== (rule.scope || "tags")) {
+      if (!customTarget && scope.value !== (rule.scope || "tags")) {
         const kept = document.createElement("option");
         kept.value = rule.scope;
         kept.textContent = rule.scope;
         scope.appendChild(kept);
         scope.value = rule.scope;
       }
+      // A custom field's name, typed under the header (#850).
+      const customName = document.createElement("input");
+      customName.type = "text";
+      customName.className = "rule-custom-field";
+      customName.placeholder = t("chain.customFieldName");
+      customName.spellcheck = false;
+      customName.value = customTarget ? rule.scope.slice("custom:".length) : "";
+      customName.addEventListener("input", () => (rule.scope = `custom:${customName.value.trim()}`));
       scope.addEventListener("change", () => {
+        if (scope.value === CUSTOM_TARGET) {
+          rule.scope = `custom:${customName.value.trim()}`;
+          customRow.hidden = false;
+          customName.focus();
+          return;
+        }
         rule.scope = scope.value;
+        customRow.hidden = true;
       });
 
-      head.append(grip, toggle, n, kind, scope, spacer, acts);
+      if (UNTARGETED_RULE_KINDS.includes(rule.kind)) head.append(grip, toggle, n, kind, spacer, acts);
+      else head.append(grip, toggle, n, kind, scope, spacer, acts);
       card.append(head);
+
+      // One input in the app's field frame, for the field rules' bodies.
+      const fieldInput = (value, placeholder, onInput) => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = placeholder;
+        input.value = value;
+        input.spellcheck = false;
+        input.addEventListener("input", () => onInput(input.value));
+        const box = document.createElement("div");
+        box.className = "field sm";
+        box.append(input);
+        return box;
+      };
+      const ruleNote = (text) => {
+        const note = document.createElement("span");
+        note.className = "rule-note";
+        note.textContent = text;
+        return note;
+      };
+      const customRow = document.createElement("div");
+      customRow.className = "rule-fields";
+      customRow.hidden = !customTarget;
+      const customBox = document.createElement("div");
+      customBox.className = "field sm";
+      customBox.append(customName);
+      customRow.append(customBox);
 
       // ---- body (per-kind); diacritics is header-only ----
       if (rule.kind === "replace") {
@@ -511,6 +615,39 @@ function createRuleChain({ ids }) {
         note.className = "rule-note";
         note.textContent = t("chain.keyNote");
         b.append(seg, note);
+        card.append(b);
+      } else if (isFieldRule(rule.kind)) {
+        const b = document.createElement("div");
+        b.className = "rule-body";
+        const fields = document.createElement("div");
+        fields.className = "rule-fields";
+        if (rule.kind === "format") {
+          b.append(customRow);
+          fields.append(fieldInput(rule.to, t("chain.maskValue"), (v) => (rule.to = v)));
+          b.append(fields, ruleNote(t("chain.formatNote")));
+        } else if (rule.kind === "remove_fields" || rule.kind === "keep_fields") {
+          fields.append(fieldInput(rule.from, t("chain.fieldList"), (v) => (rule.from = v)));
+          b.append(fields, ruleNote(t(rule.kind === "keep_fields" ? "chain.keepNote" : "chain.removeNote")));
+        } else if (rule.kind === "extract") {
+          const arrow = document.createElement("span");
+          arrow.className = "rule-arrow";
+          arrow.setAttribute("aria-hidden", "true");
+          arrow.textContent = "→";
+          fields.append(
+            fieldInput(rule.from, t("chain.extractSource"), (v) => (rule.from = v)),
+            arrow,
+            fieldInput(rule.to, t("chain.extractPattern"), (v) => (rule.to = v))
+          );
+          b.append(fields, ruleNote(t("chain.extractNote")));
+        } else if (rule.kind === "split_values") {
+          fields.append(fieldInput(rule.from, t("chain.splitOn"), (v) => (rule.from = v)));
+          b.append(fields, ruleNote(t("chain.valuesNote")));
+        } else if (rule.kind === "merge_values") {
+          fields.append(fieldInput(rule.to, t("chain.joinWith"), (v) => (rule.to = v)));
+          b.append(fields, ruleNote(t("chain.valuesNote")));
+        } else {
+          b.append(ruleNote(t("chain.dedupeNote")));
+        }
         card.append(b);
       } else if (rule.kind === "untransliterate") {
         // The one step whose losses are worth stating on the card: reversing a
