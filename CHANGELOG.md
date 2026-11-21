@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   temporary column at the end of the table instead of being applied unseen.
   The column goes away with the plan and is never saved to the layout
   ([#831](https://github.com/tagrex/tagrex/issues/831)).
+- Opening another folder while an AI assistant's proposal is staged now
+  reports it as discarded, so the assistant no longer hears "staged" for a
+  proposal that left the screen, and the next plan of your own is not marked
+  with its name ([#832](https://github.com/tagrex/tagrex/issues/832)).
 - The Windows build of the AI assistant connection no longer trips the lint
   over a call timeout that only applies on macOS and Linux
   ([#829](https://github.com/tagrex/tagrex/issues/829)).

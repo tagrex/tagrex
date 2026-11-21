@@ -2083,6 +2083,7 @@ async function afterOpen(label) {
   }
   document.body.classList.remove("diffing");
   el("diff-actionbar").hidden = true;
+  agentClosed(); // a staged proposal goes with the plan (#832)
   resetEdits();
   setSortKey(null);
   setSortDir(1);
