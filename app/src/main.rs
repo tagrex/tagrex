@@ -879,22 +879,6 @@ async fn has_folder_cover(
         .await
 }
 
-#[tauri::command]
-async fn read_external_cover(
-    state: State<'_, AppState>,
-    paths: Vec<String>,
-) -> Result<Option<CoverArtDto>, ErrorDto> {
-    let state = state.inner().clone();
-    SESSION_QUEUE
-        .run(move || {
-            let paths: Vec<PathBuf> = paths.into_iter().map(PathBuf::from).collect();
-            with_app(&state, |app| {
-                app.read_external_cover(&paths).map_err(ErrorDto::from)
-            })
-        })
-        .await
-}
-
 /// Read an image file (dropped onto the cover well, #133) into a cover DTO for
 /// [`preview_cover_embed`]. Stateless — the source image isn't confined to the
 /// library, matching the file picker (the user chose it explicitly).
@@ -2585,7 +2569,6 @@ fn main() {
             preview_cover_set,
             export_cover,
             read_cover_summary,
-            read_external_cover,
             preview_folder_covers,
             has_folder_cover,
             read_cover_image,

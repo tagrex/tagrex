@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `cover`/`folder`/`front`, else one named like the album, else the folder's
   only image; the preview says how many files had none
   ([#824](https://github.com/tagrex/tagrex/issues/824)).
+- The `read_external_cover` command, unused since the folder image became
+  per track, is removed along with its helper and tests
+  ([#826](https://github.com/tagrex/tagrex/issues/826)).
 - A repeated identical-audio duplicate scan reuses what the last one decoded:
   each file's audio digests are kept for the session and checked against the
   file's size, date and identity, so after a copy is deleted or moved the next

@@ -4699,33 +4699,6 @@ impl App {
         })
     }
 
-    /// Find an external cover file (`cover.jpg` / `folder.jpg`, and the `.jpeg` /
-    /// `.png` variants) sitting next to the selected tracks (#41) — the inverse
-    /// of the sidecar export. Returns the first match across the selection's
-    /// distinct directories, ready to feed [`preview_cover_embed`]. Read-only.
-    pub fn read_external_cover(&self, paths: &[PathBuf]) -> Result<Option<CoverArtDto>, AppError> {
-        // Distinct parent directories, in selection order.
-        let mut dirs: Vec<&Path> = Vec::new();
-        for path in paths {
-            if let Some(dir) = path.parent() {
-                if !dirs.contains(&dir) {
-                    dirs.push(dir);
-                }
-            }
-        }
-        for dir in dirs {
-            if let Some(found) = external_cover_in(dir) {
-                let data = std::fs::read(&found).map_err(AppError::Io)?;
-                return Ok(Some(CoverArtDto {
-                    mime: mime_for_cover_path(&found).to_string(),
-                    data_base64: base64::engine::general_purpose::STANDARD.encode(&data),
-                    ..CoverArtDto::default()
-                }));
-            }
-        }
-        Ok(None)
-    }
-
     /// Preview removing the front cover from every `paths` file that has one,
     /// through the normal preview/apply/undo path (files without a cover are
     /// skipped).
@@ -6381,39 +6354,6 @@ fn norm_key(value: &str) -> String {
         .to_lowercase()
 }
 
-/// The external cover file in `dir`, if any (#41): a `cover`/`folder`/`front`
-/// named `.jpg`/`.jpeg`/`.png`, matched case-insensitively (so it works on
-/// case-sensitive filesystems too) and preferring `cover` over `folder` over
-/// `front`.
-fn external_cover_in(dir: &Path) -> Option<PathBuf> {
-    const PREFERRED: [&str; 3] = ["cover", "folder", "front"];
-    const EXTS: [&str; 3] = ["jpg", "jpeg", "png"];
-    let mut best: Option<(usize, PathBuf)> = None;
-    for entry in std::fs::read_dir(dir).ok()?.flatten() {
-        let path = entry.path();
-        let stem = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_ascii_lowercase());
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.to_ascii_lowercase());
-        let (Some(stem), Some(ext)) = (stem, ext) else {
-            continue;
-        };
-        if !EXTS.contains(&ext.as_str()) {
-            continue;
-        }
-        if let Some(rank) = PREFERRED.iter().position(|p| *p == stem) {
-            if best.as_ref().is_none_or(|(r, _)| rank < *r) {
-                best = Some((rank, path));
-            }
-        }
-    }
-    best.map(|(_, path)| path)
-}
-
 /// The change that puts `new_art` in as `path`'s front cover, every other image
 /// left as it is (#56), or takes the front cover out when `new_art` is None.
 /// None when the file already has exactly that.
@@ -6478,7 +6418,7 @@ fn folder_images(dir: &Path) -> Vec<PathBuf> {
 
 /// Which of a folder's `images` goes into `track` (#824), in this order: one
 /// named like the track itself, as stores that ship art per track do; then
-/// `cover`, `folder`, `front`, as [`external_cover_in`] ranks them; then one
+/// `cover`, `folder`, `front`, in that order; then one
 /// named like the track's `album`, ignoring case, spaces and punctuation;
 /// then the folder's only image. None when nothing fits.
 fn pick_folder_image<'a>(track: &Path, album: &str, images: &'a [PathBuf]) -> Option<&'a PathBuf> {
@@ -13168,27 +13108,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn read_external_cover_finds_sibling_and_prefers_cover_over_folder() {
-        let dir = TempDir::new("ext-cover");
-        let a = dir.tagged_flac("a.flac", "Artist", "Title");
-        // Both a folder.png and a cover.jpg sit next to the track (#41).
-        std::fs::write(dir.0.join("folder.png"), [9u8, 9, 9]).unwrap();
-        std::fs::write(dir.0.join("cover.jpg"), [1u8, 2, 3]).unwrap();
-        let app = open_app(&dir);
-
-        let found = app
-            .read_external_cover(&[a])
-            .unwrap()
-            .expect("a sibling cover");
-        // `cover.jpg` wins over `folder.png`.
-        assert_eq!(found.mime, "image/jpeg");
-        let bytes = base64::engine::general_purpose::STANDARD
-            .decode(&found.data_base64)
-            .unwrap();
-        assert_eq!(bytes, vec![1, 2, 3]);
-    }
-
     // #825: an image sent without a kind goes in as the front cover, so a
     // file that already has it as its front cover needs no change.
     #[test]
@@ -13319,14 +13238,6 @@ mod tests {
             [MessageDto::from(&PlanMessage::NoFolderImage { files: 1 })]
         );
         assert_eq!(plan.message.unwrap().code, "plan.embedFolderCovers");
-    }
-
-    #[test]
-    fn read_external_cover_returns_none_without_a_sibling() {
-        let dir = TempDir::new("ext-cover-none");
-        let a = dir.tagged_flac("a.flac", "Artist", "Title");
-        let app = open_app(&dir);
-        assert!(app.read_external_cover(&[a]).unwrap().is_none());
     }
 
     #[test]

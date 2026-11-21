@@ -1150,9 +1150,6 @@ function mockInvoke(cmd, args) {
       });
       return Promise.resolve({ written, skipped_no_cover });
     }
-    case "read_external_cover":
-      // Browser mock: no sibling cover unless a test injects one.
-      return Promise.resolve(mockInvoke.state?.externalCover ?? null);
     case "find_duplicates":
       // Mock: pretend the first track has a copy in a /dupes subfolder.
       return Promise.resolve(
