@@ -153,6 +153,7 @@ export const de = {
   "online.perPage": "Ergebnisse pro Seite",
   "online.loadMore": "Weitere Ergebnisse laden",
   "online.loadingMore": "Weitere werden geladen…",
+  "online.scrollForMore": "Nach unten scrollen für weitere Ergebnisse",
   "online.tracksUnknown": "— Tracks",
   "online.automatch": "Automatisch zuordnen",
   "online.automatchTitle": "Sortiert die gewählten Dateien passend zu dieser Trackliste um",

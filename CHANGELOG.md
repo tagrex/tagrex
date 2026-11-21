@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the next page too, so scrolling works with a small page size as well. One
   gesture loads one page, never more
   ([#814](https://github.com/tagrex/tagrex/issues/814)).
+- ONLINE results that fit the panel end with a quiet "Scroll down for more
+  results" line instead of the Load more results button, which is left for
+  after Stop and after a page failed to load
+  ([#815](https://github.com/tagrex/tagrex/issues/815)).
 
 ### Added
 

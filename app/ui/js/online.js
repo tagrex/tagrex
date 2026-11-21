@@ -219,13 +219,15 @@ function updateLoadMoreUi() {
   const wrap = el("release-more");
   if (!wrap) return;
   // Scrolling loads further pages (#812), a wheel over a list that fits too
-  // (#814); the button is for where it should not, after Stop or a failed
-  // page, and shows a list that fits that more results are there.
-  const button = !busy && searchHasMore && (autoMorePaused || !listOverflows());
+  // (#814). A list that fits says so with a hint (#815); the button is for
+  // where scrolling deliberately does not load, after Stop or a failed page.
+  const button = !busy && searchHasMore && autoMorePaused;
+  const scrollHint = !busy && searchHasMore && !autoMorePaused && !listOverflows();
   const loadingMore = loadingResults && searchPage > 0;
   el("load-more").hidden = !button;
+  el("scroll-for-more").hidden = !scrollHint;
   el("loading-more").hidden = !loadingMore;
-  wrap.hidden = releaseCandidates.length === 0 || (!button && !loadingMore);
+  wrap.hidden = releaseCandidates.length === 0 || (!button && !scrollHint && !loadingMore);
   if (!busy) maybeLoadMoreOnScroll();
 }
 

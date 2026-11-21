@@ -157,6 +157,7 @@ export const en = {
   "online.perPage": "Results per page",
   "online.loadMore": "Load more results",
   "online.loadingMore": "Loading more…",
+  "online.scrollForMore": "Scroll down for more results",
   "online.tracksUnknown": "— tracks",
   "online.automatch": "Auto-match",
   "online.automatchTitle": "Reorder the selected files to line up with this tracklist",

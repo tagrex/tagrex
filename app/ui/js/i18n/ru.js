@@ -157,6 +157,7 @@ export const ru = {
   "online.perPage": "Результатов на страницу",
   "online.loadMore": "Показать ещё",
   "online.loadingMore": "Загружаю ещё…",
+  "online.scrollForMore": "Прокрутите вниз, чтобы загрузить ещё",
   "online.tracksUnknown": "— треков",
   "online.automatch": "Автосопоставление",
   "online.automatchTitle": "Переставить выбранные файлы в порядок этого списка треков",
