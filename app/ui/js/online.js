@@ -68,6 +68,12 @@ let searchHasMore = false; // provider likely has another page
 let searchGen = 0; // generation token
 let loadingResults = false; // a page fetch is in flight
 let prefetching = false; // the background per-release detail sweep is running
+// Scrolling near the end loads the next page (#812). Paused after Stop or a
+// failed page, where the button takes over, and armed only by a scroll since
+// the last page, so a list that fits never chain-loads on its own.
+let autoMorePaused = false;
+let scrolledSinceLoad = false;
+const AUTO_MORE_DISTANCE = 240; // px from the end of the list
 
 // Whether a search is doing background work the user might want to interrupt
 // (#108) — a page fetch or the per-release prefetch sweep.
@@ -84,6 +90,26 @@ async function loadMoreResults() {
   return runSearch(false);
 }
 
+function onlineScroller() {
+  return document.querySelector("#panel-tagger .online-scroll");
+}
+
+function listOverflows() {
+  const scroller = onlineScroller();
+  return !!scroller && scroller.scrollHeight > scroller.clientHeight + 1;
+}
+
+// The next page, when the user has scrolled close to the end of a list that
+// scrolls (#812). Waits for the card lookups of the last page, as the button did.
+function maybeLoadMoreOnScroll() {
+  if (autoMorePaused || !scrolledSinceLoad || !searchHasMore || searchBusy()) return;
+  const scroller = onlineScroller();
+  if (!scroller || !listOverflows()) return;
+  if (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight > AUTO_MORE_DISTANCE) return;
+  scrolledSinceLoad = false;
+  loadMoreResults();
+}
+
 // Stop the background loading (#96) without discarding what's already shown:
 // bumping the generation makes in-flight workers bail; the "Load more" button
 // stays available so the user can resume.
@@ -92,6 +118,7 @@ function stopLoading() {
   searchGen++;
   loadingResults = false;
   prefetching = false;
+  autoMorePaused = true; // stopped on purpose: scrolling does not restart it
   updateLoadMoreUi();
   toast(t("toast.online.stopped"));
 }
@@ -140,6 +167,8 @@ async function runSearch(reset) {
     imageCache.clear();
     expandedIds.clear();
     searchGen++;
+    autoMorePaused = false;
+    scrolledSinceLoad = false;
   }
   const gen = searchGen;
   const page = searchPage + 1;
@@ -163,6 +192,8 @@ async function runSearch(reset) {
     prefetchReleaseCounts(added, gen); // count only the newly added page
   } catch (e) {
     toast(String(e), true);
+    // A failed further page is not retried by scrolling: the button does it.
+    if (!reset) autoMorePaused = true;
   } finally {
     if (gen === searchGen) {
       loadingResults = false;
@@ -181,8 +212,14 @@ function updateLoadMoreUi() {
   btn.setAttribute("aria-label", btn.title);
   const wrap = el("release-more");
   if (!wrap) return;
-  wrap.hidden = releaseCandidates.length === 0;
-  el("load-more").hidden = busy || !searchHasMore;
+  // Scrolling loads further pages (#812); the button is for where it cannot or
+  // should not: a list that fits, after Stop, after a failed page.
+  const button = !busy && searchHasMore && (autoMorePaused || !listOverflows());
+  const loadingMore = loadingResults && searchPage > 0;
+  el("load-more").hidden = !button;
+  el("loading-more").hidden = !loadingMore;
+  wrap.hidden = releaseCandidates.length === 0 || (!button && !loadingMore);
+  if (!busy) maybeLoadMoreOnScroll();
 }
 
 async function loadSavedToken() {
@@ -2029,7 +2066,26 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeQueryPresets();
 });
-el("load-more").addEventListener("click", loadMoreResults);
+el("load-more").addEventListener("click", () => {
+  autoMorePaused = false; // asked for again: scrolling may take over once more
+  loadMoreResults();
+});
+{
+  const scroller = onlineScroller();
+  if (scroller) {
+    scroller.addEventListener(
+      "scroll",
+      () => {
+        scrolledSinceLoad = true;
+        maybeLoadMoreOnScroll();
+      },
+      { passive: true },
+    );
+    // A card opening or the panel resizing decides whether the list scrolls,
+    // and so whether the button is needed.
+    if (window.ResizeObserver) new ResizeObserver(() => updateLoadMoreUi()).observe(el("release-list"));
+  }
+}
 el("search-per-page").addEventListener("change", (e) => {
   const v = parseInt(e.target.value, 10);
   try {

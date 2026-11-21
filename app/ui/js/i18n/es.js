@@ -154,6 +154,7 @@ export const es = {
   "online.show": "Mostrar",
   "online.perPage": "Resultados por página",
   "online.loadMore": "Cargar más resultados",
+  "online.loadingMore": "Cargando más…",
   "online.tracksUnknown": "— pistas",
   "online.automatch": "Emparejar auto",
   "online.automatchTitle": "Reordena los archivos seleccionados para que coincidan con esta lista de pistas",

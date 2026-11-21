@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- ONLINE results load their next page by themselves as the list is scrolled
+  near its end, with a "Loading more…" line in the footer while a page comes
+  in. Load more results stays for when the results fit without scrolling, after
+  Stop and after a page failed to load, and a list that fits never loads further
+  pages on its own ([#812](https://github.com/tagrex/tagrex/issues/812)).
+
 ### Added
 
 - The status bar counts the selected files a filter or a library health check

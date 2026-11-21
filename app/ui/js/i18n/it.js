@@ -156,6 +156,7 @@ export const it = {
   "online.show": "Mostra",
   "online.perPage": "Risultati per pagina",
   "online.loadMore": "Carica altri risultati",
+  "online.loadingMore": "Caricamento di altri…",
   "online.tracksUnknown": "— tracce",
   "online.automatch": "Abbina auto",
   "online.automatchTitle": "Riordina i file selezionati in base a questa tracklist",
