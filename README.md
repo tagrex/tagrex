@@ -237,10 +237,12 @@ measures their tempo with a neural beat tracker that runs inside the app, then
 stages it in the BPM field like any other change. A range setting halves or
 doubles the result for libraries that write a 174 BPM drum & bass track as 87.
 
-**AI assistants can read the library.** Settings connects Claude Code or
-Claude Desktop over MCP, read-only: an assistant can list tracks and tags,
+**AI assistants can read the library and propose edits.** Settings connects
+Claude Code or Claude Desktop over MCP: an assistant can list tracks and tags,
 filter for missing fields, preview what a mask renders to and look for
-duplicates in the library open in TagRex, and change nothing.
+duplicates in the library open in TagRex. It never writes a file itself: the
+tag changes it proposes land in the ordinary preview, and nothing is written
+until you click Apply.
 
 **A preview player** — gapless playback with prev/next, a three-state repeat and
 volume, for checking that a file is what its tags claim. The seek bar draws the

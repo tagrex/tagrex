@@ -279,6 +279,8 @@
              gate buttons — nothing is written until Apply. -->
         <div id="diff-actionbar" class="diff-actionbar" hidden>
           <span class="ab-count"><b id="ab-count">0</b> <span data-i18n="diff.toApply">to apply</span><span class="ab-plan" id="ab-plan"></span><span class="ab-locked" id="ab-locked" hidden></span></span>
+          <!-- Whose proposal this is, when an AI assistant staged it (#830). -->
+          <span class="ab-agent" id="ab-agent" hidden></span>
           <span class="ab-sep"></span>
           <label class="toggle-old" data-i18n-title="diff.showOldTitle" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="diff-show-old" /> <span data-i18n="diff.showOld">Show old values</span></label>
           <span class="ab-sep"></span>
@@ -1400,7 +1402,7 @@
                js/assistants.js. Applies at once, like the Beatport account. -->
           <div class="settings-group" data-icon="i-sparkle">
             <h3 data-i18n="settings.assistants">AI assistants</h3>
-            <p class="settings-hint" data-i18n="settings.assistants.intro">Lets Claude Code or Claude Desktop read the library open in TagRex over MCP: tracks and tags, mask previews, duplicates. Read-only: an assistant cannot change, rename or delete anything, and it only works while TagRex is running.</p>
+            <p class="settings-hint" data-i18n="settings.assistants.intro">Lets Claude Code or Claude Desktop work with the library open in TagRex over MCP: read tracks and tags, preview masks, find duplicates, and propose tag changes. A proposal only appears in the preview; nothing is written until you click Apply. It works while TagRex is running.</p>
             <div class="settings-row">
               <label data-i18n="settings.assistants.connect">Connect</label>
               <div class="settings-inline">

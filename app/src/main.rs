@@ -2518,6 +2518,7 @@ fn main() {
         .manage(update::PendingUpdate::default())
         .manage(SettingsNotice::default())
         .manage(mcp::McpState::default())
+        .manage(mcp::Proposals::default())
         // What the app was started with, waiting for the frontend to ask (#51).
         .manage(PendingOpen::new(paths_from_args(
             std::env::args_os().skip(1),
@@ -2644,7 +2645,9 @@ fn main() {
             take_launch_paths,
             mcp::mcp_clients,
             mcp::mcp_pair,
-            mcp::mcp_revoke
+            mcp::mcp_revoke,
+            mcp::proposals::mcp_proposal_reply,
+            mcp::proposals::mcp_proposal_outcome
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

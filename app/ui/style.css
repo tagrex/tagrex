@@ -3216,6 +3216,41 @@ td.unreadable-note {
 .diff-actionbar .ab-locked[hidden] {
   display: none;
 }
+/* Whose proposal is staged (#830): the assistant and its summary on a chip
+   above the pill, so the count and the buttons keep their room however long
+   the summary is. Cut to the pill's width, the full line a hover away. */
+.diff-actionbar .ab-agent {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + var(--space-2));
+  margin: 0 auto;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--text-xs);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+.diff-actionbar .ab-agent[hidden] {
+  display: none;
+}
+.diff-actionbar .ab-agent .ico {
+  flex: 0 0 auto;
+}
+.diff-actionbar .ab-agent-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* faint fill so a changed row reads across the whole rhythm, not just the bar */
 .fe-row.dirty {

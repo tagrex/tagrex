@@ -7,6 +7,7 @@
 
 pub mod connector;
 mod host;
+pub mod proposals;
 mod store;
 mod tools;
 mod wire;
@@ -18,6 +19,8 @@ use serde::Serialize;
 use tauri::{Manager, State};
 
 use tagrex_commands::ErrorDto;
+
+pub use proposals::Proposals;
 
 use crate::shell_error;
 

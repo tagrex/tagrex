@@ -143,11 +143,13 @@ Object.assign(hooks, {
     retranslateOnline();
     retranslateHealth();
     retranslateBpm();
+    retranslateAgent();
     renderSettingsNav();
   },
 });
 import { openSettings, cancelSettings, updateSettingsDot } from "./js/settings.js";
 import { renderSettingsNav } from "./js/settingsui.js";
+import { agentApplied, agentClosed, decorateAgentPlan, retranslateAgent } from "./js/agent.js";
 import {
   valueFont,
   applyValueFont,
@@ -1596,6 +1598,7 @@ function exitDiffState() {
   el("tracks").classList.remove("show-old");
   el("diff-actionbar").hidden = true;
   closePlanReport(); // a report about this plan goes with it (#562)
+  agentClosed(); // an assistant's proposal left without an Apply (#830)
   renderTracks();
   refreshGenerator();
   updateRefreshButton(); // the re-read is reachable again (#212)
@@ -2131,6 +2134,8 @@ async function previewEdits() {
         coverPaths: pending ? pending.paths : null,
       }),
     );
+    // An assistant's proposal (#830) is marked as its own in the history.
+    decorateAgentPlan(previewPlan);
     setPreviewSource("edits");
     renderPreview(previewPlan);
   } catch (e) {
@@ -2165,6 +2170,7 @@ async function apply() {
     await beginApplyProgress();
     await invoke("apply_plan", { plan: appliedPlan });
     toast(msg("toast.applied", { files: tn("unit.file", appliedPlan.changes.length) }));
+    agentApplied(appliedPlan.changes.length);
     if (wasRename) {
       remapEditsAfterRename(appliedPlan); // keep pending tag edits, new paths
     } else if (wasEdits) {

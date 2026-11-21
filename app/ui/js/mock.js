@@ -1367,6 +1367,10 @@ function mockInvoke(cmd, args) {
     // Beatport sign-in (#162). The real flow opens an OAuth window, which a
     // plain browser page can't do, so the mock just flips a flag — enough to
     // exercise the settings row and the "signed out" search gate.
+    // An assistant's proposal (#830) has nobody waiting for it in the mock.
+    case "mcp_proposal_reply":
+    case "mcp_proposal_outcome":
+      return Promise.resolve();
     // AI assistants (#828): pairings kept in memory for the session.
     case "mcp_clients":
     case "mcp_pair":

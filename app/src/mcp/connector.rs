@@ -21,10 +21,13 @@ const PROTOCOL_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", 
 #[cfg(unix)]
 const CALL_TIMEOUT: Duration = Duration::from_secs(600);
 
-const INSTRUCTIONS: &str = "TagRex is an audio tag editor. These tools read the library that is \
-open in the TagRex window: they never change a file. Start with library_status; if no library is \
-open, ask the user to open one in TagRex. Page through list_tracks rather than asking for \
-everything at once, and use read_tracks for the full details of a few files.";
+const INSTRUCTIONS: &str =
+    "TagRex is an audio tag editor. These tools work on the library that is \
+open in the TagRex window and never change a file themselves. Start with library_status; if no \
+library is open, ask the user to open one in TagRex. Page through list_tracks rather than asking \
+for everything at once, and use read_tracks for the full details of a few files. To change tags, \
+call propose_tag_edits: the changes appear in TagRex's preview and the user applies or discards \
+them there. Tell the user what you proposed and that it is waiting for them in TagRex.";
 
 const NOT_RUNNING: &str =
     "TagRex is not running. Ask the user to open TagRex and a library in it, then try again.";

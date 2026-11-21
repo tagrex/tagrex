@@ -8,7 +8,8 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use tagrex_commands::{App, ErrorDto, TrackDto};
+use tagrex_commands::{App, ErrorDto, TagEditDto, TrackDto};
+use tagrex_core::model::TagField;
 
 use crate::{shell_error, AppState};
 
@@ -21,6 +22,10 @@ const MAX_RENDER: usize = 500;
 /// The duplicate criteria offered. Identical audio is left out: it decodes the
 /// whole library and reports progress in the window.
 const DUPLICATE_CRITERIA: [&str; 5] = ["artist_title", "album_track", "duration", "size", "hash"];
+/// The most edits one proposal carries, and the longest summary and value.
+const MAX_EDITS: usize = 5000;
+const MAX_SUMMARY: usize = 200;
+const MAX_VALUE: usize = 10_000;
 
 /// Every tool, in the shape MCP's `tools/list` answers with.
 pub fn definitions() -> Value {
@@ -101,6 +106,52 @@ pub fn definitions() -> Value {
                     "criterion": { "type": "string", "enum": DUPLICATE_CRITERIA }
                 },
                 "required": ["criterion"],
+                "additionalProperties": false
+            },
+            "annotations": read_only
+        },
+        {
+            "name": "propose_tag_edits",
+            "title": "Propose tag edits",
+            "description": "Stage tag changes in TagRex's preview for the user to review. Nothing is written: the user sees the changes in the file table, can untick files or adjust values, and clicks Apply or Discard. `field` is a key as list_tracks shows it (artist, title, album, track, year, genre, ..., or custom:NAME); a null or empty `value` clears the field. Refused while the user has other unapplied changes. The answer lists anything left out and a `proposal` id for proposal_status.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "summary": { "type": "string", "maxLength": MAX_SUMMARY, "description": "One line the user sees next to the changes, e.g. \"Fill in missing track numbers from the file names\"." },
+                    "edits": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": MAX_EDITS,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": { "type": "string" },
+                                "field": { "type": "string" },
+                                "value": { "type": ["string", "null"] }
+                            },
+                            "required": ["path", "field"],
+                            "additionalProperties": false
+                        }
+                    }
+                },
+                "required": ["summary", "edits"],
+                "additionalProperties": false
+            },
+            "annotations": {
+                "readOnlyHint": false,
+                "destructiveHint": false,
+                "idempotentHint": false,
+                "openWorldHint": false
+            }
+        },
+        {
+            "name": "proposal_status",
+            "title": "Proposal status",
+            "description": "What happened to a proposal from propose_tag_edits: still staged, applied (to how many files) or discarded.",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "proposal": { "type": "string" } },
+                "required": ["proposal"],
                 "additionalProperties": false
             },
             "annotations": read_only
@@ -331,14 +382,177 @@ fn find_duplicates(app: &App, args: DuplicateArgs) -> Result<Value, ErrorDto> {
     Ok(json!({ "groups": groups }))
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProposeArgs {
+    summary: String,
+    edits: Vec<EditArg>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EditArg {
+    path: String,
+    field: String,
+    #[serde(default)]
+    value: Option<String>,
+}
+
+/// A proposal checked against the open library (#830): the edits that would
+/// change something, ready for the window to stage, and what was left out.
+pub struct Prepared {
+    pub summary: String,
+    pub edits: Vec<TagEditDto>,
+    /// What the assistant is told besides the counts: everything left out.
+    pub report: Value,
+}
+
+/// A key the app writes as given. Anything else would be read as a custom
+/// field of that name, so a typo such as `titel` must not get through.
+fn is_known_field(key: &str) -> bool {
+    TagField::from_storage_key(key).to_storage_key() == key
+        && key
+            .strip_prefix("custom:")
+            .is_none_or(|name| !name.trim().is_empty())
+}
+
+/// Check a proposal (#830). Blocking: run on the session queue.
+pub fn prepare_proposal(state: &AppState, arguments: Value) -> Result<Prepared, ErrorDto> {
+    let guard = state.lock().map_err(shell_error)?;
+    let app = guard
+        .as_ref()
+        .ok_or_else(|| ErrorDto::from(tagrex_commands::AppError::NoLibraryOpen))?;
+    prepare(app, parse(arguments)?)
+}
+
+fn prepare(app: &App, args: ProposeArgs) -> Result<Prepared, ErrorDto> {
+    let summary: String = args.summary.trim().chars().take(MAX_SUMMARY).collect();
+    if summary.is_empty() {
+        return Err(ErrorDto::plain("a summary is required"));
+    }
+    if args.edits.is_empty() || args.edits.len() > MAX_EDITS {
+        return Err(ErrorDto::plain(format!(
+            "between 1 and {MAX_EDITS} edits per proposal; got {}",
+            args.edits.len()
+        )));
+    }
+    let listed: HashMap<String, bool> = app
+        .list_tracks()
+        .into_iter()
+        .map(|track| (track.path, track.unreadable))
+        .collect();
+    let mut outside = Vec::new();
+    let mut unreadable = Vec::new();
+    let mut unknown = Vec::new();
+    let mut too_long = Vec::new();
+    // The last edit of a field wins, in the order the files were named.
+    let mut order: Vec<(String, String)> = Vec::new();
+    let mut values: HashMap<(String, String), Option<String>> = HashMap::new();
+    for edit in args.edits {
+        match listed.get(&edit.path) {
+            None => {
+                if !outside.contains(&edit.path) {
+                    outside.push(edit.path);
+                }
+                continue;
+            }
+            Some(true) => {
+                if !unreadable.contains(&edit.path) {
+                    unreadable.push(edit.path);
+                }
+                continue;
+            }
+            Some(false) => {}
+        }
+        if !is_known_field(&edit.field) {
+            if !unknown.contains(&edit.field) {
+                unknown.push(edit.field);
+            }
+            continue;
+        }
+        if edit
+            .value
+            .as_deref()
+            .is_some_and(|value| value.chars().count() > MAX_VALUE)
+        {
+            too_long.push(json!({ "path": edit.path, "field": edit.field }));
+            continue;
+        }
+        let key = (edit.path, edit.field);
+        if !values.contains_key(&key) {
+            order.push(key.clone());
+        }
+        values.insert(key, edit.value);
+    }
+    let candidates: Vec<TagEditDto> = order
+        .into_iter()
+        .map(|key| {
+            let value = values.remove(&key).flatten();
+            TagEditDto {
+                path: key.0,
+                field: key.1,
+                value,
+            }
+        })
+        .collect();
+    // The same plan the window will build: it drops what would not change,
+    // keeps locked fields out and flags values the format cannot hold.
+    let plan = if candidates.is_empty() {
+        None
+    } else {
+        Some(app.preview_tag_edits(&candidates).map_err(ErrorDto::from)?)
+    };
+    let mut edits = Vec::new();
+    let mut invalid = Vec::new();
+    let mut locked = Vec::new();
+    if let Some(plan) = &plan {
+        for change in &plan.changes {
+            for field_change in &change.tag_changes {
+                if field_change.invalid {
+                    invalid.push(json!({ "path": change.path, "field": field_change.field }));
+                    continue;
+                }
+                edits.push(TagEditDto {
+                    path: change.path.clone(),
+                    field: field_change.field.clone(),
+                    value: field_change.new.clone(),
+                });
+            }
+        }
+        locked = plan
+            .locked_skipped
+            .iter()
+            .map(|skip| json!({ "field": skip.field, "files": skip.files }))
+            .collect();
+    }
+    // Already that value, or kept out by a locked field (named below).
+    let unchanged = candidates.len().saturating_sub(edits.len() + invalid.len());
+    Ok(Prepared {
+        summary,
+        edits,
+        report: json!({
+            "unchanged": unchanged,
+            "not_in_library": outside,
+            "unreadable": unreadable,
+            "unknown_fields": unknown,
+            "too_long": too_long,
+            "invalid_values": invalid,
+            "locked_fields": locked,
+        }),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn every_tool_is_read_only_and_has_an_object_schema() {
+    fn no_tool_writes_and_every_one_has_an_object_schema() {
         for tool in definitions().as_array().unwrap() {
-            assert_eq!(tool["annotations"]["readOnlyHint"], true, "{tool}");
+            // A proposal changes what the window has staged, never a file.
+            let read_only = tool["name"] != "propose_tag_edits";
+            assert_eq!(tool["annotations"]["readOnlyHint"], read_only, "{tool}");
+            assert_eq!(tool["annotations"]["destructiveHint"], false, "{tool}");
             assert_eq!(tool["inputSchema"]["type"], "object", "{tool}");
             assert!(exists(tool["name"].as_str().unwrap()));
         }
@@ -449,6 +663,69 @@ mod tests {
             .unwrap()
             .iter()
             .any(|p| p["name"] == "artist"));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn only_fields_the_app_writes_as_given_are_known() {
+        for key in ["artist", "title", "track", "custom:MOOD"] {
+            assert!(is_known_field(key), "{key}");
+        }
+        for key in ["titel", "Artist", "custom:", "custom: ", ""] {
+            assert!(!is_known_field(key), "{key}");
+        }
+    }
+
+    // #830: a proposal keeps what would change and reports the rest.
+    #[test]
+    fn a_proposal_keeps_real_changes_and_reports_the_rest() {
+        let base = std::env::temp_dir().join(format!("tagrex-mcp-propose-{}", std::process::id()));
+        let root = base.join("library");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(
+            root.join("a.wav"),
+            tagged_wav(&[(b"IART", "Alpha"), (b"INAM", "First")]),
+        )
+        .unwrap();
+        let app = App::open(&root, &base.join("journal.sqlite")).unwrap();
+        let a = root.join("a.wav").to_string_lossy().into_owned();
+
+        let prepared = prepare(
+            &app,
+            parse(json!({
+                "summary": "  Fix the album  ",
+                "edits": [
+                    { "path": a, "field": "album", "value": "Demo" },
+                    { "path": a, "field": "artist", "value": "Alpha" },
+                    { "path": a, "field": "title", "value": null },
+                    { "path": a, "field": "titel", "value": "x" },
+                    { "path": "/elsewhere/b.wav", "field": "album", "value": "x" },
+                    { "path": a, "field": "album", "value": "Demo (final)" }
+                ]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(prepared.summary, "Fix the album");
+        let staged: Vec<(&str, Option<&str>)> = prepared
+            .edits
+            .iter()
+            .map(|e| (e.field.as_str(), e.value.as_deref()))
+            .collect();
+        assert_eq!(
+            staged,
+            vec![("album", Some("Demo (final)")), ("title", None)]
+        );
+        assert_eq!(prepared.report["unchanged"], 1);
+        assert_eq!(prepared.report["unknown_fields"], json!(["titel"]));
+        assert_eq!(
+            prepared.report["not_in_library"],
+            json!(["/elsewhere/b.wav"])
+        );
+
+        let nothing = parse::<ProposeArgs>(json!({ "summary": " ", "edits": [] })).unwrap();
+        assert!(prepare(&app, nothing).is_err());
         drop(app);
         let _ = std::fs::remove_dir_all(&base);
     }

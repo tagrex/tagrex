@@ -144,27 +144,28 @@ impl Store {
         Ok(found)
     }
 
-    /// Whether `secret` is the one paired as `id`, noting the time when it is.
-    pub fn authenticate(&self, id: &str, secret: &str) -> io::Result<bool> {
+    /// The client paired as `id` when `secret` is its secret, noting the time.
+    pub fn authenticate(&self, id: &str, secret: &str) -> io::Result<Option<Client>> {
         let _guard = self.lock.lock().unwrap_or_else(|e| e.into_inner());
         let mut clients = self.load()?;
         let offered = sha256_hex(secret);
         let Some(client) = clients.iter_mut().find(|client| client.id == id) else {
-            return Ok(false);
+            return Ok(None);
         };
         if !constant_time_eq(client.secret_sha256.as_bytes(), offered.as_bytes()) {
-            return Ok(false);
+            return Ok(None);
         }
         let now = now();
         let stale = client
             .last_used
             .is_none_or(|last| now.saturating_sub(last) >= LAST_USED_GRANULARITY_SECS);
+        let found = client.clone();
         if stale {
             client.last_used = Some(now);
             // A failure to note the time must not refuse a valid client.
             let _ = self.save(&clients);
         }
-        Ok(true)
+        Ok(Some(found))
     }
 
     fn load(&self) -> io::Result<Vec<Client>> {
@@ -293,9 +294,16 @@ mod tests {
         let (client, path) = store.pair("claude-code").unwrap();
         let credential = read_credential(&path);
         assert_eq!(credential.client, client.id);
-        assert!(store.authenticate(&client.id, &credential.secret).unwrap());
-        assert!(!store.authenticate(&client.id, "not the secret").unwrap());
-        assert!(!store.authenticate("0000", &credential.secret).unwrap());
+        let found = store.authenticate(&client.id, &credential.secret).unwrap();
+        assert_eq!(found.map(|c| c.kind), Some("claude-code".to_string()));
+        assert!(store
+            .authenticate(&client.id, "not the secret")
+            .unwrap()
+            .is_none());
+        assert!(store
+            .authenticate("0000", &credential.secret)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -315,7 +323,7 @@ mod tests {
         let secret = read_credential(&path).secret;
         assert!(store.revoke(&client.id).unwrap());
         assert!(!path.exists());
-        assert!(!store.authenticate(&client.id, &secret).unwrap());
+        assert!(store.authenticate(&client.id, &secret).unwrap().is_none());
         assert!(!store.revoke(&client.id).unwrap());
     }
 

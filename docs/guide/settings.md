@@ -165,11 +165,25 @@ Unlike the two controls above it, this one takes effect on **Save**.
 Lets an AI assistant read the library that is open in TagRex, over the Model
 Context Protocol (MCP). Supported: **Claude Code** and **Claude Desktop**.
 
-Access is **read-only**. An assistant can list tracks and their tags, read a
-file's tag blocks, see what a mask renders to, list the mask placeholders and
-look for duplicates. It cannot change, rename, move or delete anything, and it
+An assistant can list tracks and their tags, read a file's tag blocks, see
+what a mask renders to, list the mask placeholders and look for duplicates. It
 only sees files the open library lists. It works while TagRex is running; with
 no library open, it is told to ask you to open one.
+
+**It never writes a file itself.** When you ask it to change tags, it proposes
+the changes: they appear in the file table as an ordinary preview, with a chip
+above the Apply bar naming the assistant and what it proposes, and TagRex asks
+for your attention. Review them like any other edit, untick files or change a
+value, then click **Apply** or **Discard**. Applied changes go into the history
+marked with the assistant's name and can be undone like any other batch. The
+assistant can ask whether you applied or discarded its proposal, but it cannot
+rename, move or delete anything.
+
+A proposal is refused while the table already shows unapplied changes, your own
+or an earlier proposal, so it never mixes into work you have staged. Values a
+field cannot hold, locked fields and files outside the library are left out,
+and the assistant is told which. When a proposed field has no column in the
+table, a message names it.
 
 Click **Claude Code** or **Claude Desktop** to make a connection. Its card shows
 what to do next:

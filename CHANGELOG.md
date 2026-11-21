@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   tracks with a missing-field filter, read a file's tag blocks, render a mask,
   list the placeholders and find duplicates, limited to the files the library
   lists ([#828](https://github.com/tagrex/tagrex/issues/828)).
+- An AI assistant connected over MCP can propose tag changes: they are staged
+  in the ordinary preview with a chip naming the assistant and its summary,
+  and nothing is written until you click Apply. Proposals are refused while
+  other changes are pending, leave out invalid values, locked fields and files
+  outside the library, are marked with the assistant's name in the history, and
+  the assistant can ask whether they were applied or discarded
+  ([#830](https://github.com/tagrex/tagrex/issues/830)).
 
 ### Fixed
 

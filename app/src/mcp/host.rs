@@ -16,7 +16,7 @@ use tauri::Manager;
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use super::store::{self, Store};
-use super::{tools, wire};
+use super::{proposals, tools, wire};
 use crate::{AppState, SESSION_QUEUE};
 
 /// A connector that has not sent its request by then is dropped.
@@ -165,9 +165,9 @@ async fn respond(body: &[u8], app: &tauri::AppHandle, store: Arc<Store>) -> wire
     let (client, secret) = (request.client, request.secret);
     let authenticated =
         tauri::async_runtime::spawn_blocking(move || store.authenticate(&client, &secret)).await;
-    match authenticated {
-        Ok(Ok(true)) => {}
-        Ok(Ok(false)) => return wire::Response::Unauthorized,
+    let client = match authenticated {
+        Ok(Ok(Some(client))) => client,
+        Ok(Ok(None)) => return wire::Response::Unauthorized,
         Ok(Err(error)) => {
             return wire::Response::Error {
                 message: format!("could not check the connection: {error}"),
@@ -178,18 +178,25 @@ async fn respond(body: &[u8], app: &tauri::AppHandle, store: Arc<Store>) -> wire
                 message: error.to_string(),
             }
         }
-    }
+    };
     if !tools::exists(&request.tool) {
         return wire::Response::Error {
             message: format!("unknown tool: {}", request.tool),
         };
     }
-    let state = app.state::<AppState>().inner().clone();
     let (tool, arguments) = (request.tool, request.arguments);
-    match SESSION_QUEUE
-        .run(move || tools::call(&state, &tool, arguments))
-        .await
-    {
+    // A proposal waits on the interface (#830); the rest only read the session.
+    let outcome = match tool.as_str() {
+        "propose_tag_edits" => proposals::propose(app, &client, arguments).await,
+        "proposal_status" => proposals::status(app, &client, arguments),
+        _ => {
+            let state = app.state::<AppState>().inner().clone();
+            SESSION_QUEUE
+                .run(move || tools::call(&state, &tool, arguments))
+                .await
+        }
+    };
+    match outcome {
         Ok(result) => wire::Response::Ok { result },
         Err(error) => wire::Response::Error {
             message: error.text,
