@@ -1066,6 +1066,8 @@ export const es = {
   "undo.changed.cancel": "No deshacer",
   "app.journalReset": "No se pudo leer el historial de deshacer y se empezó de nuevo: los cambios anteriores ya no se pueden deshacer aquí.",
   "app.journalSetAside": "El archivo de historial dañado se conservó en {path}",
+  "app.settingsReset": "No se pudo leer el archivo de ajustes y se empezó de nuevo: todas las preferencias vuelven a sus valores predeterminados.",
+  "app.settingsSetAside": "El archivo de ajustes dañado se conservó en {path}",
   "app.typePath": "Escribe una ruta de biblioteca y pulsa Abrir",
   "app.dblClickEdit": "Doble clic para editar",
   "app.lockedCell": "Bloqueado: desbloquéalo en el panel EDITOR",

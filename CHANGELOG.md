@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- A settings file cut short by a crash, a power loss or a full disk is no longer
+  read as the defaults and then overwritten by the next save: settings are
+  written through a temporary file and renamed into place, and a damaged
+  `settings.json` found at startup is set aside as `settings.json.corrupt-…`,
+  with a message saying the settings were reset and where the old file was kept
+  ([#808](https://github.com/tagrex/tagrex/issues/808)).
+
 ## [1.9.0] - 2026-11-20
 
 TagRex now has an About dialog on Windows and Linux as well as macOS: click the

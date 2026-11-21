@@ -3801,6 +3801,15 @@ initHealth(() => {
 });
 initUpdateCheck();
 initAbout();
+// A damaged settings file was set aside at startup (#808): say so, and where.
+// The red line keeps the report up until it is dismissed.
+invoke("take_settings_notice", {})
+  .then((setAside) => {
+    if (setAside) report(msg("app.settingsReset"), [{ text: msg("app.settingsSetAside", { path: setAside }), problem: true }]);
+  })
+  .catch(() => {
+    /* an older backend without the command: nothing to report */
+  });
 // Open whatever the OS handed the app on the way in (#51) — a folder from
 // "Open With", from the Dock icon, or from a second launch. After the hooks
 // above, since it opens through the same one a drop does.

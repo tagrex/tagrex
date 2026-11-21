@@ -1068,6 +1068,8 @@ export const fr = {
   "undo.changed.cancel": "Ne pas annuler",
   "app.journalReset": "L’historique d’annulation était illisible et a été recommencé : les modifications précédentes ne peuvent plus être annulées ici.",
   "app.journalSetAside": "Le fichier d’historique endommagé a été conservé ici : {path}",
+  "app.settingsReset": "Le fichier des réglages n’a pas pu être lu et a été recréé : toutes les préférences sont revenues à leur valeur par défaut.",
+  "app.settingsSetAside": "Le fichier des réglages endommagé a été conservé ici : {path}",
   "app.typePath": "Saisissez un chemin de bibliothèque, puis appuyez sur Ouvrir",
   "app.dblClickEdit": "Double-clic pour modifier",
   "app.lockedCell": "Verrouillé — déverrouillez-le dans le panneau EDITOR",

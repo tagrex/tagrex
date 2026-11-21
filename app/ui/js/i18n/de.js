@@ -1064,6 +1064,8 @@ export const de = {
   "undo.changed.cancel": "Nicht rückgängig",
   "app.journalReset": "Der Rückgängig-Verlauf war nicht lesbar und wurde neu begonnen: frühere Änderungen lassen sich hier nicht mehr rückgängig machen.",
   "app.journalSetAside": "Die beschädigte Verlaufsdatei wurde aufbewahrt unter {path}",
+  "app.settingsReset": "Die Einstellungsdatei konnte nicht gelesen werden und wurde neu angelegt: Alle Einstellungen stehen wieder auf ihren Standardwerten.",
+  "app.settingsSetAside": "Die beschädigte Einstellungsdatei wurde aufbewahrt unter {path}",
   "app.typePath": "Bibliothekspfad eingeben, dann Öffnen drücken",
   "app.dblClickEdit": "Zum Bearbeiten doppelklicken",
   "app.lockedCell": "Gesperrt — im Panel EDITOR entsperren",

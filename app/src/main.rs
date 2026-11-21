@@ -6,7 +6,7 @@
 //! HTML/JS under `ui/`.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -1228,6 +1228,18 @@ async fn take_journal_notice(state: State<'_, AppState>) -> Result<Option<String
         .await
 }
 
+/// Where a damaged settings file was set aside at startup (#808), the first
+/// time it is asked, and `None` after that and whenever the file was sound.
+#[tauri::command]
+fn take_settings_notice(notice: State<'_, SettingsNotice>) -> Option<String> {
+    notice
+        .0
+        .lock()
+        .unwrap()
+        .take()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 async fn history(state: State<'_, AppState>) -> Result<Vec<BatchDto>, ErrorDto> {
     let state = state.inner().clone();
@@ -1713,6 +1725,60 @@ fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, ErrorDto> {
     Ok(dir.join("settings.json"))
 }
 
+/// Where a damaged settings file was set aside at startup (#808), until the
+/// interface has said so.
+#[derive(Default)]
+struct SettingsNotice(Mutex<Option<PathBuf>>);
+
+/// Set a settings file that exists but does not parse aside, as
+/// `settings.json.corrupt-<seconds>`, and return its new path (#808).
+///
+/// Left in place it was read as the defaults and then overwritten by the next
+/// save, so a half-written file silently cost every preference. Renamed, the
+/// next save writes a fresh file and the damaged one can still be recovered. A
+/// file that cannot be read at all (permissions) is not called damaged and is
+/// left alone, like a missing one.
+fn set_aside_damaged_settings(path: &Path) -> Option<PathBuf> {
+    let text = std::fs::read(path).ok()?;
+    if serde_json::from_slice::<SettingsDto>(&text).is_ok() {
+        return None;
+    }
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0);
+    let mut aside = path.as_os_str().to_owned();
+    aside.push(format!(".corrupt-{stamp}"));
+    let aside = PathBuf::from(aside);
+    std::fs::rename(path, &aside).ok()?;
+    Some(aside)
+}
+
+/// Write `json` to `path` so that a crash part-way leaves the old file whole
+/// (#808): into a temporary file beside it, synced, then renamed over it.
+fn write_settings_file(path: &Path, json: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut temporary = path.as_os_str().to_owned();
+    temporary.push(".tmp");
+    let temporary = PathBuf::from(temporary);
+    let written = (|| {
+        let mut file = std::fs::File::create(&temporary)?;
+        // The replacement keeps the permissions the old file had, so a file
+        // the user made private stays private.
+        if let Ok(metadata) = std::fs::metadata(path) {
+            file.set_permissions(metadata.permissions())?;
+        }
+        file.write_all(json.as_bytes())?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&temporary, path)
+    })();
+    if written.is_err() {
+        std::fs::remove_file(&temporary).ok();
+    }
+    written
+}
+
 /// Read saved settings, falling back to defaults if the file is missing or
 /// unreadable (so a corrupt file never blocks startup).
 fn read_settings(app: &tauri::AppHandle) -> SettingsDto {
@@ -2124,7 +2190,7 @@ async fn save_settings_at(
                 std::fs::create_dir_all(parent).map_err(ErrorDto::from)?;
             }
             let json = serde_json::to_string_pretty(&settings).map_err(ErrorDto::from)?;
-            std::fs::write(path, json).map_err(ErrorDto::from)?;
+            write_settings_file(&path, &json).map_err(ErrorDto::from)?;
             // Apply immediately: the network half always (the hub is always there), the
             // library half only when a library is open — so a change takes effect
             // without reopening either way.
@@ -2196,6 +2262,7 @@ fn main() {
         .manage(ApplyControl::default())
         .manage(BpmControl::default())
         .manage(update::PendingUpdate::default())
+        .manage(SettingsNotice::default())
         // What the app was started with, waiting for the frontend to ask (#51).
         .manage(PendingOpen::new(paths_from_args(
             std::env::args_os().skip(1),
@@ -2204,6 +2271,12 @@ fn main() {
             // The provider hub exists from startup, before any library is
             // opened (#166), so it takes the saved network settings here rather
             // than waiting for a library or a trip through Settings › Save.
+            // A damaged file is set aside first (#808), before anything reads
+            // it as the defaults and a save overwrites it.
+            if let Ok(path) = settings_path(app.handle()) {
+                *app.state::<SettingsNotice>().0.lock().unwrap() =
+                    set_aside_damaged_settings(&path);
+            }
             let settings = read_settings(&app.handle().clone());
             app.state::<ProviderState>()
                 .apply_settings(&settings)
@@ -2267,6 +2340,7 @@ fn main() {
             redo_count,
             history,
             take_journal_notice,
+            take_settings_notice,
             provider_search,
             provider_fetch_release,
             provider_fetch_image,
@@ -2382,6 +2456,65 @@ mod tests {
         drop(state);
         std::fs::remove_dir_all(root).unwrap();
         assert_eq!(actual, Some(Duration::from_secs(7 * 60)));
+    }
+
+    fn scratch_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "tagrex-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_damaged_settings_file_is_set_aside_not_overwritten() {
+        let dir = scratch_dir("settings-damaged");
+        let path = dir.join("settings.json");
+        // A save cut short: half a JSON object.
+        std::fs::write(&path, "{\"proxy\": \"socks5://h").unwrap();
+        let aside = super::set_aside_damaged_settings(&path).expect("set aside");
+        assert!(!path.exists(), "the damaged file is moved away");
+        let name = aside.file_name().unwrap().to_string_lossy().into_owned();
+        assert!(name.starts_with("settings.json.corrupt-"), "{name}");
+        assert_eq!(
+            std::fs::read_to_string(&aside).unwrap(),
+            "{\"proxy\": \"socks5://h"
+        );
+        // An empty file, the other shape a crash leaves, is damaged too.
+        std::fs::write(&path, "").unwrap();
+        assert!(super::set_aside_damaged_settings(&path).is_some());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn sound_or_missing_settings_are_left_alone() {
+        let dir = scratch_dir("settings-sound");
+        let path = dir.join("settings.json");
+        assert_eq!(super::set_aside_damaged_settings(&path), None);
+        // An older file without most fields still parses: it is not damaged.
+        std::fs::write(&path, "{\"proxy\": \"\"}").unwrap();
+        assert_eq!(super::set_aside_damaged_settings(&path), None);
+        assert!(path.exists());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn settings_are_replaced_whole_through_a_temporary_file() {
+        let dir = scratch_dir("settings-write");
+        let path = dir.join("settings.json");
+        super::write_settings_file(&path, "{\"proxy\": \"first\"}").unwrap();
+        super::write_settings_file(&path, "{\"proxy\": \"second\"}").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{\"proxy\": \"second\"}"
+        );
+        assert!(!dir.join("settings.json.tmp").exists(), "no temporary left");
+        std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

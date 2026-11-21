@@ -1070,6 +1070,8 @@ export const en = {
   "undo.changed.cancel": "Don't undo",
   "app.journalReset": "The undo history could not be read and was started afresh: earlier changes can no longer be undone here.",
   "app.journalSetAside": "The damaged history file was kept at {path}",
+  "app.settingsReset": "The settings file could not be read and was started afresh: every preference is back to its default.",
+  "app.settingsSetAside": "The damaged settings file was kept at {path}",
   "app.typePath": "Type a library path, then press Open",
   "app.dblClickEdit": "Double-click to edit",
   "app.lockedCell": "Locked — unlock it in the EDITOR panel",

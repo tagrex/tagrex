@@ -1068,6 +1068,8 @@ export const it = {
   "undo.changed.cancel": "Non annullare",
   "app.journalReset": "Non è stato possibile leggere la cronologia degli annullamenti, che è stata ricominciata: le modifiche precedenti non si possono più annullare qui.",
   "app.journalSetAside": "Il file di cronologia danneggiato è stato conservato in {path}",
+  "app.settingsReset": "Il file delle impostazioni non è stato letto ed è stato ricreato: tutte le preferenze sono tornate ai valori predefiniti.",
+  "app.settingsSetAside": "Il file delle impostazioni danneggiato è stato conservato in {path}",
   "app.typePath": "Digita un percorso della libreria, poi premi Apri",
   "app.dblClickEdit": "Doppio clic per modificare",
   "app.lockedCell": "Bloccato: sbloccalo nel pannello EDITOR",
