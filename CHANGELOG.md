@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   come first and the rest wait under More, which expands in place. The Group
   button shows a chevron, and toolbar menus arrive with a short fade
   ([#844](https://github.com/tagrex/tagrex/issues/844)).
+- Drop-down choices open the app's own list instead of the platform's menu:
+  the same look on every platform, a tick on the chosen option and a short
+  reveal, with the usual keys (arrows, Home/End, typing a letter, Enter,
+  Escape). Escape closes only the list, never a staged plan. The duplicate
+  finder's criteria now explain themselves under each option
+  ([#845](https://github.com/tagrex/tagrex/issues/845)).
 
 ### Fixed
 

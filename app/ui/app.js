@@ -40,6 +40,8 @@ import { initUpdateCheck } from "./js/updatecheck.js";
 import { initAbout } from "./js/about.js";
 import { initCoverView } from "./js/coverview.js";
 import "./js/tablegestures.js";
+// The app's own option list for every select (#845).
+import "./js/selects.js";
 import { scheduleMaskExample, syncCarryToggles } from "./js/renamer.js";
 import "./js/maskbuilder.js";
 import { previewTagsFromName, refreshNameProbe, scheduleNameProbe } from "./js/fromname.js";

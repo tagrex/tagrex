@@ -716,12 +716,12 @@
             <label class="export-row"
               ><span data-i18n="dedup.by">By</span>
               <select id="dup-criterion" data-i18n-title="dedup.criterion.title" title="How to decide two files are duplicates">
-                <option value="artist_title" data-i18n="dedup.criterion.artistTitle">Artist + Title</option>
-                <option value="album_track" data-i18n="dedup.criterion.albumTrack">Album + Track</option>
-                <option value="duration" data-i18n="dedup.criterion.duration">Duration</option>
-                <option value="size" data-i18n="dedup.criterion.size">File size</option>
-                <option value="hash" data-i18n="dedup.criterion.hash">Identical bytes</option>
-                <option value="audio" data-i18n="dedup.criterion.audio">Identical audio</option>
+                <option value="artist_title" data-i18n="dedup.criterion.artistTitle" data-i18n-data-description="dedup.criterionHint.artistTitle">Artist + Title</option>
+                <option value="album_track" data-i18n="dedup.criterion.albumTrack" data-i18n-data-description="dedup.criterionHint.albumTrack">Album + Track</option>
+                <option value="duration" data-i18n="dedup.criterion.duration" data-i18n-data-description="dedup.criterionHint.duration">Duration</option>
+                <option value="size" data-i18n="dedup.criterion.size" data-i18n-data-description="dedup.criterionHint.size">File size</option>
+                <option value="hash" data-i18n="dedup.criterion.hash" data-i18n-data-description="dedup.criterionHint.hash">Identical bytes</option>
+                <option value="audio" data-i18n="dedup.criterion.audio" data-i18n-data-description="dedup.audioHint">Identical audio</option>
               </select>
             </label>
             <p id="dup-audio-hint" class="hint muted" style="padding: 0" data-i18n="dedup.audioHint" hidden>

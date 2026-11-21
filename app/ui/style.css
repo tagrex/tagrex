@@ -7559,6 +7559,104 @@ body.drag-active #drop-overlay {
   display: none;
 }
 
+/* ---- the option list of a select (#845) ------------------------------------
+   js/selects.js opens this instead of the platform's menu: the same look on
+   every platform, a tick on the chosen option, an optional description line,
+   and a short reveal. Placed fixed against its select by placeFloating, above
+   modals and below the tooltip. */
+.sel-list {
+  position: fixed;
+  z-index: 150;
+  max-width: min(380px, calc(100vw - 16px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-1);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+  font-size: var(--text-sm);
+  color: var(--text);
+  animation: menu-reveal 0.16s ease-out;
+}
+.sel-list.above {
+  animation-name: sel-rise;
+}
+@keyframes sel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.sel-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-height: 28px;
+  padding: 5px var(--space-4) 5px var(--space-3);
+  border-radius: var(--radius-md);
+  cursor: default;
+}
+.sel-option.active {
+  background: var(--row-hover);
+}
+.sel-option.off {
+  color: var(--muted);
+  opacity: 0.55;
+}
+.sel-tick {
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+  margin-top: 3px;
+  visibility: hidden;
+  color: var(--accent-ink);
+  stroke-width: 2;
+}
+.sel-option.chosen .sel-tick {
+  visibility: visible;
+}
+.sel-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sel-label {
+  line-height: 19px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sel-option.chosen .sel-label {
+  font-weight: var(--fw-medium);
+}
+.sel-desc {
+  margin-top: 1px;
+  font-size: var(--text-xs);
+  line-height: var(--lh-snug);
+  color: var(--muted);
+  white-space: normal;
+}
+.sel-group {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--ls-caps);
+  color: var(--muted);
+}
+.sel-group:first-child {
+  padding-top: var(--space-1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .sel-list {
+    animation: none;
+  }
+}
+
 /* ---- the activity card (#843) ---------------------------------------------
    A running apply, undo, redo, BPM detection or audio duplicate scan. The
    floating Apply pill grows into this card (js/activity.js animates the size),
