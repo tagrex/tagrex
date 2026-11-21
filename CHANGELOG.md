@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Code scanning no longer reopens a dismissed XSS false positive every time the
+  cover code moves: the browser-only development mock stops echoing the typed
+  Discogs token back, which had made every command result look tainted by it
+  ([#820](https://github.com/tagrex/tagrex/issues/820)).
 - On Windows the file table no longer keeps showing a tag's old value after
   another tagger changes it without changing the file's size and then puts the
   file's date back: cached reads are checked against the NTFS change time,

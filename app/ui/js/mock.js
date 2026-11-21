@@ -1320,11 +1320,14 @@ function mockInvoke(cmd, args) {
           code: "importField.releaseid",
         },
       ]);
+    // Only whether a token was saved is kept, never the typed text: echoing it
+    // back made code scanning treat every invoke result as tainted by the
+    // token field (#820).
     case "saved_discogs_token":
-      return Promise.resolve(mockInvoke.state?.token || "");
+      return Promise.resolve(mockInvoke.state?.tokenSaved ? "mock-discogs-token" : "");
     case "save_discogs_token":
       mockInvoke.state = mockInvoke.state || {};
-      mockInvoke.state.token = args.token;
+      mockInvoke.state.tokenSaved = args.token !== "";
       return Promise.resolve();
     // Beatport sign-in (#162). The real flow opens an OAuth window, which a
     // plain browser page can't do, so the mock just flips a flag — enough to
