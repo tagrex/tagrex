@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The Windows build of the AI assistant connection no longer trips the lint
+  over a call timeout that only applies on macOS and Linux
+  ([#829](https://github.com/tagrex/tagrex/issues/829)).
 - With no folder open, the "Open a library to list its tracks." panel stays in
   place when the columns are scrolled sideways, instead of sliding off with
   them ([#827](https://github.com/tagrex/tagrex/issues/827)).

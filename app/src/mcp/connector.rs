@@ -17,6 +17,8 @@ use super::{tools, wire};
 /// newest, as the specification says.
 const PROTOCOL_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 /// How long one tool call may take. A hash scan of a large library is slow.
+/// Unix only: a pipe opened as a file on Windows has no read timeout.
+#[cfg(unix)]
 const CALL_TIMEOUT: Duration = Duration::from_secs(600);
 
 const INSTRUCTIONS: &str = "TagRex is an audio tag editor. These tools read the library that is \
