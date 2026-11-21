@@ -317,6 +317,14 @@ For a faster iteration build that skips the installer packaging:
 cargo tauri build --debug --bundles app
 ```
 
+To try a change without touching an installed copy, build it as **TagRex Next**:
+a separate app with its own settings and history that runs side by side with
+TagRex and never updates itself.
+
+```bash
+cargo tauri build --debug --bundles app --config app/tauri.next.conf.json
+```
+
 Linux additionally needs the usual WebKitGTK development packages; see the
 [Tauri prerequisites](https://tauri.app/start/prerequisites/).
 

@@ -38,6 +38,20 @@ pub struct UpdateCheckDto {
 #[derive(Default)]
 pub struct PendingUpdate(pub Mutex<Option<Update>>);
 
+/// Whether this build updates itself: false when the config lists no update
+/// endpoints, as the side-by-side TagRex Next overlay does (#818), so such a
+/// build never asks about, offers or installs a regular release.
+pub fn self_updating(app: &AppHandle) -> bool {
+    endpoints_configured(app.config().plugins.0.get("updater"))
+}
+
+fn endpoints_configured(updater: Option<&serde_json::Value>) -> bool {
+    updater
+        .and_then(|updater| updater.get("endpoints"))
+        .and_then(|endpoints| endpoints.as_array())
+        .is_some_and(|endpoints| !endpoints.is_empty())
+}
+
 /// `0.21.0`, `v0.21.0` or `0.21.0-rc1` as numbers, the pre-release suffix
 /// dropped. `None` for anything that does not start with a dotted number.
 fn parse_version(text: &str) -> Option<(u64, u64, u64)> {
@@ -317,9 +331,26 @@ pub fn install_rpm(bytes: &[u8]) -> Result<RpmInstall, String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        elevated_installer_parameters, is_newer, parse_version, proxy_url, refuses_writes,
-        rpm_failure, rpm_install_args,
+        elevated_installer_parameters, endpoints_configured, is_newer, parse_version, proxy_url,
+        refuses_writes, rpm_failure, rpm_install_args,
     };
+
+    /// The regular build updates itself; one built with the TagRex Next overlay
+    /// (#818) does not, since a merge patch replaces the endpoint list whole.
+    #[test]
+    fn only_the_regular_build_updates_itself() {
+        let read = |name: &str| -> serde_json::Value {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(name);
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+        };
+        let regular = read("tauri.conf.json");
+        let next = read("tauri.next.conf.json");
+        assert!(endpoints_configured(regular.pointer("/plugins/updater")));
+        assert!(!endpoints_configured(next.pointer("/plugins/updater")));
+        assert_eq!(next["identifier"], "com.tagrex.next");
+        assert_ne!(next["identifier"], regular["identifier"]);
+        assert!(!endpoints_configured(None));
+    }
 
     #[test]
     fn an_rpm_update_skips_only_the_signature_check() {

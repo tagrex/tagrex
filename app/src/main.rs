@@ -1809,6 +1809,12 @@ async fn check_for_update(
     if automatic && !settings.check_updates {
         return Ok(None);
     }
+    if !update::self_updating(&app) {
+        if automatic {
+            return Ok(None);
+        }
+        return Err(ErrorDto::plain("This build does not update itself."));
+    }
     let proxy = settings.proxy.clone();
     let mut found = tauri::async_runtime::spawn_blocking(move || update::check(&proxy))
         .await
@@ -2282,6 +2288,11 @@ fn main() {
                 .apply_settings(&settings)
                 .map_err(|error| std::io::Error::other(error.text))?;
             media_session::install(app.handle());
+            // The title follows the product name, so a TagRex Next build
+            // (#818) says which app it is without repeating the window config.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_title(&app.package_info().name);
+            }
             Ok(())
         })
         .manage(Player::new())

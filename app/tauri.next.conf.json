@@ -1,0 +1,9 @@
+{
+  "productName": "TagRex Next",
+  "identifier": "com.tagrex.next",
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
+  }
+}

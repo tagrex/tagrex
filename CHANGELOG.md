@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Any branch can be built as TagRex Next with the config overlay
+  `app/tauri.next.conf.json`: a separate app (own bundle id, settings and
+  history) that runs side by side with TagRex for trying interface variants.
+  With no update endpoints configured, such a build never checks for, offers
+  or installs a release
+  ([#818](https://github.com/tagrex/tagrex/issues/818)).
 - Each link in the About dialog has a leading icon that says what it is (the
   GitHub mark, a book, a sparkle, a heart, a pair of scales), taking the accent
   colour while its row is hovered or focused
