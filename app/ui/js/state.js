@@ -61,6 +61,13 @@ export let diffByPath = null;
 export function setDiffByPath(value) {
   diffByPath = value;
 }
+// Changed fields the table has no column for (#831): while a plan is staged
+// each gets a temporary column after the regular ones, so no change is staged
+// out of sight. Never saved with the column layout; empty when not diffing.
+export let diffColumns = [];
+export function setDiffColumns(value) {
+  diffColumns = value;
+}
 export let applySelection = new Set();
 export function setApplySelection(value) {
   applySelection = value;

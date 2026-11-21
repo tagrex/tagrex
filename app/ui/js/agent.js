@@ -6,11 +6,10 @@
 // sends is written by itself. A proposal never joins edits the person has
 // staged: it is refused instead, and the assistant is told why.
 import { el, escapeHtml, toast } from "./dom.js";
-import { list, t, tn } from "./i18n.js";
+import { t, tn } from "./i18n.js";
 import { hooks } from "./hooks.js";
 import { invoke } from "./invoke.js";
-import { edits, previewPlan, previewSource, visibleColumns } from "./state.js";
-import { fieldLabel } from "./fields.js";
+import { edits, previewPlan, previewSource } from "./state.js";
 import { refreshFieldEditor } from "./editor.js";
 
 const EVENT = "tagrex://agent-proposal";
@@ -65,12 +64,8 @@ async function receiveProposal(proposal) {
   paintBanner();
   const files = previewPlan.changes.length;
   const changes = previewPlan.changes.reduce((n, c) => n + c.tag_changes.length, 0);
-  // The table shows a change only in a column it has; a field without one is
-  // named, so a proposal is never staged where the person cannot see it.
-  const fields = new Set(previewPlan.changes.flatMap((c) => c.tag_changes.map((f) => f.field)));
-  const unseen = [...fields].filter((f) => !visibleColumns.includes(f)).map(fieldLabel);
-  const staged = t("agent.staged", { assistant, files: tn("unit.file", files) });
-  toast(unseen.length ? `${staged} ${t("agent.noColumn", { fields: list(unseen) })}` : staged);
+  // A field without a column of its own shows in a temporary one (#831).
+  toast(t("agent.staged", { assistant, files: tn("unit.file", files) }));
   reply(id, { staged: true, files, changes });
 }
 

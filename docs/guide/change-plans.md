@@ -29,6 +29,11 @@ While a plan is staged, the table shows it in place:
 - **Changed cells show their new value.** Rows the plan doesn't touch stay as
   they were, so the change stands out against its context rather than against an
   empty screen.
+- **A changed field without a column still shows.** Each field the plan changes
+  that the table has no column for, including custom fields such as a release
+  id, gets a temporary column at the end of the table, with its header in
+  italics. It goes away when the plan is applied or discarded and is never
+  added to your column layout.
 - **Show old values** in the floating bar reveals the struck-through previous
   value under each changed cell. It is off by default because most of the time
   you want to read what you are about to get, not what you already have.

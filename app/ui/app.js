@@ -181,6 +181,7 @@ import {
   previewSource, setPreviewSource,
   pendingImportCover, setPendingImportCover,
   diffByPath, setDiffByPath,
+  diffColumns, setDiffColumns,
   applySelection, setApplySelection,
   edits, selection, selectedPaths, tag, trackAt, trackByPath,
   DEFAULT_COLUMNS, visibleColumns, setVisibleColumns,
@@ -586,7 +587,7 @@ function buildTrackRow(track, groupKey) {
     tr.innerHTML = `
       <td class="sel"><input type="checkbox" disabled title="${escapeHtml(msg("app.unreadableTags"))}" /></td>
       <td class="file" title="${escapeHtml(msg("app.unreadablePath", { path: track.path }))}">${escapeHtml(fileName(track.path))}</td>
-      <td class="unreadable-note" colspan="${visibleColumns.length - 1 - leadingColumns().length}">${escapeHtml(msg("app.unreadableNote"))}</td>`;
+      <td class="unreadable-note" colspan="${visibleColumns.length + diffColumns.length - 1 - leadingColumns().length}">${escapeHtml(msg("app.unreadableNote"))}</td>`;
     // A column shown in front of File (#733) still gets its cell, so File stays
     // under its own header; the note spans the rest.
     const fileTd = tr.querySelector(":scope > td.file");
@@ -690,6 +691,11 @@ function fillDiffRow(tr, track) {
       }
       tr.appendChild(td);
     }
+    for (const field of diffColumns) {
+      const td = document.createElement("td");
+      td.textContent = tag(track, field);
+      tr.appendChild(td);
+    }
     return;
   }
   tr.classList.add("staged");
@@ -709,21 +715,26 @@ function fillDiffRow(tr, track) {
       continue;
     }
     // A changed visible field shows the new value (dirty/error); an unchanged one
-    // shows the current value. Fields changed outside visibleColumns still apply
-    // — they just don't get a cell here (the action-bar count covers them).
-    const cell = diffCell(change, field, track);
-    const td = document.createElement("td");
-    td.className = cell.cls;
-    if (cell.title) td.title = cell.title;
-    td.textContent = cell.text;
-    if (cell.old) {
-      const old = document.createElement("span");
-      old.className = "cell-old";
-      old.textContent = cell.old;
-      td.appendChild(old);
-    }
-    tr.appendChild(td);
+    // shows the current value. A changed field without a column gets a
+    // temporary one below (#831).
+    tr.appendChild(diffTd(change, field, track));
   }
+  for (const field of diffColumns) tr.appendChild(diffTd(change, field, track));
+}
+
+function diffTd(change, field, track) {
+  const cell = diffCell(change, field, track);
+  const td = document.createElement("td");
+  td.className = cell.cls;
+  if (cell.title) td.title = cell.title;
+  td.textContent = cell.text;
+  if (cell.old) {
+    const old = document.createElement("span");
+    old.className = "cell-old";
+    old.textContent = cell.old;
+    td.appendChild(old);
+  }
+  return td;
 }
 
 // The File cell for a staged row: on a rename/move it shows the new name, the
@@ -781,14 +792,14 @@ function buildGroupHeader(key, count) {
           dest.extras.map((to) => (to.startsWith(dest.dir) ? to.slice(dest.dir.length + 1) : to)).join("\n"),
         )}">+ ${escapeHtml(tn("unit.folderFile", dest.extras.length))}</span>`
       : "";
-    tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
+    tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length + diffColumns.length}">
       <span class="group-caret">${collapsed ? ico("chevron-right") : ico("caret-down")}</span>
       ${label}
       <span class="group-count muted">· ${escapeHtml(tn("unit.file", count))}${extras}</span>
     </td>`;
     return tr;
   }
-  tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length}">
+  tr.innerHTML = `<td class="group-cell" colspan="${2 + visibleColumns.length + diffColumns.length}">
       <span class="group-caret">${collapsed ? ico("chevron-right") : ico("caret-down")}</span>
       <span class="group-label">${escapeHtml(groupLabel(key))}</span>
       <span class="group-count muted">· ${tn("unit.file", count)}</span>
@@ -1036,7 +1047,7 @@ function spacerRow(height) {
   tr.className = "spacer";
   tr.setAttribute("aria-hidden", "true");
   const td = document.createElement("td");
-  td.colSpan = 2 + visibleColumns.length;
+  td.colSpan = 2 + visibleColumns.length + diffColumns.length;
   td.style.height = `${Math.max(0, Math.round(height))}px`;
   tr.appendChild(td);
   return tr;
@@ -1542,6 +1553,8 @@ function shortPlanDescription(description) {
 function enterDiffState() {
   setDiffByPath(new Map(previewPlan.changes.map((c) => [c.path, c])));
   setApplySelection(new Set(diffByPath.keys()));
+  setDiffColumns(fieldsWithoutColumn(previewPlan));
+  renderTableHead();
   document.body.classList.add("diffing");
   el("diff-show-old").checked = false;
   el("tracks").classList.remove("show-old");
@@ -1570,6 +1583,15 @@ function enterDiffState() {
   refreshGenerator();
 }
 
+// The fields a plan changes that the table has no column for (#831): known
+// fields in field order, then custom ones by name.
+function fieldsWithoutColumn(plan) {
+  const changed = new Set(plan.changes.flatMap((c) => (c.tag_changes || []).map((t) => t.field)));
+  const known = EXTENDED_FIELDS.map(([key]) => key).filter((key) => changed.has(key));
+  const custom = [...changed].filter((key) => !known.includes(key)).sort();
+  return [...known, ...custom].filter((key) => !visibleColumns.includes(key));
+}
+
 // What a lock kept out of the staged plan (#48).
 //
 // A change that silently did not happen is the one thing a lock must never be,
@@ -1594,6 +1616,10 @@ function exitDiffState() {
   setPreviewSource(null);
   setDiffByPath(null);
   setApplySelection(new Set());
+  if (diffColumns.length) {
+    setDiffColumns([]);
+    renderTableHead();
+  }
   document.body.classList.remove("diffing");
   el("tracks").classList.remove("show-old");
   el("diff-actionbar").hidden = true;
@@ -2051,6 +2077,10 @@ async function afterOpen(label) {
   setPreviewSource(null);
   setDiffByPath(null);
   setApplySelection(new Set());
+  if (diffColumns.length) {
+    setDiffColumns([]);
+    renderTableHead();
+  }
   document.body.classList.remove("diffing");
   el("diff-actionbar").hidden = true;
   resetEdits();

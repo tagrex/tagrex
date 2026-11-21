@@ -1901,7 +1901,14 @@ th.sortable:hover {
   position: sticky; /* re-assert: anchors the absolutely-positioned grip */
   padding-right: 12px; /* room for the grip so it never overlaps the label */
 }
-#tracks thead th.sortable .th-label {
+/* A staged field without a column of its own (#831): there only while the plan
+   is, so its header reads as borrowed rather than as part of the layout. */
+#tracks thead th.diff-extra .th-label {
+  font-style: italic;
+  color: var(--accent-ink);
+}
+#tracks thead th.sortable .th-label,
+#tracks thead th.diff-extra .th-label {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;

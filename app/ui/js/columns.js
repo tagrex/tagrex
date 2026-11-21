@@ -8,7 +8,7 @@
 import { el, escapeHtml, ico, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { hooks } from "./hooks.js";
-import { EXTENDED_FIELDS, VIRTUAL_COLUMNS, fieldLabel } from "./fields.js";
+import { EXTENDED_FIELDS, VIRTUAL_COLUMNS, customLabel, fieldLabel } from "./fields.js";
 import { t } from "./i18n.js";
 import { isFieldLocked } from "./locks.js";
 import { placeholderToken } from "./placeholders.js";
@@ -19,6 +19,7 @@ import {
   collapsedGroups,
   columnWidths,
   diffByPath,
+  diffColumns,
   groupBy,
   setColumnWidths,
   setGroupByValue,
@@ -435,7 +436,7 @@ setGroupByValue(groupByPref());
 
 function renderTableHead() {
   const row = el("tracks").querySelector("thead tr");
-  row.querySelectorAll("th.sortable").forEach((th) => th.remove());
+  row.querySelectorAll("th.sortable, th.diff-extra").forEach((th) => th.remove());
   for (const key of visibleColumns) {
     const th = document.createElement("th");
     th.dataset.sort = key;
@@ -486,7 +487,27 @@ function renderTableHead() {
     }
     row.appendChild(th);
   }
+  // The staged plan's fields without a column (#831), after the regular ones.
+  // Not sortable, resizable or reorderable: they last only while the plan is
+  // staged, and the header says so.
+  for (const key of diffColumns) {
+    const th = document.createElement("th");
+    th.className = "diff-extra";
+    th.dataset.key = key;
+    th.style.width = `${columnWidth(key)}px`;
+    const label = diffColumnLabel(key);
+    th.title = t("columns.diffExtraTitle", { field: label });
+    th.innerHTML = `<span class="th-label">${escapeHtml(label)}</span>`;
+    row.appendChild(th);
+  }
   hooks.updateSortIndicators();
+}
+
+// A custom field is named by its well-known label, else by its frame name.
+function diffColumnLabel(key) {
+  if (!key.startsWith(CUSTOM_PREFIX)) return fieldLabel(key);
+  const name = key.slice(CUSTOM_PREFIX.length);
+  return customLabel(name) || name;
 }
 
 // The two localStorage calls, wrapped as narrowly as the failure they tolerate:

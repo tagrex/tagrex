@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A staged change to a field the table has no column for, such as the genre
+  with its column hidden or a custom field like the release id, is shown in a
+  temporary column at the end of the table instead of being applied unseen.
+  The column goes away with the plan and is never saved to the layout
+  ([#831](https://github.com/tagrex/tagrex/issues/831)).
 - The Windows build of the AI assistant connection no longer trips the lint
   over a call timeout that only applies on macOS and Linux
   ([#829](https://github.com/tagrex/tagrex/issues/829)).

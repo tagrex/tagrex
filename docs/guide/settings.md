@@ -182,8 +182,8 @@ rename, move or delete anything.
 A proposal is refused while the table already shows unapplied changes, your own
 or an earlier proposal, so it never mixes into work you have staged. Values a
 field cannot hold, locked fields and files outside the library are left out,
-and the assistant is told which. When a proposed field has no column in the
-table, a message names it.
+and the assistant is told which. A proposed field the table has no column for
+shows in a temporary column while the proposal is staged.
 
 Click **Claude Code** or **Claude Desktop** to make a connection. Its card shows
 what to do next:
