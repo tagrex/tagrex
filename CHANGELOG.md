@@ -75,6 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   instead of inside the path field beside the folder chooser, and its icon
   shows the plus clear of the folder's corner
   ([#847](https://github.com/tagrex/tagrex/issues/847)).
+- The folder icons (folder chooser, add folder, Renamer destination, folder
+  grouping) are drawn at the size of the other toolbar glyphs instead of
+  noticeably smaller than the re-read arrow beside them
+  ([#848](https://github.com/tagrex/tagrex/issues/848)).
 
 ### Fixed
 
