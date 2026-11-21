@@ -6075,6 +6075,18 @@ td[data-field="year"],
 .about-link .ico {
   color: var(--muted);
 }
+/* What each link is (#817): a leading icon that takes the accent while the
+   row is hovered or focused; the external-link mark at the end stays muted. */
+.about-link-text {
+  flex: 1 1 auto;
+}
+.about-link .about-link-ico {
+  transition: color 0.12s;
+}
+.about-link:hover .about-link-ico,
+.about-link:focus-visible .about-link-ico {
+  color: var(--accent-ink);
+}
 .about-link:focus-visible {
   border-radius: 0;
   box-shadow: var(--ring-inset);

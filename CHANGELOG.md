@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Each link in the About dialog has a leading icon that says what it is (the
+  GitHub mark, a book, a sparkle, a heart, a pair of scales), taking the accent
+  colour while its row is hovered or focused
+  ([#817](https://github.com/tagrex/tagrex/issues/817)).
 - The status bar counts the selected files a filter or a library health check
   hides, `· 2 hidden by the filter` in red with a tooltip, since a filter hides
   rows without deselecting them and those files still take part in the next
