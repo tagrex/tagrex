@@ -157,7 +157,7 @@ export const it = {
   "online.perPage": "Risultati per pagina",
   "online.loadMore": "Carica altri risultati",
   "online.loadingMore": "Caricamento di altri…",
-  "online.scrollForMore": "Scorri verso il basso per altri risultati",
+  "online.scrollForMore": "Continua a scorrere per altri risultati",
   "online.tracksUnknown": "— tracce",
   "online.automatch": "Abbina auto",
   "online.automatchTitle": "Riordina i file selezionati in base a questa tracklist",

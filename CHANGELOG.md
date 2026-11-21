@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   results" line instead of the Load more results button, which is left for
   after Stop and after a page failed to load
   ([#815](https://github.com/tagrex/tagrex/issues/815)).
+- That line now reads "Keep scrolling for more results": naming a direction
+  read backwards with natural trackpad scrolling, where the gesture that moves
+  a list to its end is a swipe up
+  ([#816](https://github.com/tagrex/tagrex/issues/816)).
 
 ### Added
 

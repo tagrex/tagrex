@@ -158,7 +158,7 @@ export const uk = {
   "online.perPage": "Результатів на сторінку",
   "online.loadMore": "Показати ще",
   "online.loadingMore": "Завантажую ще…",
-  "online.scrollForMore": "Прокрутіть униз, щоб завантажити ще",
+  "online.scrollForMore": "Прокрутіть далі, щоб завантажити ще",
   "online.tracksUnknown": "— треків",
   "online.automatch": "Автозіставлення",
   "online.automatchTitle": "Переставити вибрані файли в порядок цього списку треків",
