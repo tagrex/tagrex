@@ -7,14 +7,22 @@ import { invoke } from "./invoke.js";
 import { t } from "./i18n.js";
 
 let version = "";
+let name = "TagRex";
+const BASE_NAME = "TagRex";
 
-// Asked once: the version cannot change while the app runs.
+// Asked once: the version cannot change while the app runs. The name comes
+// with it (#819): a TagRex Next build is named so.
 async function loadVersion() {
   if (version) return version;
   try {
     version = (await invoke("app_version", {})) || "";
   } catch (e) {
     version = "";
+  }
+  try {
+    name = (await invoke("app_name", {})) || BASE_NAME;
+  } catch (e) {
+    name = BASE_NAME;
   }
   return version;
 }
@@ -23,7 +31,25 @@ function paintVersion() {
   el("about-version").textContent = version ? t("about.version", { version }) : "";
   // A name and a number, the same in every language, so a language switch
   // leaves nothing stale here.
-  el("about-settings-open").textContent = version ? `TagRex ${version}` : "TagRex";
+  el("about-settings-open").textContent = version ? `${name} ${version}` : name;
+  // "Next" beside the wordmark for a TagRex Next build (#819); nothing for
+  // the regular one.
+  const edition = name.startsWith(`${BASE_NAME} `) ? name.slice(BASE_NAME.length + 1) : "";
+  // The dialog names the build the same way (#819): "TagRex" and its badge.
+  const title = document.querySelector("#about-modal .about-name");
+  title.textContent = edition ? BASE_NAME : name;
+  if (edition) {
+    const pill = document.createElement("span");
+    pill.className = "edition-badge";
+    pill.textContent = edition;
+    title.append(" ", pill);
+  }
+  const badge = el("edition-badge");
+  badge.textContent = edition;
+  badge.hidden = !edition;
+  document.body.classList.toggle("edition-next", edition === "Next");
+  document.querySelector("#about-modal .about-logo").src =
+    edition === "Next" ? "assets/logo-next.svg" : "assets/logo.svg";
 }
 
 export async function openAbout() {

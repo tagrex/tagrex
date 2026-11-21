@@ -2024,6 +2024,13 @@ fn app_version(app: tauri::AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
+/// The name the app was built as (#819): "TagRex", or "TagRex Next" for a
+/// build made with the side-by-side overlay (#818), which marks its window.
+#[tauri::command]
+fn app_name(app: tauri::AppHandle) -> String {
+    app.package_info().name.clone()
+}
+
 /// The small-word lists a title-case rule can keep lowercase (#537), as
 /// `[language, words]` pairs in the core's order, so the rule card offers the
 /// same lists the transform applies.
@@ -2309,6 +2316,7 @@ fn main() {
             open_mask_guide,
             open_about_link,
             app_version,
+            app_name,
             close_button_side,
             small_word_lists,
             preview_rename,

@@ -1,6 +1,15 @@
 {
   "productName": "TagRex Next",
   "identifier": "com.tagrex.next",
+  "bundle": {
+    "icon": [
+      "icons-next/32x32.png",
+      "icons-next/128x128.png",
+      "icons-next/128x128@2x.png",
+      "icons-next/icon.icns",
+      "icons-next/icon.ico"
+    ]
+  },
   "plugins": {
     "updater": {
       "endpoints": []

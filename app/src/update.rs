@@ -350,6 +350,21 @@ mod tests {
         assert_eq!(next["identifier"], "com.tagrex.next");
         assert_ne!(next["identifier"], regular["identifier"]);
         assert!(!endpoints_configured(None));
+        // Its own yellow icons (#819), one for each of the regular build's.
+        let icons = |config: &serde_json::Value| -> Vec<String> {
+            config["bundle"]["icon"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|icon| icon.as_str().unwrap().to_owned())
+                .collect()
+        };
+        let app_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        for (regular_icon, next_icon) in icons(&regular).iter().zip(icons(&next)) {
+            assert_eq!(next_icon, regular_icon.replacen("icons/", "icons-next/", 1));
+            assert!(app_dir.join(&next_icon).is_file(), "{next_icon} is missing");
+        }
+        assert_eq!(icons(&regular).len(), icons(&next).len());
     }
 
     #[test]

@@ -89,6 +89,9 @@
      A hex per theme rather than color-mix, so it stays a plain token: accent at
      14% on --bg here (accent-ink on it 6.2:1), 22% in dark (4.65:1). */
   --accent-soft: #ddeae7;
+  /* A TagRex Next build's own colour (#819): wordmark, badge. Yellow as text,
+     dark enough to clear AA on the light background. */
+  --edition-ink: #8a6100;
   --add: #15803d;
   --del: #dc2626;
   --row-hover: #eef1f5;
@@ -235,6 +238,7 @@
     --accent-text: #ffffff;
     --accent-ink: #14a67d;
     --accent-soft: #142e2b;
+    --edition-ink: #f0c43c;
     /* Apart in lightness, not only in hue (#783): at equal lightness green and
        red are one khaki under deuteranopia. The red still clears AA as text on
        its own 18% tint (the mask builder's clash row on hover). */
@@ -260,6 +264,7 @@
   --accent-text: #ffffff;
   --accent-ink: #14a67d;
   --accent-soft: #142e2b;
+  --edition-ink: #f0c43c;
   /* Apart in lightness, not only in hue (#783): at equal lightness green and
      red are one khaki under deuteranopia. The red still clears AA as text on
      its own 18% tint (the mask builder's clash row on hover). */
@@ -421,6 +426,39 @@ button.brand {
 button.brand:hover:not(:disabled) {
   background: var(--row-hover);
   box-shadow: 0 0 0 var(--space-1) var(--row-hover);
+}
+/* A TagRex Next build (#819): a small pill beside the wordmark, both in the
+   build's own yellow so its window is not taken for the regular app's. */
+body.edition-next .brand {
+  color: var(--edition-ink);
+}
+body.edition-next .about-link:hover .about-link-ico,
+body.edition-next .about-link:focus-visible .about-link-ico {
+  color: var(--edition-ink);
+}
+.about-name .edition-badge {
+  display: inline-block;
+  vertical-align: middle;
+  margin-inline-start: 0;
+}
+/* A TagRex Next build (#819): a small pill beside the wordmark. */
+.edition-badge {
+  flex: none;
+  align-self: center;
+  margin-inline-start: calc(var(--space-1) * -1);
+  padding: 1px 6px;
+  border: 1px solid var(--edition-ink);
+  border-radius: 999px;
+  color: var(--edition-ink);
+  font-family: var(--font-mono-bundled);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+.edition-badge[hidden] {
+  display: none;
 }
 
 /* Overlay title bar (#362): the traffic lights float over the page instead

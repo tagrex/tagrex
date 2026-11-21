@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A TagRex Next build marks itself in yellow, so its window is not taken for
+  the regular app's: a "Next" badge beside the wordmark and in the About
+  dialog, the wordmark, the About logo and its link icons in yellow, and a
+  yellow app icon (`assets/build-icons.py --next` writes it to
+  `app/icons-next/`) ([#819](https://github.com/tagrex/tagrex/issues/819)).
 - Any branch can be built as TagRex Next with the config overlay
   `app/tauri.next.conf.json`: a separate app (own bundle id, settings and
   history) that runs side by side with TagRex for trying interface variants.

@@ -9,6 +9,10 @@ Masters:
 
 Rasterising goes through `cargo tauri icon` (resvg); the .icns is packed with
 macOS `iconutil`, so run this on a Mac. Usage: python3 assets/build-icons.py
+
+With --next, the same masters are recoloured from the accent green to yellow
+and written to app/icons-next/, the icons of a TagRex Next build (#819), along
+with app/ui/assets/logo-next.svg for its About dialog.
 """
 
 import shutil
@@ -21,6 +25,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "assets"
 ICONS = ROOT / "app" / "icons"
+NEXT_ICONS = ROOT / "app" / "icons-next"
+UI_LOGO = ROOT / "app" / "ui" / "assets" / "logo.svg"
+
+# The masters' greens and their yellow counterparts for a TagRex Next build.
+NEXT_PALETTE = {
+    "#3FD3A3": "#FFD84D",
+    "#2FC493": "#F7C93A",
+    "#0B7D5C": "#B5830A",
+    "#0A6E52": "#9E7208",
+    "#D2F3E6": "#FFF1C2",
+    "#D6F4E8": "#FFF2C8",
+}
 
 # Pixel sizes at or below this come from the simplified masters.
 SMALL_MAX = 24
@@ -90,9 +106,31 @@ def write_ico(path, pngs):
     path.write_bytes(header + entries + data)
 
 
+def recolour(text):
+    for green, yellow in NEXT_PALETTE.items():
+        text = text.replace(green, yellow).replace(green.lower(), yellow)
+    return text
+
+
 def main():
+    global ASSETS, ICONS
+    next_build = "--next" in sys.argv[1:]
     with tempfile.TemporaryDirectory() as t:
         tmp = Path(t)
+        if next_build:
+            masters = tmp / "masters"
+            masters.mkdir()
+            for name in ("icon.svg", "icon-small.svg", "icon-macos.svg", "icon-macos-small.svg"):
+                (masters / name).write_text(recolour((ASSETS / name).read_text()))
+            ASSETS = masters
+            NEXT_ICONS.mkdir(exist_ok=True)
+            for f in ICONS.iterdir():
+                if f.is_file() and not (NEXT_ICONS / f.name).exists():
+                    shutil.copyfile(f, NEXT_ICONS / f.name)
+            ICONS = NEXT_ICONS
+            logo = UI_LOGO.with_name("logo-next.svg")
+            logo.write_text(recolour(UI_LOGO.read_text()))
+            print("wrote", logo.relative_to(ROOT))
 
         # Linux PNGs and the Windows Store tiles: the default tauri set from icon.svg.
         default = tmp / "default"

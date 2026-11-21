@@ -444,6 +444,9 @@ function mockInvoke(cmd, args) {
       return Promise.resolve();
     case "app_version":
       return Promise.resolve("0.0.0-mock");
+    // "TagRex Next" (#819) when the page is opened with ?edition=next.
+    case "app_name":
+      return Promise.resolve(new URLSearchParams(location.search).get("edition") === "next" ? "TagRex Next" : "TagRex");
     // The core's SMALL_WORDS (#537), copied for the dev mock only.
     case "small_word_lists":
       return Promise.resolve([["en", ["a", "an", "the", "and", "but", "or", "nor", "for", "so", "yet", "as", "at", "by", "in", "of", "off", "on", "per", "to", "up", "via", "from", "into", "onto", "with"]], ["de", ["der", "die", "das", "den", "dem", "des", "ein", "eine", "einen", "einem", "einer", "eines", "und", "oder", "aber", "im", "in", "am", "an", "auf", "aus", "bei", "mit", "nach", "von", "vom", "zu", "zum", "zur", "für"]], ["es", ["el", "la", "los", "las", "un", "una", "unos", "unas", "y", "e", "o", "u", "de", "del", "a", "al", "en", "con", "por", "para", "sin"]], ["fr", ["le", "la", "les", "un", "une", "des", "du", "de", "et", "ou", "à", "au", "aux", "en", "dans", "par", "pour", "sur", "avec", "sans"]], ["it", ["il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "e", "ed", "o", "di", "del", "dello", "della", "dei", "degli", "delle", "da", "dal", "a", "al", "allo", "alla", "in", "nel", "nella", "con", "su", "per", "tra", "fra"]]]);
