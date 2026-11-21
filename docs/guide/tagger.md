@@ -52,14 +52,15 @@ it; the count freezes and the bar goes grey until it has. Esc stops it the
 same way, unless a menu is open or a text field has the cursor; a second Esc
 discards the preview.
 
-The preview shows the BPM column, adding it to the table if it was hidden, so
-each new value can be checked against the old one before Apply. A file that
-already holds the measured number is left out of the plan. A track with no
-steady beat (a beatless intro, spoken word) gets no value. A report at the
-foot of the window says what was staged, with a line under it for each thing
-worth knowing: where a stopped run stopped, how many long files were skipped,
-and, in red, how many files had no steady beat or could not be decoded. The
-report sits on the bar with Apply and Discard and goes away with the preview.
+The preview shows the BPM values, in a temporary column if the table has no
+BPM column, so each new value can be checked against the old one before Apply.
+A file that already holds the measured number is left out of the plan. A track
+with no steady beat (a beatless intro, spoken word) gets no value. A report at
+the foot of the window says what was staged, with a line under it for each
+thing worth knowing: where a stopped run stopped, how many long files were
+skipped, and, in red, how many files had no steady beat or could not be
+decoded. The report sits on the bar with Apply and Discard and goes away with
+the preview.
 One with a red line stays until its × is clicked or Esc is pressed: the first
 Esc closes the report, the next one discards the preview.
 

@@ -13,13 +13,11 @@ import { el, report, toast } from "./dom.js";
 import { invoke } from "./invoke.js";
 import { t, tn } from "./i18n.js";
 import { hooks } from "./hooks.js";
-import { applyColumns } from "./columns.js";
 import {
   previewPlan,
   selectedPaths,
   setPreviewPlan,
   setPreviewSource,
-  visibleColumns,
 } from "./state.js";
 
 const EVENT = "tagrex://bpm-progress";
@@ -102,12 +100,6 @@ async function detectBpm() {
     const result = await invoke("detect_bpm", { paths });
     // A run that measured nothing new leaves whatever is staged alone.
     if (result.plan.changes.length || !previewPlan) {
-      // The diff shows a change in the column of its field, and a BPM column
-      // the table does not have would leave the preview with nothing in it. It
-      // stays afterwards, like any column picked in the menu.
-      if (result.plan.changes.length && !visibleColumns.includes("bpm")) {
-        applyColumns([...visibleColumns, "bpm"]);
-      }
       setPreviewPlan(result.plan);
       setPreviewSource("bpm");
       hooks.renderPreview(previewPlan);

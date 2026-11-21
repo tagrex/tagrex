@@ -49,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The test for an assistant's rename proposals builds its paths the way
   Windows spells them, so the Windows build passes again
   ([#836](https://github.com/tagrex/tagrex/issues/836)).
+- BPM detection no longer adds the BPM column to the table for good when it
+  was hidden: the measured values show in a temporary column while staged
+  ([#837](https://github.com/tagrex/tagrex/issues/837)).
 - The Windows build of the AI assistant connection no longer trips the lint
   over a call timeout that only applies on macOS and Linux
   ([#829](https://github.com/tagrex/tagrex/issues/829)).
