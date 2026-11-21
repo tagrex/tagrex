@@ -64,6 +64,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   another way. One had offered to rename the open folder with a terminal
   command, past the preview and Undo
   ([#840](https://github.com/tagrex/tagrex/issues/840)).
+- Applying a rename, a reorganize or a folder rename keeps the renamed files
+  selected under their new names, instead of leaving nothing selected. After an
+  apply, undo or redo, files that are gone leave the selection, and an emptied
+  selection falls back to the first track, as opening a folder does
+  ([#842](https://github.com/tagrex/tagrex/issues/842)).
 - The test for an assistant's rename proposals builds its paths the way
   Windows spells them, so the Windows build passes again
   ([#836](https://github.com/tagrex/tagrex/issues/836)).

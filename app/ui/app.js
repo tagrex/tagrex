@@ -1289,6 +1289,23 @@ function resetEdits() {
 
 // Move pending edits from old paths to new paths after a rename is applied, so
 // tag edits survive a rename instead of being orphaned by the path change.
+// The selection after files moved (#842): a renamed file stays selected under
+// its new path, a path no longer listed leaves the selection, and an emptied
+// selection falls back to the first readable track, the rule opening a folder
+// follows. Rebuilt in one pass, so two files that swap names swap correctly.
+function carrySelection(renamed = new Map()) {
+  const present = new Set(tracks.map((track) => track.path));
+  const carried = [...selection]
+    .map((path) => renamed.get(path) ?? path)
+    .filter((path) => present.has(path));
+  selection.clear();
+  for (const path of carried) selection.add(path);
+  if (selection.size === 0) {
+    const firstReadable = tracks.find((track) => !track.unreadable);
+    if (firstReadable) selection.add(firstReadable.path);
+  }
+}
+
 function remapEditsAfterRename(plan) {
   for (const change of plan.changes) {
     if (change.rename_to && edits.has(change.path)) {
@@ -2271,11 +2288,13 @@ async function apply() {
     if (folderRename) await followLibraryRoot();
     setTracks(await invoke("list_tracks", {}));
     sortKeepingHandOrder(order); // the list came back in scan order (#196)
+    carrySelection(renamed);
     // Mask columns render from disk, and an apply is exactly when what is on
     // disk changed under unchanged paths (#150).
     invalidateCustomColumns();
     // exitDiffState() drops the plan + apply scope and repaints the table.
     exitDiffState();
+    syncSelectionUI();
     refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
@@ -2351,9 +2370,11 @@ async function undo() {
     const order = handOrder();
     setTracks(await invoke("list_tracks", {}));
     sortKeepingHandOrder(order); // the list came back in scan order (#196)
+    carrySelection();
     invalidateCustomColumns();
     // exitDiffState() also clears previewPlan/previewSource and repaints.
     exitDiffState();
+    syncSelectionUI();
     refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
@@ -2381,8 +2402,10 @@ async function redo() {
     const order = handOrder();
     setTracks(await invoke("list_tracks", {}));
     sortKeepingHandOrder(order); // the list came back in scan order (#196)
+    carrySelection();
     invalidateCustomColumns();
     exitDiffState();
+    syncSelectionUI();
     refreshCustomColumnCells();
   } catch (e) {
     toast(String(e), true);
