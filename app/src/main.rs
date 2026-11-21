@@ -256,6 +256,22 @@ async fn list_tracks(state: State<'_, AppState>) -> Result<Vec<TrackDto>, ErrorD
         .await
 }
 
+/// The open library's folder when it has gone from disk (#838), so the window
+/// can say so instead of showing a library that is no longer there.
+#[tauri::command]
+async fn library_root_missing(state: State<'_, AppState>) -> Result<Option<String>, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            let guard = state.lock().map_err(shell_error)?;
+            Ok(guard
+                .as_ref()
+                .filter(|app| app.library_root_missing())
+                .map(|app| app.library_root().to_string_lossy().into_owned()))
+        })
+        .await
+}
+
 /// Move files to the system Trash (#213). Returns what actually went, so the
 /// table drops exactly those rows. Refuses the whole call if any path is not a
 /// file this session lists inside the open library — nothing is moved then.
@@ -2552,6 +2568,7 @@ fn main() {
             open_library,
             open_drop,
             list_tracks,
+            library_root_missing,
             trash_files,
             set_locked_fields,
             locked_fields,

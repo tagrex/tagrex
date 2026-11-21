@@ -1097,6 +1097,7 @@ export const en = {
   "app.rereadBlocked": "Discard or apply the staged change before re-reading the folder",
   "app.enterPath": "Enter a library path first",
   "app.folderGone": "{folder} is no longer there — removed from recent folders",
+  "app.libraryGone": "{folder} is no longer on disk: it was renamed, moved or deleted outside TagRex. Open it again from its new place.",
   "app.noPendingEdits": "No pending edits to preview",
   "app.tickOneRow": "Tick at least one row to apply",
   "app.undid": "Undid last batch",

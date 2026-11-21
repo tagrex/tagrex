@@ -1949,6 +1949,8 @@ async function refreshLibrary() {
   const btn = el("lib-refresh");
   btn.disabled = true;
   try {
+    // A folder that has gone is said to be gone, not counted as empty (#838).
+    if (await libraryRootGone(true)) return;
     const fresh = await invoke("list_tracks", {});
     const present = new Set(fresh.map((track) => track.path));
     const goneFromSelection = [...selection].filter((path) => !present.has(path));
@@ -1992,6 +1994,33 @@ async function refreshLibrary() {
     updateRefreshButton();
   }
 }
+
+// The open library's folder renamed, moved or deleted outside the app (#838).
+// Checked when the window comes back to the front and on a re-read, and said
+// once per disappearance (`always` repeats it, for the re-read that asked). The
+// old path stops being offered among the recent folders, as an unopenable
+// recent folder does (#180).
+let goneRoot = "";
+async function libraryRootGone(always = false) {
+  if (!openedRoot) return false;
+  let missing = null;
+  try {
+    missing = await invoke("library_root_missing", {});
+  } catch (e) {
+    return false;
+  }
+  if (!missing) {
+    goneRoot = "";
+    return false;
+  }
+  if (always || goneRoot !== missing) {
+    goneRoot = missing;
+    forgetRoot(missing);
+    toast(msg("app.libraryGone", { folder: folderName(missing) }), true);
+  }
+  return true;
+}
+window.addEventListener("focus", () => libraryRootGone());
 
 // Show the input over the indicator, with the current path selected so a paste
 // replaces it outright.

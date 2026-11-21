@@ -1091,6 +1091,7 @@ export const de = {
   "app.rereadBlocked": "Vor dem erneuten Einlesen die vorgemerkte Änderung verwerfen oder anwenden",
   "app.enterPath": "Zuerst einen Bibliothekspfad eingeben",
   "app.folderGone": "{folder} ist nicht mehr da — aus den zuletzt geöffneten Ordnern entfernt",
+  "app.libraryGone": "{folder} ist nicht mehr auf dem Datenträger: außerhalb von TagRex umbenannt, verschoben oder gelöscht. Öffne den Ordner an seinem neuen Ort erneut.",
   "app.noPendingEdits": "Keine ausstehenden Änderungen zur Vorschau",
   "app.tickOneRow": "Mindestens eine Zeile zum Anwenden ankreuzen",
   "app.undid": "Letzten Stapel rückgängig gemacht",

@@ -1095,6 +1095,7 @@ export const it = {
   "app.rereadBlocked": "Scarta o applica la modifica in sospeso prima di rileggere la cartella",
   "app.enterPath": "Inserisci prima un percorso della libreria",
   "app.folderGone": "{folder} non esiste più — rimosso dalle cartelle recenti",
+  "app.libraryGone": "{folder} non è più sul disco: è stata rinominata, spostata o eliminata fuori da TagRex. Riaprila dalla nuova posizione.",
   "app.noPendingEdits": "Nessuna modifica in sospeso da visualizzare",
   "app.tickOneRow": "Seleziona almeno una riga da applicare",
   "app.undid": "Ultima operazione annullata",

@@ -280,6 +280,14 @@ fn parse<T: for<'de> Deserialize<'de>>(arguments: Value) -> Result<T, ErrorDto> 
 fn library_status(app: Option<&App>) -> Value {
     match app {
         None => json!({ "open": false }),
+        Some(app) if app.library_root_missing() => json!({
+            "open": true,
+            "root": app.library_root().to_string_lossy(),
+            "file_set": false,
+            "root_missing": true,
+            "track_count": 0,
+            "note": "This folder no longer exists: it was renamed, moved or deleted outside TagRex. Ask the user to open it again in TagRex from its new place.",
+        }),
         Some(app) => json!({
             "open": true,
             "root": app.library_root().to_string_lossy(),
@@ -785,6 +793,26 @@ mod tests {
     #[test]
     fn library_status_without_a_library_says_so() {
         assert_eq!(library_status(None), json!({ "open": false }));
+    }
+
+    // #838: a library folder renamed behind the app's back is reported as gone.
+    #[test]
+    fn library_status_names_a_folder_that_has_gone() {
+        let base = std::env::temp_dir().join(format!("tagrex-mcp-gone-{}", std::process::id()));
+        let root = base.join("library");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("a.wav"), tagged_wav(&[(b"INAM", "First")])).unwrap();
+        let app = App::open(&root, &base.join("journal.sqlite")).unwrap();
+        assert_eq!(library_status(Some(&app))["track_count"], 1);
+        assert!(library_status(Some(&app))["root_missing"].is_null());
+
+        std::fs::rename(&root, base.join("renamed")).unwrap();
+        let status = library_status(Some(&app));
+        assert_eq!(status["root_missing"], true);
+        assert_eq!(status["track_count"], 0);
+        assert!(status["note"].as_str().unwrap().contains("open it again"));
+        drop(app);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A short silent WAV whose RIFF INFO chunk holds `tags` (four-letter id,

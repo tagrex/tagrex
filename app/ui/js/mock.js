@@ -470,6 +470,9 @@ function mockInvoke(cmd, args) {
     }
     case "list_tracks":
       return Promise.resolve(s.tracks);
+    case "library_root_missing":
+      // Set mockInvoke.state.rootMissing to a path to fake a vanished folder.
+      return Promise.resolve(s.rootMissing || null);
     case "preview_rename": {
       if (maskError(args.mask)) return Promise.reject(maskError(args.mask));
       // #382: a separator in the mask restructures folders too, same as

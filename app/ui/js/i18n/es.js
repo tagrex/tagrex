@@ -1093,6 +1093,7 @@ export const es = {
   "app.rereadBlocked": "Descarta o aplica el cambio preparado antes de volver a leer la carpeta",
   "app.enterPath": "Primero escribe una ruta de biblioteca",
   "app.folderGone": "{folder} ya no existe: se quitó de las carpetas recientes",
+  "app.libraryGone": "{folder} ya no está en el disco: se renombró, movió o eliminó fuera de TagRex. Ábrela de nuevo desde su nueva ubicación.",
   "app.noPendingEdits": "No hay ediciones pendientes para previsualizar",
   "app.tickOneRow": "Marca al menos una fila para aplicar",
   "app.undid": "Se deshizo el último lote",

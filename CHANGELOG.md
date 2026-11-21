@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - BPM detection no longer adds the BPM column to the table for good when it
   was hidden: the measured values show in a temporary column while staged
   ([#837](https://github.com/tagrex/tagrex/issues/837)).
+- When the open folder is renamed, moved or deleted outside TagRex, the window
+  says so as soon as it comes back to the front and on a re-read, instead of
+  showing the old tracks or counting them all as gone, and stops offering the
+  old path among the recent folders. An AI assistant is told the same
+  ([#838](https://github.com/tagrex/tagrex/issues/838)).
 - The Windows build of the AI assistant connection no longer trips the lint
   over a call timeout that only applies on macOS and Linux
   ([#829](https://github.com/tagrex/tagrex/issues/829)).

@@ -2768,6 +2768,13 @@ impl App {
         &self.library_root
     }
 
+    /// Whether the folder open as the library has gone from disk (#838):
+    /// renamed, moved or deleted outside the app. A file set has no one folder
+    /// to lose, so it never is.
+    pub fn library_root_missing(&self) -> bool {
+        !self.is_file_set() && !self.library_root.is_dir()
+    }
+
     /// Whether this session lists an explicit drop of files rather than
     /// everything under [`App::library_root`] (#127, #828).
     pub fn is_file_set(&self) -> bool {

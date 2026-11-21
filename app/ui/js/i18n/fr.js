@@ -1095,6 +1095,7 @@ export const fr = {
   "app.rereadBlocked": "Annulez ou appliquez le changement en attente avant de relire le dossier",
   "app.enterPath": "Saisissez d'abord un chemin de bibliothèque",
   "app.folderGone": "{folder} n'existe plus — retiré des dossiers récents",
+  "app.libraryGone": "{folder} n'est plus sur le disque : renommé, déplacé ou supprimé en dehors de TagRex. Rouvrez-le depuis son nouvel emplacement.",
   "app.noPendingEdits": "Aucune modification en attente à prévisualiser",
   "app.tickOneRow": "Cochez au moins une ligne à appliquer",
   "app.undid": "Dernier lot annulé",

@@ -17,6 +17,10 @@ while a mix of loose files and several folders opens as a *file set* — the
 dropped folders become table groups, and anything not under one of them collects
 under "Files".
 
+If the open folder is renamed, moved or deleted outside TagRex, the window says
+so as soon as you come back to it, and **Re-read** says the same: open the
+folder again from its new place.
+
 Supported formats: MP3, FLAC, Ogg Vorbis, Opus, Speex, M4A/MP4, AAC, AIFF, WAV,
 Musepack, Monkey's Audio, WavPack. Anything else in the folder is ignored.
 
