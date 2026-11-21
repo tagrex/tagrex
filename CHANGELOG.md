@@ -46,6 +46,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   files different names is refused. An AI assistant can propose the same with
   `propose_rename` in folder mode
   ([#841](https://github.com/tagrex/tagrex/issues/841)).
+- Long operations share one activity card. On Apply the floating bar grows
+  into it and shows the stage (checking files, writing, finishing), the share
+  done and the file at hand ("File 3 of 10"), with Stop. A success shows a
+  check and holds for a moment before the bar returns; an error stays on the
+  card with its message until it is closed. Undo, redo, BPM detection and the
+  identical-audio duplicate scan run on the same card, which replaces the busy
+  indicator in the status bar
+  ([#843](https://github.com/tagrex/tagrex/issues/843)).
 
 ### Fixed
 

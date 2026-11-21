@@ -16,6 +16,13 @@ import { fileName, plural } from "./dom.js";
 // the backend, so it has to hand over both or the browser path would exercise
 // only the fallback.
 let mockBpmCancel = false;
+let mockApplyCancel = false;
+
+// The native event bus is absent here: progress goes out as a document event,
+// which js/applyprogress.js listens for in the browser (#843).
+function emitMockEvent(name, payload) {
+  document.dispatchEvent(new CustomEvent(name, { detail: payload }));
+}
 let mockDupCancel = false;
 function plan(description, message, changes, notes = []) {
   return { description, message: { args: {}, count: null, ...message }, notes, changes };
@@ -902,24 +909,48 @@ function mockInvoke(cmd, args) {
       return Promise.resolve(plan("Clear tags", { code: "plan.clearTags" }, changes));
     }
     case "apply_plan":
-      for (const c of args.plan.changes) {
-        const t = findTrack(c.path);
-        if (!t) continue;
-        if (c.rename_to) t.path = c.rename_to;
-        for (const tc of c.tag_changes) t.tags[tc.field] = tc.new || "";
-      }
-      // A folder rename (#841) moves the session to the folder's new name.
-      if (args.plan.folder_rename) s.root = args.plan.folder_rename.to;
-      s.history.unshift({
-        id: s.history.length + 1,
-        description: args.plan.description,
-        message: args.plan.message,
-        applied_at: 0,
-        folder_rename: args.plan.folder_rename || null,
-      });
-      s.redo = []; // a new change ends what could be redone (#775)
-      return Promise.resolve({ id: s.history.length, description: args.plan.description, applied_at: 0 });
+      // Progress the way the executor reports it (#437, #843): a preflight read
+      // per file, then a write step per file, slow enough to watch the card.
+      // `window.mockApplyFails = true` makes the write fail half-way.
+      mockApplyCancel = false;
+      return (async () => {
+        const changes = args.plan.changes;
+        const total = changes.length * 2;
+        let done = 0;
+        for (const phase of ["check", "write"]) {
+          for (const c of changes) {
+            if (mockApplyCancel) {
+              throw { message: { code: "error.plan.cancelled", args: {}, count: null }, text: "Apply cancelled" };
+            }
+            emitMockEvent("tagrex://apply-progress", { done, total, path: c.path });
+            await new Promise((resolve) => setTimeout(resolve, phase === "check" ? 120 : 260));
+            if (phase === "write" && window.mockApplyFails && done - changes.length >= changes.length / 2) {
+              throw `Could not write the tags of ${c.path.split("/").pop()}: permission denied`;
+            }
+            done += 1;
+          }
+        }
+        for (const c of changes) {
+          const t = findTrack(c.path);
+          if (!t) continue;
+          if (c.rename_to) t.path = c.rename_to;
+          for (const tc of c.tag_changes) t.tags[tc.field] = tc.new || "";
+        }
+        // A folder rename (#841) moves the session to the folder's new name.
+        if (args.plan.folder_rename) s.root = args.plan.folder_rename.to;
+        s.history.unshift({
+          id: s.history.length + 1,
+          description: args.plan.description,
+          message: args.plan.message,
+          applied_at: 0,
+          folder_rename: args.plan.folder_rename || null,
+          files: changes.map((c) => c.rename_to || c.path),
+        });
+        s.redo = []; // a new change ends what could be redone (#775)
+        return { id: s.history.length, description: args.plan.description, applied_at: 0 };
+      })();
     case "cancel_apply":
+      mockApplyCancel = true;
       return Promise.resolve();
     // BPM detection (#536): a tempo made up from the path, after a pause per
     // file long enough to see the progress and the Stop button.
@@ -976,7 +1007,15 @@ function mockInvoke(cmd, args) {
         }
         s.root = folder.from;
       }
-      return Promise.resolve({ kept: [] });
+      // A step per file, so the card's undo progress can be watched (#843).
+      return (async () => {
+        const files = (batch && batch.files) || [];
+        for (const [done, path] of files.entries()) {
+          emitMockEvent("tagrex://apply-progress", { done, total: files.length, path });
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
+        return { kept: [] };
+      })();
     }
     // Redo (#775): the batch undone last comes back on top of the history. The
     // mock does not rewrite tags either way, as its undo does not.

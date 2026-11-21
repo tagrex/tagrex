@@ -7,10 +7,13 @@ import { el, escapeHtml, fileName, toast } from "./dom.js";
 import { currentLang, t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { selectedPaths } from "./state.js";
+import { beginActivity } from "./activity.js";
 
 const AUDIO_EVENT = "tagrex://duplicate-progress";
 let audioRunning = false;
 let audioStopping = false;
+// This scan's handle on the activity card (#843).
+let activity = null;
 // The last scan's outcome, drawn again on a language change or a return to the
 // mode (#822): { criterion, groups, cancelled, failed }. Null before any scan.
 let last = null;
@@ -28,33 +31,29 @@ function paintScanButton() {
 }
 
 function paintAudioProgress(stage, done, total) {
-  el("busy-fill").style.width = total ? `${Math.round((done / total) * 100)}%` : "0%";
-  el("busy-text").textContent = audioStopping
-    ? t("dedup.stopping")
-    : t(stage === "full" ? "dedup.progress.full" : "dedup.progress.quick", { done, total });
+  activity.progress({
+    title: t(stage === "full" ? "activity.dedupFull" : "activity.dedupQuick"),
+    percent: total ? (done / total) * 100 : null,
+    detail: total ? t("activity.countOf", { done, total }) : "",
+  });
 }
 
 function stopAudioScan() {
   if (!audioRunning || audioStopping) return;
   audioStopping = true;
   paintScanButton();
-  el("busy-pill").classList.add("stopping");
-  el("busy-stop").disabled = true;
-  el("busy-text").textContent = t("dedup.stopping");
+  activity.stopping(t("dedup.stopping"));
   invoke("cancel_find_duplicates", {});
 }
 
 // Identical decoded audio (#821): decoding takes a while on a big library, so
-// it reports progress in the status bar's busy pill and can be stopped there
-// or from the Scan button, keeping the groups confirmed so far.
+// it reports progress on the activity card (#843) and can be stopped there or
+// from the Scan button, keeping the groups confirmed so far.
 async function runAudioScan() {
   audioRunning = true;
   audioStopping = false;
   paintScanButton();
-  paintAudioProgress("quick", 0, 0);
-  el("busy-stop").hidden = false;
-  el("busy-stop").disabled = false;
-  el("busy-pill").hidden = false;
+  activity = beginActivity({ title: t("activity.dedupQuick"), stop: stopAudioScan });
   const events = window.__TAURI__ && window.__TAURI__.event;
   const unlisten = events
     ? await events.listen(AUDIO_EVENT, (e) => paintAudioProgress(e.payload.stage, e.payload.done, e.payload.total))
@@ -71,9 +70,8 @@ async function runAudioScan() {
     if (unlisten) unlisten();
     audioRunning = false;
     audioStopping = false;
-    el("busy-pill").hidden = true;
-    el("busy-pill").classList.remove("stopping");
-    el("busy-stop").hidden = true;
+    activity.finish();
+    activity = null;
     paintScanButton();
   }
 }
@@ -220,7 +218,6 @@ function renderDuplicates(groups, criterion) {
 }
 
 el("dup-criterion").addEventListener("change", paintCriterionHint);
-el("busy-stop").addEventListener("click", stopAudioScan);
 paintCriterionHint();
 
 export { refreshDeduplicator, runDuplicateScan };

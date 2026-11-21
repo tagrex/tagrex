@@ -48,6 +48,7 @@
       <symbol id="i-presets" viewBox="0 0 16 16"><path d="M4.5 2.8h7a1 1 0 0 1 1 1v9.4l-4.5-2.8L4 13.2V3.8a1 1 0 0 1 1-1Z"/></symbol>
       <symbol id="i-health" viewBox="0 0 16 16"><path d="M8 13.4 3.2 8.8a3 3 0 0 1 4.2-4.3l.6.6.6-.6a3 3 0 0 1 4.2 4.3Z"/><path d="M5 8.2h1.6l.9-1.6 1.2 2.6.7-1H11"/></symbol>
       <symbol id="i-check" viewBox="0 0 16 16"><path d="M3.4 8.4 6.4 11.4 12.6 4.6"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6"/><line x1="8" y1="5" x2="8" y2="8.6"/><circle cx="8" cy="11" r=".75" fill="currentColor" stroke="none"/></symbol>
       <symbol id="i-plus" viewBox="0 0 16 16"><line x1="8" y1="3.5" x2="8" y2="12.5"/><line x1="3.5" y1="8" x2="12.5" y2="8"/></symbol>
       <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2.5 5.3a1 1 0 0 1 1-1h2.7l1.2 1.4h5.1a1 1 0 0 1 1 1v4.6a1 1 0 0 1-1 1h-9.1a1 1 0 0 1-1-1Z"/></symbol>
       <symbol id="i-tag" viewBox="0 0 16 16"><path d="M2.8 3.3h4.4L13 9l-4 4-5.8-5.8Z"/><circle cx="5.6" cy="6.1" r="1" fill="currentColor" stroke="none"/></symbol>
@@ -278,16 +279,30 @@
              place; this pill carries the apply scope, the Show-old toggle and the
              gate buttons — nothing is written until Apply. -->
         <div id="diff-actionbar" class="diff-actionbar" hidden>
+          <div class="ab-draft" id="ab-draft">
           <span class="ab-count"><b id="ab-count">0</b> <span data-i18n="diff.toApply">to apply</span><span class="ab-plan" id="ab-plan"></span><span class="ab-locked" id="ab-locked" hidden></span></span>
           <!-- Whose proposal this is, when an AI assistant staged it (#830). -->
           <span class="ab-agent" id="ab-agent" hidden></span>
           <span class="ab-sep"></span>
           <label class="toggle-old" data-i18n-title="diff.showOldTitle" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="diff-show-old" /> <span data-i18n="diff.showOld">Show old values</span></label>
           <span class="ab-sep"></span>
-          <span class="ab-progress" id="ab-progress"><span class="ab-bar"><span class="ab-bar-fill" id="ab-bar-fill"></span></span><span class="ab-file" id="ab-file"></span></span>
-          <button id="diff-cancel-apply" class="btn" data-i18n="action.cancel">Cancel</button>
           <button id="diff-discard" class="btn" data-i18n="action.discard">Discard</button>
           <button id="diff-apply" class="btn primary" disabled data-i18n="action.apply">Apply</button>
+          </div>
+          <!-- A running operation (#843): apply, undo, redo, BPM detection, the
+               audio duplicate scan. The same pill grows into this card, holds
+               the outcome, then gives the pill back. Driven by js/activity.js. -->
+          <div class="ab-activity" id="ab-activity" hidden>
+            <div class="act-head">
+              <span class="act-indicator" aria-hidden="true"><span class="act-spinner"></span><svg class="ico act-check"><use href="#i-check"/></svg><svg class="ico act-alert"><use href="#i-alert"/></svg></span>
+              <span id="act-title" class="act-title" role="status" aria-live="polite"></span>
+              <span id="act-percent" class="act-percent" aria-hidden="true"></span>
+              <button id="act-stop" class="btn act-stop" type="button" hidden><svg class="ico"><use href="#i-stop"/></svg><span data-i18n="action.stop">Stop</span></button>
+              <button id="act-dismiss" class="icon act-dismiss" type="button" hidden data-i18n-title="action.close" title="Close" data-i18n-aria-label="action.close" aria-label="Close"><svg class="ico"><use href="#i-close"/></svg></button>
+            </div>
+            <div id="act-meter" class="act-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100"><span id="act-fill" class="act-fill"></span></div>
+            <p id="act-detail" class="act-detail"></p>
+          </div>
         </div>
       </section>
 
@@ -831,9 +846,6 @@
       </div>
       </div>
       <div class="sb-right">
-        <!-- A rollback in progress (#448): undo has no bar of its own to borrow,
-             since the diff bar belongs to a staged plan. Driven by applyprogress.js. -->
-        <span id="busy-pill" class="busy-pill" hidden role="status"><span class="ab-bar"><span class="ab-bar-fill" id="busy-fill"></span></span><span id="busy-text"></span><button id="busy-stop" class="icon busy-stop" type="button" hidden data-i18n-title="action.stop" title="Stop" data-i18n-aria-label="action.stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button></span>
         <span id="status-sel" class="muted"></span>
       </div>
     </footer>

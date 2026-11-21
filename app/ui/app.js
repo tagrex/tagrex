@@ -26,7 +26,9 @@ import {
   beginUndoProgress,
   endApplyProgress,
   endUndoProgress,
+  finishingApplyProgress,
 } from "./js/applyprogress.js";
+import { setDraftVisible } from "./js/activity.js";
 import {
   activeHealthLabel,
   clearHealth,
@@ -1592,7 +1594,7 @@ function enterDiffState() {
     plan.removeAttribute("title");
   }
   renderLockedSkips();
-  el("diff-actionbar").hidden = false;
+  setDraftVisible(true);
   updateDiffBar();
   updateRefreshButton(); // a staged plan puts the re-read out of reach (#212)
   // The rule chain acts on the staged plan while one is staged (#142), and its
@@ -1639,7 +1641,7 @@ function exitDiffState() {
   }
   document.body.classList.remove("diffing");
   el("tracks").classList.remove("show-old");
-  el("diff-actionbar").hidden = true;
+  setDraftVisible(false);
   closePlanReport(); // a report about this plan goes with it (#562)
   agentClosed(); // an assistant's proposal left without an Apply (#830)
   renderTracks();
@@ -2149,7 +2151,7 @@ async function afterOpen(label) {
     renderTableHead();
   }
   document.body.classList.remove("diffing");
-  el("diff-actionbar").hidden = true;
+  setDraftVisible(false);
   agentClosed(); // a staged proposal goes with the plan (#832)
   resetEdits();
   setSortKey(null);
@@ -2268,10 +2270,15 @@ async function apply() {
   // A second Apply (the shortcut, a double click) would queue behind the first.
   if (applying || undoing) return;
   applying = true;
+  // The card's outcome (#843): what was applied, or why not.
+  const appliedText = msg("toast.applied", { files: tn("unit.file", appliedPlan.changes.length) });
+  let outcome = null;
+  let written = false;
   try {
-    await beginApplyProgress();
+    await beginApplyProgress(appliedPlan, folderRename);
     await invoke("apply_plan", { plan: appliedPlan });
-    toast(msg("toast.applied", { files: tn("unit.file", appliedPlan.changes.length) }));
+    written = true;
+    finishingApplyProgress();
     agentApplied(appliedPlan.changes.length);
     if (wasRename) {
       remapEditsAfterRename(appliedPlan); // keep pending tag edits, new paths
@@ -2297,14 +2304,16 @@ async function apply() {
     syncSelectionUI();
     refreshCustomColumnCells();
     await refreshHistory();
+    outcome = ["success", appliedText];
   } catch (e) {
     // A cancel is the user's own doing and left everything as it was: say so
-    // rather than raising it as a failure (#437).
+    // rather than raising it as a failure (#437). A failure after the write
+    // still says what was written, with the error under it.
     const code = e && e.failure && e.failure.message && e.failure.message.code;
-    if (code === "error.plan.cancelled") toast(msg("toast.applyCancelled"));
-    else toast(String(e), true);
+    if (code === "error.plan.cancelled") outcome = ["cancelled", msg("toast.applyCancelled")];
+    else outcome = ["error", written ? appliedText : msg("activity.applyFailed"), String(e)];
   } finally {
-    endApplyProgress();
+    endApplyProgress(...(outcome || []));
     applying = false;
   }
 }
@@ -2334,6 +2343,7 @@ async function undo() {
   // The backend takes one job at a time; a second click would only queue (#448).
   if (applying || undoing) return;
   undoing = true;
+  let outcome = null;
   try {
     const batches = await invoke("history", {});
     if (batches.length === 0) return;
@@ -2363,7 +2373,9 @@ async function undo() {
       });
     }
     const kept = (result && result.kept) || [];
-    if (kept.length === 0) toast(msg("app.undid"));
+    // The kept fields are a report to read at leisure; a plain undo is the
+    // card's outcome (#843).
+    if (kept.length === 0) outcome = ["success", msg("app.undid")];
     else report(msg("app.undid"), undoKeptParts(kept));
     resetEdits();
     if (undoneBatch.message?.code === FOLDER_RENAME_CODE) await followLibraryRoot();
@@ -2378,9 +2390,9 @@ async function undo() {
     refreshCustomColumnCells();
     await refreshHistory();
   } catch (e) {
-    toast(String(e), true);
+    outcome = ["error", msg("activity.undoFailed"), String(e)];
   } finally {
-    endUndoProgress();
+    endUndoProgress(...(outcome || []));
     undoing = false;
   }
 }
@@ -2392,11 +2404,12 @@ async function undo() {
 async function redo() {
   if (applying || undoing) return;
   undoing = true;
+  let outcome = null;
   try {
     await beginUndoProgress("redo.running");
     const batch = await invoke("redo", {});
     if (!batch) return;
-    toast(msg("app.redid"));
+    outcome = ["success", msg("app.redid")];
     resetEdits();
     if (batch.message?.code === FOLDER_RENAME_CODE) await followLibraryRoot();
     const order = handOrder();
@@ -2408,9 +2421,9 @@ async function redo() {
     syncSelectionUI();
     refreshCustomColumnCells();
   } catch (e) {
-    toast(String(e), true);
+    outcome = ["error", msg("activity.redoFailed"), String(e)];
   } finally {
-    endUndoProgress();
+    endUndoProgress(...(outcome || []));
     undoing = false;
     await refreshHistory();
   }
@@ -2460,11 +2473,11 @@ function setMode(name) {
     // intact underneath — its floating bar just hides until a normal mode returns.
     el("files-view").hidden = true;
     el("duplicates-view").hidden = false;
-    el("diff-actionbar").hidden = true;
+    setDraftVisible(false);
   } else {
     el("duplicates-view").hidden = true;
     showView("files");
-    if (diffByPath) el("diff-actionbar").hidden = false;
+    if (diffByPath) setDraftVisible(true);
   }
   // Uncollapse when a tab is clicked, so switching modes always reveals the panel.
   document.body.classList.remove("panel-collapsed");

@@ -1599,53 +1599,6 @@ body.diffing #tracks tbody tr.staged td.sel {
   padding-right: var(--space-5);
 }
 
-/* While an apply runs (#437) the bar swaps its gate buttons for a progress bar,
-   the file being written and a Cancel. The count stays: it is what is being
-   applied. */
-.diff-actionbar .ab-progress,
-.diff-actionbar #diff-cancel-apply {
-  display: none;
-}
-.diff-actionbar.applying .ab-progress {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  min-width: 0;
-}
-.diff-actionbar.applying #diff-cancel-apply {
-  display: inline-flex;
-}
-.diff-actionbar.applying .toggle-old,
-.diff-actionbar.applying .ab-sep,
-.diff-actionbar.applying #diff-discard,
-.diff-actionbar.applying #diff-apply {
-  display: none;
-}
-.diff-actionbar .ab-bar {
-  flex: 0 0 auto;
-  width: 140px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--border);
-  overflow: hidden;
-}
-.diff-actionbar .ab-bar-fill {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--accent-ink);
-  transition: width 0.12s linear;
-}
-.diff-actionbar .ab-file {
-  min-width: 0;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-xs);
-  color: var(--muted);
-}
-
 /* ---- duplicate finder (#40) ---- */
 .dup-bar {
   display: flex;
@@ -7526,79 +7479,207 @@ body.drag-active #drop-overlay {
   display: none;
 }
 
-/* ---- a run in progress (#448, one pattern since #558) ----------------------
-   Wherever a run is shown: [ bar ] [ what, n of N ] [ stop ]. A staged plan's
-   apply runs in the diff bar; every other run (BPM detection, undo) in this
-   busy pill, never both. While stopping the count freezes, the bar goes muted
-   and Stop is spent; a run that can't be stopped (undo) has no Stop. */
-.busy-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--text-xs);
+/* ---- the activity card (#843) ---------------------------------------------
+   A running apply, undo, redo, BPM detection or audio duplicate scan. The
+   floating Apply pill grows into this card (js/activity.js animates the size),
+   so the run is shown where it was started: [ state ] [ what ] [ n% ] [ Stop ],
+   a meter, and a detail line (the file at hand, n of N). While stopping the
+   meter goes muted and Stop is spent; a run that cannot stop has no Stop. An
+   error keeps its message on the card until it is closed. */
+.ab-draft {
+  display: contents;
 }
-.busy-pill[hidden] {
+.ab-draft[hidden],
+.ab-activity[hidden] {
   display: none;
 }
-.busy-pill .ab-bar {
+.diff-actionbar[data-activity] {
+  border-radius: 20px;
+  padding: var(--space-4) var(--space-5);
+}
+.ab-activity {
+  width: 380px;
+  max-width: 100%;
+  min-width: 0;
+}
+.act-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--ctl-h-sm);
+}
+.act-indicator {
+  position: relative;
   flex: 0 0 auto;
-  width: 96px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--border);
-  overflow: hidden;
+  width: 16px;
+  height: 16px;
 }
-.busy-pill .ab-bar-fill {
+.act-indicator > * {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+.act-indicator .ico {
+  width: 16px;
+  height: 16px;
+}
+.act-spinner {
+  box-sizing: border-box;
+  margin: 1px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-ink);
+  border-radius: 50%;
+  animation: act-spin 0.9s linear infinite;
+}
+@keyframes act-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+[data-activity="running"] .act-spinner,
+[data-activity="stopping"] .act-spinner {
   display: block;
-  height: 100%;
-  width: 0;
-  background: var(--accent-ink);
-  transition: width 0.12s linear;
 }
-#busy-text {
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
+[data-activity="stopping"] .act-spinner {
+  border-top-color: var(--muted);
+}
+[data-activity="success"] .act-check {
+  display: block;
+  color: var(--accent-ink);
+  stroke-width: 2;
+}
+[data-activity="cancelled"] .act-alert,
+[data-activity="error"] .act-alert {
+  display: block;
+}
+[data-activity="cancelled"] .act-alert {
+  color: var(--muted);
+}
+[data-activity="error"] .act-alert {
+  color: var(--del);
+}
+.act-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
 }
-/* Stop: the field-tools tier, a filled square, --del on hover because it ends
-   something. */
-.busy-stop.icon {
+.act-percent {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.diff-actionbar .act-stop {
+  flex: 0 0 auto;
+  height: var(--ctl-h-sm);
+  padding: 0 var(--space-4);
+  font-size: var(--text-xs);
+}
+.act-stop .ico {
+  width: 10px;
+  height: 10px;
+}
+.act-stop[hidden],
+.act-dismiss[hidden] {
+  display: none;
+}
+.diff-actionbar .act-stop:hover:not(:disabled) {
+  color: var(--del);
+}
+.act-dismiss.icon {
+  flex: 0 0 auto;
   width: 22px;
   height: 22px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
   background: none;
   box-shadow: none;
   color: var(--muted);
 }
-.busy-stop.icon > svg {
-  width: 12px;
-  height: 12px;
+.act-dismiss.icon:hover {
+  color: var(--text);
 }
-.busy-stop.icon:hover:not(:disabled) {
-  background: var(--error-tint);
-  color: var(--del);
+.act-meter {
+  position: relative;
+  height: 4px;
+  margin-top: var(--space-3);
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
 }
-.busy-stop[hidden] {
+.act-fill {
+  position: absolute;
+  inset: 0;
+  background: var(--accent-ink);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 0.18s ease-out;
+}
+/* Not known yet (checking files, the first moment of a run): a sliding band. */
+.act-meter:not([aria-valuenow]) .act-fill {
+  right: auto;
+  width: 30%;
+  transform: none;
+  transition: none;
+  animation: act-indeterminate 1.3s ease-in-out infinite;
+}
+@keyframes act-indeterminate {
+  from {
+    left: -30%;
+  }
+  to {
+    left: 100%;
+  }
+}
+[data-activity="stopping"] .act-fill {
+  background: var(--muted);
+  animation-play-state: paused;
+}
+[data-activity="cancelled"] .act-meter,
+[data-activity="error"] .act-meter {
   display: none;
 }
-.busy-pill.stopping .ab-bar-fill,
-.diff-actionbar.cancelling .ab-bar-fill {
-  background: var(--muted);
-}
-.busy-pill.stopping #busy-text,
-.diff-actionbar.cancelling .ab-file {
-  color: var(--muted);
-}
-.busy-pill.stopping .busy-stop.icon:disabled {
-  background: none;
-  color: var(--border);
-  cursor: default;
-}
-.diff-actionbar .ab-file {
+.act-detail {
+  margin: var(--space-2) 0 0;
+  min-height: 1lh;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--muted);
+}
+/* An error's message is read, not glanced at: it wraps, and a long one
+   scrolls inside the card. */
+[data-activity="error"] .act-detail {
+  max-height: 6lh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+[data-activity="cancelled"] .act-detail:empty,
+[data-activity="success"] .act-detail:empty {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .act-spinner,
+  .act-meter:not([aria-valuenow]) .act-fill {
+    animation: none;
+  }
+  .act-meter:not([aria-valuenow]) .act-fill {
+    left: 0;
+    width: 100%;
+    opacity: 0.35;
+  }
+  .act-fill {
+    transition: none;
+  }
 }
 
 /* ---- input group: .field (#547) --------------------------------------------

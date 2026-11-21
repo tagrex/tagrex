@@ -1,85 +1,99 @@
-// Progress and Cancel for a running Apply (#437).
+// Progress and Cancel for a running Apply (#437), undo (#448) and redo (#775).
 //
-// The backend emits `tagrex://apply-progress` while it writes and stops at the
-// next file after `cancel_apply`. This only paints that in the diff bar; the
-// bar shows nothing for the first moment, so a quick apply does not flash it.
-import { el } from "./dom.js";
+// The backend emits `tagrex://apply-progress` while it works and stops an
+// apply at the next file after `cancel_apply`. Since #843 all of it is shown
+// on the activity card (js/activity.js): the stage, the share done, the file.
 import { invoke } from "./invoke.js";
 import { t } from "./i18n.js";
+import { beginActivity } from "./activity.js";
 
 const EVENT = "tagrex://apply-progress";
-const SHOW_AFTER_MS = 250;
 
 let unlisten = null;
-let showTimer = null;
+let activity = null;
 
 function baseName(path) {
   return String(path || "").split(/[\\/]/).pop();
 }
 
-function paint(progress) {
-  const total = progress.total || 0;
-  el("ab-bar-fill").style.width = total ? `${Math.round((progress.done / total) * 100)}%` : "0%";
-  if (!el("diff-cancel-apply").disabled) el("ab-file").textContent = baseName(progress.path);
+async function listen(callback) {
+  const events = window.__TAURI__ && window.__TAURI__.event;
+  if (events) return events.listen(EVENT, (e) => callback(e.payload));
+  // The browser mock has no event bus: it dispatches the same payloads on the
+  // document, so the card can be checked without the native window.
+  const listener = (e) => callback(e.detail);
+  document.addEventListener(EVENT, listener);
+  return () => document.removeEventListener(EVENT, listener);
 }
 
-export async function beginApplyProgress() {
-  const bar = el("diff-actionbar");
-  el("ab-bar-fill").style.width = "0%";
-  el("ab-file").textContent = "";
-  el("diff-cancel-apply").disabled = false;
-  showTimer = setTimeout(() => bar.classList.add("applying"), SHOW_AFTER_MS);
-  const events = window.__TAURI__ && window.__TAURI__.event;
-  if (events) unlisten = await events.listen(EVENT, (e) => paint(e.payload));
+function stopListening() {
+  if (unlisten) unlisten();
+  unlisten = null;
 }
 
-// The same events while an undo runs (#448), painted in the status bar since there
-// may be no diff bar to put them in. No Cancel: a rollback stopped half-way would
-// leave the batch partly undone.
-let undoUnlisten = null;
-let undoTimer = null;
-
-// `running` names what runs: an undo, or a redo (#775), which cannot be
-// stopped half-way either.
-export async function beginUndoProgress(running = "undo.running") {
-  // A rollback can't be stopped, so the pill shows no Stop (#558).
-  el("busy-stop").hidden = true;
-  el("busy-fill").style.width = "0%";
-  el("busy-text").textContent = t(running);
-  undoTimer = setTimeout(() => (el("busy-pill").hidden = false), SHOW_AFTER_MS);
-  const events = window.__TAURI__ && window.__TAURI__.event;
-  if (events) {
-    undoUnlisten = await events.listen(EVENT, (e) => {
-      const { done, total } = e.payload;
-      const percent = total ? Math.round((done / total) * 100) : 0;
-      el("busy-fill").style.width = `${percent}%`;
-      el("busy-text").textContent = `${t(running)} ${percent}%`;
+// An apply's events count the preflight reads first (one per file), then the
+// write steps (#437). While `done` is below the file count the files are being
+// checked, which writes nothing; after that each new path is the next file.
+// A folder rename (#841) is one step for the whole folder: no file count.
+export async function beginApplyProgress(plan, folderRename = false) {
+  const files = folderRename ? 0 : plan.changes.length;
+  const seen = new Set();
+  let percent = 0;
+  stopListening();
+  activity = beginActivity({ title: t("activity.checking"), stop: cancelApply, foreground: true });
+  const own = activity;
+  unlisten = await listen(({ done, total, path }) => {
+    if (activity !== own) return;
+    const name = baseName(path);
+    if (done < files && total > files) {
+      own.progress({ title: t("activity.checking"), percent: null, detail: name });
+      return;
+    }
+    seen.add(path);
+    const steps = Math.max(1, total - files);
+    percent = Math.max(percent, Math.min(99, ((done - files) / steps) * 100));
+    own.progress({
+      title: t("activity.writing"),
+      percent,
+      detail: files > 1 ? t("activity.fileOf", { n: Math.min(seen.size, files), total: files, file: name }) : name,
     });
+  });
+}
+
+// The plan is written; the list is read again before the outcome shows.
+export function finishingApplyProgress() {
+  stopListening();
+  if (activity) {
+    activity.progress({ title: t("activity.finishing"), percent: 99, detail: t("activity.refreshing"), stoppable: false });
   }
 }
 
-export function endUndoProgress() {
-  clearTimeout(undoTimer);
-  undoTimer = null;
-  if (undoUnlisten) undoUnlisten();
-  undoUnlisten = null;
-  el("busy-pill").hidden = true;
+/// `outcome` is "success", "cancelled", "error" or null (close at once).
+export function endApplyProgress(outcome = null, title = "", detail = "") {
+  stopListening();
+  if (activity) activity.finish(outcome, title, detail);
+  activity = null;
 }
 
-export function endApplyProgress() {
-  clearTimeout(showTimer);
-  showTimer = null;
-  if (unlisten) unlisten();
-  unlisten = null;
-  el("diff-actionbar").classList.remove("applying", "cancelling");
+// An undo or a redo (`running` names which): no Stop, since a rollback
+// stopped half-way would leave the batch partly undone (#448).
+export async function beginUndoProgress(running = "undo.running") {
+  stopListening();
+  activity = beginActivity({ title: t(running), foreground: true });
+  const own = activity;
+  unlisten = await listen(({ done, total, path }) => {
+    if (activity !== own) return;
+    own.progress({ percent: total ? (done / total) * 100 : null, detail: baseName(path) });
+  });
 }
 
-// The backend stops at the next file and rolls back; until it answers, the
-// button is spent and the bar says so.
-el("diff-cancel-apply").addEventListener("click", () => {
-  el("diff-cancel-apply").disabled = true;
-  // Cancelling reads as stopping does (#558): the bar goes muted.
-  el("diff-actionbar").classList.add("cancelling");
-  el("ab-file").textContent = t("apply.cancelling");
+export function endUndoProgress(outcome = null, title = "", detail = "") {
+  endApplyProgress(outcome, title, detail);
+}
+
+// The backend stops at the next file and rolls back; until it answers, Stop
+// is spent and the card says so.
+function cancelApply() {
+  if (activity) activity.stopping(t("apply.cancelling"));
   invoke("cancel_apply", {});
-});
+}

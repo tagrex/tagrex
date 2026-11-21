@@ -50,13 +50,16 @@ live, and how is it found by someone who has never opened the builder?
 
 ## Part 3: long operations, progress and outcome
 
+- Since #843 every long operation (apply, undo, redo, BPM detection, the
+  identical-audio duplicate scan) runs on one activity card (`js/activity.js`):
+  the floating Apply pill grows into it, names the stage, the share done and the
+  file at hand, holds a success for a moment and keeps an error until it is
+  closed. The status bar's busy pill is gone.
 - BPM detection (`js/bpm.js`): the toolbar button becomes Stop while it runs,
-  progress is a small bar and a count in the status bar's busy pill
-  (`#busy-pill`), and the outcome is a toast of several clauses, e.g. "Stopped
-  after 6 of 160 · Previewing BPM on 4 files · 1 long file skipped · no steady
-  beat in 1 file".
-- Apply and undo (`js/applyprogress.js`) report progress in the diff bar and the
-  same busy pill.
+  the card carries the count and a Stop, and the outcome is a toast of several
+  clauses, e.g. "Stopped after 6 of 160 · Previewing BPM on 4 files · 1 long
+  file skipped · no steady beat in 1 file".
+- Apply, undo and redo (`js/applyprogress.js`) put their outcome on the card.
 - Toasts (`#toast`, `toast()` in `js/dom.js`) are single lines, error or not.
 
 Open questions: one pattern for **progress, stopping, and the summary of what
