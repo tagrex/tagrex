@@ -189,6 +189,7 @@ export const ru = {
   "editor.addField": "Добавить поле",
   "editor.pairNumber": "{field}: номер",
   "editor.pairTotal": "{field}: всего",
+  "editor.clearField": "Очистить поле «{field}»",
   "editor.fieldName": "имя поля",
   "editor.fieldValue": "значение",
   "editor.coverArt": "Обложка",

@@ -189,6 +189,7 @@ export const en = {
   "editor.addField": "Add field",
   "editor.pairNumber": "{field} number",
   "editor.pairTotal": "{field} total",
+  "editor.clearField": "Clear {field}",
   "editor.fieldName": "field name",
   "editor.fieldValue": "value",
   "editor.coverArt": "Cover art",

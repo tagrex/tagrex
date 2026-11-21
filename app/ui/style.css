@@ -3284,6 +3284,53 @@ td.unreadable-note {
   align-items: flex-start;
 }
 
+/* The input and its clear button (#810). The × sits inside a text box, at its
+   right edge, and after a narrow numeric one, where it would cover the digits.
+   It shows on the row's hover and while the field has the caret, and only when
+   there is something to clear. */
+.fe-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.fe .fe-field:not(.num) .field-input {
+  padding-right: 22px;
+}
+.fe-clear {
+  flex: none;
+  padding: 2px;
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 0;
+  visibility: hidden;
+}
+.fe-field:not(.num) .fe-clear {
+  position: absolute;
+  right: 3px;
+}
+.fe-clear > svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+.fe-row:hover .fe-clear,
+.fe-field:focus-within .fe-clear {
+  visibility: visible;
+}
+.fe-clear:hover {
+  color: var(--text);
+  background: var(--row-hover);
+}
+.fe-clear[hidden] {
+  display: none;
+}
+
 /* combined number/total pair (#136): two narrow numeric inputs joined by a "/",
    e.g. "Track [n] / [total]". */
 .fe-pair {

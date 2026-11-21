@@ -189,6 +189,7 @@ export const fr = {
   "editor.addField": "Ajouter un champ",
   "editor.pairNumber": "{field} : numéro",
   "editor.pairTotal": "{field} : total",
+  "editor.clearField": "Vider {field}",
   "editor.fieldName": "nom du champ",
   "editor.fieldValue": "valeur",
   "editor.coverArt": "Pochette",

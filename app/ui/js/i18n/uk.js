@@ -190,6 +190,7 @@ export const uk = {
   "editor.addField": "Додати поле",
   "editor.pairNumber": "{field}: номер",
   "editor.pairTotal": "{field}: усього",
+  "editor.clearField": "Очистити поле «{field}»",
   "editor.fieldName": "ім'я поля",
   "editor.fieldValue": "значення",
   "editor.coverArt": "Обкладинка",

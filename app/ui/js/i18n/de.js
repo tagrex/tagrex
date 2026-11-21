@@ -185,6 +185,7 @@ export const de = {
   "editor.addField": "Feld hinzufügen",
   "editor.pairNumber": "{field}: Nummer",
   "editor.pairTotal": "{field}: gesamt",
+  "editor.clearField": "{field} leeren",
   "editor.fieldName": "Feldname",
   "editor.fieldValue": "Wert",
   "editor.coverArt": "Cover",

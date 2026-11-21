@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   hides, `· 2 hidden by the filter` in red with a tooltip, since a filter hides
   rows without deselecting them and those files still take part in the next
   action ([#809](https://github.com/tagrex/tagrex/issues/809)).
+- An EDITOR field can be emptied with the × that appears at its right edge on
+  hover, for every selected file at once and also when it shows
+  `<multiple values>`, which typing alone could not clear. It stages like
+  deleting the text, so preview, Apply and Undo work as usual
+  ([#810](https://github.com/tagrex/tagrex/issues/810)).
 
 ### Fixed
 

@@ -189,6 +189,7 @@ export const it = {
   "editor.addField": "Aggiungi campo",
   "editor.pairNumber": "{field}: numero",
   "editor.pairTotal": "{field}: totale",
+  "editor.clearField": "Svuota {field}",
   "editor.fieldName": "nome campo",
   "editor.fieldValue": "valore",
   "editor.coverArt": "Copertina",

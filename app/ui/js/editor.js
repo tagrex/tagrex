@@ -636,6 +636,27 @@ function fieldRow(key, label, paths) {
     else input.removeAttribute("aria-invalid");
   };
 
+  // Clears the field in every selected file (#810), including one showing
+  // <multiple values>, which typing alone cannot empty. It is the same edit as
+  // deleting the text, so it stages like one.
+  const clear = document.createElement("button");
+  clear.type = "button";
+  clear.className = "fe-clear";
+  clear.innerHTML = ico("close");
+  clear.tabIndex = -1; // select-all and Delete does this from the keyboard
+  clear.title = tr("editor.clearField", { field: label });
+  clear.setAttribute("aria-label", clear.title);
+  const showClear = () => {
+    clear.hidden = input.disabled || (input.value === "" && !input.classList.contains("multiple"));
+  };
+  clear.addEventListener("mousedown", (e) => e.preventDefault()); // keep the caret where it is
+  clear.addEventListener("click", () => {
+    input.value = "";
+    input.placeholder = ""; // emptied, so no longer <multiple values>
+    input.dispatchEvent(new Event("input"));
+    input.focus();
+  });
+
   input.addEventListener("input", () => {
     stagedFields.set(key, input.value);
     row.classList.remove("multiple");
@@ -643,13 +664,18 @@ function fieldRow(key, label, paths) {
     row.classList.add("dirty");
     input.classList.add("dirty");
     reflect();
+    showClear();
   });
 
   // A pre-filled value that's already invalid (rare — the backend guards it)
   // should show its error state on first render too.
   if (shared) reflect();
+  showClear();
 
-  cell.append(input, hint);
+  const field = document.createElement("span");
+  field.className = "fe-field" + (numeric ? " num" : "");
+  field.append(input, clear);
+  cell.append(field, hint);
   row.append(marker, labelCell, cell, lockButton([key], label, refreshFieldEditor));
   return row;
 }
