@@ -50,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- On Windows the file table no longer keeps showing a tag's old value after
+  another tagger changes it without changing the file's size and then puts the
+  file's date back: cached reads are checked against the NTFS change time,
+  which every write moves and no program can restore
+  ([#813](https://github.com/tagrex/tagrex/issues/813)).
 - A settings file cut short by a crash, a power loss or a full disk is no longer
   read as the defaults and then overwritten by the next save: settings are
   written through a temporary file and renamed into place, and a damaged

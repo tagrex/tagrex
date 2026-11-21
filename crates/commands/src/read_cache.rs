@@ -15,6 +15,11 @@ struct Fingerprint {
     modified: SystemTime,
     #[cfg(unix)]
     identity: (u64, u64, i64, i64),
+    /// NTFS change time (#813): every write moves it, it is read from the open
+    /// file rather than its directory entry, and no program can set it back
+    /// the way a tagger that keeps the file's date sets the modification time.
+    #[cfg(windows)]
+    changed: Option<i64>,
 }
 
 impl Fingerprint {
@@ -27,8 +32,46 @@ impl Fingerprint {
             modified: m.modified().ok()?,
             #[cfg(unix)]
             identity: (m.dev(), m.ino(), m.ctime(), m.ctime_nsec()),
+            #[cfg(windows)]
+            changed: windows_change_time(path),
         })
     }
+}
+
+/// The file's NTFS change time, or None where the volume does not keep one.
+/// A metadata-only open takes no part in sharing checks, so this works while
+/// another program holds the file open for writing.
+#[cfg(windows)]
+fn windows_change_time(path: &Path) -> Option<i64> {
+    use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+    use windows_sys::Win32::Storage::FileSystem::{
+        FileBasicInfo, GetFileInformationByHandleEx, FILE_BASIC_INFO,
+    };
+    const FILE_READ_ATTRIBUTES: u32 = 0x80;
+    const FILE_SHARE_ALL: u32 = 0x1 | 0x2 | 0x4;
+    let file = std::fs::OpenOptions::new()
+        .access_mode(FILE_READ_ATTRIBUTES)
+        .share_mode(FILE_SHARE_ALL)
+        .open(path)
+        .ok()?;
+    let mut info = FILE_BASIC_INFO {
+        CreationTime: 0,
+        LastAccessTime: 0,
+        LastWriteTime: 0,
+        ChangeTime: 0,
+        FileAttributes: 0,
+    };
+    // SAFETY: the handle stays open for the call; info is writable for exactly
+    // its declared size and the API keeps neither pointer.
+    let ok = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileBasicInfo,
+            (&mut info as *mut FILE_BASIC_INFO).cast(),
+            std::mem::size_of::<FILE_BASIC_INFO>() as u32,
+        )
+    };
+    (ok != 0 && info.ChangeTime != 0).then_some(info.ChangeTime)
 }
 
 struct Entry {
@@ -67,7 +110,8 @@ impl ReadCache {
         let read = TagEngine::read_with_props(path)?;
         // Cache only when the observed fingerprint is unchanged across the read.
         // This does not detect every concurrent or same-size external edit: on
-        // Windows, length + mtime can collide on coarse timestamp filesystems.
+        // Windows volumes without a change time (FAT, exFAT), length + mtime can
+        // collide on their coarse timestamps.
         // Executor staleness checks always re-read the file independently.
         if let Some(stamp) = before.filter(|s| Some(s) == Fingerprint::of(path).as_ref()) {
             let bytes = 512
