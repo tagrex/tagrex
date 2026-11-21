@@ -31,7 +31,11 @@ TagRex's preview and the user applies or discards them there. Tell the user what
 that it is waiting for them in TagRex. To identify a release, use search_releases and read_release, \
 which go through TagRex's own sources and credentials, and tag files from a release with \
 propose_import, which fills tags exactly as TagRex's own import does; read_settings tells how that \
-import fills tags. Do not read TagRex's data files or call the sources yourself.";
+import fills tags. Do not read TagRex's data files or call the sources yourself. Never rename, \
+move, delete or write files or folders of the library yourself, and do not look into its folders \
+with shell commands or other tools: every change goes through a TagRex proposal, so the user sees \
+it before it happens and can undo it. When TagRex cannot make a change, tell the user so and stop \
+there; do not make it another way.";
 
 const NOT_RUNNING: &str =
     "TagRex is not running. Ask the user to open TagRex and a library in it, then try again.";

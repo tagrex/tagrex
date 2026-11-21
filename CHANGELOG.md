@@ -51,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   reports it as discarded, so the assistant no longer hears "staged" for a
   proposal that left the screen, and the next plan of your own is not marked
   with its name ([#832](https://github.com/tagrex/tagrex/issues/832)).
+- An AI assistant is told never to rename, move, delete or write library
+  files itself, nor to look into the library's folders with shell commands,
+  and to tell you when TagRex cannot make a change instead of making it
+  another way. One had offered to rename the open folder with a terminal
+  command, past the preview and Undo
+  ([#840](https://github.com/tagrex/tagrex/issues/840)).
 - The test for an assistant's rename proposals builds its paths the way
   Windows spells them, so the Windows build passes again
   ([#836](https://github.com/tagrex/tagrex/issues/836)).
