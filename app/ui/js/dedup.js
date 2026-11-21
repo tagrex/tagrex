@@ -4,13 +4,17 @@
 // what it found behind a lock banner. Nothing here changes a file — deleting a
 // duplicate is deliberately not offered.
 import { el, escapeHtml, fileName, toast } from "./dom.js";
-import { t, tn } from "./i18n.js";
+import { currentLang, t, tn } from "./i18n.js";
 import { invoke } from "./invoke.js";
 import { selectedPaths } from "./state.js";
 
 const AUDIO_EVENT = "tagrex://duplicate-progress";
 let audioRunning = false;
 let audioStopping = false;
+// The last scan's outcome, drawn again on a language change or a return to the
+// mode (#822): { criterion, groups, cancelled, failed }. Null before any scan.
+let last = null;
+let scanning = false;
 
 // The Scan button is Stop while an identical-audio scan runs. Its data-i18n
 // key is swapped along with the text, so a language change mid-run keeps the
@@ -57,17 +61,9 @@ async function runAudioScan() {
     : null;
   try {
     const result = await invoke("find_audio_duplicates", {});
-    if (result.cancelled && !result.groups.length) {
-      // Stopped before anything was confirmed: that is not a clean library.
-      el("dup-summary").textContent = t("dedup.stoppedEarly");
-      el("dup-results").innerHTML = `<p class="empty inert-panel">${t("dedup.pickKey")}</p>`;
-      return;
-    }
-    renderDuplicates(result.groups);
-    const notes = [];
-    if (result.cancelled) notes.push(t("dedup.stopped"));
-    if (result.failed.length) notes.push(tn("dedup.failed", result.failed.length));
-    if (notes.length) el("dup-summary").textContent += ` · ${notes.join(" · ")}`;
+    last = { criterion: "audio", groups: result.groups, cancelled: result.cancelled, failed: result.failed.length };
+    scanning = false;
+    paintResults();
   } catch (e) {
     el("dup-summary").textContent = "";
     toast(String(e), true);
@@ -94,19 +90,63 @@ async function runDuplicateScan() {
   }
   const criterion = el("dup-criterion").value;
   el("dup-summary").textContent = t("dedup.scanning");
+  scanning = true;
   if (criterion === "audio") {
     el("dup-results").innerHTML = "";
-    await runAudioScan();
+    try {
+      await runAudioScan();
+    } finally {
+      scanning = false;
+    }
     return;
   }
   el("dup-results").innerHTML = "";
   try {
     const groups = await invoke("find_duplicates", { criterion });
-    renderDuplicates(groups);
+    last = { criterion, groups, cancelled: false, failed: 0 };
+    scanning = false;
+    paintResults();
   } catch (e) {
     el("dup-summary").textContent = "";
     toast(String(e), true);
+  } finally {
+    scanning = false;
   }
+}
+
+// The line a group is headed with (#822). Criteria that match on tag values
+// show those values; the others are labelled here, in the interface language,
+// from what every file in the group shares.
+function groupLabel(group, criterion) {
+  const first = group.files[0];
+  switch (criterion) {
+    case "hash":
+      return t("dedup.key.identicalBytes");
+    case "audio":
+      return t("dedup.key.identicalAudio");
+    case "size":
+      return t("dedup.key.size", { size: first.size_bytes.toLocaleString(currentLang()) });
+    case "duration":
+      return mmss(first.duration_secs);
+    default:
+      return group.key;
+  }
+}
+
+// Draw the last scan's outcome in the current language.
+function paintResults() {
+  if (!last) return;
+  if (last.cancelled && !last.groups.length) {
+    // Stopped before anything was confirmed: that is not a clean library.
+    el("dup-summary").textContent = t("dedup.stoppedEarly");
+    el("dup-results").innerHTML = `<p class="empty inert-panel">${t("dedup.pickKey")}</p>`;
+    return;
+  }
+  renderDuplicates(last.groups, last.criterion);
+  const notes = [];
+  if (last.cancelled) notes.push(t("dedup.stopped"));
+  if (last.failed) notes.push(tn("dedup.failed", last.failed));
+  if (notes.length) el("dup-summary").textContent += ` · ${notes.join(" · ")}`;
 }
 
 function humanSize(bytes) {
@@ -129,15 +169,21 @@ function mmss(secs) {
 }
 
 // Entering DEDUPLICATOR with no scan yet shows a prompt; a prior scan's results
-// persist across mode switches (#118).
+// persist across mode switches (#118), and are drawn again so a language
+// changed meanwhile reaches them (#822).
 function refreshDeduplicator() {
+  if (scanning) return;
+  if (last) {
+    paintResults();
+    return;
+  }
   const results = el("dup-results");
   if (!results.querySelector("table, .empty")) {
     results.innerHTML = `<p class="empty inert-panel">${t("dedup.pickKey")}</p>`;
   }
 }
 
-function renderDuplicates(groups) {
+function renderDuplicates(groups, criterion) {
   const results = el("dup-results");
   const fileCount = groups.reduce((n, g) => n + g.files.length, 0);
   el("dup-summary").textContent = groups.length
@@ -152,7 +198,7 @@ function renderDuplicates(groups) {
   // "N copies" badge + the matched key.
   const rows = groups
     .map((g) => {
-      const head = `<tr class="dup-group"><td colspan="6"><span class="dup-badge">${escapeHtml(tn("dedup.copies", g.files.length))}</span><span class="dup-key">${escapeHtml(g.key)}</span></td></tr>`;
+      const head = `<tr class="dup-group"><td colspan="6"><span class="dup-badge">${escapeHtml(tn("dedup.copies", g.files.length))}</span><span class="dup-key">${escapeHtml(groupLabel(g, criterion))}</span></td></tr>`;
       const files = g.files
         .map(
           (f) => `<tr>

@@ -68,6 +68,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Duplicate groups found by identical bytes, identical audio, file size or
+  duration are labelled in the interface language (the size with the locale's
+  digit grouping, the length as m:ss) instead of in English, and the results
+  are redrawn when the language changes
+  ([#822](https://github.com/tagrex/tagrex/issues/822)).
 - Code scanning no longer reopens a dismissed XSS false positive every time the
   cover code moves: the browser-only development mock stops echoing the typed
   Discogs token back, which had made every command result look tainted by it
