@@ -74,6 +74,12 @@ let prefetching = false; // the background per-release detail sweep is running
 let autoMorePaused = false;
 let scrolledSinceLoad = false;
 const AUTO_MORE_DISTANCE = 240; // px from the end of the list
+// A list that fits the panel has nothing to scroll, so a wheel or trackpad
+// scroll down over it asks for the next page instead (#814). The quiet gap
+// keeps the momentum of that one gesture from pulling the page after it.
+const WHEEL_QUIET_MS = 700;
+let wheelQuietUntil = 0;
+let wheelPending = false;
 
 // Whether a search is doing background work the user might want to interrupt
 // (#108) — a page fetch or the per-release prefetch sweep.
@@ -212,8 +218,9 @@ function updateLoadMoreUi() {
   btn.setAttribute("aria-label", btn.title);
   const wrap = el("release-more");
   if (!wrap) return;
-  // Scrolling loads further pages (#812); the button is for where it cannot or
-  // should not: a list that fits, after Stop, after a failed page.
+  // Scrolling loads further pages (#812), a wheel over a list that fits too
+  // (#814); the button is for where it should not, after Stop or a failed
+  // page, and shows a list that fits that more results are there.
   const button = !busy && searchHasMore && (autoMorePaused || !listOverflows());
   const loadingMore = loadingResults && searchPage > 0;
   el("load-more").hidden = !button;
@@ -2078,6 +2085,23 @@ el("load-more").addEventListener("click", () => {
       () => {
         scrolledSinceLoad = true;
         maybeLoadMoreOnScroll();
+      },
+      { passive: true },
+    );
+    scroller.addEventListener(
+      "wheel",
+      (e) => {
+        if (e.deltaY <= 0 || e.ctrlKey) return; // up, or a pinch zoom
+        const now = Date.now();
+        const quiet = now >= wheelQuietUntil;
+        wheelQuietUntil = now + WHEEL_QUIET_MS;
+        if (!quiet || wheelPending || autoMorePaused || !searchHasMore || searchBusy()) return;
+        if (listOverflows()) return; // the scroll path above handles it
+        wheelPending = true;
+        Promise.resolve(loadMoreResults()).finally(() => {
+          wheelPending = false;
+          wheelQuietUntil = Date.now() + WHEEL_QUIET_MS;
+        });
       },
       { passive: true },
     );

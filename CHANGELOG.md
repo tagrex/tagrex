@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   in. Load more results stays for when the results fit without scrolling, after
   Stop and after a page failed to load, and a list that fits never loads further
   pages on its own ([#812](https://github.com/tagrex/tagrex/issues/812)).
+- A wheel or trackpad scroll down over ONLINE results that fit the panel loads
+  the next page too, so scrolling works with a small page size as well. One
+  gesture loads one page, never more
+  ([#814](https://github.com/tagrex/tagrex/issues/814)).
 
 ### Added
 
