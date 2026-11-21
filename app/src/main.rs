@@ -340,22 +340,45 @@ struct AudioDuplicatesDto {
     failed: Vec<String>,
     /// The scan was stopped; `groups` holds what was confirmed before that.
     cancelled: bool,
+    /// Digests taken from the cache instead of decoding (#823).
+    reused: usize,
 }
 
 /// Seconds of audio the quick pass of the identical-audio scan compares.
 const QUICK_DIGEST_SECS: u32 = 10;
 
+/// Audio digests kept between identical-audio scans for the session (#823),
+/// by path and length decoded (`None` for the whole file), each with the
+/// fingerprint the file had when it was decoded. A file whose fingerprint
+/// changed since is decoded again. Failures are not kept.
+type DigestStore =
+    std::collections::HashMap<(String, Option<u32>), (tagrex_commands::FileFingerprint, [u8; 32])>;
+
+#[derive(Default)]
+struct DigestCache(Arc<Mutex<DigestStore>>);
+
+/// One digest result per file, `None` for a file not reached before a cancel.
+type Digests = Vec<Option<Result<[u8; 32], tagrex_player::digest::DigestError>>>;
+
+/// Entries the digest cache holds before it starts over: two per file, so a
+/// library of this many files' worth of candidates, a few megabytes.
+const DIGEST_CACHE_LIMIT: usize = 200_000;
+
 /// The audio digest of each file, on several threads, in the order given.
-/// `None` for a file not reached before a cancel.
+/// `None` for a file not reached before a cancel. A digest `cache` holds for
+/// the file as it is now is used instead of decoding it (#823); the count of
+/// those comes back with the digests.
 fn digest_files(
     files: &[DuplicateFileDto],
     seconds: Option<u32>,
     cancel: &AtomicBool,
+    cache: &Mutex<DigestStore>,
     report: &(dyn Fn(usize, usize) + Sync),
-) -> Vec<Option<Result<[u8; 32], tagrex_player::digest::DigestError>>> {
+) -> (Digests, usize) {
     use std::sync::atomic::AtomicUsize;
     let next = AtomicUsize::new(0);
     let done = AtomicUsize::new(0);
+    let reused = AtomicUsize::new(0);
     let results: Vec<Mutex<Option<_>>> = files.iter().map(|_| Mutex::new(None)).collect();
     // One core is left to the window; decoding is all CPU.
     let workers = std::thread::available_parallelism()
@@ -374,17 +397,41 @@ fn digest_files(
                 let Some(file) = files.get(index) else {
                     break;
                 };
-                let digest =
-                    tagrex_player::digest::audio_digest(Path::new(&file.path), seconds, cancel);
+                let path = Path::new(&file.path);
+                let key = (file.path.clone(), seconds);
+                let stamp = tagrex_commands::FileFingerprint::of(path);
+                let cached = stamp.as_ref().and_then(|stamp| {
+                    let cache = cache.lock().unwrap();
+                    let (kept, digest) = cache.get(&key)?;
+                    (kept == stamp).then_some(*digest)
+                });
+                let digest = match cached {
+                    Some(digest) => {
+                        reused.fetch_add(1, Ordering::Relaxed);
+                        Ok(digest)
+                    }
+                    None => {
+                        let digest = tagrex_player::digest::audio_digest(path, seconds, cancel);
+                        if let (Ok(digest), Some(stamp)) = (&digest, stamp) {
+                            let mut cache = cache.lock().unwrap();
+                            if cache.len() >= DIGEST_CACHE_LIMIT {
+                                cache.clear();
+                            }
+                            cache.insert(key, (stamp, *digest));
+                        }
+                        digest
+                    }
+                };
                 *results[index].lock().unwrap() = Some(digest);
                 report(done.fetch_add(1, Ordering::Relaxed) + 1, files.len());
             });
         }
     });
-    results
+    let digests = results
         .into_iter()
         .map(|slot| slot.into_inner().unwrap())
-        .collect()
+        .collect();
+    (digests, reused.into_inner())
 }
 
 /// The identical-audio scan over `candidates` (#821): the opening seconds of
@@ -393,10 +440,10 @@ fn digest_files(
 fn audio_duplicates(
     candidates: Vec<DuplicateFileDto>,
     cancel: &AtomicBool,
+    cache: &Mutex<DigestStore>,
     report: &(dyn Fn(&'static str, usize, usize) + Sync),
 ) -> AudioDuplicatesDto {
     use tagrex_player::digest::DigestError;
-    type Digests = Vec<Option<Result<[u8; 32], DigestError>>>;
     let mut failed = Vec::new();
     let mut sort = |files: Vec<DuplicateFileDto>, digests: Digests| {
         let mut decoded = Vec::new();
@@ -410,10 +457,11 @@ fn audio_duplicates(
         decoded
     };
 
-    let quick = digest_files(
+    let (quick, mut reused) = digest_files(
         &candidates,
         Some(QUICK_DIGEST_SECS),
         cancel,
+        cache,
         &|done, total| report("quick", done, total),
     );
     let opened = sort(candidates, quick);
@@ -423,9 +471,10 @@ fn audio_duplicates(
             .into_iter()
             .flat_map(|group| group.files)
             .collect();
-        let full = digest_files(&likely, None, cancel, &|done, total| {
+        let (full, reused_full) = digest_files(&likely, None, cancel, cache, &|done, total| {
             report("full", done, total)
         });
+        reused += reused_full;
         groups = tagrex_commands::group_by_digest(sort(likely, full), "identical audio");
     }
     failed.sort();
@@ -433,6 +482,7 @@ fn audio_duplicates(
         groups,
         failed,
         cancelled: cancel.load(Ordering::SeqCst),
+        reused,
     }
 }
 
@@ -443,15 +493,18 @@ fn audio_duplicates(
 /// channel count and length as another file), first just their opening
 /// seconds, and only the files whose openings match are decoded in full. The
 /// decoding runs outside the session lock on several threads; a cancel keeps
-/// the groups already confirmed.
+/// the groups already confirmed. Digests of files unchanged since an earlier
+/// scan in the session are reused (#823).
 #[tauri::command]
 async fn find_audio_duplicates(
     app_handle: tauri::AppHandle,
     state: State<'_, AppState>,
     control: State<'_, DuplicateControl>,
+    cache: State<'_, DigestCache>,
 ) -> Result<AudioDuplicatesDto, ErrorDto> {
     control.0.store(false, Ordering::SeqCst);
     let cancel = control.0.clone();
+    let cache = cache.0.clone();
     let session = state.inner().clone();
     let candidates = SESSION_QUEUE
         .run(move || with_app(&session, |app| Ok(app.audio_duplicate_candidates())))
@@ -464,7 +517,7 @@ async fn find_audio_duplicates(
                 DuplicateProgressDto { stage, done, total },
             );
         };
-        audio_duplicates(candidates, &cancel, &report)
+        audio_duplicates(candidates, &cancel, &cache, &report)
     })
     .await
     .map_err(shell_error)
@@ -2436,6 +2489,7 @@ fn main() {
         .manage(ApplyControl::default())
         .manage(BpmControl::default())
         .manage(DuplicateControl::default())
+        .manage(DigestCache::default())
         .manage(update::PendingUpdate::default())
         .manage(SettingsNotice::default())
         // What the app was started with, waiting for the frontend to ask (#51).
@@ -2891,27 +2945,30 @@ mod tests {
             ("other.wav", wav(&tone(43), &[])),
             ("broken.wav", b"RIFF\x04\x00\x00\x00WAVE".to_vec()),
         ];
-        let candidates = files
-            .iter()
-            .map(|(name, bytes)| {
-                let path = dir.join(name);
-                std::fs::write(&path, bytes).unwrap();
-                DuplicateFileDto {
-                    path: path.to_string_lossy().into_owned(),
+        for (name, bytes) in &files {
+            std::fs::write(dir.join(name), bytes).unwrap();
+        }
+        let candidates = || -> Vec<DuplicateFileDto> {
+            files
+                .iter()
+                .map(|(name, bytes)| DuplicateFileDto {
+                    path: dir.join(name).to_string_lossy().into_owned(),
                     artist: String::new(),
                     title: String::new(),
                     album: String::new(),
                     duration_secs: 12,
                     size_bytes: bytes.len() as u64,
                     bitrate_kbps: None,
-                }
-            })
-            .collect();
+                })
+                .collect()
+        };
 
         let heard = Mutex::new(Vec::new());
+        let cache = Mutex::new(Default::default());
         let found = audio_duplicates(
-            candidates,
+            candidates(),
             &AtomicBool::new(false),
+            &cache,
             &|stage, done, total| heard.lock().unwrap().push((stage, done, total)),
         );
         let names: Vec<Vec<String>> = found
@@ -2943,10 +3000,29 @@ mod tests {
             .iter()
             .any(|(stage, _, total)| *stage == "full" && *total != 3));
 
+        assert_eq!(found.reused, 0);
+
+        // #823: a second scan takes the digests from the cache (four quick,
+        // as the broken file is tried again, and three full) and finds the same.
+        let again = audio_duplicates(candidates(), &AtomicBool::new(false), &cache, &|_, _, _| {});
+        assert_eq!(again.groups, found.groups);
+        assert_eq!(again.reused, 7);
+        // A file written since is decoded again, and still matches.
+        std::fs::write(
+            dir.join("tagged.wav"),
+            wav(&base, b"LIST\x04\x00\x00\x00INFO"),
+        )
+        .unwrap();
+        let changed =
+            audio_duplicates(candidates(), &AtomicBool::new(false), &cache, &|_, _, _| {});
+        assert_eq!(changed.groups.len(), 1);
+        assert_eq!(changed.reused, 5);
+
         // A scan stopped before it starts confirms nothing and says so.
         let stopped = audio_duplicates(
             vec![found.groups[0].files[0].clone()],
             &AtomicBool::new(true),
+            &Mutex::new(Default::default()),
             &|_, _, _| {},
         );
         assert!(stopped.cancelled && stopped.groups.is_empty() && stopped.failed.is_empty());

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- A repeated identical-audio duplicate scan reuses what the last one decoded:
+  each file's audio digests are kept for the session and checked against the
+  file's size, date and identity, so after a copy is deleted or moved the next
+  scan takes moments, and only files changed since are decoded again
+  ([#823](https://github.com/tagrex/tagrex/issues/823)).
 - ONLINE results load their next page by themselves as the list is scrolled
   near its end, with a "Loading more…" line in the footer while a page comes
   in. Load more results stays for when the results fit without scrolling, after

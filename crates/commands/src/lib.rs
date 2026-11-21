@@ -14,6 +14,7 @@
 
 mod output;
 mod read_cache;
+pub use read_cache::Fingerprint as FileFingerprint;
 mod sidecars;
 
 use std::path::{Component, Path, PathBuf};

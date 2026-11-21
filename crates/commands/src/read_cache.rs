@@ -9,8 +9,10 @@ use std::{
 
 use tagrex_core::model::{TagEngine, TagIoError, TrackRead};
 
+/// What a file looks like on disk, to tell whether it changed since it was
+/// last read. Also keys the duplicate scan's audio digests (#823).
 #[derive(Clone, PartialEq, Eq)]
-struct Fingerprint {
+pub struct Fingerprint {
     len: u64,
     modified: SystemTime,
     #[cfg(unix)]
@@ -23,7 +25,8 @@ struct Fingerprint {
 }
 
 impl Fingerprint {
-    fn of(path: &Path) -> Option<Self> {
+    /// The fingerprint of `path` now, or None when its metadata cannot be read.
+    pub fn of(path: &Path) -> Option<Self> {
         let m = std::fs::metadata(path).ok()?;
         #[cfg(unix)]
         use std::os::unix::fs::MetadataExt;
