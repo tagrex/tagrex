@@ -11719,6 +11719,74 @@ mod tests {
 
     // ---- mask-defined table columns (#150) ----
 
+    /// Replace `from` with `to` (same length) inside the file at `path`, in
+    /// place, through `file`: what another tagger does to a text tag that
+    /// fits its old space.
+    fn patch_in_place(file: &mut std::fs::File, path: &Path, from: &str, to: &str) {
+        use std::io::{Seek, SeekFrom, Write};
+        assert_eq!(from.len(), to.len());
+        let bytes = std::fs::read(path).unwrap();
+        let at = bytes
+            .windows(from.len())
+            .position(|w| w == from.as_bytes())
+            .expect("the old value is in the file");
+        file.seek(SeekFrom::Start(at as u64)).unwrap();
+        file.write_all(to.as_bytes()).unwrap();
+        file.flush().unwrap();
+    }
+
+    /// Another program writing a tag in place while it keeps the file open
+    /// (#813): the table must show the new value, not the cached one.
+    #[test]
+    fn cached_reads_see_a_same_size_write_through_an_open_handle() {
+        let dir = TempDir::new("cache-open-writer");
+        let path = dir.tagged_flac("track.flac", "Before", "Title");
+        let app = App::open(&dir.0, &dir.0.join("journal.sqlite")).unwrap();
+        let artist = |app: &App| {
+            app.render_column("%artist%", std::slice::from_ref(&path))
+                .unwrap()
+        };
+        assert_eq!(artist(&app), ["Before"]);
+        let mut writer = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        patch_in_place(&mut writer, &path, "Before", "Altern");
+        // The writer still holds the file open.
+        assert_eq!(artist(&app), ["Altern"]);
+        drop(writer);
+        assert_eq!(artist(&app), ["Altern"]);
+    }
+
+    /// Another tagger that keeps the file's date (#813): a same-size edit with
+    /// the modification time put back must not leave the cached value showing.
+    #[test]
+    fn cached_reads_see_a_same_size_write_with_the_date_restored() {
+        let dir = TempDir::new("cache-restored-date");
+        let path = dir.tagged_flac("track.flac", "Before", "Title");
+        let app = App::open(&dir.0, &dir.0.join("journal.sqlite")).unwrap();
+        let artist = |app: &App| {
+            app.render_column("%artist%", std::slice::from_ref(&path))
+                .unwrap()
+        };
+        assert_eq!(artist(&app), ["Before"]);
+        let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+        let mut writer = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .unwrap();
+        patch_in_place(&mut writer, &path, "Before", "Altern");
+        writer.set_modified(modified).unwrap();
+        drop(writer);
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().modified().unwrap(),
+            modified
+        );
+        assert_eq!(artist(&app), ["Altern"]);
+    }
+
     #[test]
     fn cached_reads_refresh_after_external_write_apply_and_undo() {
         let dir = TempDir::new("cache-invalidation");
