@@ -965,6 +965,7 @@ export const ru = {
   "group.release": "ID релиза",
   "group.drop": "По перетаскиванию",
   "group.none": "Нет",
+  "group.more": "Ещё",
   "group.buttonLabel": "Группировка: {key}",
   "field.artist": "Исполнитель",
   "field.title": "Название",

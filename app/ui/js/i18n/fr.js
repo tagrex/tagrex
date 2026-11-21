@@ -965,6 +965,7 @@ export const fr = {
   "group.release": "Id de la parution",
   "group.drop": "Par dépôt",
   "group.none": "Aucun",
+  "group.more": "Plus",
   "group.buttonLabel": "Regrouper par : {key}",
   "field.artist": "Artiste",
   "field.title": "Titre",

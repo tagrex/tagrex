@@ -59,9 +59,11 @@ order you are looking at.
 ## Grouping
 
 The group button in the toolbar groups rows by any modeled field. The menu
-promotes the keys actually reached for — **None**, **Folder**, **Release id**,
-**Artist**, **Album**, **Album Artist** — above a separator, with the remaining
-fields below.
+lists the keys actually reached for, each with its own icon and a tick on the
+one in use: **None**, **Folder**, **Album**, **Album Artist**, **Artist**,
+**Disc**, **Year**, **Genre** and **Media**. **More** opens the rest in place
+(**Release id** and every other field), and it is already open when the key in
+use is one of them.
 
 Grouping is also a view. The button tints while it is on, and a second button
 appears to collapse or expand every group at once.

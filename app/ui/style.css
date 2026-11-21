@@ -2637,23 +2637,80 @@ body.show-checkbox tr.playing td.sel {
   left: 0;
   min-width: 172px;
 }
-/* Marks the active key. A leading tick column keeps every label on one x, so
-   the list doesn't jump as the selection moves. */
-.group-opt::before {
-  content: "";
-  display: inline-block;
-  width: 12px;
-  flex: 0 0 12px;
-  color: var(--accent-ink);
+/* Each row (#844): a tick column, the key's glyph, its name. The tick column
+   is there on every row, so labels stay on one x as the choice moves. */
+#group-menu .col-menu-row {
+  gap: var(--space-3);
+  min-height: 30px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  font-size: var(--text-sm);
+  white-space: nowrap;
 }
-.group-opt.checked::before {
-  content: "✓";
+#group-menu .group-tick {
+  flex: 0 0 13px;
+  width: 13px;
+  height: 13px;
+  visibility: hidden;
+  color: var(--accent-ink);
+  stroke-width: 2;
+}
+#group-menu .group-opt.checked .group-tick {
+  visibility: visible;
+}
+#group-menu .group-ico {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
 }
 .group-opt.checked {
   font-weight: var(--fw-medium);
 }
+#group-menu .group-opt.checked .group-ico {
+  color: var(--text);
+}
+.group-sep {
+  height: 1px;
+  margin: var(--space-2) var(--space-2);
+  background: var(--border);
+}
+/* More opens the long tail in place; its chevron turns to say so. */
+#group-menu .group-more {
+  width: 100%;
+  color: var(--muted);
+}
+#group-menu .group-more:hover {
+  color: var(--text);
+}
+.group-more-chev {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  margin-left: auto;
+  transition: transform 0.14s ease;
+}
+.group-more[aria-expanded="true"] .group-more-chev {
+  transform: rotate(90deg);
+}
+.group-more-options[hidden] {
+  display: none;
+}
+.group-more-options:not([hidden]) {
+  animation: menu-reveal 0.16s ease-out;
+}
 #group-btn.active {
   color: var(--accent-ink);
+}
+/* The Group button opens a menu, and says so with a small chevron. */
+button.icon#group-btn {
+  width: auto;
+  gap: 1px;
+  padding: 0 var(--space-1) 0 var(--space-2);
+}
+#group-btn > .group-chev {
+  width: 10px;
+  height: 10px;
+  opacity: 0.7;
 }
 
 /* Repeat is a three-state control, so it has to show WHICH state it's in, not
@@ -5937,6 +5994,29 @@ td[data-field="year"],
 }
 .col-menu[hidden] {
   display: none;
+}
+/* Menus of this kind arrive rather than appear (#844): a short fade and rise. */
+.col-menu:not([hidden]) {
+  animation: menu-reveal 0.16s ease-out;
+}
+@keyframes menu-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .col-menu:not([hidden]),
+  .group-more-options:not([hidden]) {
+    animation: none;
+  }
+  .group-more-chev {
+    transition: none;
+  }
 }
 /* A menu whose button can sit near the bottom of the window is placed from JS
    instead (#160) — fixed, so no scrolling ancestor clips it, and flipped above

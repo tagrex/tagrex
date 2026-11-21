@@ -54,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   identical-audio duplicate scan run on the same card, which replaces the busy
   indicator in the status bar
   ([#843](https://github.com/tagrex/tagrex/issues/843)).
+- The Group menu gives every key an icon and ticks the one in use. The common
+  keys (None, Folder, Album, Album Artist, Artist, Disc, Year, Genre, Media)
+  come first and the rest wait under More, which expands in place. The Group
+  button shows a chevron, and toolbar menus arrive with a short fade
+  ([#844](https://github.com/tagrex/tagrex/issues/844)).
 
 ### Fixed
 

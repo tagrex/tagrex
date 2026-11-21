@@ -967,6 +967,7 @@ export const en = {
   "group.release": "Release id",
   "group.drop": "By drop",
   "group.none": "None",
+  "group.more": "More",
   "group.buttonLabel": "Group by: {key}",
   "field.artist": "Artist",
   "field.title": "Title",

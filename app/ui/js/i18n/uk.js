@@ -966,6 +966,7 @@ export const uk = {
   "group.release": "ID релізу",
   "group.drop": "За перетягуванням",
   "group.none": "Немає",
+  "group.more": "Ще",
   "group.buttonLabel": "Групування: {key}",
   "field.artist": "Виконавець",
   "field.title": "Назва",

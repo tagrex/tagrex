@@ -64,8 +64,22 @@ function columnLabel(key) {
 // option. Also validates the persisted choice against the built list — an old or
 // unknown key falls back to Folder (never the drop grouping, which is transient).
 // Keys promoted above the fold in the group menu — the ones actually reached
-// for. Everything else stays available below a separator, in field order.
-const GROUP_COMMON = ["", "folder", "release", "artist", "album", "albumartist"];
+// for. Everything else waits behind More (#844), in field order.
+const GROUP_COMMON = ["", "folder", "album", "albumartist", "artist", "disc", "year", "genre", "media"];
+// A glyph per common key; every other field reads as a tag.
+const GROUP_ICONS = {
+  "": "grp-none",
+  folder: "folder",
+  drop: "folder",
+  album: "grp-album",
+  albumartist: "grp-albumartist",
+  artist: "grp-artist",
+  disc: "grp-disc",
+  year: "grp-year",
+  genre: "tag",
+  media: "grp-media",
+};
+const icon = (name, cls = "") => `<svg class="ico ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
 // NB: distinct from groupLabel() below, which names a group HEADER (a folder or
 // tag value). This one names a grouping KEY for the menu/tooltip.
@@ -79,22 +93,42 @@ function groupKeyLabel(value) {
 
 function populateGroupMenu() {
   const menu = el("group-menu");
-  const rest = EXTENDED_FIELDS.filter(([key]) => !GROUP_COMMON.includes(key));
+  const rest = ["release", ...EXTENDED_FIELDS.map(([key]) => key)].filter((key) => !GROUP_COMMON.includes(key));
+  // A tick column, the key's glyph, its name: every label starts on one x, so
+  // nothing jumps as the choice moves.
   const row = (value) =>
-    `<button type="button" class="col-menu-row tk-menu-item group-opt" data-group="${escapeHtml(value)}">${escapeHtml(groupKeyLabel(value))}</button>`;
+    `<button type="button" class="col-menu-row tk-menu-item group-opt" data-group="${escapeHtml(value)}">` +
+    `${icon("check", "group-tick")}${icon(GROUP_ICONS[value] || "tag", "group-ico")}` +
+    `<span>${escapeHtml(groupKeyLabel(value))}</span></button>`;
   menu.innerHTML =
     GROUP_COMMON.map(row).join("") +
-    `<div class="col-menu-sep"></div>` +
-    rest.map(([key]) => row(key)).join("");
+    `<div class="group-sep" role="separator"></div>` +
+    `<button type="button" class="col-menu-row tk-menu-item group-more" aria-expanded="false" aria-controls="group-more-options">` +
+    `<span class="group-tick"></span>${icon("more", "group-ico")}<span>${escapeHtml(t("group.more"))}</span>${icon("chevron-right", "group-more-chev")}</button>` +
+    `<div id="group-more-options" class="group-more-options" hidden>${rest.map(row).join("")}</div>`;
   // "drop" is set by the drag-drop flow, never picked here, so it isn't listed;
   // any other unknown persisted value falls back to Folder.
-  const selectable = new Set([...GROUP_COMMON, ...EXTENDED_FIELDS.map(([k]) => k)]);
+  const selectable = new Set([...GROUP_COMMON, ...rest]);
   if (groupBy !== "drop" && !selectable.has(groupBy)) {
     setGroupByValue("folder");
     saveGroupBy(groupBy);
   }
   syncGroupButton();
+  // A key from the long tail is shown where it can be seen ticked.
+  setGroupMoreOpen(rest.includes(groupBy));
 }
+
+function setGroupMoreOpen(open) {
+  const menu = el("group-menu");
+  menu.querySelector("#group-more-options").hidden = !open;
+  menu.querySelector(".group-more").setAttribute("aria-expanded", String(open));
+}
+
+el("group-menu").addEventListener("click", (e) => {
+  const more = e.target.closest(".group-more");
+  if (!more) return;
+  setGroupMoreOpen(more.getAttribute("aria-expanded") !== "true");
+});
 
 // Reflect the current key onto the button + the menu's checkmarks. The button
 // tints whenever grouping is on, so "am I grouped?" is answerable at a glance.

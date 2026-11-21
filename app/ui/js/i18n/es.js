@@ -963,6 +963,7 @@ export const es = {
   "group.release": "Id del lanzamiento",
   "group.drop": "Por arrastre",
   "group.none": "Ninguna",
+  "group.more": "Más",
   "group.buttonLabel": "Agrupar por: {key}",
   "field.artist": "Artista",
   "field.title": "Título",

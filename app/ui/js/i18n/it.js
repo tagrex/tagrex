@@ -965,6 +965,7 @@ export const it = {
   "group.release": "Id release",
   "group.drop": "Per trascinamento",
   "group.none": "Nessuno",
+  "group.more": "Altro",
   "group.buttonLabel": "Raggruppa per: {key}",
   "field.artist": "Artista",
   "field.title": "Titolo",
