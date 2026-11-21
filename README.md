@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 1.9.x.** Stable for day-to-day use: table editing, rename masks
+> **Status: 1.10.x.** Stable for day-to-day use: table editing, rename masks
 > with a function language, tags read back out of file names and text lists,
 > text transforms, online lookups, BPM detection from the audio, cover art, tag
 > block conversion, duplicate detection, exports, a preview player, a
@@ -187,7 +187,9 @@ rules aimed at what it produces: tag rules for imports, FROM NAME and EDITOR,
 file-name rules for RENAMER. So the underscore RENAMER wants never reaches the
 tags FROM NAME reads. EDITOR's set starts empty, so a value typed by hand comes
 out as typed until you tick a preset there.
-- **DEDUPLICATOR** — read-only scan for likely duplicates by a chosen criterion.
+- **DEDUPLICATOR** — read-only scan for likely duplicates by a chosen criterion:
+  matching tags, length, size, identical bytes, or identical decoded audio
+  whatever the tags and covers.
 - **EXPORTER** — M3U playlists, CUE sheets, CSV, HTML, XML, and mask-based
   reports. A playlist can come out as one list, or one per folder or album with
   the file names rendered from a mask.
@@ -226,7 +228,9 @@ the bytes of anything you don't edit left alone; **Fix encoding** rewrites a
 selection in Unicode through the usual preview.
 
 **Cover art** — fetch from a provider, embed, export, resize on embed, save
-`folder.jpg` next to the tracks, or drag an image onto the window.
+`folder.jpg` next to the tracks, or drag an image onto the window. One click
+gives every selected track the image from its own folder, across a whole
+library, and a click on a thumbnail opens the cover at full size.
 
 **BPM from the audio.** Select files and the metronome on the table toolbar
 measures their tempo with a neural beat tracker that runs inside the app, then

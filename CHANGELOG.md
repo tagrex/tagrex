@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-21
+
+The duplicate scan can now find the same track saved twice with different tags
+or covers, by comparing the decoded audio itself. Use folder image gives every
+selected track the image from its own folder, so a whole library gets its
+folder covers in one go, and an image picked, dropped, fetched or taken from
+the folder is embedded as the front cover again rather than as "other". Covers
+open at full size from their thumbnails, and online results load as you scroll.
+
 ### Changed
 
 - Use folder image gives each selected track the image from its own folder,
