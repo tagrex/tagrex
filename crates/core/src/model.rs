@@ -3060,6 +3060,66 @@ impl TagEngine {
     /// concrete path, the same one an ordinary write uses.
     ///
     /// Only [`Executor`](crate::plan::Executor) should call this.
+    /// The items `field` is stored as when they read as `value` but a write of
+    /// `value` would not give them back (#853): one item holding the
+    /// multi-value separator, which a write splits into several. `None` in every
+    /// ordinary case, where writing `value` puts back what is there, and for a
+    /// file whose tag is written as ID3v2.
+    pub fn stored_items_lost_on_write(
+        path: &Path,
+        field: &TagField,
+        value: &str,
+    ) -> Result<Option<Vec<String>>, TagIoError> {
+        let separator = multi_value_separator();
+        if !field.is_multi_value() || !value.contains(separator.as_str()) {
+            return Ok(None);
+        }
+        guarded(path, || {
+            let tagged = probe_file(path)?;
+            if AudioFormat::from_lofty(tagged.file_type())?.uses_id3v2() {
+                return Ok(None);
+            }
+            let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) else {
+                return Ok(None);
+            };
+            let Some(key) = item_key_for(field, tag.tag_type()) else {
+                return Ok(None);
+            };
+            let items: Vec<String> = tag
+                .items()
+                .filter(|item| item.key() == key)
+                .filter_map(|item| item.value().text().map(str::to_string))
+                .collect();
+            if items.is_empty()
+                || items.join(&separator) != value
+                || split_multi_value(value) == items
+            {
+                return Ok(None);
+            }
+            Ok(Some(items))
+        })
+    }
+
+    /// Write `field` as exactly `items`, one stored value each, leaving the rest
+    /// of the tag as an ordinary write would (#853). What
+    /// [`TagEngine::stored_items_lost_on_write`] found is put back with this.
+    /// Returns whether it wrote: a file whose tag is written as ID3v2, or that
+    /// no longer holds the field, is left alone.
+    pub fn write_stored_items(
+        path: &Path,
+        field: &TagField,
+        items: &[String],
+    ) -> Result<bool, TagIoError> {
+        let file = TagEngine::read(path)?;
+        if file.format.uses_id3v2() || !file.tags.contains_key(field) {
+            return Ok(false);
+        }
+        guarded(path, || {
+            ogg_safe_write(path, || write_generic_with(&file, Some((field, items))))
+        })?;
+        Ok(true)
+    }
+
     pub fn set_id3v2_revision(path: &Path, revision: Id3v2Revision) -> Result<bool, TagIoError> {
         guarded(path, || {
             ensure_audio_after_tags(path)?;
@@ -5656,6 +5716,15 @@ fn is_id3v2_container(path: &Path) -> bool {
 /// other than MP3. Starts from the existing tag so non-text items and pictures
 /// survive, and drops only the text items the model no longer carries.
 fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
+    write_generic_with(file, None)
+}
+
+/// [`write_generic`] that writes one field as the given items instead of
+/// splitting the model's value (#853).
+fn write_generic_with(
+    file: &TrackFile,
+    exact: Option<(&TagField, &[String])>,
+) -> Result<(), TagIoError> {
     let tagged = probe_file(&file.path)?;
     let mut tag = tagged
         .primary_tag()
@@ -5706,7 +5775,14 @@ fn write_generic(file: &TrackFile) -> Result<(), TagIoError> {
                 continue;
             }
             tag.remove_key(key);
-            push_field_items(&mut tag, field, value);
+            match exact {
+                Some((exact_field, items)) if exact_field == field => {
+                    for item in items {
+                        tag.push_unchecked(TagItem::new(key, item_value_for(field, item)));
+                    }
+                }
+                _ => push_field_items(&mut tag, field, value),
+            }
         }
     }
     save_with_custom_items(&file.path, file.format.to_lofty(), tag, &file.tags)

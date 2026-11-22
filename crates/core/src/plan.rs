@@ -16,7 +16,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use thiserror::Error;
 
 use crate::journal::{
-    AppliedBatch, AppliedValue, BatchId, CopyStamp, FileRevision, JournalError, UndoJournal,
+    AppliedBatch, AppliedValue, BatchId, CopyStamp, FileRevision, JournalError, StoredItems,
+    UndoJournal,
 };
 use crate::model::{
     is_storable_custom_name_at, CoverArt, Id3v2Revision, TagBlockContent, TagBlockKind, TagEngine,
@@ -336,11 +337,13 @@ impl Executor {
             applied_values: Vec::new(),
             interrupted: true,
             id3v2_revisions: id3v2_revisions(plan),
+            stored_items: stored_items(plan),
         };
         batch.id = journal.record(&batch)?;
 
         let mut written = Written::new(plan.changes.len());
         written.revisions.clone_from(&batch.id3v2_revisions);
+        written.stored_items.clone_from(&batch.stored_items);
         let mut steps = Steps::new(total, progress, cancel);
         steps.done = plan.changes.len();
         let removed_dirs = match Self::write_phase(plan, &roots, &mut written, &mut steps) {
@@ -438,6 +441,7 @@ impl Executor {
             applied_values: Vec::new(),
             interrupted: true,
             id3v2_revisions: Vec::new(),
+            stored_items: Vec::new(),
         };
         batch.id = journal.record(&batch)?;
         if let Err(error) = std::fs::rename(&folder.from, &folder.to) {
@@ -727,6 +731,7 @@ impl Executor {
             write_blocks(&change.path, change, Direction::Undo)?;
             let restorable = without_kept_fields(change, index, &changed, mode);
             write_tag_changes(&change.path, &restorable, Direction::Undo)?;
+            restore_stored_items(&change.path, &restorable, &batch.stored_items)?;
             apply_cover_change(&change.path, change, Direction::Undo)?;
             restore_revision(&change.path, &batch.id3v2_revisions)?;
             steps.done();
@@ -901,6 +906,8 @@ struct Written {
     created_dirs: Vec<PathBuf>,
     /// The ID3v2 revision of each file before the batch, as journaled (#666).
     revisions: Vec<FileRevision>,
+    /// The items of the fields undo cannot rebuild from the old value (#853).
+    stored_items: Vec<StoredItems>,
 }
 
 impl Written {
@@ -911,6 +918,7 @@ impl Written {
             sidecars: Vec::new(),
             created_dirs: Vec::new(),
             revisions: Vec::new(),
+            stored_items: Vec::new(),
         }
     }
 
@@ -974,6 +982,7 @@ impl Written {
                 let _ = write_blocks(&change.path, change, Direction::Undo);
             }
             let _ = write_tag_changes(&change.path, change, Direction::Undo);
+            let _ = restore_stored_items(&change.path, change, &self.stored_items);
             if steps >= 2 {
                 let _ = apply_cover_change(&change.path, change, Direction::Undo);
             }
@@ -1116,6 +1125,51 @@ fn id3v2_revisions(plan: &ChangePlan) -> Vec<FileRevision> {
             })
         })
         .collect()
+}
+
+/// The fields of every file `plan` writes in place that undo could not put back
+/// from their old value, item for item as they are stored (#853). Read before
+/// the write; a file that cannot be read gets nothing.
+fn stored_items(plan: &ChangePlan) -> Vec<StoredItems> {
+    let mut stored = Vec::new();
+    for change in plan.changes.iter().filter(|change| !change.copy) {
+        for field_change in &change.tag_changes {
+            let Some(old) = &field_change.old else {
+                continue;
+            };
+            if let Ok(Some(items)) =
+                TagEngine::stored_items_lost_on_write(&change.path, &field_change.field, old)
+            {
+                stored.push(StoredItems {
+                    path: change.path.clone(),
+                    field: field_change.field.clone(),
+                    items,
+                });
+            }
+        }
+    }
+    stored
+}
+
+/// Write the journaled items back over the fields of `change`, which undo has
+/// just restored from their old values (#853). A field [`UndoMode::KeepChanged`]
+/// kept is not among them and stays as it is. Whether a field reads as its old
+/// value is no test of having been restored: two equal genres read as one
+/// (#660), which is just what the split leaves.
+fn restore_stored_items(
+    path: &Path,
+    change: &FileChange,
+    stored: &[StoredItems],
+) -> Result<(), PlanError> {
+    for stored in stored.iter().filter(|stored| {
+        stored.path == path
+            && change.tag_changes.iter().any(|field_change| {
+                field_change.field == stored.field && field_change.old.is_some()
+            })
+    }) {
+        TagEngine::write_stored_items(path, &stored.field, &stored.items)?;
+    }
+    Ok(())
 }
 
 /// Put `path` back in the ID3v2 revision journaled for it (#666). The writes

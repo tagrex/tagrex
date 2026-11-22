@@ -1893,3 +1893,51 @@ fn write_phase_failure_retains_the_interrupted_batch_when_restore_is_blocked() {
     }
     assert!(journal.batches().unwrap().is_empty());
 }
+
+/// The Vorbis comments a file holds under one name, in order.
+fn vorbis_values(path: &Path, name: &str) -> Vec<String> {
+    use lofty::config::ParseOptions;
+    use lofty::file::AudioFile;
+    use lofty::flac::FlacFile;
+    let mut file = std::fs::File::open(path).unwrap();
+    let flac = FlacFile::read_from(&mut file, ParseOptions::new()).unwrap();
+    flac.vorbis_comments()
+        .map(|tag| tag.get_all(name).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// #853: one genre comment that holds the multi-value separator reads the way
+/// two comments do. Undo put it back as two.
+#[test]
+fn undo_puts_back_one_value_that_holds_the_separator() {
+    use lofty::config::WriteOptions;
+    use lofty::ogg::tag::VorbisComments;
+    use lofty::prelude::TagExt;
+
+    let dir = TempDir::new("one-joined-value");
+    let track = dir.flac("track.flac");
+    let mut tag = VorbisComments::default();
+    tag.push("TITLE".to_string(), "Kept".to_string());
+    tag.push("GENRE".to_string(), "House; House".to_string());
+    tag.save_to_path(&track, WriteOptions::default()).unwrap();
+
+    let plan = ChangePlan {
+        description: "edit".to_string(),
+        changes: vec![FileChange {
+            path: track.clone(),
+            tag_changes: vec![FieldChange {
+                field: TagField::Genre,
+                old: Some("House; House".to_string()),
+                new: Some("House".to_string()),
+            }],
+            ..FileChange::default()
+        }],
+        ..ChangePlan::default()
+    };
+    let mut journal = VecJournal::new();
+    let batch = Executor::apply(&plan, &mut journal, &roots(dir.path())).unwrap();
+    assert_eq!(vorbis_values(&track, "GENRE"), ["House"]);
+
+    Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
+    assert_eq!(vorbis_values(&track, "GENRE"), ["House; House"]);
+}

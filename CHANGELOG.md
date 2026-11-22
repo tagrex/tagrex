@@ -97,6 +97,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The add-folder test compares file paths as paths, so it passes on Windows,
   where the files are listed with backslashes
   ([#849](https://github.com/tagrex/tagrex/issues/849)).
+- Undo puts back a multi-value field stored as one value that holds the
+  separator, such as one genre comment `House; House`, as that one value
+  instead of splitting it into several. The stored values are journaled
+  before the write for exactly these fields
+  ([#853](https://github.com/tagrex/tagrex/issues/853)).
 - A staged change to a field the table has no column for, such as the genre
   with its column hidden or a custom field like the release id, is shown in a
   temporary column at the end of the table instead of being applied unseen.

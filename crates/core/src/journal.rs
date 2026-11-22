@@ -81,6 +81,19 @@ pub struct AppliedBatch {
     /// to, so a 2.3 file comes out as 2.4; undo puts the recorded revision
     /// back. Empty for a batch recorded before this existed.
     pub id3v2_revisions: Vec<FileRevision>,
+    /// The items a changed field was stored as before the write, where undo
+    /// could not get them back from the old value (#853): one item holding the
+    /// multi-value separator, which a write splits. Empty for a batch recorded
+    /// before this existed.
+    pub stored_items: Vec<StoredItems>,
+}
+
+/// One field of one file as it was stored before a batch wrote it (#853).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredItems {
+    pub path: PathBuf,
+    pub field: TagField,
+    pub items: Vec<String>,
 }
 
 /// The ID3v2 revision one file was in before a batch wrote it (#666).
@@ -507,6 +520,14 @@ impl SqliteJournal {
                  path     TEXT NOT NULL,
                  revision TEXT NOT NULL
              );
+             CREATE TABLE IF NOT EXISTS stored_items (
+                 id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                 batch_id INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+                 path     TEXT NOT NULL,
+                 field    TEXT NOT NULL,
+                 position INTEGER NOT NULL,
+                 value    TEXT NOT NULL
+             );
              CREATE TABLE IF NOT EXISTS folder_renames (
                  id        INTEGER PRIMARY KEY AUTOINCREMENT,
                  batch_id  INTEGER NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
@@ -568,6 +589,7 @@ impl SqliteJournal {
              CREATE INDEX IF NOT EXISTS idx_copy_stamps_batch ON copy_stamps(batch_id);
              CREATE INDEX IF NOT EXISTS idx_applied_values_batch ON applied_values(batch_id);
              CREATE INDEX IF NOT EXISTS idx_id3v2_revisions_batch ON id3v2_revisions(batch_id);
+             CREATE INDEX IF NOT EXISTS idx_stored_items_batch ON stored_items(batch_id);
              CREATE INDEX IF NOT EXISTS idx_folder_renames_batch ON folder_renames(batch_id);",
         )?;
         Ok(Self { conn })
@@ -716,6 +738,21 @@ impl UndoJournal for SqliteJournal {
                     file.revision.to_storage_key(),
                 ],
             )?;
+        }
+        for stored in &batch.stored_items {
+            for (position, value) in stored.items.iter().enumerate() {
+                tx.execute(
+                    "INSERT INTO stored_items (batch_id, path, field, position, value) \
+                         VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![
+                        batch_id,
+                        stored.path.to_string_lossy(),
+                        stored.field.to_storage_key(),
+                        i64::try_from(position).unwrap_or(i64::MAX),
+                        value,
+                    ],
+                )?;
+            }
         }
 
         // The open folder renamed as a whole (#841), known before the write.
@@ -993,6 +1030,7 @@ impl SqliteJournal {
             copy_stamps: self.load_copy_stamps(id)?,
             applied_values: self.load_applied_values(id)?,
             id3v2_revisions: self.load_id3v2_revisions(id)?,
+            stored_items: self.load_stored_items(id)?,
             // Set by the caller, which read the batch row.
             interrupted: false,
         })
@@ -1065,6 +1103,33 @@ impl SqliteJournal {
             }
         }
         Ok(revisions)
+    }
+
+    fn load_stored_items(&self, batch_id: i64) -> Result<Vec<StoredItems>, JournalError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT path, field, value FROM stored_items WHERE batch_id = ?1 \
+                 ORDER BY path, field, position",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![batch_id], |row| {
+            Ok((
+                PathBuf::from(row.get::<_, String>(0)?),
+                TagField::from_storage_key(&row.get::<_, String>(1)?),
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        let mut stored: Vec<StoredItems> = Vec::new();
+        for row in rows {
+            let (path, field, value) = row?;
+            match stored.last_mut() {
+                Some(last) if last.path == path && last.field == field => last.items.push(value),
+                _ => stored.push(StoredItems {
+                    path,
+                    field,
+                    items: vec![value],
+                }),
+            }
+        }
+        Ok(stored)
     }
 
     fn load_file_changes(&self, batch_id: i64) -> Result<Vec<FileChange>, JournalError> {

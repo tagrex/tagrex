@@ -5,7 +5,8 @@
 use std::path::{Path, PathBuf};
 
 use tagrex_core::journal::{
-    AppliedBatch, AppliedValue, BatchId, CopyStamp, FileRevision, SqliteJournal, UndoJournal,
+    AppliedBatch, AppliedValue, BatchId, CopyStamp, FileRevision, SqliteJournal, StoredItems,
+    UndoJournal,
 };
 use tagrex_core::model::{Id3v2Revision, TagEngine, TagField};
 use tagrex_core::plan::{ChangePlan, Executor, FieldChange, FileChange, FolderRename};
@@ -589,6 +590,7 @@ fn an_interrupted_batch_can_be_undone_after_a_restart() {
             applied_values: Vec::new(),
             interrupted: true,
             id3v2_revisions: Vec::new(),
+            stored_items: Vec::new(),
         })
         .unwrap();
 
@@ -610,7 +612,8 @@ fn an_interrupted_batch_can_be_undone_after_a_restart() {
 }
 
 /// #666: the revision each file was in survives a restart, recorded once even
-/// though the batch is written to the journal twice.
+/// though the batch is written to the journal twice. So do the stored items of
+/// #853, in their order.
 #[test]
 fn the_id3v2_revisions_survive_a_restart() {
     let dir = TempDir::new("revisions");
@@ -622,6 +625,18 @@ fn the_id3v2_revisions_survive_a_restart() {
         FileRevision {
             path: dir.path().join("b.mp3"),
             revision: Id3v2Revision::V4,
+        },
+    ];
+    let items = vec![
+        StoredItems {
+            path: dir.path().join("a.flac"),
+            field: TagField::Genre,
+            items: vec!["Zed; Zed".to_string(), "Alpha".to_string()],
+        },
+        StoredItems {
+            path: dir.path().join("a.flac"),
+            field: TagField::Artist,
+            items: vec!["A; B".to_string()],
         },
     ];
     let mut batch = AppliedBatch {
@@ -637,6 +652,7 @@ fn the_id3v2_revisions_survive_a_restart() {
         applied_values: Vec::new(),
         interrupted: true,
         id3v2_revisions: revisions.clone(),
+        stored_items: items.clone(),
     };
     let mut journal = SqliteJournal::open(&dir.db()).unwrap();
     batch.id = journal.record(&batch).unwrap();
@@ -647,6 +663,9 @@ fn the_id3v2_revisions_survive_a_restart() {
     let reopened = SqliteJournal::open(&dir.db()).unwrap();
     let stored = reopened.batch(batch.id).unwrap().unwrap();
     assert_eq!(stored.id3v2_revisions, revisions);
+    let mut expected = items;
+    expected.sort_by_key(|stored| stored.field.to_storage_key());
+    assert_eq!(stored.stored_items, expected);
 }
 
 /// A damaged journal made every library refuse to open. It is set aside, byte

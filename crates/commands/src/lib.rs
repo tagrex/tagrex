@@ -8146,6 +8146,7 @@ mod tests {
             applied_values: Vec::new(),
             interrupted: false,
             id3v2_revisions: Vec::new(),
+            stored_items: Vec::new(),
         };
         assert_eq!(BatchDto::from(&batch).notes.len(), 1);
 
