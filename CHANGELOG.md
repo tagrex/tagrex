@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The Russian label of the preview bar's Discard button now uses the right
   word for turning down staged changes, and so does the assistant's note that
   names it ([#869](https://github.com/tagrex/tagrex/issues/869)).
+- The Ukrainian label of the same button, and the assistant's note, now use
+  the right word too ([#870](https://github.com/tagrex/tagrex/issues/870)).
 
 ## [1.11.0] - 2026-11-22
 
