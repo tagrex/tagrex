@@ -117,6 +117,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   instead of splitting it into several. The stored values are journaled
   before the write for exactly these fields
   ([#853](https://github.com/tagrex/tagrex/issues/853)).
+- A write that leaves such a field alone, for example one that changes only
+  the title, keeps it as the one value the file stores. It used to split it
+  into several values in every format, so one `ARTIST=A; B` comment became two
+  and one ID3v2 artist frame `A; B` became `A/B`
+  ([#854](https://github.com/tagrex/tagrex/issues/854)).
 - A staged change to a field the table has no column for, such as the genre
   with its column hidden or a custom field like the release id, is shown in a
   temporary column at the end of the table instead of being applied unseen.

@@ -4397,6 +4397,44 @@ fn save_id3v2(
             }
             true
         });
+        // A multi-value field the file holds as one value that has the
+        // separator in it reads the way several values do, and writing it from
+        // the model split the frame (#854). Where the model still holds what
+        // the frame reads as, nobody edited the field, so its text goes back.
+        let separator = multi_value_separator();
+        let multi_values: Vec<(&str, &String)> = tags
+            .iter()
+            .filter(|(field, _)| field.is_multi_value())
+            .filter_map(|(field, value)| {
+                Some((
+                    item_key_for(field, TagType::Id3v2)?.map_key(TagType::Id3v2)?,
+                    value,
+                ))
+            })
+            .collect();
+        let unedited: Vec<(String, String)> = (&original)
+            .into_iter()
+            .filter_map(|frame| match frame {
+                Frame::Text(text) => {
+                    let id = frame.id().as_str();
+                    let joined = text.value.split('\0').collect::<Vec<_>>().join(&separator);
+                    multi_values
+                        .iter()
+                        .any(|(own_id, value)| *own_id == id && **value == joined)
+                        .then(|| (id.to_string(), text.value.to_string()))
+                }
+                _ => None,
+            })
+            .collect();
+        updated.retain_mut(|frame| {
+            let id = frame.id().as_str().to_string();
+            if let Frame::Text(text) = frame {
+                if let Some((_, own)) = unedited.iter().find(|(own_id, _)| *own_id == id) {
+                    text.value = own.clone().into();
+                }
+            }
+            true
+        });
         // Dates (#504). The model holds every timestamp frame and has just
         // written each one from what it read — for a timestamp lofty cannot
         // parse whole, the trimmed date. Where the model still holds that date,
@@ -5736,18 +5774,28 @@ fn write_generic_with(
     // of them, and writing that one back cut the rest (#649). Where the model
     // still holds what the read gave, nobody edited the field, so the file's
     // values, under whichever of the field's keys they are, stay as they are.
+    // A multi-value field stored as one value that holds the separator reads
+    // the way several values do, and writing it from the model split it (#854);
+    // unedited, it stays as stored too. The field being restored exactly is
+    // the exception, since putting its stored items back is the point.
     let as_read = tag_to_map(&tag);
     let untouched: std::collections::BTreeSet<TagField> = file
         .tags
         .iter()
         .filter(|(field, value)| {
-            !field.is_multi_value()
-                && as_read.get(*field) == Some(*value)
-                && tag
-                    .items()
-                    .filter(|item| item_key_to_tag_field(item.key(), tag_type) == **field)
-                    .nth(1)
-                    .is_some()
+            let mut stored = tag
+                .items()
+                .filter(|item| item_key_to_tag_field(item.key(), tag_type) == **field);
+            as_read.get(*field) == Some(*value)
+                && exact.is_none_or(|(exact_field, _)| exact_field != *field)
+                && if field.is_multi_value() {
+                    let stored: Vec<String> = stored
+                        .filter_map(|item| item.value().text().map(str::to_string))
+                        .collect();
+                    stored != split_multi_value(value)
+                } else {
+                    stored.nth(1).is_some()
+                }
         })
         .map(|(field, _)| field.clone())
         .collect();

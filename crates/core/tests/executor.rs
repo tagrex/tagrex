@@ -1941,3 +1941,28 @@ fn undo_puts_back_one_value_that_holds_the_separator() {
     Executor::undo(&mut journal, batch.id, &roots(dir.path())).unwrap();
     assert_eq!(vorbis_values(&track, "GENRE"), ["House; House"]);
 }
+
+/// #854: a write that changes another field leaves such a value as it is.
+#[test]
+fn a_write_of_another_field_keeps_one_value_that_holds_the_separator() {
+    use lofty::config::WriteOptions;
+    use lofty::ogg::tag::VorbisComments;
+    use lofty::prelude::TagExt;
+
+    let dir = TempDir::new("one-joined-value-kept");
+    let track = dir.flac("track.flac");
+    let mut tag = VorbisComments::default();
+    tag.push("TITLE".to_string(), "Old".to_string());
+    tag.push("GENRE".to_string(), "House; Techno".to_string());
+    tag.push("ARTIST".to_string(), "A".to_string());
+    tag.push("ARTIST".to_string(), "B".to_string());
+    tag.save_to_path(&track, WriteOptions::default()).unwrap();
+
+    let mut file = TagEngine::read(&track).unwrap();
+    file.tags.insert(TagField::Title, "New".to_string());
+    TagEngine::write(&file).unwrap();
+
+    assert_eq!(vorbis_values(&track, "TITLE"), ["New"]);
+    assert_eq!(vorbis_values(&track, "GENRE"), ["House; Techno"]);
+    assert_eq!(vorbis_values(&track, "ARTIST"), ["A", "B"]);
+}

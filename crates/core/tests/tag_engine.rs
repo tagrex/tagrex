@@ -6283,3 +6283,49 @@ fn a_write_over_a_compressed_frame_leaves_the_file_readable() {
         Err(_) => assert!(after == before, "a failed write changed the file"),
     }
 }
+
+/// #854: an artist frame holding one value with the multi-value separator in
+/// it reads the way several values do. A write of another field split it.
+#[test]
+fn a_write_of_another_field_keeps_one_artist_frame_that_holds_the_separator() {
+    let mut frames = Vec::new();
+    frames.extend_from_slice(&id3v23_frame(b"TIT2", b"\x00Old"));
+    frames.extend_from_slice(&id3v23_frame(b"TPE1", b"\x00A; B"));
+    frames.extend_from_slice(&id3v23_frame(b"TCON", b"\x00House"));
+    let mut bytes = id3v23_tag(&frames);
+    bytes.extend_from_slice(&minimal_mp3());
+    let path = std::env::temp_dir().join(format!(
+        "tagrex-tag-engine-joined-artist-{}.mp3",
+        std::process::id()
+    ));
+    std::fs::write(&path, &bytes).unwrap();
+
+    let mut file = TagEngine::read(&path).unwrap();
+    assert_eq!(
+        file.tags.get(&TagField::Artist).map(String::as_str),
+        Some("A; B")
+    );
+    file.tags.insert(TagField::Title, "New".to_string());
+    file.tags
+        .insert(TagField::Genre, "House; Techno".to_string());
+    TagEngine::write(&file).unwrap();
+
+    let frames = id3v2_frames(&path);
+    let text = |id: &str| {
+        frames
+            .iter()
+            .filter(|(own, _)| own == id)
+            .map(|(_, text)| text.clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(text("TIT2"), ["New"]);
+    assert_eq!(
+        text("TPE1"),
+        ["A; B"],
+        "the unedited artist stays one value"
+    );
+    // An edited field is still split into its values.
+    assert_eq!(text("TCON"), ["House\0Techno"]);
+
+    std::fs::remove_file(&path).ok();
+}
