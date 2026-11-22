@@ -62,3 +62,11 @@ The untagged files were 50 ms of a sine tone encoded by ffmpeg (MP3, FLAC, Ogg
 Vorbis, Opus, M4A, ADTS AAC, WavPack, AIFF, WAV) plus the Speex fixture from
 `crates/core/tests/fixtures`, which stays untagged: it is damaged on purpose
 and the writer refuses it.
+
+Three more seeds are written by hand, not by `examples/seeds.rs` (#860). They
+are MP3s whose ID3v2 tag holds chapter frames: `seed-mp3-chapters` (2.4) and
+`seed-mp3-chapters-v23` (2.3) with an ordinary CHAP and CTOC, each holding a
+title, and `seed-mp3-nested-chapters` with chapter frames inside one another,
+which the app refuses (#859) because the tag library overflows its stack on
+them. Each is the selector byte `0` (MP3) followed by the file, so a mutation
+can grow an ordinary chapter into a nested one, or the other way round.

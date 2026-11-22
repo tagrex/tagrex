@@ -106,6 +106,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   extension stays, the name is made safe like a rendered one, sidecar files
   follow, and the rename is staged in the preview to apply or discard
   ([#858](https://github.com/tagrex/tagrex/issues/858)).
+- The weekly fuzz run starts from MP3s with ID3v2 chapter frames, ordinary ones
+  in 2.4 and 2.3 and one with chapter frames inside one another, so the
+  fuzzer has chapters to mutate
+  ([#860](https://github.com/tagrex/tagrex/issues/860)).
 
 ### Fixed
 
