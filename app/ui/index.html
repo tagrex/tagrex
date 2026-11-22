@@ -568,10 +568,13 @@
 
             <!-- Pinned footer: primary tag-field actions, always visible. -->
             <div class="panel-actions editor-actions">
-              <button id="fields-clear" data-i18n-title="editor.clearTagsTitle" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo." class="with-ico"><svg class="ico"><use href="#i-eraser"/></svg><span data-i18n="editor.clearTags">Clear tags</span></button>
-              <!-- Writes the one selected file at once and moves on (#790). -->
-              <button id="fields-write-next" class="btn with-ico" type="button" data-i18n-title="editor.writeNextTitle" title="Write the changed fields to this file now (undoable) and move to the next file in the list"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="editor.writeNext">Write and next</span></button>
-              <button id="fields-apply" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="editor.stageFields">Stage field changes</span></button>
+              <button id="fields-clear" data-i18n-title="editor.clearTagsTitle" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo." class="btn with-ico"><svg class="ico"><use href="#i-eraser"/></svg><span data-i18n="editor.clearTags">Clear tags</span></button>
+              <!-- The two run buttons wrap as a pair when the row is too narrow (#862). -->
+              <div class="editor-actions-end">
+                <!-- Writes the one selected file at once and moves on (#790). -->
+                <button id="fields-write-next" class="btn with-ico" type="button" data-i18n-title="editor.writeNextTitle" title="Write the changed fields to this file now (undoable) and move to the next file in the list"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="editor.writeNext">Write and next</span></button>
+                <button id="fields-apply" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="editor.stageFields">Stage field changes</span></button>
+              </div>
             </div>
           </div>
 

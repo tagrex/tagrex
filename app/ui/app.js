@@ -1664,7 +1664,8 @@ function syncCssLabels() {
 // "Preview changes" in Russian wraps onto two lines. Measured off the labels,
 // since most panels are hidden; a button alone takes the row and is left out.
 function syncPanelCellMin() {
-  const buttons = [...document.querySelectorAll(".panel-actions > .primary:not(:only-child)")];
+  // EDITOR's Stage sits in a wrapper since #862 but still counts, as it did.
+  const buttons = [...document.querySelectorAll(".panel-actions > .primary:not(:only-child), #fields-apply")];
   if (!buttons.length) return;
   const style = getComputedStyle(buttons[0]);
   const ctx = document.createElement("canvas").getContext("2d");

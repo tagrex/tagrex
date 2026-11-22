@@ -111,6 +111,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   fuzzer has chapters to mutate
   ([#860](https://github.com/tagrex/tagrex/issues/860)).
 
+### Changed
+
+- The EDITOR footer puts its three buttons on one row, each as wide as its
+  label: Clear tags at the start, Write and next and Stage field changes at
+  the end. A panel too narrow for the three moves the last two onto their own
+  line together, and Clear tags is now as tall as the buttons beside it
+  ([#862](https://github.com/tagrex/tagrex/issues/862)).
+
 ### Fixed
 
 - The add-folder test compares file paths as paths, so it passes on Windows,

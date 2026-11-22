@@ -5384,14 +5384,23 @@ td[data-field="year"],
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
-/* EDITOR's three actions share one line (#790): Clear tags, Write and next,
-   then Stage in the last cell, each a cell of the closing grid. */
-.editor-actions > #fields-clear {
-  grid-column: 1 / 2;
+/* EDITOR's three actions share one row (#862), each as wide as its label:
+   Clear tags at the start, Write and next and Stage at the end. On the closing
+   grid they took two rows at the default width, Clear tags alone on the first.
+   A column too narrow for the three wraps the last two, still at the end. */
+.panel-actions.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
-.editor-actions > #fields-write-next {
-  grid-column: -3 / -2;
-  justify-self: stretch;
+.editor-actions > #fields-clear {
+  margin-right: auto;
+}
+.editor-actions-end {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-3);
 }
 
 /* Reorganize's destination + mode row (#153). The destination is chosen, never
