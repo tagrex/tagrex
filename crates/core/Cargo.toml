@@ -27,6 +27,10 @@ httpdate = "1.0.3"
 # on a 2.3 write (#667), which would then be written twice, or stops deleting
 # the full-date TYER `lost_v23_year` recovers (#668). Its message names what to
 # remove.
+# 0.25.5 reads a CHAP or CTOC frame inside another one by recursing, which
+# overflows the stack on a file of a few KB (lofty-rs#784, fixed on master,
+# unreleased); `ensure_no_nested_chapter_frames` (#859) refuses such a file.
+# Drop it once a release handles it.
 lofty = "0.25.5"
 regex = "1.13.1"
 # Reads an oversized PNG cover row by row, so shrinking it never holds the full
