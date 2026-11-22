@@ -239,7 +239,8 @@ export function choiceDialog(message, { subject = "", detail = "", primary, seco
     const okText = okBtn.textContent;
     const cancelText = cancelBtn.textContent;
     const altBtn = document.createElement("button");
-    altBtn.className = "danger";
+    // .btn: the text-button height rule keys on it, without it this one stood 35px (#863).
+    altBtn.className = "btn danger";
     altBtn.textContent = secondary;
     actions.prepend(okBtn);
     okBtn.after(altBtn);

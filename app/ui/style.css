@@ -1164,17 +1164,22 @@ body.panel-collapsed .col-splitter {
 
 /* A job's closing row (#579): a grid of at most three equal columns. Three from
    the 480px default up, two below about 440px, one at the 240px clamp; the
-   max() keeps it at three on a wide column, where the columns widen instead.
-   The run button always takes the last cell and fills it, so a panel's run
-   buttons stand in one rail on the right. Every row is full, so no corner is
-   left empty. */
+   max() keeps it at three on a wide column, where the columns widen instead. */
+/* The rail (#863): the act that commits the work is one width in a language,
+   the widest commit label there (--panel-cell-min, set by app.js) with the
+   132px floor "Preview changes" needs in English. It is that wide in every
+   panel, at every panel width, lone or not, and ends on the panel's content
+   edge, so switching modes leaves it where it was. */
+:root {
+  --rail-w: max(var(--panel-cell-min, 132px), 132px);
+}
 .panel-actions {
   display: grid;
-  /* --panel-cell-min is the longest run button in the current language, set by
-     app.js; 132px is the floor that "Preview changes" needs in English. */
+  /* A cell is never wider than the row: at the 240px clamp the Russian rail
+     would overflow the row by a few pixels. */
   grid-template-columns: repeat(
     auto-fit,
-    minmax(max(var(--panel-cell-min, 132px), 132px, (100% - 2 * var(--space-5)) / 3), 1fr)
+    minmax(min(100%, max(var(--panel-cell-min, 132px), 132px, (100% - 2 * var(--space-5)) / 3)), 1fr)
   );
   align-items: center;
   gap: var(--space-3) var(--space-5);
@@ -1185,12 +1190,9 @@ body.panel-collapsed .col-splitter {
 }
 .panel-actions > .primary {
   grid-column: -2 / -1;
-  justify-self: stretch;
-}
-/* Alone, it takes the row (RENAMER, the FROM NAME / FROM TEXT footers): a lone
-   button at the right is the empty corner by another name. */
-.panel-actions > .primary:only-child {
-  grid-column: 1 / -1;
+  justify-self: end;
+  width: var(--rail-w);
+  max-width: 100%;
 }
 /* What leads into the button takes the cells before it: a note (Vinyl sides,
    EXPORTER, DEDUPLICATOR) or a secondary button (Edit presets…, Clear tags),
@@ -1201,6 +1203,19 @@ body.panel-collapsed .col-splitter {
 }
 .panel-actions > button:not(.primary) {
   justify-self: start;
+}
+/* A lone commit act sits on the rail too (#863), no longer across the row (the
+   RENAMER, FROM NAME / FROM TEXT footers): a full-width slab weighed more than
+   anything else in the panel. A block's own commit that is not the panel's
+   filled one (RENAMER's Preview folder rename) takes the rail outlined; it
+   carries .rail in the markup, since a lone tool (Edit presets...) stays at the
+   start. After the rules above, which it overrides. */
+.panel-actions > .primary:only-child,
+.panel-actions > button.rail {
+  grid-column: 1 / -1;
+  justify-self: end;
+  width: var(--rail-w);
+  max-width: 100%;
 }
 .panel-actions > .panel-note {
   min-width: 0;
@@ -2349,6 +2364,12 @@ body.diffing {
 .modal-actions .primary {
   border-color: color-mix(in srgb, var(--accent) 72%, #000);
 }
+/* Dialogs keep one order on every platform (#863): Cancel, then the act, at
+   the end, the act's place being the end corner of every row in every window.
+   A row too narrow for both wraps rather than overflowing. */
+.modal-actions {
+  flex-wrap: wrap;
+}
 /* Confirm (#560): a question and two answers, no head. An optional muted line
    under the question says what it touches; the OK button names the act, and an
    act that destroys something takes the danger kind. */
@@ -2393,6 +2414,8 @@ body.diffing {
 }
 .modal.choice .modal-actions button {
   padding: 8px 12px;
+  /* The stack is full width (#683), past the floor and cap of #863. */
+  max-width: none;
 }
 .modal-actions button.danger:not(.primary) {
   color: var(--del);
@@ -3689,7 +3712,12 @@ td.unreadable-note {
    now all sit at --text-sm and flow in the same wrapping row. */
 .cover-actions .btn,
 .cover-external {
-  padding: 4px var(--space-3);
+  /* The compact tier, --ctl-h-sm like .btn-sm (#863): 4px padding made it 26,
+     neither tier. */
+  display: inline-flex;
+  align-items: center;
+  height: var(--ctl-h-sm);
+  padding: 0 var(--space-3);
   font-size: var(--text-sm);
   box-shadow: none;
   /* Size to the label, not the line: a lone flex item on a wrapped row has
@@ -5384,14 +5412,41 @@ td[data-field="year"],
   border-top: 1px solid var(--border);
   background: var(--panel);
 }
+/* The footers end on the panels' content edge, so their last button ends
+   where the rail does in the panels above (#863). */
+.editor-actions,
+.from-name-actions {
+  padding-right: var(--panel-inset, 14px);
+}
+/* Rows of text buttons (#863): a secondary is as wide as its label with a
+   3 x --ctl-h floor, so Cancel and OK are never thinner than the icon buttons
+   beside them are tall. Long languages wrap the row first (whole buttons go up
+   a line); only a button wider than the row itself (the 240px clamp in
+   Russian) breaks its label onto a second, balanced line. Never an ellipsis on
+   an act: a cut label hides what the button does. */
+:is(.panel-actions, .editor-actions, .modal-actions) button:not(.icon) {
+  min-width: calc(3 * var(--ctl-h));
+  max-width: 100%;
+  justify-content: center;
+  text-align: center;
+  text-wrap: balance;
+}
+/* A broken label starts at the icon rather than centred away from it. */
+:is(.panel-actions, .editor-actions, .modal-actions) button.with-ico > span {
+  min-width: 0;
+  text-align: start;
+}
 /* EDITOR's three actions share one row (#862), each as wide as its label:
-   Clear tags at the start, Write and next and Stage at the end. On the closing
-   grid they took two rows at the default width, Clear tags alone on the first.
-   A column too narrow for the three wraps the last two, still at the end. */
+   Clear tags at the start, Write and next and Stage at the end, Stage on the
+   rail since #863. When the three do not fit, Clear tags goes up a line and
+   the pair stays on the bottom line, Stage in the corner; when the pair does
+   not fit either, Write and next goes up and Stage keeps the corner alone. */
 .panel-actions.editor-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
 }
 .editor-actions > #fields-clear {
   margin-right: auto;
@@ -5401,6 +5456,13 @@ td[data-field="year"],
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-3);
+  max-width: 100%;
+}
+.editor-actions-end > .primary {
+  /* A fixed width, not min(..., 100%): a percentage made the pair's own width
+     circular, so it wrapped where it fitted. */
+  width: var(--rail-w);
+  max-width: 100%;
 }
 
 /* Reorganize's destination + mode row (#153). The destination is chosen, never
@@ -8562,8 +8624,10 @@ body.drag-active #drop-overlay {
 
 /* ---- Batch 1 (#589): control heights ---- */
 /* A text button (the bare kind, .primary, .btn) is --ctl-h: 5 + 16 + 5 + 2
-   border = 28, not 31. Tabs, menu rows, segments and links keep their own. */
-:is(button:not([class]), button.primary, button.btn) {
+   border = 28, not 31. Tabs, menu rows, segments and links keep their own.
+   .with-ico is a net for a text button that lacks .btn (#863): four stood at
+   31. Not .danger, which a context-menu row carries too. */
+:is(button:not([class]), button.primary, button.btn, button.with-ico) {
   padding-block: 5px;
   line-height: 16px;
 }

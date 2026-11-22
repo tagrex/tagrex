@@ -1662,10 +1662,11 @@ function syncCssLabels() {
 // The side panels' closing grid (#579) is three equal cells with the run button
 // in the last; a cell must hold the longest run button in this language, or
 // "Preview changes" in Russian wraps onto two lines. Measured off the labels,
-// since most panels are hidden; a button alone takes the row and is left out.
+// since most panels are hidden. Since #863 the same width is the rail every
+// commit act stands on, lone or not, so every rail button counts.
 function syncPanelCellMin() {
   // EDITOR's Stage sits in a wrapper since #862 but still counts, as it did.
-  const buttons = [...document.querySelectorAll(".panel-actions > .primary:not(:only-child), #fields-apply")];
+  const buttons = [...document.querySelectorAll(".panel-actions > .primary, .panel-actions > .rail, #fields-apply")];
   if (!buttons.length) return;
   const style = getComputedStyle(buttons[0]);
   const ctx = document.createElement("canvas").getContext("2d");
@@ -4054,7 +4055,9 @@ applyModeTabsStyle(modeTabsStyle());
 // for instance) that plain 14px doesn't already account for.
 (function calibratePanelInset() {
   requestAnimationFrame(() => {
-    const ref = el("panel-toggle");
+    // The View track's edge, not the toggle 4px inside it: measured off the
+    // toggle the inset came out 18px (#863).
+    const ref = el("panel-toggle")?.closest(".tb-group") || el("panel-toggle");
     const target = el("search-format");
     if (!ref || !target) return;
     // A hidden window can hold this frame back until after a mode switch; the
@@ -4062,7 +4065,9 @@ applyModeTabsStyle(modeTabsStyle());
     // which set the inset to 0 (#580). Nothing to calibrate against: keep 14px.
     if (!target.getClientRects().length) return;
     const delta = ref.getBoundingClientRect().right - target.getBoundingClientRect().right;
-    if (Math.abs(delta) < 0.5) return;
+    // A safety net of a few pixels, no more: on a narrow panel the select
+    // wraps and the "gap" ran to 43-106px, pushing every panel's content in.
+    if (Math.abs(delta) < 0.5 || Math.abs(delta) > 4) return;
     const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--panel-inset")) || 14;
     // target sitting delta px left of ref means too much padding — less
     // padding pushes its content right to close the gap, hence current -

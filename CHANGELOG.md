@@ -118,9 +118,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the end. A panel too narrow for the three moves the last two onto their own
   line together, and Clear tags is now as tall as the buttons beside it
   ([#862](https://github.com/tagrex/tagrex/issues/862)).
+- Buttons follow one rule everywhere: the button that runs or stages the work
+  has one width in a language and ends on the panel's right edge in every
+  mode, alone or not, instead of stretching across the panel; other buttons are
+  as wide as their labels with a common minimum, and dialogs keep Cancel before
+  the act on every platform. A label too long for a narrow panel wraps onto a
+  second line rather than being cut
+  ([#863](https://github.com/tagrex/tagrex/issues/863)).
 
 ### Fixed
 
+- The side panels' content ends 14px from the window edge, in line with the
+  top bar, instead of 18px, and several times that on a narrow panel. Four text
+  buttons that stood 3px taller than their neighbours, and the second answer
+  of a two-way question, now match them, and the cover buttons share the
+  compact size ([#863](https://github.com/tagrex/tagrex/issues/863)).
 - The add-folder test compares file paths as paths, so it passes on Windows,
   where the files are listed with backslashes
   ([#849](https://github.com/tagrex/tagrex/issues/849)).
