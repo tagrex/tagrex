@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-11-22
+
+TagRex 1.11.0 lets an AI assistant work with your library over MCP: Claude
+Code or Claude Desktop can read tracks and settings and propose tag edits,
+renames and release imports, which wait in the preview until you apply them.
+Presets gain field rules that set, extract, split, merge and dedupe field
+values, and the interface comes alive with a full file menu on every row,
+icons on tabs and buttons, and one activity card for long operations.
+
 ### Added
 
 - AI assistants can read the open library over MCP: Settings connects Claude

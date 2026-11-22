@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 1.10.x.** Stable for day-to-day use: table editing, rename masks
+> **Status: 1.11.x.** Stable for day-to-day use: table editing, rename masks
 > with a function language, tags read back out of file names and text lists,
 > text transforms, online lookups, BPM detection from the audio, cover art, tag
 > block conversion, duplicate detection, exports, a preview player, a
@@ -95,8 +95,10 @@ is written when you press Enter — a change of its own that undo takes back. Th
 EDITOR panel does the same for a whole file: Write and next (⌘/Ctrl+Enter in a
 field) writes the fields you typed and moves on to the next file. A button
 beside the folder path re-reads what is open without losing your sort, filter or
-pending edits, and right-clicking a file offers Detect BPM and Clear tags for
-the selection, or to drop it from the list or move it to the system Trash.
+pending edits, and right-clicking a row opens the file menu: play it, edit its
+tags, look it up online, rename it, show it in the file manager, detect BPM or
+clear tags for the selection, or drop it from the list or move it to the system
+Trash.
 
 <p align="center">
   <img src="docs/img/tagger-dark.png#gh-dark-mode-only" width="800" alt="TagRex Tagger view: a library grouped by folder in a spreadsheet-style table, with the online lookup panel on the right">
@@ -176,7 +178,9 @@ with a count; choosing one narrows the table to the files it flags.
   notation. Rules are grouped into named presets, made in their own editor,
   which tries them on a sample as you build them; every rule names the field it
   acts on, so one preset can upper-case a catalogue number while title-casing
-  the titles. Track numbering (with the total) and vinyl side numbering sit beside
+  the titles. Field rules set a field from a mask over the file's own tags,
+  extract fields out of another one, format, keep or remove values, and split,
+  merge or dedupe the values of a multi-value field. Track numbering (with the total) and vinyl side numbering sit beside
   them, each with a switch: the switched-on blocks preview as one plan, so
   numbering a set and title-casing it is one Apply.
 
