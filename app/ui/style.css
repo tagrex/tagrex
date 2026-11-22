@@ -8755,6 +8755,44 @@ body:not(.show-checkbox) #tracks :is(th[data-key="file"], td.file) {
   display: none;
 }
 
+/* TAGGER's sub-tabs take the mode switcher's look (#871): in the default,
+   segmented look they are a track of pills like the modes above, and the
+   Settings choice of underlined tabs (body.tabs-classic) leaves them as they
+   were. The strip keeps the row's rule; its 6px padding around a track as
+   tall as a control gives the 41px of the table toolbar beside it, so the two
+   rules meet. 1px border + 2px inset around 22px segments = a 28px track. */
+.subtabs-strip {
+  flex: 0 0 auto;
+}
+body:not(.tabs-classic) .subtabs-strip {
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--border);
+}
+body:not(.tabs-classic) .subtabs {
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg);
+}
+body:not(.tabs-classic) .subtabs > .subtab {
+  height: 22px;
+  padding: 0 var(--space-4) 0 var(--space-3);
+  border-bottom: none;
+  border-radius: 999px;
+  line-height: 1;
+}
+body:not(.tabs-classic) .subtab:hover:not(.active) {
+  background: var(--row-hover);
+}
+body:not(.tabs-classic) .subtab.active {
+  background: var(--accent-soft);
+}
+body:not(.tabs-classic) .subtabs > .subtab:focus-visible {
+  border-radius: 999px;
+}
+
 /* ---- Batch 4 (#592): menus and popovers ---- */
 /* The columns menu's three text actions start on one edge (they alternated:
    Add column… right, Fit to content left, Reset to default right). */

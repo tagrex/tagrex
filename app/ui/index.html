@@ -504,12 +504,16 @@
         <!-- TAGGER: tags from two angles — ONLINE (a metadata source) and EDITOR
              (hand-edit fields + cover). Sub-tabs keep the panel uncluttered. -->
         <section id="panel-tagger" class="mode-panel">
-          <div class="subtabs" role="tablist" data-i18n-aria-label="tagger.mode" aria-label="Tagging mode">
-            <!-- An icon per way of tagging (#856), tinted on the open one. -->
-            <button class="subtab active" data-subtab="online" type="button"><svg class="ico"><use href="#i-globe"/></svg><span data-i18n="tagger.online">ONLINE</span></button>
-            <button class="subtab" data-subtab="editor" type="button"><svg class="ico"><use href="#i-edit"/></svg><span data-i18n="tagger.editor">EDITOR</span></button>
-            <button class="subtab" data-subtab="filename" type="button"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="tagger.fromName">FROM NAME</span></button>
-            <button class="subtab" data-subtab="fromtext" type="button"><svg class="ico"><use href="#i-text"/></svg><span data-i18n="tagger.fromText">FROM TEXT</span></button>
+          <!-- The strip holds the row's rule; the tablist inside is the
+               segmented track in the default look (#871). -->
+          <div class="subtabs-strip">
+            <div class="subtabs" role="tablist" data-i18n-aria-label="tagger.mode" aria-label="Tagging mode">
+              <!-- An icon per way of tagging (#856), tinted on the open one. -->
+              <button class="subtab active" data-subtab="online" type="button"><svg class="ico"><use href="#i-globe"/></svg><span data-i18n="tagger.online">ONLINE</span></button>
+              <button class="subtab" data-subtab="editor" type="button"><svg class="ico"><use href="#i-edit"/></svg><span data-i18n="tagger.editor">EDITOR</span></button>
+              <button class="subtab" data-subtab="filename" type="button"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="tagger.fromName">FROM NAME</span></button>
+              <button class="subtab" data-subtab="fromtext" type="button"><svg class="ico"><use href="#i-text"/></svg><span data-i18n="tagger.fromText">FROM TEXT</span></button>
+            </div>
           </div>
 
           <!-- ONLINE: search a metadata source. The head is pinned; only the
@@ -1282,11 +1286,11 @@
             </div>
             <p class="settings-hint" data-i18n="settings.accentHint">Colours buttons, selections, links and the focus ring. Text on the accent is kept readable, and the green of confirmed states and the red of errors do not change.</p>
             <div class="settings-row col">
-              <label data-i18n="settings.modeTabs">Mode switcher</label>
+              <label data-i18n="settings.modeTabs">Tabs</label>
               <!-- Each card draws the switcher in markup, not an image, so the
                    drawing follows the theme and the accent. The mode names read
                    the same in every language (#424). -->
-              <div class="tabs-style-picker" id="set-tabs-style" role="radiogroup" data-i18n-aria-label="settings.modeTabs" aria-label="Mode switcher">
+              <div class="tabs-style-picker" id="set-tabs-style" role="radiogroup" data-i18n-aria-label="settings.modeTabs" aria-label="Tabs">
                 <label class="tabs-style-opt">
                   <span class="tabs-sample pill" aria-hidden="true">
                     <span class="tabs-sample-track">
@@ -1309,7 +1313,7 @@
                 </label>
               </div>
             </div>
-            <p class="settings-hint" data-i18n="settings.modeTabsHint">How the TAGGER / RENAMER / … switcher in the top bar looks. Either way it drops to icons only when the window gets narrow.</p>
+            <p class="settings-hint" data-i18n="settings.modeTabsHint">How the TAGGER / RENAMER / … switcher in the top bar and the ONLINE / EDITOR / … tabs in the side panel look. Either way the top bar drops to icons only when the window gets narrow.</p>
             <div class="settings-row">
               <label for="set-checkbox-col" data-i18n="settings.checkboxCol">Selection checkbox column</label>
               <input id="set-checkbox-col" type="checkbox" />

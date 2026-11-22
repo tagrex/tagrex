@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- TAGGER's tabs in the side panel (ONLINE, EDITOR, FROM NAME, FROM TEXT) take
+  the look of the mode switcher: a segmented control in the default look, as
+  tall as the table toolbar's controls beside it, and underlined tabs when
+  Settings asks for those. The Settings choice is now called Tabs and switches
+  both at once ([#871](https://github.com/tagrex/tagrex/issues/871)).
+
 ### Fixed
 
 - The Russian label of the preview bar's Discard button now uses the right
