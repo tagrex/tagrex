@@ -126,6 +126,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   into several values in every format, so one `ARTIST=A; B` comment became two
   and one ID3v2 artist frame `A; B` became `A/B`
   ([#854](https://github.com/tagrex/tagrex/issues/854)).
+- The note after staging EDITOR's changes counts the fields that were staged.
+  It always said 0 fields, because it counted them after the editor had been
+  cleared ([#861](https://github.com/tagrex/tagrex/issues/861)).
 - A staged change to a field the table has no column for, such as the genre
   with its column hidden or a custom field like the release id, is shown in a
   temporary column at the end of the table instead of being applied unseen.

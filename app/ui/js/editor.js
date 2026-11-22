@@ -833,6 +833,8 @@ async function applyFieldEditor() {
     return;
   }
   const values = await throughEditorChain(stagedFields);
+  // Counted now: the refresh below clears the typed fields (#861).
+  const stagedCount = stagedFields.size;
   let changed = 0;
   for (const path of paths) {
     if (!edits.has(path)) edits.set(path, new Map());
@@ -854,7 +856,7 @@ async function applyFieldEditor() {
   toast(
     changed
       ? tr("toast.editor.staged", {
-          fields: tn("unit.field", stagedFields.size),
+          fields: tn("unit.field", stagedCount),
           files: tn("unit.file", paths.length),
         })
       : tr("toast.nothingChanged")
