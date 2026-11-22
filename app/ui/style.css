@@ -1165,14 +1165,9 @@ body.panel-collapsed .col-splitter {
 /* A job's closing row (#579): a grid of at most three equal columns. Three from
    the 480px default up, two below about 440px, one at the 240px clamp; the
    max() keeps it at three on a wide column, where the columns widen instead. */
-/* The rail (#863): the act that commits the work is one width in a language,
-   the widest commit label there (--panel-cell-min, set by app.js) with the
-   132px floor "Preview changes" needs in English. It is that wide in every
-   panel, at every panel width, lone or not, and ends on the panel's content
-   edge, so switching modes leaves it where it was. */
-:root {
-  --rail-w: max(var(--panel-cell-min, 132px), 132px);
-}
+/* The act that commits the work ends on the panel's content edge (#863), as
+   wide as its own label (#864): one shared width padded the shorter labels
+   with empty space, Stage field changes in Russian by some 40px a side. */
 .panel-actions {
   display: grid;
   /* A cell is never wider than the row: at the 240px clamp the Russian rail
@@ -1191,7 +1186,6 @@ body.panel-collapsed .col-splitter {
 .panel-actions > .primary {
   grid-column: -2 / -1;
   justify-self: end;
-  width: var(--rail-w);
   max-width: 100%;
 }
 /* What leads into the button takes the cells before it: a note (Vinyl sides,
@@ -1204,17 +1198,16 @@ body.panel-collapsed .col-splitter {
 .panel-actions > button:not(.primary) {
   justify-self: start;
 }
-/* A lone commit act sits on the rail too (#863), no longer across the row (the
+/* A lone commit act sits at the end too (#863), no longer across the row (the
    RENAMER, FROM NAME / FROM TEXT footers): a full-width slab weighed more than
    anything else in the panel. A block's own commit that is not the panel's
-   filled one (RENAMER's Preview folder rename) takes the rail outlined; it
+   filled one (RENAMER's Preview folder rename) goes there outlined; it
    carries .rail in the markup, since a lone tool (Edit presets...) stays at the
    start. After the rules above, which it overrides. */
 .panel-actions > .primary:only-child,
 .panel-actions > button.rail {
   grid-column: 1 / -1;
   justify-self: end;
-  width: var(--rail-w);
   max-width: 100%;
 }
 .panel-actions > .panel-note {
@@ -5437,8 +5430,7 @@ td[data-field="year"],
   text-align: start;
 }
 /* EDITOR's three actions share one row (#862), each as wide as its label:
-   Clear tags at the start, Write and next and Stage at the end, Stage on the
-   rail since #863. When the three do not fit, Clear tags goes up a line and
+   Clear tags at the start, Write and next and Stage at the end. When the three do not fit, Clear tags goes up a line and
    the pair stays on the bottom line, Stage in the corner; when the pair does
    not fit either, Write and next goes up and Stage keeps the corner alone. */
 .panel-actions.editor-actions {
@@ -5459,9 +5451,6 @@ td[data-field="year"],
   max-width: 100%;
 }
 .editor-actions-end > .primary {
-  /* A fixed width, not min(..., 100%): a percentage made the pair's own width
-     circular, so it wrapped where it fitted. */
-  width: var(--rail-w);
   max-width: 100%;
 }
 

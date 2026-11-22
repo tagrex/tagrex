@@ -125,6 +125,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the act on every platform. A label too long for a narrow panel wraps onto a
   second line rather than being cut
   ([#863](https://github.com/tagrex/tagrex/issues/863)).
+- The button that runs or stages the work is as wide as its own label again,
+  still at the panel's right edge, instead of one shared width that left
+  Stage field changes padded with empty space in Russian
+  ([#864](https://github.com/tagrex/tagrex/issues/864)).
 
 ### Fixed
 

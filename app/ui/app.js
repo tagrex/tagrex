@@ -1662,11 +1662,10 @@ function syncCssLabels() {
 // The side panels' closing grid (#579) is three equal cells with the run button
 // in the last; a cell must hold the longest run button in this language, or
 // "Preview changes" in Russian wraps onto two lines. Measured off the labels,
-// since most panels are hidden. Since #863 the same width is the rail every
-// commit act stands on, lone or not, so every rail button counts.
+// since most panels are hidden; a button alone in its row is left out.
 function syncPanelCellMin() {
   // EDITOR's Stage sits in a wrapper since #862 but still counts, as it did.
-  const buttons = [...document.querySelectorAll(".panel-actions > .primary, .panel-actions > .rail, #fields-apply")];
+  const buttons = [...document.querySelectorAll(".panel-actions > .primary:not(:only-child), #fields-apply")];
   if (!buttons.length) return;
   const style = getComputedStyle(buttons[0]);
   const ctx = document.createElement("canvas").getContext("2d");
