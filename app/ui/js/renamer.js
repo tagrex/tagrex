@@ -165,7 +165,8 @@ function updatePreviewLabel() {
   // The button's data-i18n follows the label: the static-text pass at startup
   // (and on every language change) rewrites it from that key, so a fixed
   // "previewRename" there overwrote "Preview move" right after it was set.
-  const btn = el("preview");
+  // The label only: the icon before it stays (#857).
+  const btn = el("preview").querySelector("span");
   btn.dataset.i18n = key;
   btn.textContent = t(key);
 }

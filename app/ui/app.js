@@ -1674,7 +1674,9 @@ function syncPanelCellMin() {
     parseFloat(style.paddingRight) +
     parseFloat(style.borderLeftWidth) +
     parseFloat(style.borderRightWidth);
-  const widest = Math.max(...buttons.map((b) => ctx.measureText(b.textContent.trim()).width));
+  // A leading icon (#857) takes its width and the gap after it.
+  const iconRoom = (b) => (b.querySelector(".ico") ? 22 : 0);
+  const widest = Math.max(...buttons.map((b) => ctx.measureText(b.textContent.trim()).width + iconRoom(b)));
   document.documentElement.style.setProperty("--panel-cell-min", `${Math.ceil(widest + chrome + 2)}px`);
 }
 

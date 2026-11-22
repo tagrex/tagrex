@@ -81,6 +81,8 @@
       <symbol id="i-list-remove" viewBox="0 0 16 16"><line x1="2.5" y1="4.5" x2="13.5" y2="4.5"/><line x1="2.5" y1="8" x2="10" y2="8"/><line x1="2.5" y1="11.5" x2="7" y2="11.5"/><line x1="10" y1="11.5" x2="13.5" y2="11.5"/></symbol>
       <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.8 4.5h10.4"/><path d="M6.2 4.5V3a.6.6 0 0 1 .6-.6h2.4a.6.6 0 0 1 .6.6v1.5"/><path d="M4.4 4.5l.6 8.4a1 1 0 0 0 1 .9h4a1 1 0 0 0 1-.9l.6-8.4"/></symbol>
       <symbol id="i-external" viewBox="0 0 16 16"><path d="M9.5 3h3.5v3.5"/><line x1="13" y1="3" x2="7.5" y2="8.5"/><path d="M12 9.5v2.5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2.5"/></symbol>
+      <!-- Action buttons (#857). -->
+      <symbol id="i-eye" viewBox="0 0 16 16"><path d="M1.8 8s2.3-4.3 6.2-4.3S14.2 8 14.2 8s-2.3 4.3-6.2 4.3S1.8 8 1.8 8Z"/><circle cx="8" cy="8" r="1.9"/></symbol>
       <!-- TAGGER sub-tabs (#856). -->
       <symbol id="i-globe" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.7"/><ellipse cx="8" cy="8" rx="2.5" ry="5.7"/><line x1="2.3" y1="8" x2="13.7" y2="8"/></symbol>
       <symbol id="i-edit" viewBox="0 0 16 16"><path d="M2.3 4.3h5.4M2.3 7.7h3.6M2.3 11.1h2.4"/><path d="M11.6 4.6 13.4 6.4 8.3 11.5l-2.4.6.6-2.4Z"/></symbol>
@@ -305,8 +307,8 @@
           <span class="ab-sep"></span>
           <label class="toggle-old" data-i18n-title="diff.showOldTitle" title="Reveal the struck-through old value under each changed cell"><input type="checkbox" id="diff-show-old" /> <span data-i18n="diff.showOld">Show old values</span></label>
           <span class="ab-sep"></span>
-          <button id="diff-discard" class="btn" data-i18n="action.discard">Discard</button>
-          <button id="diff-apply" class="btn primary" disabled data-i18n="action.apply">Apply</button>
+          <button id="diff-discard" class="btn with-ico"><svg class="ico"><use href="#i-close"/></svg><span data-i18n="action.discard">Discard</span></button>
+          <button id="diff-apply" class="btn primary with-ico" disabled><svg class="ico"><use href="#i-check"/></svg><span data-i18n="action.apply">Apply</span></button>
           </div>
           <!-- A running operation (#843): apply, undo, redo, BPM detection, the
                audio duplicate scan. The same pill grows into this card, holds
@@ -405,7 +407,7 @@
             <!-- Only the button (#574): Carry stays with the toggle under it, in its
                  own order, rather than on this line. -->
             <div class="panel-actions">
-              <button id="preview" class="primary" data-i18n="renamer.previewRename">Preview rename</button>
+              <button id="preview" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="renamer.previewRename">Preview rename</span></button>
             </div>
           </div>
 
@@ -425,7 +427,7 @@
             <p id="folder-example" class="hint mono mask-example" aria-live="polite"></p>
             <p class="hint mask-hint" data-i18n="renamer.folderHint">Every file in the folder must give the same name. Everything in it goes along, and TagRex reopens it under the new name.</p>
             <div class="panel-actions">
-              <button id="preview-folder" data-i18n="renamer.previewFolder">Preview folder rename</button>
+              <button id="preview-folder" class="with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="renamer.previewFolder">Preview folder rename</span></button>
             </div>
           </div>
         </section>
@@ -511,7 +513,7 @@
                  showed once you'd scrolled exactly to the end, so it usually sat
                  half-clipped against the panel edge (#372). -->
             <div id="release-more" class="release-more" hidden>
-              <button id="load-more" type="button" data-i18n="online.loadMore">Load more results</button>
+              <button id="load-more" type="button" class="with-ico"><svg class="ico"><use href="#i-caret-down"/></svg><span data-i18n="online.loadMore">Load more results</span></button>
               <span id="loading-more" class="hint muted" data-i18n="online.loadingMore" hidden>Loading more…</span>
               <span id="scroll-for-more" class="hint muted" data-i18n="online.scrollForMore" hidden>Keep scrolling for more results</span>
             </div>
@@ -566,10 +568,10 @@
 
             <!-- Pinned footer: primary tag-field actions, always visible. -->
             <div class="panel-actions editor-actions">
-              <button id="fields-clear" data-i18n-title="editor.clearTagsTitle" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo." data-i18n="editor.clearTags">Clear tags</button>
+              <button id="fields-clear" data-i18n-title="editor.clearTagsTitle" title="Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo." class="with-ico"><svg class="ico"><use href="#i-eraser"/></svg><span data-i18n="editor.clearTags">Clear tags</span></button>
               <!-- Writes the one selected file at once and moves on (#790). -->
-              <button id="fields-write-next" class="btn" type="button" data-i18n="editor.writeNext" data-i18n-title="editor.writeNextTitle" title="Write the changed fields to this file now (undoable) and move to the next file in the list">Write and next</button>
-              <button id="fields-apply" class="primary" data-i18n="editor.stageFields">Stage field changes</button>
+              <button id="fields-write-next" class="btn with-ico" type="button" data-i18n-title="editor.writeNextTitle" title="Write the changed fields to this file now (undoable) and move to the next file in the list"><svg class="ico"><use href="#i-check"/></svg><span data-i18n="editor.writeNext">Write and next</span></button>
+              <button id="fields-apply" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="editor.stageFields">Stage field changes</span></button>
             </div>
           </div>
 
@@ -598,7 +600,7 @@
               <p class="hint mask-hint" data-i18n="fromName.hint" data-i18n-html>A name that doesn't fit the mask is left alone. <span class="hint-tool">?</span> lists the placeholders and the grammar, read the other way.</p>
             </div></div>
             <div class="panel-actions from-name-actions">
-              <button id="from-name-preview" class="primary" data-i18n="fromName.preview">Preview tags</button>
+              <button id="from-name-preview" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="fromName.preview">Preview tags</span></button>
             </div>
           </div>
 
@@ -621,8 +623,8 @@
               </div>
               <div class="from-text-head">
                 <span id="from-text-count" class="muted"></span>
-                <button id="from-text-suggest" type="button" data-i18n="fromText.suggest" data-i18n-title="fromText.suggestTitle" title="Read a mask off the list's own layout">Suggest mask</button>
-                <button id="from-text-load" type="button" data-i18n="fromText.load">Open text file…</button>
+                <button id="from-text-suggest" type="button" data-i18n-title="fromText.suggestTitle" title="Read a mask off the list's own layout" class="with-ico"><svg class="ico"><use href="#i-sparkle"/></svg><span data-i18n="fromText.suggest">Suggest mask</span></button>
+                <button id="from-text-load" type="button" class="with-ico"><svg class="ico"><use href="#i-doc"/></svg><span data-i18n="fromText.load">Open text file…</span></button>
               </div>
               <textarea id="from-text-lines" class="from-text-lines" spellcheck="false" wrap="off" data-i18n-placeholder="fromText.placeholder" placeholder="Paste a tracklist here, one line per track"></textarea>
               <div id="from-text-probe" class="probe"></div>
@@ -630,7 +632,7 @@
               <p class="hint mask-hint" data-i18n="fromText.hint" data-i18n-html>One line per selected file, in table order; a line that doesn't fit is skipped. <span class="hint-tool">?</span> lists the grammar.</p>
             </div></div>
             <div class="panel-actions from-name-actions">
-              <button id="from-text-preview" class="primary" data-i18n="fromName.preview">Preview tags</button>
+              <button id="from-text-preview" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="fromName.preview">Preview tags</span></button>
             </div>
           </div>
         </section>
@@ -668,7 +670,7 @@
             <div class="panel-actions">
               <!-- Where presets are made and changed (#391); this block only
                    uses them. -->
-              <button id="presets-edit" class="btn" type="button" data-i18n="presets.edit">Edit presets…</button>
+              <button id="presets-edit" class="btn with-ico" type="button"><svg class="ico"><use href="#i-presets"/></svg><span data-i18n="presets.edit">Edit presets…</span></button>
             </div>
           </div>
 
@@ -710,7 +712,7 @@
           <div class="panel-block">
             <div class="panel-actions">
               <p id="gen-run-note" class="panel-note"></p>
-              <button id="gen-run" class="primary" data-i18n="generator.previewChanges">Preview changes</button>
+              <button id="gen-run" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="generator.previewChanges">Preview changes</span></button>
             </div>
           </div>
         </section>
@@ -741,7 +743,7 @@
             <!-- The lock line shares the button's line (#571). -->
             <div class="panel-actions">
               <p class="ro-note panel-note"><svg class="ico"><use href="#i-lock"/></svg> <span data-i18n="dedup.readonly">Read-only — nothing is changed.</span></p>
-              <button id="dup-scan" class="primary" data-i18n="dedup.scan">Scan library</button>
+              <button id="dup-scan" class="primary with-ico"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="dedup.scan">Scan library</span></button>
             </div>
           </div>
         </section>
@@ -795,7 +797,7 @@
             <!-- The read-only line closes the form beside Export (#571). -->
             <div class="panel-actions">
               <p class="exp-note panel-note" data-i18n="exporter.note" data-i18n-html><b>Read-only.</b> Written into the opened library folder — your audio files are not modified.</p>
-              <button id="export-run" class="primary" data-i18n="exporter.run">Export</button>
+              <button id="export-run" class="primary with-ico"><svg class="ico"><use href="#i-export"/></svg><span data-i18n="exporter.run">Export</span></button>
             </div>
           </div>
         </section>
@@ -1112,9 +1114,9 @@
           <div class="pe-list-col">
             <div id="pe-list" class="pe-list"></div>
             <div class="pe-list-actions">
-              <button id="pe-new" class="btn" type="button" data-i18n="presets.new">New</button>
-              <button id="pe-duplicate" class="btn" type="button" data-i18n="presets.duplicate">Duplicate</button>
-              <button id="pe-delete" class="btn" type="button" data-i18n="action.delete">Delete</button>
+              <button id="pe-new" class="btn with-ico" type="button"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="presets.new">New</span></button>
+              <button id="pe-duplicate" class="btn with-ico" type="button"><svg class="ico"><use href="#i-copy"/></svg><span data-i18n="presets.duplicate">Duplicate</span></button>
+              <button id="pe-delete" class="btn with-ico" type="button"><svg class="ico"><use href="#i-trash"/></svg><span data-i18n="action.delete">Delete</span></button>
             </div>
           </div>
           <div id="pe-edit-col" class="pe-edit-col">
@@ -1150,9 +1152,9 @@
                     <option value="dedupe_values" data-i18n="rule.dedupeValues">Remove repeated values</option>
                   </optgroup>
                 </select>
-                <button id="pe-add" class="btn" type="button" data-i18n="generator.addRule">Add rule</button>
+                <button id="pe-add" class="btn with-ico" type="button"><svg class="ico"><use href="#i-plus"/></svg><span data-i18n="generator.addRule">Add rule</span></button>
                 <div class="spacer"></div>
-                <button id="pe-clear" class="btn" type="button" hidden data-i18n="generator.clearRules">Clear rules</button>
+                <button id="pe-clear" class="btn with-ico" type="button" hidden><svg class="ico"><use href="#i-eraser"/></svg><span data-i18n="generator.clearRules">Clear rules</span></button>
               </div>
             </fieldset>
             <!-- What the open preset does (#394): a sample and what the rules make

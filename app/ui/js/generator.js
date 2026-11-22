@@ -69,7 +69,8 @@ function refreshGenerator() {
       ? `— ${tn("count.selected", count)}`
       : "";
   el("transform-over-plan").hidden = !staged || inDialog;
-  el("gen-run").textContent = t(staged ? "generator.cleanUpStaged" : "generator.previewChanges");
+  // The label only: the icon before it stays (#857).
+  el("gen-run").querySelector("span").textContent = t(staged ? "generator.cleanUpStaged" : "generator.previewChanges");
   el("gen-run-note").textContent = runNote(on);
   paintBlocks(on);
   el("autonum-count").textContent = count ? `— ${tn("count.selected", count)}` : "";

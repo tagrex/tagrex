@@ -98,6 +98,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The TAGGER sub-tabs carry an icon each (a globe, a pen, a document, text
   lines), tinted with the accent on the open one
   ([#856](https://github.com/tagrex/tagrex/issues/856)).
+- The action buttons lead with an icon: an eye on every preview, a tick on
+  Apply and Write and next, a cross on Discard, and their own on Clear tags,
+  Scan library, Export, Edit presets and the preset editor's buttons
+  ([#857](https://github.com/tagrex/tagrex/issues/857)).
 
 ### Fixed
 

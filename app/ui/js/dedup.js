@@ -25,8 +25,11 @@ let scanning = false;
 function paintScanButton() {
   const button = el("dup-scan");
   const key = audioRunning ? "dedup.stop" : "dedup.scan";
-  button.dataset.i18n = key;
-  button.textContent = t(key);
+  // The label and the icon before it (#857), not the whole button.
+  const label = button.querySelector("span");
+  label.dataset.i18n = key;
+  label.textContent = t(key);
+  button.querySelector("use").setAttribute("href", audioRunning ? "#i-stop" : "#i-search");
   button.disabled = audioStopping;
 }
 

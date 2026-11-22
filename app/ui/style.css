@@ -694,6 +694,18 @@ button.primary {
   border-color: transparent;
 }
 
+/* A text button that leads with an icon (#857). */
+button.with-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+button.with-ico > .ico {
+  width: 15px;
+  height: 15px;
+}
+
 button.primary:hover:not(:disabled) {
   filter: brightness(1.08);
   background: var(--accent);
