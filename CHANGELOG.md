@@ -159,6 +159,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - With no folder open, the "Open a library to list its tracks." panel stays in
   place when the columns are scrolled sideways, instead of sliding off with
   them ([#827](https://github.com/tagrex/tagrex/issues/827)).
+- A damaged file whose ID3v2 tag nests a chapter frame inside another chapter
+  frame no longer takes the whole app down. The tag library reads such a tag by
+  recursing once per level and ran out of stack on a file of a few kilobytes, an
+  abort the app cannot catch. The file is now listed as damaged and refused on
+  a write, like any other it cannot read, in an MP3 or AAC (also after junk) and
+  in the ID3 chunk of a WAV or AIFF; files with ordinary chapters are read as
+  before ([#859](https://github.com/tagrex/tagrex/issues/859)).
 
 ## [1.10.0] - 2026-11-21
 

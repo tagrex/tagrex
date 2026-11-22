@@ -2509,8 +2509,15 @@ pub struct TagEngine;
 /// such file in a folder poisoned that lock and every later command failed
 /// until a restart. As an error, the file is listed as unreadable like any
 /// other damaged file (#83) and everything else goes on.
+///
+/// A stack overflow is not a panic and cannot be caught, so the one shape of
+/// file known to cause it is refused before `body` runs (#859).
 fn guarded<T>(path: &Path, body: impl FnOnce() -> Result<T, TagIoError>) -> Result<T, TagIoError> {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)).unwrap_or_else(|_| {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        ensure_no_nested_chapter_frames(path)?;
+        body()
+    }))
+    .unwrap_or_else(|_| {
         Err(TagIoError::Malformed(format!(
             "{} is damaged: the tag library failed on it",
             path.display()
@@ -5329,6 +5336,301 @@ fn ensure_nothing_before_id3v2(path: &Path) -> Result<(), TagIoError> {
         "{} has data before its ID3v2 tag, which a write would cut off; the start of the file looks damaged",
         path.display()
     )))
+}
+
+/// The biggest chapter frame body [`ensure_no_nested_chapter_frames`] reads to
+/// look inside. Real chapters hold a title and perhaps a picture.
+const CHAPTER_BODY_LIMIT: u64 = 32 * 1024 * 1024;
+
+/// How many chunks of a WAV or AIFF the check below walks looking for the ID3
+/// chunk before it gives up.
+const IFF_CHUNK_WALK_LIMIT: usize = 100_000;
+
+/// Refuse a file whose ID3v2 tag holds a chapter frame inside another chapter
+/// frame (#859, lofty-rs#784). The tag library parses the inner frame by
+/// recursing, once per level, so a few hundred levels of a 30 KB file overflow
+/// the stack and abort the whole process. A stack overflow is not a panic, so
+/// [`guarded`] cannot turn it into an error as it does the rest. The spec has
+/// chapters point at each other by element id and never nest, so a file that
+/// does is damaged and is refused before the library sees it, on a read and on a
+/// write. Only frame headers are walked, so a tag full of artwork is not read.
+fn ensure_no_nested_chapter_frames(path: &Path) -> Result<(), TagIoError> {
+    if has_nested_chapter_frames(path).unwrap_or(false) {
+        return Err(TagIoError::Malformed(format!(
+            "{} is damaged: its ID3v2 tag has chapter frames inside chapter frames, which overflow the tag library's stack",
+            path.display()
+        )));
+    }
+    Ok(())
+}
+
+/// Whether the ID3v2 tag the tag library would read from `path` (the leading
+/// one, one after junk, or the `ID3 ` chunk of a WAV or AIFF) nests chapter
+/// frames. Anything this cannot walk counts as not nesting.
+fn has_nested_chapter_frames(path: &Path) -> std::io::Result<bool> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let mut head = Vec::new();
+    (&mut file)
+        .take(STUBBORN_JUNK_BYTES as u64 + 10)
+        .read_to_end(&mut head)?;
+    if head.starts_with(b"ID3") {
+        return id3v2_nests_chapter_frames(&mut file, 0, len);
+    }
+    if head.len() >= 12 && matches!(&head[..4], b"RIFF" | b"RF64" | b"FORM") {
+        let little_endian = &head[..4] != b"FORM";
+        let mut pos = 12u64;
+        let mut chunk = [0u8; 8];
+        for _ in 0..IFF_CHUNK_WALK_LIMIT {
+            if pos + 8 > len {
+                break;
+            }
+            file.seek(SeekFrom::Start(pos))?;
+            file.read_exact(&mut chunk)?;
+            let word = [chunk[4], chunk[5], chunk[6], chunk[7]];
+            let size = u64::from(if little_endian {
+                u32::from_le_bytes(word)
+            } else {
+                u32::from_be_bytes(word)
+            });
+            if matches!(&chunk[..4], b"ID3 " | b"id3 ")
+                && id3v2_nests_chapter_frames(&mut file, pos + 8, len)?
+            {
+                return Ok(true);
+            }
+            pos += 8 + size + (size & 1);
+        }
+        return Ok(false);
+    }
+    match buried_id3v2_header(&head) {
+        Some(at) => id3v2_nests_chapter_frames(&mut file, at as u64, len),
+        None => Ok(false),
+    }
+}
+
+/// [`has_nested_chapter_frames`] for the ID3v2 tag that starts at `start`.
+fn id3v2_nests_chapter_frames(
+    file: &mut std::fs::File,
+    start: u64,
+    len: u64,
+) -> std::io::Result<bool> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut header = [0u8; 10];
+    file.seek(SeekFrom::Start(start))?;
+    file.read_exact(&mut header)?;
+    if &header[..3] != b"ID3" || !matches!(header[3], 3 | 4) {
+        return Ok(false);
+    }
+    let version = header[3];
+    let flags = header[5];
+    let end = (start + 10 + u64::from(syncsafe_u32(&header[6..10]))).min(len);
+    let tag_unsync = flags & 0x80 != 0;
+    let mut pos = start + 10;
+    // An extended header sits ahead of the frames: its size counts the bytes
+    // after the size field in 2.3 and the whole header in 2.4.
+    if flags & 0x40 != 0 {
+        let mut size = [0u8; 4];
+        file.seek(SeekFrom::Start(pos))?;
+        file.read_exact(&mut size)?;
+        pos += if version == 3 {
+            4 + u64::from(u32::from_be_bytes(size))
+        } else {
+            u64::from(syncsafe_u32(&size))
+        };
+    }
+    if version == 3 && tag_unsync {
+        // The frame sizes of a 2.3 tag are those of its bytes before the extra
+        // zero bytes went in, so the tag is walked from a copy without them.
+        if end.saturating_sub(pos) > CHAPTER_BODY_LIMIT {
+            return Ok(false);
+        }
+        let mut raw = vec![0u8; (end.saturating_sub(pos)) as usize];
+        file.seek(SeekFrom::Start(pos))?;
+        file.read_exact(&mut raw)?;
+        let frames = without_unsynchronisation(&raw);
+        let mut at = 0;
+        while let Some(frame) = id3v2_frame_at(&frames, at, version) {
+            if matches!(&frame.id, b"CHAP" | b"CTOC")
+                && chapter_frame_nests(
+                    &frames[frame.body.clone()],
+                    &frame.id,
+                    frame.flags,
+                    version,
+                    false,
+                )
+            {
+                return Ok(true);
+            }
+            at = frame.next;
+        }
+        return Ok(false);
+    }
+    let mut frame_header = [0u8; 10];
+    while pos + 10 <= end {
+        file.seek(SeekFrom::Start(pos))?;
+        file.read_exact(&mut frame_header)?;
+        let Some((id, flags, size)) = id3v2_frame_header(&frame_header, version) else {
+            return Ok(false);
+        };
+        let next = pos + 10 + size as u64;
+        if next > end {
+            return Ok(false);
+        }
+        if matches!(&id, b"CHAP" | b"CTOC") {
+            if size as u64 > CHAPTER_BODY_LIMIT {
+                // No real chapter is this big, and reading it is the cost the
+                // header-only walk avoids: refuse it as one that nests.
+                return Ok(true);
+            }
+            let mut body = vec![0u8; size];
+            file.read_exact(&mut body)?;
+            if chapter_frame_nests(&body, &id, flags, version, tag_unsync) {
+                return Ok(true);
+            }
+        }
+        pos = next;
+    }
+    Ok(false)
+}
+
+/// One ID3v2.3 or 2.4 frame as [`id3v2_frame_at`] finds it.
+struct Id3v2Frame {
+    id: [u8; 4],
+    flags: [u8; 2],
+    /// Where the body sits in the data the frame was found in.
+    body: std::ops::Range<usize>,
+    /// Where the next frame starts.
+    next: usize,
+}
+
+/// The id, the flags and the body size in the ten bytes of a frame header, or
+/// `None` at padding and at bytes that are not a header.
+fn id3v2_frame_header(header: &[u8], version: u8) -> Option<([u8; 4], [u8; 2], usize)> {
+    if header.len() < 10
+        || header[0] == 0
+        || !header[..4]
+            .iter()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+    {
+        return None;
+    }
+    let size = if version == 4 {
+        syncsafe_u32(&header[4..8])
+    } else {
+        u32::from_be_bytes([header[4], header[5], header[6], header[7]])
+    } as usize;
+    Some((
+        [header[0], header[1], header[2], header[3]],
+        [header[8], header[9]],
+        size,
+    ))
+}
+
+/// The frame whose header starts at `pos` in `data`, or `None` at padding, at a
+/// header that is not one, and at a frame that runs past the end.
+fn id3v2_frame_at(data: &[u8], pos: usize, version: u8) -> Option<Id3v2Frame> {
+    let (id, flags, size) = id3v2_frame_header(data.get(pos..pos.checked_add(10)?)?, version)?;
+    let body_start = pos + 10;
+    let next = body_start
+        .checked_add(size)
+        .filter(|next| *next <= data.len())?;
+    Some(Id3v2Frame {
+        id,
+        flags,
+        body: body_start..next,
+        next,
+    })
+}
+
+/// Whether the body of a CHAP or CTOC frame, `id` and `flags` from its header,
+/// holds another CHAP or CTOC.
+/// A body this cannot make sense of (compressed, encrypted) counts as not
+/// nesting.
+fn chapter_frame_nests(
+    body: &[u8],
+    id: &[u8; 4],
+    flags: [u8; 2],
+    version: u8,
+    tag_unsync: bool,
+) -> bool {
+    let (compressed, encrypted, grouped, length_indicator, unsync) = if version == 4 {
+        (
+            flags[1] & 0x08 != 0,
+            flags[1] & 0x04 != 0,
+            flags[1] & 0x40 != 0,
+            flags[1] & 0x01 != 0,
+            flags[1] & 0x02 != 0 || tag_unsync,
+        )
+    } else {
+        (
+            flags[1] & 0x80 != 0,
+            flags[1] & 0x40 != 0,
+            flags[1] & 0x20 != 0,
+            false,
+            false,
+        )
+    };
+    if compressed || encrypted {
+        return false;
+    }
+    let prefix = usize::from(grouped) + 4 * usize::from(length_indicator);
+    let Some(body) = body.get(prefix..) else {
+        return false;
+    };
+    let unsynchronised;
+    let body = if unsync {
+        unsynchronised = without_unsynchronisation(body);
+        &unsynchronised[..]
+    } else {
+        body
+    };
+    // The element id ends at its first zero byte. A chapter then has 16 bytes
+    // of times and offsets; a table of contents has its flags, the number of
+    // entries and the entries, each ending in a zero byte.
+    let Some(nul) = body.iter().position(|b| *b == 0) else {
+        return false;
+    };
+    let mut pos = nul + 1;
+    if id == b"CHAP" {
+        pos += 16;
+    } else {
+        let Some(&count) = body.get(pos + 1) else {
+            return false;
+        };
+        pos += 2;
+        for _ in 0..count {
+            let Some(end) = body
+                .get(pos..)
+                .and_then(|rest| rest.iter().position(|b| *b == 0))
+            else {
+                return false;
+            };
+            pos += end + 1;
+        }
+    }
+    let mut at = pos;
+    while let Some(inner) = id3v2_frame_at(body, at, version) {
+        if matches!(&inner.id, b"CHAP" | b"CTOC") {
+            return true;
+        }
+        at = inner.next;
+    }
+    false
+}
+
+/// `data` with the zero byte after every `0xFF` taken out, the way a tag or a
+/// frame written with unsynchronisation is read back.
+fn without_unsynchronisation(data: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(data.len());
+    let mut bytes = data.iter().peekable();
+    while let Some(&byte) = bytes.next() {
+        out.push(byte);
+        if byte == 0xFF && bytes.peek() == Some(&&0) {
+            bytes.next();
+        }
+    }
+    out
 }
 
 /// Refuse to write a WavPack file whose APE tag, by its own footer, starts

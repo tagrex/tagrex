@@ -6329,3 +6329,235 @@ fn a_write_of_another_field_keeps_one_artist_frame_that_holds_the_separator() {
 
     std::fs::remove_file(&path).ok();
 }
+
+/// One ID3v2.3 or 2.4 frame: the header around `body`.
+fn id3v2_frame(id: &[u8; 4], body: &[u8], version: u8) -> Vec<u8> {
+    let mut frame = id.to_vec();
+    if version == 4 {
+        let size = body.len() as u32;
+        frame.extend_from_slice(&[
+            (size >> 21) as u8 & 0x7F,
+            (size >> 14) as u8 & 0x7F,
+            (size >> 7) as u8 & 0x7F,
+            size as u8 & 0x7F,
+        ]);
+    } else {
+        frame.extend_from_slice(&(body.len() as u32).to_be_bytes());
+    }
+    frame.extend_from_slice(&[0, 0]);
+    frame.extend_from_slice(body);
+    frame
+}
+
+/// The body of a chapter frame: its element id, 16 bytes of times and offsets
+/// (with `0xFF` bytes in them, which unsynchronisation must stretch), then
+/// `frames`.
+fn chapter_body(frames: &[u8]) -> Vec<u8> {
+    let mut body = b"c1\0".to_vec();
+    body.extend_from_slice(&[
+        0, 0, 0, 0, 0, 0, 3, 0xE8, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+    ]);
+    body.extend_from_slice(frames);
+    body
+}
+
+/// The body of a table-of-contents frame with one entry, then `frames`.
+fn toc_body(frames: &[u8]) -> Vec<u8> {
+    let mut body = b"t\0\x03\x01c1\0".to_vec();
+    body.extend_from_slice(frames);
+    body
+}
+
+fn title_frame(text: &str, version: u8) -> Vec<u8> {
+    let mut body = vec![0u8];
+    body.extend_from_slice(text.as_bytes());
+    id3v2_frame(b"TIT2", &body, version)
+}
+
+/// An ID3v2 tag around `frames`, then the audio of [`minimal_mp3`].
+fn mp3_with_id3v2_frames(frames: &[u8], version: u8, flags: u8) -> Vec<u8> {
+    let size = frames.len() as u32;
+    let mut data = vec![b'I', b'D', b'3', version, 0, flags];
+    data.extend_from_slice(&[
+        (size >> 21) as u8 & 0x7F,
+        (size >> 14) as u8 & 0x7F,
+        (size >> 7) as u8 & 0x7F,
+        size as u8 & 0x7F,
+    ]);
+    data.extend_from_slice(frames);
+    data.extend_from_slice(&minimal_mp3());
+    data
+}
+
+/// `depth` chapter frames inside one another, a title in the innermost.
+fn nested_chapters(depth: usize, version: u8, toc: bool) -> Vec<u8> {
+    let mut inner = title_frame("Deep", version);
+    for level in 0..depth {
+        inner = if toc && level % 2 == 0 {
+            id3v2_frame(b"CTOC", &toc_body(&inner), version)
+        } else {
+            id3v2_frame(b"CHAP", &chapter_body(&inner), version)
+        };
+    }
+    inner
+}
+
+/// A chapter frame nested in another chapter frame overflowed the tag
+/// library's stack and aborted the whole process (#859, lofty-rs#784), which no
+/// `catch_unwind` can stop. The file is refused as damaged on a read and on a
+/// write, and a refused write leaves it as it was. 3000 levels would abort the
+/// test run itself if the guard let the file through.
+#[test]
+fn a_chapter_frame_inside_a_chapter_frame_is_refused_not_a_crash() {
+    for (version, toc) in [(3u8, false), (4, false), (4, true)] {
+        for depth in [2usize, 3000] {
+            let path = std::env::temp_dir().join(format!(
+                "tagrex-nested-chapters-{version}-{toc}-{depth}-{}.mp3",
+                std::process::id()
+            ));
+            let mut frames = title_frame("Song", version);
+            frames.extend(nested_chapters(depth, version, toc));
+            let bytes = mp3_with_id3v2_frames(&frames, version, 0);
+            std::fs::write(&path, &bytes).unwrap();
+
+            assert!(
+                TagEngine::read(&path).is_err(),
+                "read, v2.{version}, toc {toc}, depth {depth}"
+            );
+            let file = TrackFile {
+                path: path.clone(),
+                format: AudioFormat::Mp3,
+                tags: BTreeMap::from([(TagField::Artist, "New".to_string())]),
+            };
+            assert!(
+                TagEngine::write(&file).is_err(),
+                "write, v2.{version}, toc {toc}, depth {depth}"
+            );
+            assert_eq!(
+                std::fs::read(&path).unwrap(),
+                bytes,
+                "a refused write changed the file"
+            );
+            std::fs::remove_file(&path).ok();
+        }
+    }
+}
+
+/// Ordinary chapters, a title or a picture inside one, are not nested chapters
+/// and must read and write as before (#859).
+#[test]
+fn ordinary_chapter_frames_still_read_and_write() {
+    for version in [3u8, 4] {
+        let path = std::env::temp_dir().join(format!(
+            "tagrex-plain-chapters-{version}-{}.mp3",
+            std::process::id()
+        ));
+        let mut frames = title_frame("Song", version);
+        frames.extend(id3v2_frame(
+            b"CHAP",
+            &chapter_body(&title_frame("Chapter one", version)),
+            version,
+        ));
+        frames.extend(id3v2_frame(
+            b"CTOC",
+            &toc_body(&title_frame("Contents", version)),
+            version,
+        ));
+        std::fs::write(&path, mp3_with_id3v2_frames(&frames, version, 0)).unwrap();
+
+        let mut file = TagEngine::read(&path).expect("a file with chapters reads");
+        assert_eq!(
+            file.tags.get(&TagField::Title).map(String::as_str),
+            Some("Song")
+        );
+        file.tags.insert(TagField::Artist, "New".to_string());
+        TagEngine::write(&file).expect("a file with chapters writes");
+        let after = std::fs::read(&path).unwrap();
+        assert!(
+            after.windows(4).any(|w| w == b"CHAP"),
+            "the chapter frame survived the write, v2.{version}"
+        );
+        assert_eq!(
+            TagEngine::read(&path)
+                .unwrap()
+                .tags
+                .get(&TagField::Artist)
+                .map(String::as_str),
+            Some("New")
+        );
+        std::fs::remove_file(&path).ok();
+    }
+}
+
+/// The same refusal where the tag is not at the start in the plain way: a 2.3
+/// tag written with unsynchronisation, a tag after some junk, and the ID3
+/// chunk of a WAV. Each place first holds an ordinary chapter, which must read,
+/// so a refusal is the nesting and not the place.
+#[test]
+fn nested_chapter_frames_are_refused_in_every_place_a_tag_can_sit() {
+    let syncsafe = |size: u32| {
+        [
+            (size >> 21) as u8 & 0x7F,
+            (size >> 14) as u8 & 0x7F,
+            (size >> 7) as u8 & 0x7F,
+            size as u8 & 0x7F,
+        ]
+    };
+    // 2.3 with the tag-level unsynchronisation flag: the frame sizes are those
+    // of the bytes before a zero goes in after each 0xFF.
+    let unsynchronised = |frames: &[u8]| {
+        let mut out = Vec::new();
+        for &byte in frames {
+            out.push(byte);
+            if byte == 0xFF {
+                out.push(0);
+            }
+        }
+        mp3_with_id3v2_frames(&out, 3, 0x80)
+    };
+    let after_junk = |frames: &[u8]| {
+        let mut data = vec![0xAAu8; 16];
+        data.extend(mp3_with_id3v2_frames(frames, 4, 0));
+        data
+    };
+    let in_a_wav = |frames: &[u8]| {
+        let mut wav = minimal_wav();
+        let mut tag = vec![b'I', b'D', b'3', 4, 0, 0];
+        tag.extend_from_slice(&syncsafe(frames.len() as u32));
+        tag.extend_from_slice(frames);
+        if tag.len() % 2 == 1 {
+            tag.push(0);
+        }
+        wav.extend_from_slice(b"ID3 ");
+        wav.extend_from_slice(&(tag.len() as u32).to_le_bytes());
+        wav.extend_from_slice(&tag);
+        let riff_size = (wav.len() - 8) as u32;
+        wav[4..8].copy_from_slice(&riff_size.to_le_bytes());
+        wav
+    };
+    type Place<'a> = (&'a str, &'a str, u8, &'a dyn Fn(&[u8]) -> Vec<u8>);
+    let places: [Place; 3] = [
+        ("unsynchronised 2.3", "mp3", 3, &unsynchronised),
+        ("after junk", "mp3", 4, &after_junk),
+        ("WAV ID3 chunk", "wav", 4, &in_a_wav),
+    ];
+
+    for (name, extension, version, make) in places {
+        let ordinary = id3v2_frame(
+            b"CHAP",
+            &chapter_body(&title_frame("Chapter one", version)),
+            version,
+        );
+        let nested = nested_chapters(40, version, false);
+        let path = std::env::temp_dir().join(format!(
+            "tagrex-nested-places-{}-{}.{extension}",
+            name.replace(' ', "-"),
+            std::process::id()
+        ));
+        std::fs::write(&path, make(&ordinary)).unwrap();
+        assert!(TagEngine::read(&path).is_ok(), "{name}: ordinary chapter");
+        std::fs::write(&path, make(&nested)).unwrap();
+        assert!(TagEngine::read(&path).is_err(), "{name}: nested chapters");
+        std::fs::remove_file(&path).ok();
+    }
+}
