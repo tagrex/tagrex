@@ -2489,11 +2489,9 @@ body.show-checkbox tr.playing td.sel {
   min-width: max-content;
   display: flex;
   align-items: center;
-  /* The count pins to the panel's left edge (with the panel's own 14px inset for
-     a consistent margin, #290). When the panel is collapsed the zone is only as
-     wide as its content, so it sits at the far right. Preview edits used to
-     take the other end; a cell edit is written as soon as it is committed now
-     (#507). */
+  /* Empty since the count moved under the table (#865); it keeps its width so
+     the left zone still ends where the table does. Preview edits used to take
+     one end; a cell edit is written as soon as it is committed now (#507). */
   justify-content: space-between;
   gap: 12px;
   padding-left: 14px;
@@ -5305,6 +5303,8 @@ td[data-field="year"],
    taller to save the player a few pixels it does not need. */
 #status-sel {
   flex: 0 0 auto;
+  /* Ends the table's zone (#865), after the player or the lone Play button. */
+  margin-left: auto;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }

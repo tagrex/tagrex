@@ -129,6 +129,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   still at the panel's right edge, instead of one shared width that left
   Stage field changes padded with empty space in Russian
   ([#864](https://github.com/tagrex/tagrex/issues/864)).
+- The file and selection count in the status bar moved under the file table it
+  describes, after the player, instead of sitting under the side panel
+  ([#865](https://github.com/tagrex/tagrex/issues/865)).
 
 ### Fixed
 
