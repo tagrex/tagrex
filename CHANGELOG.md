@@ -91,6 +91,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Field rules for multi-value fields (artist, album artist, genre, composer):
   split a value on a delimiter, merge the values with a joiner, or remove
   repeated values ([#852](https://github.com/tagrex/tagrex/issues/852)).
+- The file menu opens on a right-click anywhere on a row, not only over the
+  file name, and offers Play, Edit tags, Find online and Show in Finder
+  (Explorer, the file manager) above its file actions
+  ([#855](https://github.com/tagrex/tagrex/issues/855)).
 
 ### Fixed
 

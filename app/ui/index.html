@@ -898,6 +898,13 @@
          which is selected first, so what is about to happen is visible before
          it happens. -->
     <div id="file-ctx" class="ctx-menu" hidden role="menu">
+      <!-- The common actions on a file (#855). -->
+      <button type="button" class="ctx-item" data-cmd="play" role="menuitem"><svg class="ico"><use href="#i-play"/></svg><span data-i18n="ctx.play">Play</span></button>
+      <button type="button" class="ctx-item" data-cmd="edit" role="menuitem"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="ctx.editTags">Edit tags</span></button>
+      <button type="button" class="ctx-item" data-cmd="online" role="menuitem"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="ctx.findOnline">Find online</span></button>
+      <div class="ctx-sep"></div>
+      <button type="button" class="ctx-item" data-cmd="reveal" role="menuitem"><svg class="ico"><use href="#i-folder"/></svg><span class="ctx-label">Show in Finder</span></button>
+      <div class="ctx-sep"></div>
       <!-- Actions on the files (#563); the keys are filled in from the shortcut map. -->
       <button type="button" class="ctx-item" data-cmd="bpm" role="menuitem"><svg class="ico"><use href="#i-metronome"/></svg><span data-i18n="toolbar.detectBpm">Detect BPM</span><span class="ctx-key" data-action="detectBpm"></span></button>
       <button type="button" class="ctx-item" data-cmd="clear" role="menuitem"><svg class="ico"><use href="#i-eraser"/></svg><span data-i18n="editor.clearTags">Clear tags</span><span class="ctx-key" data-action="clearTags"></span></button>

@@ -5769,6 +5769,26 @@ impl App {
             .collect())
     }
 
+    /// The file `path` names, resolved, when it is one this session lists
+    /// inside the open library (#855): what the file manager may be asked to
+    /// show. The same check as [`App::trash_files`].
+    pub fn listed_file(&self, path: &Path) -> Result<PathBuf, AppError> {
+        let outside = || AppError::OutsideRoot(path.to_string_lossy().into_owned());
+        if !self.source_paths().iter().any(|listed| listed == path) {
+            return Err(outside());
+        }
+        let resolved = std::fs::canonicalize(path)?;
+        let inside = self
+            .allowed_roots()
+            .iter()
+            .filter_map(|root| std::fs::canonicalize(root).ok())
+            .any(|root| resolved.starts_with(root));
+        if !resolved.is_file() || !inside {
+            return Err(outside());
+        }
+        Ok(resolved)
+    }
+
     /// Apply a previewed plan to disk and record it for undo.
     pub fn apply(&mut self, plan: &PlanDto) -> Result<BatchDto, AppError> {
         self.read_cache.borrow_mut().clear();

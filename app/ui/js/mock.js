@@ -373,6 +373,8 @@ function mockInvoke(cmd, args) {
     }
     case "trash_files":
       return Promise.resolve([...(args.paths || [])]);
+    case "reveal_file":
+      return Promise.resolve();
     case "set_locked_fields":
       mockLockedFields = new Set(args.fields || []);
       return Promise.resolve();

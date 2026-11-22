@@ -77,6 +77,7 @@ import {
 } from "./js/columns.js";
 import { dropGroupKey, folderGroupLabel, groupKeyOf, groupLabel } from "./js/grouping.js";
 import {
+  findOnline,
   loadSavedToken,
   refreshReleaseMatches,
   retranslateOnline,
@@ -2653,11 +2654,10 @@ document.addEventListener("contextmenu", (e) => {
     return;
   }
   hideEditCtx();
-  // The file column carries its own menu (#213). Inert while a plan is staged,
-  // like every other row gesture — the diff names files, and taking one out
-  // from under it would leave the plan talking about something that is gone.
-  const fileCell = diffByPath ? null : e.target.closest("td.file");
-  const tr = fileCell && fileCell.closest("tr");
+  // Every file row carries its own menu (#213, #855). Inert while a plan is
+  // staged, like every other row gesture — the diff names files, and taking one
+  // out from under it would leave the plan talking about something that is gone.
+  const tr = diffByPath ? null : e.target.closest("#tracks-body tr");
   if (tr && tr.dataset.path) showFileCtx(e.clientX, e.clientY, tr);
   else hideFileCtx();
 });
@@ -2668,10 +2668,20 @@ const fileCtx = el("file-ctx");
 // item is clicked: what the menu is about must be what was on screen when it
 // appeared, even if something else moves in between.
 let fileCtxPaths = [];
+// The row the menu was opened on, which Play plays (#855).
+let fileCtxRow = null;
+
+// The file manager's own name for showing a file (#855).
+const REVEAL_LABEL = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "")
+  ? "ctx.revealMac"
+  : /Win/.test(navigator.platform || navigator.userAgent || "")
+    ? "ctx.revealWindows"
+    : "ctx.revealLinux";
 
 function hideFileCtx() {
   fileCtx.hidden = true;
   fileCtxPaths = [];
+  fileCtxRow = null;
 }
 
 function showFileCtx(x, y, tr) {
@@ -2686,7 +2696,13 @@ function showFileCtx(x, y, tr) {
     syncSelectionUI();
   }
   fileCtxPaths = selectedPaths();
+  fileCtxRow = path;
   const many = fileCtxPaths.length > 1;
+  const unreadable = tr.classList.contains("unreadable");
+  fileCtx.querySelector('[data-cmd="play"]').disabled = unreadable;
+  const reveal = fileCtx.querySelector('[data-cmd="reveal"]');
+  reveal.querySelector(".ctx-label").textContent = msg(REVEAL_LABEL);
+  reveal.disabled = many;
   fileCtx.querySelector('[data-cmd="hide"] .ctx-label').textContent = many
     ? msg("ctx.removeN", { files: tn("unit.file", fileCtxPaths.length) })
     : msg("ctx.removeFromList");
@@ -2747,9 +2763,22 @@ fileCtx.addEventListener("click", (e) => {
   const item = e.target.closest(".ctx-item");
   if (!item) return;
   const paths = fileCtxPaths;
+  const row = fileCtxRow;
   hideFileCtx();
   if (!paths.length) return;
-  if (item.dataset.cmd === "hide") {
+  if (item.dataset.cmd === "play") {
+    if (row) playTrack(row);
+  } else if (item.dataset.cmd === "edit") {
+    // Opening the menu made `paths` the selection, which is what the panels act on.
+    setMode("tagger");
+    setSubtab("editor");
+  } else if (item.dataset.cmd === "online") {
+    setMode("tagger");
+    setSubtab("online");
+    findOnline();
+  } else if (item.dataset.cmd === "reveal") {
+    invoke("reveal_file", { path: paths[0] }).catch((e) => toast(String(e), true));
+  } else if (item.dataset.cmd === "hide") {
     dropFromList(paths);
     toast(msg("toast.removedFromList", { files: tn("unit.file", paths.length) }));
   } else if (item.dataset.cmd === "trash") {

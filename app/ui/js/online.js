@@ -514,6 +514,19 @@ function toggleQueryPresets() {
   placeQueryPresets();
 }
 
+// Search for the selection (#855): the first query it offers, in the menu's
+// order, or the empty box to type into when it offers none.
+function findOnline() {
+  closeQueryPresets();
+  const [offer] = queryOffers();
+  if (!offer) {
+    el("discogs-query").focus();
+    return;
+  }
+  el("discogs-query").value = offer.text;
+  discogsSearch();
+}
+
 // As wide as the query box it drops from (#408), the way the recent-folders
 // list follows the path box (#407), not as wide as its longest suggestion.
 function placeQueryPresets() {
@@ -2239,4 +2252,4 @@ function retranslateOnline() {
   if (releaseCandidates.length > 0) renderReleaseList();
 }
 
-export { importSelection, importTrack, stageImport, loadSavedToken, refreshReleaseMatches, retranslateOnline, searchBusy, searchPerPage, stopLoading };
+export { findOnline, importSelection, importTrack, stageImport, loadSavedToken, refreshReleaseMatches, retranslateOnline, searchBusy, searchPerPage, stopLoading };

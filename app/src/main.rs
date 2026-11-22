@@ -320,6 +320,87 @@ async fn trash_files(
         .await
 }
 
+/// Show one file in the system file manager (#855), selected where the
+/// platform can select it. Refuses a path this session does not list inside the
+/// open library, the same check as Move to Trash.
+#[tauri::command]
+async fn reveal_file(state: State<'_, AppState>, path: String) -> Result<(), ErrorDto> {
+    let state = state.inner().clone();
+    let file = SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.listed_file(Path::new(&path)).map_err(ErrorDto::from)
+            })
+        })
+        .await?;
+    BROWSER_QUEUE
+        .run(move || reveal_in_file_manager(&file))
+        .await
+}
+
+#[cfg(target_os = "macos")]
+fn reveal_in_file_manager(file: &Path) -> Result<(), ErrorDto> {
+    std::process::Command::new("open")
+        .arg("-R")
+        .arg(file)
+        .status()
+        .map(drop)
+        .map_err(ErrorDto::from)
+}
+
+#[cfg(target_os = "windows")]
+fn reveal_in_file_manager(file: &Path) -> Result<(), ErrorDto> {
+    // Explorer exits with 1 even when it did what was asked, so its status
+    // says nothing and it is not waited on.
+    std::process::Command::new("explorer")
+        .arg("/select,")
+        .arg(file)
+        .spawn()
+        .map(drop)
+        .map_err(ErrorDto::from)
+}
+
+/// The desktop's file manager through the freedesktop interface, which
+/// selects the file; a desktop without one gets the folder opened instead.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn reveal_in_file_manager(file: &Path) -> Result<(), ErrorDto> {
+    let shown = std::process::Command::new("dbus-send")
+        .args([
+            "--session",
+            "--print-reply",
+            "--dest=org.freedesktop.FileManager1",
+            "--type=method_call",
+            "/org/freedesktop/FileManager1",
+            "org.freedesktop.FileManager1.ShowItems",
+            &format!("array:string:{}", file_uri(file)),
+            "string:",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if shown {
+        return Ok(());
+    }
+    open::that(file.parent().unwrap_or(file)).map_err(ErrorDto::from)
+}
+
+/// `file://` and the path, every byte outside the unreserved set and `/`
+/// percent-encoded.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn file_uri(file: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut uri = String::from("file://");
+    for &byte in file.as_os_str().as_bytes() {
+        if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
+            uri.push(char::from(byte));
+        } else {
+            uri.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    uri
+}
+
 /// Lock a set of fields against change for the rest of the session (#48).
 /// Replaces the whole set, so the UI sends what is locked rather than a delta.
 #[tauri::command]
@@ -2618,6 +2699,7 @@ fn main() {
             library_root_missing,
             library_root,
             trash_files,
+            reveal_file,
             set_locked_fields,
             locked_fields,
             find_duplicates,
