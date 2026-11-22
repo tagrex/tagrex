@@ -1405,6 +1405,20 @@ td.dirty:focus {
   overflow: auto;
   min-height: 0;
 }
+/* The table's footer (#866): the count of files and of the selection, at the
+   start, under the horizontal scrollbar. One control height tall, so the
+   floating action bar can clear it. */
+.files-foot {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: var(--ctl-h);
+  padding: 0 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  overflow: hidden;
+}
 
 /* Spacer rows (#189): the table is windowed, and these two carry the height of
    everything above and below it — so the table is as tall as the whole list and
@@ -1542,7 +1556,8 @@ body.diffing #tracks tbody tr.staged td.sel {
 .diff-actionbar {
   position: absolute;
   left: 50%;
-  bottom: var(--space-5);
+  /* Over the table, clear of its footer (#866). */
+  bottom: calc(var(--space-5) + var(--ctl-h));
   transform: translateX(-50%);
   display: flex;
   align-items: center;
@@ -2489,7 +2504,7 @@ body.show-checkbox tr.playing td.sel {
   min-width: max-content;
   display: flex;
   align-items: center;
-  /* Empty since the count moved under the table (#865); it keeps its width so
+  /* Empty since the count moved to the table's footer (#866); it keeps its width so
      the left zone still ends where the table does. Preview edits used to take
      one end; a cell edit is written as soon as it is committed now (#507). */
   justify-content: space-between;
@@ -5303,8 +5318,6 @@ td[data-field="year"],
    taller to save the player a few pixels it does not need. */
 #status-sel {
   flex: 0 0 auto;
-  /* Ends the table's zone (#865), after the player or the lone Play button. */
-  margin-left: auto;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }

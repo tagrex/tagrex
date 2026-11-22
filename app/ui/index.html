@@ -295,6 +295,12 @@
           <div id="dup-results" class="dup-wrap"></div>
         </div>
 
+        <!-- The table's footer (#866): the file and selection count, under the
+             table it describes rather than in the status bar. -->
+        <div class="files-foot">
+          <span id="status-sel" class="muted"></span>
+        </div>
+
         <!-- In-table diff-state action bar (#117): floats over the file table
              while a change plan is staged. The table itself shows the diff in
              place; this pill carries the apply scope, the Show-old toggle and the
@@ -814,8 +820,8 @@
       <!-- Two zones mirroring the columns above (#289): the player lives in the
            left zone, under the file table, so its width tracks the table and its
            waveform never runs under the side panel. The file and selection count
-           is about the table, so it ends that zone, under the table's right edge
-           (#865); the right zone, under the panel, is empty for now. -->
+           is about the table, so it sits in the table's own footer (#866); the
+           right zone, under the panel, is empty for now. -->
       <div class="sb-left">
       <!-- Kept reachable even with the player row hidden (#31): a Play control
            stays on screen; the row itself appears only once a track is loaded,
@@ -870,7 +876,6 @@
           </span>
         </div>
       </div>
-      <span id="status-sel" class="muted"></span>
       </div>
       <div class="sb-right"></div>
     </footer>

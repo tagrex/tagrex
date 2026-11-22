@@ -132,6 +132,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The file and selection count in the status bar moved under the file table it
   describes, after the player, instead of sitting under the side panel
   ([#865](https://github.com/tagrex/tagrex/issues/865)).
+- The file table has a footer of its own, under its scrollbar, and the file
+  and selection count sits there at the start instead of in the status bar
+  beside the player ([#866](https://github.com/tagrex/tagrex/issues/866)).
 
 ### Fixed
 
