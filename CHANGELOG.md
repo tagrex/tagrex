@@ -135,6 +135,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The file table has a footer of its own, under its scrollbar, and the file
   and selection count sits there at the start instead of in the status bar
   beside the player ([#866](https://github.com/tagrex/tagrex/issues/866)).
+- The side panel runs down to the bottom of the window and ends in a footer
+  level with the player bar, which now sits under the file table only. The
+  run buttons of GENERATOR, DEDUPLICATOR and EXPORTER moved into that footer
+  and stay in view while the panel scrolls; with the panel collapsed the
+  player still takes the whole width
+  ([#867](https://github.com/tagrex/tagrex/issues/867)).
 
 ### Fixed
 

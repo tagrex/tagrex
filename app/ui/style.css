@@ -161,6 +161,9 @@
      truth — every pinned height below references these. */
   --ctl-h: 28px;
   --ctl-h-sm: 24px;
+  /* The status bar under the table, and the side panel's footer level with it
+     (#867). */
+  --statusbar-h: 58px;
 
   /* The custom-styled scrollbar's own width, set below on ::-webkit-scrollbar. */
   --sb-w: 11px;
@@ -1123,6 +1126,25 @@ body.resizing .col-splitter {
      (11px, our custom style) width, same as any plain overflow-y: auto —
      smaller and rarer than that permanent misalignment was. */
   overflow-y: auto;
+  background: var(--panel);
+}
+
+/* A panel at least fills the column, so its footer can sit at the bottom. */
+.mode-panel:not(#panel-tagger) {
+  flex: 1 0 auto;
+}
+/* The panel's footer (#867): its run row, at the bottom of the window level
+   with the status bar under the table, and pinned there while the panel above
+   scrolls. Edge to edge across the panel's padding. */
+.panel-actions.panel-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin: auto calc(-1 * var(--panel-inset, 14px)) -12px -14px;
+  min-height: var(--statusbar-h);
+  align-content: center;
+  padding: 10px var(--panel-inset, 14px) 10px 14px;
+  border-top: 1px solid var(--border);
   background: var(--panel);
 }
 
@@ -2456,16 +2478,13 @@ body.show-checkbox tr.playing td.sel {
 }
 
 /* ---- status bar ---- */
-/* One strip at the bottom, not two (#219): the count on the left, the player
-   in the space between, Preview edits on the right. */
+/* The player's strip, under the file table only since #867: the side panel
+   runs down to the window's edge and ends in its own footer, level with it. */
 .statusbar {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  /* No horizontal padding and a 5px gap (the splitter's width): this lets the two
-     zones line up exactly with the columns above (#289) — the left zone flush
-     with the table, the right zone flush with the panel — with the breathing
-     inset moved inside each zone instead. */
+  /* No horizontal padding: the inset is inside the zone. */
   gap: 5px;
   padding: 5px 0;
   /* #sb-play (just an icon button) stands in for #player (title + waveform)
@@ -2475,17 +2494,13 @@ body.show-checkbox tr.playing td.sel {
      and going. Reserves #player's own measured height so the bar never
      shrinks: 5px padding + #player's 2px padding + .pl-main's stacked
      title-line/waveform content (the tallest thing in the row, #380). */
-  min-height: 58px;
+  min-height: var(--statusbar-h);
   font-size: 11px;
   background: var(--panel);
   border-top: 1px solid var(--border);
 }
-/* Two zones (#289): the player sits in the left zone, under the file table, so
-   its width tracks the table; the right zone sits under the side panel and holds
-   the selection count and Preview edits. The right zone's width follows the panel
-   width (published as --panel-col-width by the splitter); when the panel is
-   collapsed the variable is 0 and the zone shrinks to its content at the far
-   right, and the player takes the whole (now full-width) table. */
+/* The player's zone (#289) is the whole bar since #867: the bar is as wide as
+   the table, and the whole window when the panel is collapsed. */
 .sb-left {
   flex: 1 1 auto;
   min-width: 0;
@@ -2495,20 +2510,6 @@ body.show-checkbox tr.playing td.sel {
   /* Symmetric 14px inset (#292): the transport clears the window edge on the left
      and the waveform/clock clear the panel border on the right, matching the
      count's inset in the right zone rather than sitting flush against the split. */
-  padding-left: 14px;
-  padding-right: 14px;
-}
-.sb-right {
-  flex: 0 0 auto;
-  width: var(--panel-col-width, 480px);
-  min-width: max-content;
-  display: flex;
-  align-items: center;
-  /* Empty since the count moved to the table's footer (#866); it keeps its width so
-     the left zone still ends where the table does. Preview edits used to take
-     one end; a cell edit is written as soon as it is committed now (#507). */
-  justify-content: space-between;
-  gap: 12px;
   padding-left: 14px;
   padding-right: 14px;
 }
@@ -5410,10 +5411,14 @@ td[data-field="year"],
   padding: 12px 14px;
 }
 
-/* Pinned action footer, mirroring the ONLINE head so it reads as chrome. */
+/* Pinned action footer, mirroring the ONLINE head so it reads as chrome. At
+   least the status bar's height, so the two read as one strip at the bottom of
+   the window (#867). */
 .editor-actions,
 .from-name-actions {
   flex: 0 0 auto;
+  min-height: var(--statusbar-h);
+  align-content: center;
   padding: 10px 14px;
   border-top: 1px solid var(--border);
   background: var(--panel);

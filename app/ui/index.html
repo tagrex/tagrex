@@ -331,6 +331,69 @@
             <p id="act-detail" class="act-detail"></p>
           </div>
         </div>
+
+        <footer class="statusbar">
+          <!-- Under the file table only (#867): the side panel runs down to the
+               window's bottom edge and ends in its own footer, level with this bar.
+               With the panel collapsed the table, and so the player, takes the
+               whole width. The file and selection count is in the table's footer
+               (#866). -->
+          <div class="sb-left">
+          <!-- Kept reachable even with the player row hidden (#31): a Play control
+               stays on screen; the row itself appears only once a track is loaded,
+               and its own toggle takes over then. -->
+          <button id="sb-play" class="icon" hidden data-i18n-title="player.play" title="Play the current track" data-i18n-aria-label="player.play" aria-label="Play the current track"><svg class="ico"><use href="#i-play"/></svg></button>
+          <div id="player" hidden>
+            <!-- Transport cluster (#276): grouped tight so the five glyphs read as one
+                 control, with play/pause emphasised as the primary. The volume control
+                 sits with them, and the cover follows the controls now (#290). -->
+            <div class="pl-transport">
+              <button id="pl-prev" class="icon" data-i18n-title="player.prev" title="Previous track" data-i18n-aria-label="player.prev" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
+              <button id="pl-toggle" class="icon" data-i18n-title="player.toggle" title="Play / pause" data-i18n-aria-label="player.toggle" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
+              <button id="pl-stop" class="icon" data-i18n-title="player.stop" title="Stop" data-i18n-aria-label="player.stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
+              <button id="pl-next" class="icon" data-i18n-title="player.next" title="Next track" data-i18n-aria-label="player.next" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
+              <button id="pl-repeat" class="icon" data-i18n-title="player.repeatOff" title="Repeat off" data-i18n-aria-label="player.repeatOff" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
+            </div>
+            <!-- Volume folds away behind its own button (the slider took a fixed strip
+                 of the row to be used seconds at a time). The button shows the current
+                 state, so muted is still readable without opening anything; the
+                 popover holds the mute toggle and the slider. -->
+            <div class="pl-vol">
+              <button id="pl-volume-btn" class="icon" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
+              <div id="pl-volume-pop" class="pl-vol-pop" hidden>
+                <button id="pl-mute" class="icon" data-i18n-title="player.mute" title="Mute" data-i18n-aria-label="player.mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
+                <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume" />
+              </div>
+            </div>
+            <!-- Now-playing cover (#275): sits after the controls (#290), between them
+                 and the title/waveform. Reserves a fixed slot; shows the track's
+                 embedded front cover, or stays transparent (#289) when the track has
+                 none, so the transport never shifts as covers come and go. -->
+            <span id="pl-cover" class="pl-cover" aria-hidden="true"><img id="pl-cover-img" alt="" /></span>
+            <!-- The title sits ABOVE the seek bar rather than beside it: squeezed into
+                 a column next to the waveform it was ellipsised after a few words,
+                 and the one thing a player has to be able to say is what is playing.
+                 Stacked, it has the whole width of the bar. -->
+            <div class="pl-main">
+              <!-- Title and elapsed/total share the line above the waveform: they are
+                   both "what is playing, and where in it", and neither needs a column
+                   of its own beside the bar. -->
+              <div class="pl-line">
+                <button type="button" id="pl-title" class="mono" title=""></button>
+                <span id="pl-time" class="muted">0:00 / 0:00</span>
+              </div>
+              <!-- The seek bar draws the track's amplitude envelope (#101). The range
+                   input is still the control — it keeps the drag, the keyboard and the
+                   existing seek handling — and is made invisible over a canvas that
+                   paints the waveform and the playhead. -->
+              <span id="pl-wave-wrap" class="pl-wave-wrap">
+                <canvas id="pl-wave" aria-hidden="true"></canvas>
+                <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" data-i18n-aria-label="player.seek" aria-label="Seek" />
+              </span>
+            </div>
+          </div>
+          </div>
+        </footer>
       </section>
 
       <div id="col-splitter" class="col-splitter" data-i18n-title="toolbar.dragResize" title="Drag to resize"></div>
@@ -718,11 +781,13 @@
 
           <!-- The one run (#788): vinyl sides, then numbering, then the ticked
                presets over the selection with those values in place. -->
-          <div class="panel-block">
-            <div class="panel-actions">
-              <p id="gen-run-note" class="panel-note"></p>
-              <button id="gen-run" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="generator.previewChanges">Preview changes</span></button>
-            </div>
+          <!-- What the run does stays with the panel; the footer holds only the
+               button, so it keeps the status bar's height (#867). -->
+          <div class="panel-actions">
+            <p id="gen-run-note" class="panel-note"></p>
+          </div>
+          <div class="panel-actions panel-foot">
+            <button id="gen-run" class="primary with-ico"><svg class="ico"><use href="#i-eye"/></svg><span data-i18n="generator.previewChanges">Preview changes</span></button>
           </div>
         </section>
 
@@ -749,11 +814,14 @@
             <p id="dup-audio-hint" class="hint muted" style="padding: 0" data-i18n="dedup.audioHint" hidden>
               Compares the decoded sound, so tags and covers do not matter. Takes longer on a big library.
             </p>
-            <!-- The lock line shares the button's line (#571). -->
+            <!-- The lock line closes the form; the button is in the panel's
+                 footer (#867). -->
             <div class="panel-actions">
               <p class="ro-note panel-note"><svg class="ico"><use href="#i-lock"/></svg> <span data-i18n="dedup.readonly">Read-only — nothing is changed.</span></p>
-              <button id="dup-scan" class="primary with-ico"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="dedup.scan">Scan library</span></button>
             </div>
+          </div>
+          <div class="panel-actions panel-foot">
+            <button id="dup-scan" class="primary with-ico"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="dedup.scan">Scan library</span></button>
           </div>
         </section>
 
@@ -803,11 +871,14 @@
                 <input id="export-name" type="text" spellcheck="false" />
               </div>
             </div>
-            <!-- The read-only line closes the form beside Export (#571). -->
+            <!-- The read-only line closes the form; Export is in the panel's
+                 footer (#867). -->
             <div class="panel-actions">
               <p class="exp-note panel-note" data-i18n="exporter.note" data-i18n-html><b>Read-only.</b> Written into the opened library folder — your audio files are not modified.</p>
-              <button id="export-run" class="primary with-ico"><svg class="ico"><use href="#i-export"/></svg><span data-i18n="exporter.run">Export</span></button>
             </div>
+          </div>
+          <div class="panel-actions panel-foot">
+            <button id="export-run" class="primary with-ico"><svg class="ico"><use href="#i-export"/></svg><span data-i18n="exporter.run">Export</span></button>
           </div>
         </section>
 
@@ -816,69 +887,6 @@
 
     <input id="cover-file" type="file" accept="image/*" hidden />
 
-    <footer class="statusbar">
-      <!-- Two zones mirroring the columns above (#289): the player lives in the
-           left zone, under the file table, so its width tracks the table and its
-           waveform never runs under the side panel. The file and selection count
-           is about the table, so it sits in the table's own footer (#866); the
-           right zone, under the panel, is empty for now. -->
-      <div class="sb-left">
-      <!-- Kept reachable even with the player row hidden (#31): a Play control
-           stays on screen; the row itself appears only once a track is loaded,
-           and its own toggle takes over then. -->
-      <button id="sb-play" class="icon" hidden data-i18n-title="player.play" title="Play the current track" data-i18n-aria-label="player.play" aria-label="Play the current track"><svg class="ico"><use href="#i-play"/></svg></button>
-      <div id="player" hidden>
-        <!-- Transport cluster (#276): grouped tight so the five glyphs read as one
-             control, with play/pause emphasised as the primary. The volume control
-             sits with them, and the cover follows the controls now (#290). -->
-        <div class="pl-transport">
-          <button id="pl-prev" class="icon" data-i18n-title="player.prev" title="Previous track" data-i18n-aria-label="player.prev" aria-label="Previous track"><svg class="ico"><use href="#i-prev"/></svg></button>
-          <button id="pl-toggle" class="icon" data-i18n-title="player.toggle" title="Play / pause" data-i18n-aria-label="player.toggle" aria-label="Play / pause"><svg class="ico"><use href="#i-play"/></svg></button>
-          <button id="pl-stop" class="icon" data-i18n-title="player.stop" title="Stop" data-i18n-aria-label="player.stop" aria-label="Stop"><svg class="ico"><use href="#i-stop"/></svg></button>
-          <button id="pl-next" class="icon" data-i18n-title="player.next" title="Next track" data-i18n-aria-label="player.next" aria-label="Next track"><svg class="ico"><use href="#i-next"/></svg></button>
-          <button id="pl-repeat" class="icon" data-i18n-title="player.repeatOff" title="Repeat off" data-i18n-aria-label="player.repeatOff" aria-label="Repeat off"><svg class="ico"><use href="#i-repeat"/></svg></button>
-        </div>
-        <!-- Volume folds away behind its own button (the slider took a fixed strip
-             of the row to be used seconds at a time). The button shows the current
-             state, so muted is still readable without opening anything; the
-             popover holds the mute toggle and the slider. -->
-        <div class="pl-vol">
-          <button id="pl-volume-btn" class="icon" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume"><svg class="ico"><use href="#i-volume"/></svg></button>
-          <div id="pl-volume-pop" class="pl-vol-pop" hidden>
-            <button id="pl-mute" class="icon" data-i18n-title="player.mute" title="Mute" data-i18n-aria-label="player.mute" aria-label="Mute"><svg class="ico"><use href="#i-volume"/></svg></button>
-            <input id="pl-volume" type="range" min="0" max="100" value="100" step="1" data-i18n-title="player.volume" title="Volume" data-i18n-aria-label="player.volume" aria-label="Volume" />
-          </div>
-        </div>
-        <!-- Now-playing cover (#275): sits after the controls (#290), between them
-             and the title/waveform. Reserves a fixed slot; shows the track's
-             embedded front cover, or stays transparent (#289) when the track has
-             none, so the transport never shifts as covers come and go. -->
-        <span id="pl-cover" class="pl-cover" aria-hidden="true"><img id="pl-cover-img" alt="" /></span>
-        <!-- The title sits ABOVE the seek bar rather than beside it: squeezed into
-             a column next to the waveform it was ellipsised after a few words,
-             and the one thing a player has to be able to say is what is playing.
-             Stacked, it has the whole width of the bar. -->
-        <div class="pl-main">
-          <!-- Title and elapsed/total share the line above the waveform: they are
-               both "what is playing, and where in it", and neither needs a column
-               of its own beside the bar. -->
-          <div class="pl-line">
-            <button type="button" id="pl-title" class="mono" title=""></button>
-            <span id="pl-time" class="muted">0:00 / 0:00</span>
-          </div>
-          <!-- The seek bar draws the track's amplitude envelope (#101). The range
-               input is still the control — it keeps the drag, the keyboard and the
-               existing seek handling — and is made invisible over a canvas that
-               paints the waveform and the playhead. -->
-          <span id="pl-wave-wrap" class="pl-wave-wrap">
-            <canvas id="pl-wave" aria-hidden="true"></canvas>
-            <input id="pl-seek" type="range" min="0" max="1000" value="0" step="1" data-i18n-aria-label="player.seek" aria-label="Seek" />
-          </span>
-        </div>
-      </div>
-      </div>
-      <div class="sb-right"></div>
-    </footer>
 
     <!-- One line, or a report: a headline and a line per further clause, fine
          ones muted and problems in red (#558). -->
