@@ -375,6 +375,16 @@ function mockInvoke(cmd, args) {
       return Promise.resolve([...(args.paths || [])]);
     case "reveal_file":
       return Promise.resolve();
+    case "preview_rename_file": {
+      const name = String(args.name || "").trim();
+      if (!name || /[\\/]/.test(name)) return Promise.reject(`not a file name: "${args.name}"`);
+      const dir = args.path.slice(0, args.path.lastIndexOf("/"));
+      const ext = args.path.slice(args.path.lastIndexOf("."));
+      const rename_to = `${dir}/${name}${ext}`;
+      const changes =
+        rename_to === args.path ? [] : [{ path: args.path, rename_to, rename_root: dir, creates_folder: false, tag_changes: [] }];
+      return Promise.resolve(plan(`Rename to ${name}${ext}`, { code: "plan.renameFile", args: { name: `${name}${ext}` } }, changes));
+    }
     case "set_locked_fields":
       mockLockedFields = new Set(args.fields || []);
       return Promise.resolve();

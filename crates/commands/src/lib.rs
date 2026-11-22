@@ -641,6 +641,10 @@ pub enum PlanMessage {
     RenameByMask {
         mask: String,
     },
+    /// One file renamed to a name typed for it (#858).
+    RenameFile {
+        name: String,
+    },
     TagsFromName {
         mask: String,
     },
@@ -717,6 +721,7 @@ impl PlanMessage {
     fn code(&self) -> &'static str {
         match self {
             Self::RenameByMask { .. } => "plan.renameByMask",
+            Self::RenameFile { .. } => "plan.renameFile",
             Self::TagsFromName { .. } => "plan.tagsFromName",
             Self::TagsFromText { .. } => "plan.tagsFromText",
             Self::Transform { .. } => "plan.transform",
@@ -766,6 +771,9 @@ impl PlanMessage {
             Self::Transform { scope } => {
                 args.insert("scope".to_string(), scope.clone());
             }
+            Self::RenameFile { name } => {
+                args.insert("name".to_string(), name.clone());
+            }
             Self::RemoveBlock { block } | Self::RewriteBlock { block } => {
                 args.insert("block".to_string(), block.clone());
             }
@@ -799,6 +807,7 @@ impl PlanMessage {
     fn english(&self) -> String {
         match self {
             Self::RenameByMask { mask } => format!("Rename by mask: {mask}"),
+            Self::RenameFile { name } => format!("Rename to {name}"),
             Self::TagsFromName { mask } => format!("Tags from name: {mask}"),
             Self::TagsFromText { mask } => format!("Tags from text: {mask}"),
             Self::Transform { scope } => format!("Transform ({scope})"),
@@ -1083,6 +1092,7 @@ fn error_message(error: &AppError) -> MessageDto {
         },
         AppError::OutsideRoot(path) => coded("error.outsideLibrary", arg("path", path)),
         AppError::InvalidFileName(name) => coded("error.invalidFileName", arg("name", name)),
+        AppError::NotAFileName(name) => coded("error.notAFileName", arg("name", name)),
         AppError::UnknownTransform(name) => coded("error.unknownTransform", arg("name", name)),
         AppError::FieldRule(inner) => match inner {
             FieldRuleError::NeedsField => coded("error.fieldRule.needsField", BTreeMap::new()),
@@ -3391,6 +3401,70 @@ impl App {
         );
         plan.unrendered = unrendered;
         Ok(plan)
+    }
+
+    /// Rename one file to `name` (#858): the RENAMER's rename in place, with a
+    /// typed name where it renders a mask. The file keeps its extension, and a
+    /// name typed with that extension does not get it twice. The name is made
+    /// safe to create the way a rendered one is (#679); a separator, or a name
+    /// that is nothing once made safe, is refused. The same name stages
+    /// nothing.
+    pub fn preview_rename_file(&self, path: &Path, name: &str) -> Result<PlanDto, AppError> {
+        let refuse = || AppError::NotAFileName(name.to_string());
+        let mut typed = name.trim();
+        if typed.is_empty() || typed.contains(['/', '\\']) || typed == "." || typed == ".." {
+            return Err(refuse());
+        }
+        let ext = path.extension().and_then(|ext| ext.to_str());
+        if let Some(ext) = ext {
+            let dotted = format!(".{ext}");
+            // The extension alone names nothing.
+            if typed.eq_ignore_ascii_case(&dotted) {
+                return Err(refuse());
+            }
+            if typed.len() > dotted.len()
+                && typed.is_char_boundary(typed.len() - dotted.len())
+                && typed[typed.len() - dotted.len()..].eq_ignore_ascii_case(&dotted)
+            {
+                typed = &typed[..typed.len() - dotted.len()];
+            }
+        }
+        let file_name = self.safe_name(&match ext {
+            Some(ext) => format!("{typed}.{ext}"),
+            None => typed.to_string(),
+        });
+        let stem_left = match ext {
+            Some(ext) => file_name.len() > ext.len() + 1,
+            None => !file_name.is_empty(),
+        };
+        if !stem_left {
+            return Err(refuse());
+        }
+        let root = path.parent().unwrap_or(path);
+        let target = root.join(&file_name);
+        let mut changes = Vec::new();
+        if target != path {
+            let mut change = FileChangeDto {
+                path: path.to_string_lossy().into_owned(),
+                rename_to: Some(target.to_string_lossy().into_owned()),
+                tag_changes: Vec::new(),
+                cover_change: None,
+                sidecar_renames: Vec::new(),
+                block_changes: Vec::new(),
+                copy: false,
+                rename_root: Some(root.to_string_lossy().into_owned()),
+                creates_folder: false,
+                folder_extras: Vec::new(),
+            };
+            self.attach_sidecars(&mut change, &mut sidecars::SidecarScan::default());
+            changes.push(change);
+        }
+        Ok(self.plan(
+            PlanMessage::RenameFile { name: file_name },
+            Vec::new(),
+            changes,
+            false,
+        ))
     }
 
     /// Rename the open folder itself from a mask (#841), rendered from the tags
@@ -8106,6 +8180,10 @@ pub enum AppError {
     OutsideRoot(String),
     #[error("invalid export file name: {0}")]
     InvalidFileName(String),
+    /// A name typed for one file that is no file name (#858): empty, a
+    /// path, or nothing once made safe.
+    #[error("not a file name: {0:?}")]
+    NotAFileName(String),
     #[error("unknown transformation: {0}")]
     UnknownTransform(String),
     #[error(transparent)]
@@ -9679,6 +9757,71 @@ mod tests {
         assert!(track.exists());
         assert!(!expected.exists());
         assert!(app.history().unwrap().is_empty());
+    }
+
+    /// #858: one file renamed to a typed name keeps its extension, takes its
+    /// sidecars along, and applies and undoes like the RENAMER's rename.
+    #[test]
+    fn one_file_is_renamed_to_a_typed_name() {
+        let dir = TempDir::new("rename-one");
+        let track = dir.tagged_flac("original.flac", "Artist", "Title");
+        let lrc = dir.0.join("original.lrc");
+        std::fs::write(&lrc, b"x").unwrap();
+        let mut app = open_app(&dir);
+
+        let plan = app.preview_rename_file(&track, "  New Name  ").unwrap();
+        let expected = dir.0.join("New Name.flac");
+        assert_eq!(plan.changes.len(), 1);
+        assert_eq!(
+            plan.changes[0].rename_to.as_deref(),
+            Some(expected.to_string_lossy().as_ref())
+        );
+        assert_eq!(plan.changes[0].sidecar_renames.len(), 1);
+        assert_eq!(plan.message.as_ref().unwrap().code, "plan.renameFile");
+
+        let batch = app.apply(&plan).unwrap();
+        assert!(expected.exists() && !track.exists());
+        assert!(dir.0.join("New Name.lrc").exists());
+        app.undo(batch.id).unwrap();
+        assert!(track.exists() && lrc.exists() && !expected.exists());
+    }
+
+    /// #858: the extension typed along is not doubled, a name is made portable
+    /// like a rendered one, the same name stages nothing, and what is no file
+    /// name is refused.
+    #[test]
+    fn a_typed_file_name_is_checked_and_made_safe() {
+        let dir = TempDir::new("rename-one-checks");
+        let track = dir.tagged_flac("original.flac", "Artist", "Title");
+        let app = open_app(&dir);
+        let target = |name: &str| {
+            app.preview_rename_file(&track, name).unwrap().changes[0]
+                .rename_to
+                .clone()
+                .unwrap()
+        };
+        assert_eq!(
+            target("Song.FLAC"),
+            dir.0.join("Song.flac").to_string_lossy()
+        );
+        assert_eq!(
+            target("What? <Live>"),
+            dir.0.join("What _Live_.flac").to_string_lossy()
+        );
+        assert!(app
+            .preview_rename_file(&track, "original")
+            .unwrap()
+            .changes
+            .is_empty());
+        for name in ["", "   ", "a/b", "a\\b", "..", ".flac"] {
+            assert!(
+                matches!(
+                    app.preview_rename_file(&track, name),
+                    Err(AppError::NotAFileName(_))
+                ),
+                "{name:?} must be refused"
+            );
+        }
     }
 
     // #139: the extract direction — the name carries the metadata, and it comes

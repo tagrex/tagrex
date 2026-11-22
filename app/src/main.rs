@@ -685,6 +685,24 @@ async fn open_release_page(source: String, id: String) -> Result<(), ErrorDto> {
         .await
 }
 
+/// Rename one file to a typed name (#858), staged like any other plan.
+#[tauri::command]
+async fn preview_rename_file(
+    state: State<'_, AppState>,
+    path: String,
+    name: String,
+) -> Result<PlanDto, ErrorDto> {
+    let state = state.inner().clone();
+    SESSION_QUEUE
+        .run(move || {
+            with_app(&state, |app| {
+                app.preview_rename_file(Path::new(&path), &name)
+                    .map_err(ErrorDto::from)
+            })
+        })
+        .await
+}
+
 #[tauri::command]
 async fn preview_rename(
     state: State<'_, AppState>,
@@ -2713,6 +2731,7 @@ fn main() {
             close_button_side,
             small_word_lists,
             preview_rename,
+            preview_rename_file,
             preview_folder_rename,
             preview_tags_from_name,
             probe_tags_from_name,

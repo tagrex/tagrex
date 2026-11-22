@@ -910,6 +910,7 @@
       <button type="button" class="ctx-item" data-cmd="edit" role="menuitem"><svg class="ico"><use href="#i-tag"/></svg><span data-i18n="ctx.editTags">Edit tags</span></button>
       <button type="button" class="ctx-item" data-cmd="online" role="menuitem"><svg class="ico"><use href="#i-search"/></svg><span data-i18n="ctx.findOnline">Find online</span></button>
       <div class="ctx-sep"></div>
+      <button type="button" class="ctx-item" data-cmd="rename" role="menuitem"><svg class="ico"><use href="#i-rename"/></svg><span data-i18n="ctx.rename">Rename…</span></button>
       <button type="button" class="ctx-item" data-cmd="reveal" role="menuitem"><svg class="ico"><use href="#i-folder"/></svg><span class="ctx-label">Show in Finder</span></button>
       <div class="ctx-sep"></div>
       <!-- Actions on the files (#563); the keys are filled in from the shortcut map. -->
@@ -958,6 +959,28 @@
         <div class="modal-actions">
           <button id="colmask-cancel" data-i18n="action.cancel">Cancel</button>
           <button id="colmask-ok" class="primary">Add column</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Rename one file (#858): a name typed for it, staged as a plan in the
+         preview like the RENAMER's. The extension stays and is not edited. -->
+    <div id="rename-modal" class="modal-backdrop" hidden>
+      <div class="modal colmask" role="dialog" aria-modal="true" aria-labelledby="rename-title">
+        <div class="modal-head">
+          <h2 id="rename-title" data-i18n="renameOne.title">Rename file</h2>
+          <button id="rename-close" class="icon" type="button" data-i18n-title="action.cancel" title="Cancel" data-i18n-aria-label="action.cancel" aria-label="Cancel"><svg class="ico"><use href="#i-close"/></svg></button>
+        </div>
+        <div class="colmask-fields">
+          <label class="colmask-row">
+            <span data-i18n="renameOne.name">New name</span>
+            <input id="rename-name" type="text" spellcheck="false" autocomplete="off" />
+          </label>
+        </div>
+        <p id="rename-ext" class="settings-hint"></p>
+        <div class="modal-actions">
+          <button id="rename-cancel" data-i18n="action.cancel">Cancel</button>
+          <button id="rename-ok" class="primary" data-i18n="renamer.previewRename">Preview rename</button>
         </div>
       </div>
     </div>

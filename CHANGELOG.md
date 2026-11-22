@@ -102,6 +102,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   Apply and Write and next, a cross on Discard, and their own on Clear tags,
   Scan library, Export, Edit presets and the preset editor's buttons
   ([#857](https://github.com/tagrex/tagrex/issues/857)).
+- Rename… in the file menu renames one file to a name typed for it: the
+  extension stays, the name is made safe like a rendered one, sidecar files
+  follow, and the rename is staged in the preview to apply or discard
+  ([#858](https://github.com/tagrex/tagrex/issues/858)).
 
 ### Fixed
 

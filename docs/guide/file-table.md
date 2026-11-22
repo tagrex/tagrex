@@ -16,7 +16,7 @@ picking rows; what the modes then *do* with them is on their own pages.
 | Click below the rows | Clear the selection |
 | ↑ / ↓ | Move to the previous/next row |
 | Space | Toggle the focused row in or out of the selection |
-| Right-click a file name | A menu of actions on the selection (or on that row, which it selects, when it is outside the selection): Detect BPM, Clear tags, Remove from the list, Move to Trash, with their shortcuts |
+| Right-click a row | A menu of actions on the selection (or on that row, which it selects, when it is outside the selection): Play (that row), Edit tags, Find online, Rename… (one file: type a new name, the extension stays, and the rename is staged in the preview), Show in Finder / Explorer / the file manager (one file), Detect BPM, Clear tags, Remove from the list, Move to Trash, with their shortcuts |
 
 Two blocks with a gap between them take four clicks: click the first row of
 the first block and Shift-click its last, then ⌘/Ctrl-click the first row of the

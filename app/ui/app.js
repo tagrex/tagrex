@@ -2326,7 +2326,7 @@ let undoing = false;
 
 async function apply() {
   if (!previewPlan || previewPlan.changes.length === 0) return;
-  const wasRename = previewSource === "rename" || previewSource === "folder";
+  const wasRename = previewSource === "rename" || previewSource === "folder" || previewSource === "renameFile";
   const wasEdits = previewSource === "edits";
   // Only the ticked rows are applied (#81). The apply scope is the sel-column
   // tick set (`applySelection`) while diffing. The plan the backend gets — and
@@ -2702,6 +2702,7 @@ function showFileCtx(x, y, tr) {
   const many = fileCtxPaths.length > 1;
   const unreadable = tr.classList.contains("unreadable");
   fileCtx.querySelector('[data-cmd="play"]').disabled = unreadable;
+  fileCtx.querySelector('[data-cmd="rename"]').disabled = many || unreadable;
   const reveal = fileCtx.querySelector('[data-cmd="reveal"]');
   reveal.querySelector(".ctx-label").textContent = msg(REVEAL_LABEL);
   reveal.disabled = many;
@@ -2778,6 +2779,8 @@ fileCtx.addEventListener("click", (e) => {
     setMode("tagger");
     setSubtab("online");
     findOnline();
+  } else if (item.dataset.cmd === "rename") {
+    openRenameOne(paths[0]);
   } else if (item.dataset.cmd === "reveal") {
     invoke("reveal_file", { path: paths[0] }).catch((e) => toast(String(e), true));
   } else if (item.dataset.cmd === "hide") {
@@ -2795,6 +2798,70 @@ fileCtx.addEventListener("click", (e) => {
 
 document.addEventListener("mousedown", (e) => {
   if (!fileCtx.hidden && !e.target.closest("#file-ctx")) hideFileCtx();
+});
+
+// ---- rename one file (#858) ----
+const renameModal = el("rename-modal");
+let renamePath = null;
+
+// The name and the extension apart: the extension stays, so only the name is
+// offered for editing.
+function splitFileName(path) {
+  const name = path.split(/[\\/]/).pop();
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+}
+
+function openRenameOne(path) {
+  renamePath = path;
+  const [stem, ext] = splitFileName(path);
+  const input = el("rename-name");
+  input.value = stem;
+  el("rename-ext").textContent = ext ? msg("renameOne.keepsExt", { ext }) : "";
+  el("rename-ext").hidden = !ext;
+  renameModal.hidden = false;
+  input.focus();
+  input.select();
+}
+
+function closeRenameOne() {
+  renameModal.hidden = true;
+  renamePath = null;
+}
+
+async function submitRenameOne() {
+  const path = renamePath;
+  if (!path) return;
+  try {
+    const plan = await invoke("preview_rename_file", { path, name: el("rename-name").value });
+    closeRenameOne();
+    if (!plan.changes.length) {
+      toast(msg("renameOne.same"));
+      return;
+    }
+    setPreviewPlan(plan);
+    // Its own source: the RENAMER rebuilds a "rename" plan from its mask.
+    setPreviewSource("renameFile");
+    renderPreview(previewPlan);
+  } catch (e) {
+    toast(String(e), true);
+  }
+}
+
+el("rename-ok").addEventListener("click", submitRenameOne);
+el("rename-cancel").addEventListener("click", closeRenameOne);
+el("rename-close").addEventListener("click", closeRenameOne);
+renameModal.addEventListener("click", (e) => {
+  if (e.target === renameModal) closeRenameOne();
+});
+el("rename-name").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    submitRenameOne();
+  } else if (e.key === "Escape") {
+    e.preventDefault();
+    closeRenameOne();
+  }
 });
 window.addEventListener("scroll", hideFileCtx, true);
 document.addEventListener("keydown", (e) => {
