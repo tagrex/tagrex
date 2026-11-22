@@ -306,7 +306,7 @@ export const ru = {
   "toast.nothingChanged": "Ничего не изменилось",
   // ---- the chrome: top bar, mode tabs, table toolbar, diff bar ----
   "action.apply": "Применить",
-  "action.discard": "Отбросить",
+  "action.discard": "Отклонить",
   "topbar.chooseFolder": "Выбрать папку для открытия",
   "topbar.noFolder": "Папка не открыта",
   "topbar.recent": "Недавно открытые папки",
@@ -924,7 +924,7 @@ export const ru = {
   "settings.assistants": "ИИ-ассистенты",
   "settings.assistants.intro": "Позволяет Claude Code или Claude Desktop работать с открытой в TagRex библиотекой по MCP: читать треки и теги, искать релизы, проверять маски, искать дубликаты и предлагать изменения тегов и переименования. Предложение только появляется в предпросмотре; ничего не записывается, пока вы не нажмёте «Применить». Работает, пока запущен TagRex.",
   "agent.proposedBy": "Предложено: {assistant}",
-  "agent.staged": "{assistant} предлагает изменения, затронуто: {files}. Проверьте их и нажмите «Применить» или «Отбросить».",
+  "agent.staged": "{assistant} предлагает изменения, затронуто: {files}. Проверьте их и нажмите «Применить» или «Отклонить».",
   "plan.byAssistant": "предложено: {assistant}",
   "settings.assistants.connect": "Подключить",
   "settings.assistants.hint": "У каждого подключения свой ключ, он хранится в папке настроек TagRex и нигде не показывается. Удалите подключение, и этот ассистент получит отказ при следующем запросе.",

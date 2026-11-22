@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The Russian label of the preview bar's Discard button now uses the right
+  word for turning down staged changes, and so does the assistant's note that
+  names it ([#869](https://github.com/tagrex/tagrex/issues/869)).
+
 ## [1.11.0] - 2026-11-22
 
 TagRex 1.11.0 lets an AI assistant work with your library over MCP: Claude
