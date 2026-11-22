@@ -209,6 +209,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   a write, like any other it cannot read, in an MP3 or AAC (also after junk) and
   in the ID3 chunk of a WAV or AIFF; files with ordinary chapters are read as
   before ([#859](https://github.com/tagrex/tagrex/issues/859)).
+- The bundled URL parser is updated to 2.5.9, which fixes a stack overflow on a
+  URL nesting many `blob:` prefixes (RUSTSEC-2026-0592). TagRex never parses
+  such a URL itself, and the window only ever checks its own address, so
+  exposure was low ([#868](https://github.com/tagrex/tagrex/issues/868)).
 
 ## [1.10.0] - 2026-11-21
 
