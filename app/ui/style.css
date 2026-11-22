@@ -5322,6 +5322,21 @@ td[data-field="year"],
   border-bottom-color: var(--accent);
 }
 
+/* The icon before each label (#856), tinted with the accent on the open tab.
+   Scoped to the strip, which outranks the panel's own button rules. */
+.subtabs > .subtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.subtab > .ico {
+  width: 15px;
+  height: 15px;
+}
+.subtab.active > .ico {
+  color: var(--accent);
+}
+
 .subtab-panel {
   display: flex;
   flex-direction: column;

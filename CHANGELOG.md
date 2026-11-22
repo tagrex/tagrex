@@ -95,6 +95,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   file name, and offers Play, Edit tags, Find online and Show in Finder
   (Explorer, the file manager) above its file actions
   ([#855](https://github.com/tagrex/tagrex/issues/855)).
+- The TAGGER sub-tabs carry an icon each (a globe, a pen, a document, text
+  lines), tinted with the accent on the open one
+  ([#856](https://github.com/tagrex/tagrex/issues/856)).
 
 ### Fixed
 
