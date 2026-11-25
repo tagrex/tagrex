@@ -596,7 +596,6 @@ function playPauseFromBar() {
 }
 
 plToggle.addEventListener("click", playPauseFromBar);
-el("sb-play").addEventListener("click", playPauseFromBar);
 plStop.addEventListener("click", stopPlayback);
 // While dragging, show the target time locally and suppress poll overrides;
 // commit the seek to the backend on release.

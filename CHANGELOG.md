@@ -50,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   ([#883](https://github.com/tagrex/tagrex/issues/883)).
 - The player stays on screen at all times, reading No track loaded until a
   track plays, instead of appearing only while one is loaded ([#884](https://github.com/tagrex/tagrex/issues/884)).
+- The status bar no longer carries a stand-in Play button for when the player
+  was hidden: the player is always on screen now
+  ([#885](https://github.com/tagrex/tagrex/issues/885)).
 
 ### Fixed
 

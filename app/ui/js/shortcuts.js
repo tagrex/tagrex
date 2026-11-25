@@ -99,8 +99,8 @@ const ACTIONS = [
   {
     id: "playPause",
     combo: IS_MAC ? "Alt+Space" : "Mod+Shift+Space",
-    buttons: ["pl-toggle", "sb-play"],
-    run: () => press("pl-toggle", "sb-play"),
+    buttons: ["pl-toggle"],
+    run: () => press("pl-toggle"),
   },
   { id: "prev", combo: "Mod+ArrowLeft", buttons: ["pl-prev"], run: () => press("pl-prev") },
   { id: "next", combo: "Mod+ArrowRight", buttons: ["pl-next"], run: () => press("pl-next") },

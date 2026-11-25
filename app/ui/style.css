@@ -2407,12 +2407,8 @@ body.show-checkbox tr.playing td.sel {
   /* No horizontal padding: the inset is inside the zone. */
   gap: 5px;
   padding: 5px 0;
-  /* #sb-play (just an icon button) stands in for #player (title + waveform)
-     while nothing is loaded, and is a good deal shorter — without a floor
-     here the whole bar shrank by ~19px the moment a track's row disappeared,
-     which reads as the window itself flexing rather than as content coming
-     and going. Reserves #player's own measured height so the bar never
-     shrinks: 5px padding + #player's 2px padding + .pl-main's stacked
+  /* #player's own measured height, so the bar keeps one height whatever the
+     row holds: 5px padding + #player's 2px padding + .pl-main's stacked
      title-line/waveform content (the tallest thing in the row, #380). */
   min-height: var(--statusbar-h);
   font-size: 11px;
@@ -2500,11 +2496,6 @@ body.show-checkbox tr.playing td.sel {
   }
 }
 
-/* Status-bar stand-in for the player's own toggle while the row is down. */
-#sb-play[hidden] {
-  display: none;
-}
-
 #player button:disabled {
   opacity: 0.45;
   cursor: default;
@@ -2523,11 +2514,7 @@ body.show-checkbox tr.playing td.sel {
    slightly different widths — the repeat button carries a superscript and is
    wider than the rest — which is a lot of furniture for what is one row of
    transport glyphs. Equal squares, and a fill only under the pointer. */
-/* `#sb-play` is the same control in the same bar — the player's toggle while
-   the row is down — so it is flat for the same reason, and is only outside
-   `#player` because it has to outlive it (#226). */
-#player .icon,
-#sb-play {
+#player .icon {
   width: 30px;
   height: 30px;
   flex: 0 0 auto;
@@ -2538,14 +2525,11 @@ body.show-checkbox tr.playing td.sel {
   color: var(--text);
 }
 #player .icon:hover:not(:disabled),
-#player .icon:focus-visible,
-#sb-play:hover:not(:disabled),
-#sb-play:focus-visible {
+#player .icon:focus-visible {
   background: var(--row-hover);
 }
 /* 15px, the set size for a glyph in a control-height button (#594). */
-#player .icon > svg,
-#sb-play > svg {
+#player .icon > svg {
   width: 15px;
   height: 15px;
 }
@@ -2561,19 +2545,15 @@ body.show-checkbox tr.playing td.sel {
 
 /* Play/pause is the primary control, so it leads the cluster with an accent
    fill instead of the flat glyph the rest wear (#276). Two ids to outrank the
-   flat `#player .icon` base + hover; `#sb-play` is the same control while the
-   row is down, so it matches. Hover keeps the accent and just brightens, rather
-   than falling back to the grey row-hover the flat buttons use. */
-#player #pl-toggle,
-#sb-play {
+   flat `#player .icon` base + hover. Hover keeps the accent and just brightens,
+   rather than falling back to the grey row-hover the flat buttons use. */
+#player #pl-toggle {
   background: var(--accent);
   color: var(--accent-text);
   border-radius: 999px;
 }
 #player #pl-toggle:hover:not(:disabled),
-#player #pl-toggle:focus-visible,
-#sb-play:hover:not(:disabled),
-#sb-play:focus-visible {
+#player #pl-toggle:focus-visible {
   background: var(--accent);
   filter: brightness(1.08);
 }
