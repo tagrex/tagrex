@@ -85,6 +85,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - TAGGER's tab pill stays centred in the side panel when the panel is dragged
   wider, instead of staying on the left
   ([#886](https://github.com/tagrex/tagrex/issues/886)).
+- With underlined tabs chosen in Settings, TAGGER's tabs are centred in the
+  side panel too, instead of starting at its left edge
+  ([#888](https://github.com/tagrex/tagrex/issues/888)).
 
 ## [1.11.0] - 2026-11-22
 

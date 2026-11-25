@@ -8774,6 +8774,15 @@ body:not(.tabs-classic) .subtabs > .subtab {
 body:not(.tabs-classic) .subtabs {
   margin-inline: auto;
 }
+/* The underlined tabs centred in their row the same way (#888). Auto margins
+   on the outer tabs rather than justify-content: they drop to 0 when the row
+   overflows, so it still scrolls from its first tab. */
+body.tabs-classic .subtabs > .subtab:first-child {
+  margin-inline-start: auto;
+}
+body.tabs-classic .subtabs > .subtab:last-child {
+  margin-inline-end: auto;
+}
 
 /* ---- The mode switcher centred over the window (#880) ----
    Out of the row's flow, so the wordmark and the update pill keep their place
