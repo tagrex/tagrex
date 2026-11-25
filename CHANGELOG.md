@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   names it ([#869](https://github.com/tagrex/tagrex/issues/869)).
 - The Ukrainian label of the same button, and the assistant's note, now use
   the right word too ([#870](https://github.com/tagrex/tagrex/issues/870)).
+- The bundled cookie library is updated to 0.18.3, which fixes nonces of
+  encrypted cookies that could repeat in processes that fork
+  (RUSTSEC-2026-0594). TagRex does not build that part of the library, so it
+  was not affected; the update keeps the security audit clean
+  ([#872](https://github.com/tagrex/tagrex/issues/872)).
 
 ## [1.11.0] - 2026-11-22
 
