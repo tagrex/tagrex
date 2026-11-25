@@ -79,6 +79,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   ([#877](https://github.com/tagrex/tagrex/issues/877)).
 - On macOS the wordmark is centred on the window's traffic lights again,
   by the middle of its slashes ([#879](https://github.com/tagrex/tagrex/issues/879)).
+- TAGGER's tab pill stays centred in the side panel when the panel is dragged
+  wider, instead of staying on the left
+  ([#886](https://github.com/tagrex/tagrex/issues/886)).
 
 ## [1.11.0] - 2026-11-22
 

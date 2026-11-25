@@ -8769,6 +8769,11 @@ button.icon > svg:where(:not(.group-chev)) {
 body:not(.tabs-classic) .subtabs > .subtab {
   height: 26px;
 }
+/* The pill sits centred in its strip when the panel is wider than it (#886),
+   as the mode switcher is over the window. */
+body:not(.tabs-classic) .subtabs {
+  margin-inline: auto;
+}
 
 /* ---- The mode switcher centred over the window (#880) ----
    Out of the row's flow, so the wordmark and the update pill keep their place
