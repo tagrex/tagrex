@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-25
+
+TagRex 1.12.0 is a visual overhaul: the main window and every dialog trade
+their divider lines for rounded cards, controls grow to 32px with larger
+icons, icon buttons go flat, Undo and Redo move into the table's toolbar and
+the mode switcher is centred over the window, with the side panel's tabs in
+the same style and the player always on screen. TagRex also picks up where
+you left off, reopening the last folder with its view, sort, filter and
+selection at launch.
+
 ### Added
 
 - TagRex picks up where you left off: at launch it reopens the folder that was

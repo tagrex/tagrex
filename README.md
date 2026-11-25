@@ -31,7 +31,7 @@
 
 ---
 
-> **Status: 1.11.x.** Stable for day-to-day use: table editing, rename masks
+> **Status: 1.12.x.** Stable for day-to-day use: table editing, rename masks
 > with a function language, tags read back out of file names and text lists,
 > text transforms, online lookups, BPM detection from the audio, cover art, tag
 > block conversion, duplicate detection, exports, a preview player, a
@@ -82,7 +82,9 @@ in a folder you cannot write to, such as `Program Files`. See
 
 **A folder is the library.** Point TagRex at one and it recurses: type or browse
 to the path, drop the folder on the window, or hand it over from the file
-manager — **Open With**, the Dock icon, or the command line.
+manager — **Open With**, the Dock icon, or the command line. At launch it
+reopens the folder you had open last, in the same view, with its sort, filter
+and selection.
 
 **The table is the subject.** Files load into a spreadsheet-style table with
 configurable tag columns (one of them flags the files without cover art),
