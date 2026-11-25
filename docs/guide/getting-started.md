@@ -57,7 +57,7 @@ is not written: the cell goes back to what the file says, and a message says why
 
 ## 4. Undo it
 
-Press the undo arrow in the top bar, or ⌘Z. The edit is rolled back.
+Press the undo arrow at the start of the table's toolbar, or ⌘Z. The edit is rolled back.
 
 The undo journal is a database on disk, not a list in memory: close TagRex,
 reopen it, open the same library, and the undo is still there waiting. That is

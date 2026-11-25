@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   15px with their stroke scaled to match: buttons, fields, the tools inside a
   field, the side panel's tabs and the player all grow together
   ([#878](https://github.com/tagrex/tagrex/issues/878)).
+- Undo and Redo lead the table's toolbar, and Settings and the panel toggle
+  sit at the end of the path row; the top bar keeps the wordmark and the mode
+  switcher, which is now centred over the window ([#880](https://github.com/tagrex/tagrex/issues/880)).
 
 ### Fixed
 

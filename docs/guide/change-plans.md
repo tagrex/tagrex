@@ -63,7 +63,7 @@ untouched.
 
 ## Undo
 
-The undo arrow in the top bar rolls back the most recent applied batch for the
+The undo arrow at the start of the table's toolbar rolls back the most recent applied batch for the
 current library.
 
 - **It is a stack, not a single step.** Each undo takes the newest remaining

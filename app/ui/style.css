@@ -1003,87 +1003,6 @@ body.tabs-classic.compact-tabs .mode-tab {
   padding: var(--space-4);
 }
 
-/* ---- top bar actions (#778) ----
-   Two small tracks of the mode pill's make: History (undo, redo) and View
-   (settings, the panel toggle). The same --bg track, hairline and 3px inset
-   around 28px buttons, so everything in a track in this row is 36px tall. The
-   gap between the two tracks is their divider. A track is not a drag region: a
-   press between two buttons must not start moving the window. */
-.tb-group {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-  gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--bg);
-  -webkit-app-region: no-drag;
-}
-/* A button in a track: a 28px circle with no border or fill of its own (the
-   track is the edge). These are actions, not a choice, so nothing in them is
-   ever "active". The glyph is full ink: at --muted a disabled one (the global
-   55%) looked almost like an enabled one. */
-.tb-group > button.icon {
-  width: var(--ctl-h);
-  height: var(--ctl-h);
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  box-shadow: none;
-  color: var(--text);
-}
-.tb-group > button.icon:hover:not(:disabled) {
-  background: var(--row-hover);
-  color: var(--text);
-}
-/* Pressed: one step past hover, --border being the next grey in both themes. */
-.tb-group > button.icon:active:not(:disabled) {
-  background: var(--border);
-  color: var(--text);
-}
-/* The shared --ring, round; it fits the track's 3px inset. The track never
-   dims, so Undo and Redo both off read as nothing to undo yet, not as a broken
-   control. */
-.tb-group > button.icon:focus-visible {
-  border-radius: 999px;
-}
-/* The Settings dot sits on the circle's shoulder, ringed in the track's fill so
-   it stays a dot over the hover and pressed greys. */
-.tb-group > #settings-open.gear.has-token::after {
-  top: 4px;
-  right: 4px;
-  box-shadow: 0 0 0 2px var(--bg);
-}
-/* The classic look has no tracks, as its modes have none: the buttons are the
-   bordered 28px squares again, and the second group's left edge draws the
-   hairline the classic row always had. */
-body.tabs-classic .tb-group {
-  gap: 6px;
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: none;
-}
-body.tabs-classic .tb-group + .tb-group {
-  margin-left: -4px;
-  padding-left: 8px;
-  border-left: 1px solid var(--border);
-}
-body.tabs-classic .tb-group > button.icon {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg);
-}
-body.tabs-classic .tb-group > button.icon:focus-visible {
-  border-radius: var(--radius-sm);
-}
-body.tabs-classic .tb-group > #settings-open.gear.has-token::after {
-  top: 3px;
-  right: 3px;
-  box-shadow: none;
-}
-
 /* ---- work area: table (left) + mode panel (right) ---- */
 .workarea {
   flex: 1;
@@ -8869,4 +8788,18 @@ button.icon > svg:where(:not(.group-chev)) {
    the files toolbar's. */
 body:not(.tabs-classic) .subtabs > .subtab {
   height: 26px;
+}
+
+/* ---- The mode switcher centred over the window (#880) ----
+   Out of the row's flow, so the wordmark and the update pill keep their place
+   at the start; app.js turns the tabs icon-only when they would reach the
+   wordmark. */
+.topbar-main {
+  position: relative;
+}
+.mode-tabs {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }

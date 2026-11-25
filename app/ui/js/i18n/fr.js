@@ -315,8 +315,6 @@ export const fr = {
   "topbar.collapsePanelTitle": "Replier le panneau du mode (plus de place pour le tableau)",
   "topbar.undo": "Annuler le dernier lot appliqué",
   "topbar.redo": "Rétablir le dernier lot annulé",
-  "topbar.history": "Historique",
-  "topbar.view": "Affichage",
   "topbar.settings": "Réglages",
   "mode.tagger.title": "Modifier les tags — depuis une source en ligne, à la main, et la pochette",
   "mode.renamer.title": "Renommer les fichiers et les réorganiser en dossiers",

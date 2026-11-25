@@ -315,8 +315,6 @@ export const it = {
   "topbar.collapsePanelTitle": "Comprimi il pannello modalità (più spazio per la tabella)",
   "topbar.undo": "Annulla l'ultima operazione applicata",
   "topbar.redo": "Ripeti l'ultimo lotto annullato",
-  "topbar.history": "Cronologia",
-  "topbar.view": "Vista",
   "topbar.settings": "Impostazioni",
   "mode.tagger.title": "Modifica tag — da sorgente online, a mano, e copertina",
   "mode.renamer.title": "Rinomina file e riorganizzali in cartelle",

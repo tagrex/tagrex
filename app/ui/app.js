@@ -2697,6 +2697,13 @@ function updateCompactTabs() {
   // its own width — that overflow, measured with labels shown, is the signal to
   // fall back to icon-only tabs (#280).
   if (bar.scrollWidth > bar.clientWidth) document.body.classList.add("compact-tabs");
+  // Centred over the window (#880), the tabs are out of the row's flow, so the
+  // row never overflows on their account: the signal is the tabs reaching the
+  // wordmark (or the Next badge) on their left.
+  const left = [el("edition-badge"), el("brand")].find((n) => n && n.getClientRects().length);
+  if (left && tabs.getBoundingClientRect().left < left.getBoundingClientRect().right + 12) {
+    document.body.classList.add("compact-tabs");
+  }
 }
 // The bar can overflow rather than shrink, so observing it never fires on a
 // viewport shrink — track the viewport (the root element) instead, plus the window
@@ -4156,9 +4163,9 @@ applyModeTabsStyle(modeTabsStyle());
 // for instance) that plain 14px doesn't already account for.
 (function calibratePanelInset() {
   requestAnimationFrame(() => {
-    // The View track's edge, not the toggle 4px inside it: measured off the
-    // toggle the inset came out 18px (#863).
-    const ref = el("panel-toggle")?.closest(".tb-group") || el("panel-toggle");
+    // The toggle's own edge: it is a plain button at the end of the path row
+    // since #880 (it sat 4px inside a track before, which #863 measured off).
+    const ref = el("panel-toggle");
     const target = el("search-format");
     if (!ref || !target) return;
     // A hidden window can hold this frame back until after a mode switch; the

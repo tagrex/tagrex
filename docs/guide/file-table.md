@@ -218,7 +218,7 @@ the two never fight. Enter commits the cell and leaves edit mode; clicking away
 commits it too.
 
 A committed cell is written at once, as a change of its own in the undo journal:
-the undo arrow in the top bar, or ⌘Z, takes back the last one. **Escape** leaves
+the undo arrow at the start of the table's toolbar, or ⌘Z, takes back the last one. **Escape** leaves
 the cell as it was, writing nothing. A value the field cannot hold — a
 three-digit year, a letter in a track number — is not written; the cell goes
 back to what the file says and a message says why.
