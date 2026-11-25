@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Icon buttons are flat: no border or fill until the pointer is over them,
   when they take a light accent tint. Neighbouring buttons sit closer, and the
   table's toolbar sits closer under the path row ([#881](https://github.com/tagrex/tagrex/issues/881)).
+- The main window drops its divider lines: the file table and its footer
+  are one rounded, outlined card on the panel colour, the splitter shows a
+  short grip only under the pointer, the table's footer is one slim line, and
+  the side panel's button rows have no line above them. DEDUPLICATOR's results
+  sit in the same card ([#882](https://github.com/tagrex/tagrex/issues/882)).
 
 ### Fixed
 

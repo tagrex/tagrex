@@ -8846,3 +8846,102 @@ button.icon:hover:not(:disabled),
 body:not(.tabs-classic) .subtabs-strip {
   padding-top: 2px;
 }
+
+/* ---- Cards instead of divider lines (#882) ----
+   The work area is the panel colour and its areas are told apart by surface,
+   not by hairlines. */
+.workarea {
+  background: var(--panel);
+}
+.topbar,
+.view-tabs,
+body:not(.tabs-classic) .subtabs-strip {
+  border-bottom: 0;
+}
+.files-foot,
+.statusbar {
+  border-top: 0;
+}
+/* The file table and its footer are one rounded card on the table colour,
+   with the path field's hairline: the table draws the top and the sides, the
+   footer the sides and the bottom, and nothing runs between them. The gap
+   that lifted the horizontal scrollbar off the footer goes, as it would
+   break the side lines. The card stops 4px short of the splitter, so the
+   splitter's grip draws at its edge, and the toolbar's right end stays over
+   the card's. */
+.table-wrap,
+.files-foot {
+  margin: 0 4px 0 14px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.table-wrap {
+  border-bottom: 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+/* The count under the table: one slim line, centred in its own height. */
+.files-foot {
+  min-height: 26px;
+  border-top: 0;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  line-height: 16px;
+}
+.view-tabs {
+  padding-right: 4px;
+}
+/* The header row is part of the card, not a band of the window colour. */
+#tracks thead th {
+  background: var(--bg);
+}
+/* The splitter draws no line at rest or on hover: the cursor says it can be
+   dragged, and a short grip appears in its middle while hovering or
+   dragging. */
+.col-splitter,
+.col-splitter:hover,
+body.resizing .col-splitter {
+  position: relative;
+  background: transparent;
+  opacity: 1;
+}
+.col-splitter::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 36px;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+  background: transparent;
+  transition: background-color 0.12s;
+}
+.col-splitter:hover::after,
+body.resizing .col-splitter::after {
+  background: var(--border-strong, var(--border));
+}
+/* The side panel's pinned footers (EDITOR, FROM NAME / FROM TEXT, the other
+   panels' run rows) draw no line over their buttons; the panel colour already
+   sets them apart. */
+.editor-actions,
+.from-name-actions,
+.panel-actions.panel-foot {
+  border-top: 0;
+}
+/* DEDUPLICATOR's results are the same card as the file table, under a bar on
+   the panel colour as the table's toolbar is, and the shared footer closes
+   the card below them. */
+#duplicates-view .dup-bar {
+  padding-right: 4px;
+  border-bottom: 0;
+  background: none;
+}
+#duplicates-view .dup-wrap {
+  margin: 0 4px 0 14px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--bg);
+}
+#duplicates-view .dup-table thead th {
+  background: var(--bg);
+}
