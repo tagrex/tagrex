@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   ⇧⌘X (Ctrl+Shift+X) still runs it. Write and next and Stage field changes
   now share one line in every language
   ([#876](https://github.com/tagrex/tagrex/issues/876)).
+- Controls are 32px tall instead of 28px, and icons draw at 19px instead of
+  15px with their stroke scaled to match: buttons, fields, the tools inside a
+  field, the side panel's tabs and the player all grow together
+  ([#878](https://github.com/tagrex/tagrex/issues/878)).
 
 ### Fixed
 

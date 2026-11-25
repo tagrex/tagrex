@@ -8815,3 +8815,57 @@ input.preset-name {
   width: 15px;
   height: 15px;
 }
+
+/* ---- Control size (#878): 32px controls, 19px glyphs ----
+   The standard tier is 32px and the compact one 28px (they were 28 and 24). */
+:root {
+  --ctl-h: 32px;
+  --ctl-h-sm: 28px;
+}
+/* Text buttons and bare fields reach --ctl-h by padding (Batch 1, #589):
+   7 + 16 + 7 + 2 border = 32. */
+:is(button:not([class]), button.primary, button.btn, button.with-ico),
+input:is([type="text"], [type="password"], [type="number"], [type="search"]):not(.field > *):not(.field-input) {
+  padding-block: 7px;
+}
+/* A 16px glyph drawn at 19px scales its stroke too; 1.13 keeps the line about
+   1.35px wide on screen. Same specificity as the base rule, so every place
+   that sizes its own glyph keeps it; the group chevron keeps its stroke. */
+button.icon > svg:where(:not(.group-chev)) {
+  width: 19px;
+  height: 19px;
+  stroke-width: 1.13;
+}
+/* The group button: the square plus room for its chevron. */
+.view-tabs button.icon#group-btn {
+  width: calc(var(--ctl-h) + 8px);
+  padding: 0;
+}
+/* Tools inside a field grow with it: a 26px button with the same 19px glyph
+   as every other icon button, so the folder in the path field and the add
+   folder button beside it draw at one size. */
+.field-tools :is(button.icon, .field-flag) {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+}
+.field-tools button.icon > svg {
+  width: 19px;
+  height: 19px;
+  stroke-width: 1.13;
+}
+/* The player's buttons at the size of every other icon button. */
+#player .icon {
+  width: var(--ctl-h);
+  height: var(--ctl-h);
+}
+#player .icon > svg {
+  width: 19px;
+  height: 19px;
+  stroke-width: 1.13;
+}
+/* TAGGER's tab pill: 26px segments in a 32px track, so its bottom still meets
+   the files toolbar's. */
+body:not(.tabs-classic) .subtabs > .subtab {
+  height: 26px;
+}
