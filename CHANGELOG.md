@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The picture type of each cover in EDITOR's cover list (Front cover, Back
   cover, ...) no longer runs under the list's arrow
   ([#877](https://github.com/tagrex/tagrex/issues/877)).
+- On macOS the wordmark is centred on the window's traffic lights again,
+  by the middle of its slashes ([#879](https://github.com/tagrex/tagrex/issues/879)).
 
 ## [1.11.0] - 2026-11-22
 

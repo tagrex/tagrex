@@ -492,11 +492,12 @@ body.mac-overlay-titlebar .brand {
      WebKit snaps a positioned box to the device pixel (half a point on a 2x
      screen), so -0.25px rendered exactly like 0 and -0.5px a quarter point
      high. A transform isn't snapped — the outlines are drawn antialiased at
-     the fractional offset — and measured on a capture of the app's own window
-     it puts the slashes at 15.5–32.5pt, middle 24.0, on the lights' 17–31pt,
-     middle 24.0. The -3px this replaces was tuned for the old text line box
-     (#379, #381) and sat the wordmark ~2px high. */
-  transform: translateY(-0.25px);
+     the fractional offset. The lights' centre is the 40px row's centre, 26pt
+     (trafficLightPosition y 28, #879), and measured on a capture of the app's
+     own window 1.25px puts the middle of the slashes on it too. The -3px of
+     #379/#381 was tuned for the old text line box and sat the wordmark ~2px
+     high. */
+  transform: translateY(1.25px);
 }
 
 .lib {
