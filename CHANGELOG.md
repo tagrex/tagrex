@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Undo and Redo lead the table's toolbar, and Settings and the panel toggle
   sit at the end of the path row; the top bar keeps the wordmark and the mode
   switcher, which is now centred over the window ([#880](https://github.com/tagrex/tagrex/issues/880)).
+- Icon buttons are flat: no border or fill until the pointer is over them,
+  when they take a light accent tint. Neighbouring buttons sit closer, and the
+  table's toolbar sits closer under the path row ([#881](https://github.com/tagrex/tagrex/issues/881)).
 
 ### Fixed
 

@@ -8803,3 +8803,46 @@ body:not(.tabs-classic) .subtabs > .subtab {
   left: 50%;
   transform: translate(-50%, -50%);
 }
+
+/* ---- Flat icon buttons (#881) ----
+   Icon buttons carry no outline or fill of their own; under the pointer they
+   take a light accent wash. Same specificity as the base, so a button with a
+   look of its own (the accent Play) keeps it. */
+button.icon {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+button.icon:hover:not(:disabled),
+.field-tools button.icon:hover:not(:disabled),
+#player .icon:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+/* Flat buttons need no air between them: 2px, with a wider step only where a
+   field or a divider starts a new group. */
+.view-tabs {
+  column-gap: 2px;
+}
+.view-tabs > .filter-ctl {
+  margin-inline: 6px;
+}
+.view-tabs > .tb-div,
+.lib > .tb-div {
+  margin-inline: 6px;
+}
+.lib {
+  gap: 2px;
+}
+.lib > #root-field {
+  margin-right: 6px;
+}
+/* The files toolbar sits closer under the path row; the side panel's tab row
+   moves with it, so the two still line up. */
+.topbar {
+  padding-bottom: 4px;
+}
+.view-tabs,
+body:not(.tabs-classic) .subtabs-strip {
+  padding-top: 2px;
+}
