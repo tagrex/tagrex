@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (RUSTSEC-2026-0594). TagRex does not build that part of the library, so it
   was not affected; the update keeps the security audit clean
   ([#872](https://github.com/tagrex/tagrex/issues/872)).
+- In French, TAGGER's side panel tabs FROM NAME and FROM TEXT read DU NOM and
+  D’UN TEXTE instead of DEPUIS LE NOM and DEPUIS UN TEXTE, so all four tabs
+  fit the side panel at its default width instead of the last one being cut
+  off ([#874](https://github.com/tagrex/tagrex/issues/874)).
 
 ## [1.11.0] - 2026-11-22
 
