@@ -958,6 +958,8 @@ export const de = {
   "settings.accent.slate": "Schiefer",
   "settings.checkboxCol": "Spalte mit Auswahlkästchen",
   "settings.checkboxColHint": "Eine Spalte mit Kontrollkästchen in der Dateitabelle anzeigen. Standardmäßig aus — eine Zeile anklicken zum Auswählen, Cmd/Umschalt-Klick für einen Bereich oder zum Umschalten.",
+  "settings.resumeSession": "Letzten Ordner wieder öffnen",
+  "settings.resumeSessionHint": "Beim Start den zuletzt geöffneten Ordner öffnen, im selben Modus und Reiter, mit Sortierung, Filter, Auswahl und Scrollposition. Vorgemerkte, nicht angewendete Änderungen kommen nicht zurück. Ein Ordner, der der App beim Start übergeben wird (über Öffnen mit oder auf ihr Symbol), wird stattdessen geöffnet.",
   "settings.lab": "Labor",
   "settings.experimental": "experimentell",
   "settings.labNote": "Typografie, die noch erprobt wird. Kann sich in einer späteren Version ändern oder entfallen.",

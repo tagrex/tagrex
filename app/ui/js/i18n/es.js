@@ -960,6 +960,8 @@ export const es = {
   "settings.accent.slate": "Pizarra",
   "settings.checkboxCol": "Columna de casillas de selección",
   "settings.checkboxColHint": "Mostrar una columna de casillas en la tabla de archivos. Desactivada por defecto — haz clic en una fila para seleccionarla, Cmd/Mayús-clic para un rango o para alternar.",
+  "settings.resumeSession": "Reabrir la última carpeta",
+  "settings.resumeSessionHint": "Al iniciar, abrir la carpeta que estaba abierta la última vez, en el mismo modo y pestaña, con su orden, filtro, selección y posición de desplazamiento. Los cambios preparados que no se aplicaron no vuelven. Si al iniciar se entrega una carpeta a la app (con Abrir con o sobre su icono), se abre esa.",
   "settings.lab": "Laboratorio",
   "settings.experimental": "experimental",
   "settings.labNote": "Tipografía aún en evaluación. Puede cambiar o desaparecer en una versión posterior.",

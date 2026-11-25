@@ -962,6 +962,8 @@ export const it = {
   "settings.accent.slate": "Ardesia",
   "settings.checkboxCol": "Colonna checkbox selezione",
   "settings.checkboxColHint": "Mostra una colonna checkbox nella tabella file. Disattivata per impostazione predefinita — clicca una riga per selezionare, Cmd/Shift-clic per un intervallo o per attivare/disattivare.",
+  "settings.resumeSession": "Riapri l’ultima cartella",
+  "settings.resumeSessionHint": "All’avvio, apri la cartella aperta l’ultima volta, nella stessa modalità e scheda, con ordinamento, filtro, selezione e posizione di scorrimento. Le modifiche preparate ma non applicate non tornano. Una cartella passata all’app all’avvio (con Apri con o sulla sua icona) viene aperta al suo posto.",
   "settings.lab": "Lab",
   "settings.experimental": "sperimentale",
   "settings.labNote": "Tipografia ancora in valutazione. Potrebbe cambiare o essere rimossa in una release successiva.",

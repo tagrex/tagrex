@@ -962,6 +962,8 @@ export const fr = {
   "settings.accent.slate": "Ardoise",
   "settings.checkboxCol": "Colonne de cases de sélection",
   "settings.checkboxColHint": "Afficher une colonne de cases dans le tableau des fichiers. Désactivée par défaut — cliquer sur une ligne pour la sélectionner, Cmd/Maj-clic pour une plage ou pour basculer.",
+  "settings.resumeSession": "Rouvrir le dernier dossier",
+  "settings.resumeSessionHint": "Au lancement, ouvrir le dossier ouvert la dernière fois, dans le même mode et le même onglet, avec son tri, son filtre, sa sélection et sa position de défilement. Les modifications préparées mais non appliquées ne reviennent pas. Un dossier confié à l’app au lancement (avec Ouvrir avec ou sur son icône) est ouvert à la place.",
   "settings.lab": "Labo",
   "settings.experimental": "expérimental",
   "settings.labNote": "Typographie encore en évaluation. Elle peut changer ou disparaître dans une version ultérieure.",

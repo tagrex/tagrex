@@ -964,6 +964,8 @@ export const en = {
   "settings.accent.slate": "Slate",
   "settings.checkboxCol": "Selection checkbox column",
   "settings.checkboxColHint": "Show a checkbox column in the file table. Off by default — click a row to select, Cmd/Shift-click for a range or to toggle.",
+  "settings.resumeSession": "Reopen the last folder",
+  "settings.resumeSessionHint": "At launch, open the folder that was open last time, in the same mode and tab, with its sort, filter, selection and scroll position. Changes that were staged but not applied do not come back. A folder handed to the app at launch, with Open With or on its icon, is opened instead.",
   "settings.lab": "Lab",
   "settings.experimental": "experimental",
   "settings.labNote": "Typography still under evaluation. These may change or be dropped in a later release.",

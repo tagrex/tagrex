@@ -21,6 +21,7 @@ import { applyStaticText, planText, t as msg, tn, list as joinList } from "./js/
 import { hooks } from "./js/hooks.js";
 import { vinylPositionOf } from "./js/vinyl.js";
 import { initLaunchOpen } from "./js/dragdrop.js";
+import { readSession, resumeEnabled, sessionSnapshot, writeSession } from "./js/session.js";
 import {
   beginApplyProgress,
   beginUndoProgress,
@@ -2287,6 +2288,107 @@ async function openDrop(paths) {
   }
 }
 
+// ---- picking up where you left off (#873) ----
+// What session.js keeps is read off the live view every couple of seconds and
+// stored only when it changed. Polling rather than a save at each change: the
+// view moves in dozens of places (every sort, filter, selection and scroll
+// path), and a missed one would quietly bring back a stale view. A quit gives
+// no reliable last event in a webview, so a short interval is also what bounds
+// how much a quit can lose.
+//
+// `sessionSaved` is the text last stored, and null until the launch's resume
+// has run: saving before that would store the empty window the app starts
+// with over the entry it is about to read.
+let sessionSaved = null;
+const SESSION_SAVE_MS = 2000;
+
+function currentSessionSnapshot() {
+  return sessionSnapshot({
+    // A plain folder only: a file set (a drop of files, Add folder) is not
+    // resumable, so it leaves nothing to reopen rather than its parent.
+    root: openedRoot && !dropFolders ? openedRoot : "",
+    mode: currentMode,
+    subtab: document.querySelector(".subtab.active")?.dataset.subtab,
+    // An order made by hand is not a sort and is not kept.
+    sortKey: manualOrder ? null : sortKey,
+    sortDir,
+    filter: el("filter").value,
+    selection,
+    scrollTop: tableWrap.scrollTop,
+  });
+}
+
+function saveSession() {
+  if (sessionSaved === null || !resumeEnabled()) return;
+  sessionSaved = writeSession(currentSessionSnapshot(), sessionSaved);
+}
+
+// Put the saved view back over a folder that has just been opened. Each part
+// is checked against what is there now: a column that no longer exists is not
+// sorted on, and selected files that are gone are left out.
+function restoreView(saved) {
+  if (saved.mode !== currentMode) setMode(saved.mode);
+  setSubtab(saved.subtab);
+  if (saved.filter) {
+    el("filter").value = saved.filter;
+    setFilterText(saved.filter.trim());
+    syncFilterControls();
+  }
+  if (saved.sortKey && allColumnKeys().includes(saved.sortKey)) {
+    setSortKey(saved.sortKey);
+    setSortDir(saved.sortDir);
+    sortTracks();
+  }
+  const listed = saved.selection.filter((path) => {
+    const track = trackAt(path);
+    return track && !track.unreadable;
+  });
+  if (listed.length) {
+    selection.clear();
+    for (const path of listed) selection.add(path);
+    anchorSelection(listed[0]);
+  }
+  renderTracks();
+  // The rows exist once the table has been laid out; scrolling before that is
+  // clamped to nothing.
+  requestAnimationFrame(() => {
+    tableWrap.scrollTop = saved.scrollTop;
+    renderWindow();
+  });
+}
+
+// Called once at startup, after a folder the OS handed over has had its turn
+// (`launchOpened`): that one wins over the saved one.
+async function resumeSession(launchOpened) {
+  const saved = !launchOpened && resumeEnabled() ? readSession() : null;
+  try {
+    if (!saved || openedRoot) return;
+    rootInput.value = saved.root;
+    // The ordinary Open, so a folder that is gone is reported and dropped
+    // from the recent list the way any recent folder that no longer opens is.
+    await openLibrary();
+    // A folder that did not open is not left in the path field: nobody typed
+    // it, and the window should start as it does with nothing to resume.
+    if (!openedRoot) {
+      rootInput.value = "";
+      leaveRootEdit();
+    }
+    // Gone, or something else was opened while this one was loading.
+    if (openedRoot !== saved.root || dropFolders) return;
+    restoreView(saved);
+  } finally {
+    // Anything but the stored text, so the first save writes what is open now
+    // (or forgets an entry whose folder did not open).
+    sessionSaved = undefined;
+    saveSession();
+  }
+}
+setInterval(saveSession, SESSION_SAVE_MS);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") saveSession();
+});
+window.addEventListener("pagehide", saveSession);
+
 
 async function previewEdits() {
   const list = [];
@@ -4134,8 +4236,11 @@ invoke("take_settings_notice", {})
   });
 // Open whatever the OS handed the app on the way in (#51) — a folder from
 // "Open With", from the Dock icon, or from a second launch. After the hooks
-// above, since it opens through the same one a drop does.
-initLaunchOpen();
+// above, since it opens through the same one a drop does. Then the folder
+// that was open last time comes back, unless the OS handed one over (#873).
+initLaunchOpen()
+  .catch(() => false)
+  .then(resumeSession);
 // Put the transform chain where the saved preference says it belongs (#233):
 // nothing calls setMode at startup, so without this a pinned chain would come
 // back unpinned after a restart.

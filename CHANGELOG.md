@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- TagRex picks up where you left off: at launch it reopens the folder that was
+  open last time, in the same mode and side-panel tab, with its sort, filter,
+  selected files and scroll position. Staged changes, online results and a
+  drop of loose files or a folder set built with Add folder are not brought
+  back, and a folder handed to the app at launch is opened instead. A switch
+  under Settings, General turns it off and forgets what was saved
+  ([#873](https://github.com/tagrex/tagrex/issues/873)).
+
 ### Changed
 
 - TAGGER's tabs in the side panel (ONLINE, EDITOR, FROM NAME, FROM TEXT) take

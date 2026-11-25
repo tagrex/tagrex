@@ -55,6 +55,7 @@ import {
 } from "./prefs.js";
 import { MEDIA_GLYPH_SET_OPTIONS } from "./mediaglyphs.js";
 import { checkUpdateNow } from "./updatecheck.js";
+import { resumeEnabled, setResumeEnabled } from "./session.js";
 import { setBpmEnabled } from "./bpm.js";
 import { refreshAssistants, retranslateAssistants } from "./assistants.js";
 import {
@@ -437,6 +438,7 @@ async function openSettings() {
   reflectAccentChoice();
   setLanguageChoice(langMode());
   el("set-checkbox-col").checked = checkboxColEnabled();
+  el("set-resume-session").checked = resumeEnabled();
   setModeTabsChoice(modeTabsStyle());
   setValueFontChoice(valueFont());
   el("set-table-font").value = tableFontPx();
@@ -605,6 +607,7 @@ async function saveSettings() {
     // round-trip. (Table font size already applies live on input; persisted
     // here too.)
     applyCheckboxCol(el("set-checkbox-col").checked);
+    setResumeEnabled(el("set-resume-session").checked);
     // (Value font, like the theme, is a live control — already applied on click.)
     applyTableFont(parseInt(el("set-table-font").value, 10));
     await invoke("save_discogs_token", { token });
@@ -780,6 +783,7 @@ initGroupResets([
       accentColor() === null &&
       modeTabsStyle() === MODE_TABS_STYLE_DEFAULT &&
       !el("set-checkbox-col").checked &&
+      el("set-resume-session").checked &&
       el("set-check-updates").checked,
     reset: () => {
       setLanguageChoice("auto");
@@ -787,6 +791,7 @@ initGroupResets([
       setAccentChoice(null);
       setModeTabsChoice(MODE_TABS_STYLE_DEFAULT);
       el("set-checkbox-col").checked = false;
+      el("set-resume-session").checked = true;
       el("set-check-updates").checked = true;
     },
   },

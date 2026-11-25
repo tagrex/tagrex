@@ -74,18 +74,24 @@ function isImagePath(p) {
 async function openHandedOverPaths() {
   try {
     const paths = await invoke("take_launch_paths");
-    if (paths && paths.length) await hooks.openDrop(paths);
+    if (paths && paths.length) {
+      await hooks.openDrop(paths);
+      return true;
+    }
   } catch {
     // Nothing was waiting, or there is no backend to ask (browser dev).
   }
+  return false;
 }
 
 // Called once from the startup sequence, after `hooks.openDrop` is wired. The
 // listener goes on before the queue is drained, not after: registering it is
 // itself async, and a hand-over that lands in between would nudge nobody and
 // then find the queue already emptied.
+// Resolves to whether the OS handed anything over at launch, so the startup
+// knows not to reopen the last folder over it (#873).
 export async function initLaunchOpen() {
   const event = window.__TAURI__ && window.__TAURI__.event;
   if (event) await event.listen("tagrex://open-paths", openHandedOverPaths);
-  await openHandedOverPaths();
+  return openHandedOverPaths();
 }
