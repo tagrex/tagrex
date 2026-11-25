@@ -17,7 +17,9 @@ Escape empties the box (a second Escape closes Settings).
 a *Reset to defaults* link at its top right, and only then. It covers Network,
 Tag defaults, Cover art, Online import, Files, Display and LAB. The first five
 go back in the form and are kept when you Save, like any other edit; Display and
-LAB are live controls, so theirs applies at once. The Discogs token and the
+LAB are live controls, so theirs applies at once. Display's also narrows the
+side panel back to its minimum width, and shows while the panel has been
+dragged wider than that. The Discogs token and the
 Beatport account have no default and no reset, and Shortcuts keep their own
 *Reset all*.
 

@@ -8,6 +8,17 @@ import { el } from "./dom.js";
 import { columnWidths, setColumnWidths } from "./state.js";
 import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
 
+// Display's Reset to defaults reaches the panel width through these (#887);
+// the splitter below fills them in.
+let resetPanel = () => {};
+let panelAtDefault = () => true;
+export function resetPanelWidth() {
+  resetPanel();
+}
+export function panelWidthIsDefault() {
+  return panelAtDefault();
+}
+
 // ---- resize the table / mode-panel split by dragging the divider ----
 // Mouse events (not a native splitter) for the same WKWebView reason as the row
 // reorder. The panel has a fixed flex-basis; dragging sets it in pixels.
@@ -81,6 +92,30 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
     }
     if (Number.isFinite(v) && v >= 240) modeCol.style.flexBasis = `${v}px`;
   }
+
+  // Display's Reset to defaults (#887): the narrowest width, remembered as such.
+  // A basis of PANEL_MIN leaves min-width to hold the panel at the measured
+  // minimum, whatever the language, including one the same reset switches to.
+  // A remembered width counts as default when it is no wider than that, and so
+  // does none at all (the shipped width).
+  resetPanel = () => {
+    lastWidth = 0;
+    modeCol.style.flexBasis = `${PANEL_MIN}px`;
+    try {
+      localStorage.setItem(PANEL_WIDTH_KEY, String(PANEL_MIN));
+    } catch (e) {
+      /* localStorage unavailable: the minimum just won't persist */
+    }
+  };
+  panelAtDefault = () => {
+    let v;
+    try {
+      v = parseInt(localStorage.getItem(PANEL_WIDTH_KEY), 10);
+    } catch (e) {
+      return true;
+    }
+    return !Number.isFinite(v) || v <= panelMin;
+  };
 
   // Keep the panel within the work area when the window shrinks (#109). The
   // splitter enforces this on drag, but without a resize clamp a panel that was

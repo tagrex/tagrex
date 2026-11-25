@@ -53,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The status bar no longer carries a stand-in Play button for when the player
   was hidden: the player is always on screen now
   ([#885](https://github.com/tagrex/tagrex/issues/885)).
+- Display's Reset to defaults in Settings also narrows the side panel back to
+  its minimum width, and shows while the panel has been dragged wider
+  ([#887](https://github.com/tagrex/tagrex/issues/887)).
 
 ### Fixed
 

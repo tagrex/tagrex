@@ -57,6 +57,7 @@ import { MEDIA_GLYPH_SET_OPTIONS } from "./mediaglyphs.js";
 import { checkUpdateNow } from "./updatecheck.js";
 import { resumeEnabled, setResumeEnabled } from "./session.js";
 import { setBpmEnabled } from "./bpm.js";
+import { panelWidthIsDefault, resetPanelWidth } from "./tablegestures.js";
 import { refreshAssistants, retranslateAssistants } from "./assistants.js";
 import {
   clearSettingsSearch,
@@ -784,7 +785,8 @@ initGroupResets([
       modeTabsStyle() === MODE_TABS_STYLE_DEFAULT &&
       !el("set-checkbox-col").checked &&
       el("set-resume-session").checked &&
-      el("set-check-updates").checked,
+      el("set-check-updates").checked &&
+      panelWidthIsDefault(),
     reset: () => {
       setLanguageChoice("auto");
       setThemeChoice("auto");
@@ -793,6 +795,7 @@ initGroupResets([
       el("set-checkbox-col").checked = false;
       el("set-resume-session").checked = true;
       el("set-check-updates").checked = true;
+      resetPanelWidth();
     },
   },
   {
