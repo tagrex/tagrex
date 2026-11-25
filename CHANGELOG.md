@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   short grip only under the pointer, the table's footer is one slim line, and
   the side panel's button rows have no line above them. DEDUPLICATOR's results
   sit in the same card ([#882](https://github.com/tagrex/tagrex/issues/882)).
+- Settings and the other windows (presets, mask builder, Transform, the
+  small dialogs) take the same look: the window is the panel colour with no
+  lines between its parts, and the area it is about is a rounded card
+  ([#883](https://github.com/tagrex/tagrex/issues/883)).
 
 ### Fixed
 

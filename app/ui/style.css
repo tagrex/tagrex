@@ -8945,3 +8945,58 @@ body.resizing .col-splitter::after {
 #duplicates-view .dup-table thead th {
   background: var(--bg);
 }
+
+/* ---- Settings and the other windows as cards (#883) ----
+   The same rule as the main window: the window is the panel colour with no
+   lines between its parts; the one area it is about (Settings' open group,
+   the preset's rules, the mask's preview, the Transform job's checklist) is a
+   rounded, outlined card on the table colour; a list to pick from beside it
+   (Settings' groups, the presets, the placeholders) sits on the window with
+   no frame. A dialog of a few controls has no card at all. */
+.settings-sheet {
+  background: var(--panel);
+}
+.settings-head,
+.settings-foot,
+.settings-nav {
+  border: 0;
+  background: none;
+}
+.settings-body {
+  margin-right: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+@media (max-width: 720px) {
+  .settings-nav {
+    border-bottom: 0;
+  }
+  .settings-body {
+    margin-left: var(--space-5);
+  }
+}
+.modal {
+  background: var(--panel);
+}
+.pe-list,
+.mb-ref-body {
+  border: 0;
+  background: none;
+}
+.pe-list {
+  padding: 0;
+}
+.pe-edit-col {
+  margin-right: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
+.mb-list,
+.transform-modal .groups-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg);
+}
