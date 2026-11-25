@@ -229,7 +229,6 @@ export const it = {
   "coverView.kb": "{n} KB",
   "coverView.mb": "{n} MB",
   "editor.clearTags": "Pulisci tag",
-  "editor.clearTagsTitle": "Elimina tutti i tag di testo dai file selezionati per ripartire da zero (copertina e cue point DJ vengono mantenuti). Reversibile con annulla.",
   "editor.stageFields": "Prepara modifiche campi",
   "editor.writeNext": "Scrivi e avanti",
   "editor.writeNextTitle": "Scrive subito i campi modificati in questo file (annullabile) e passa al file successivo dell'elenco",

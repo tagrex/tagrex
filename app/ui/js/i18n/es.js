@@ -227,7 +227,6 @@ export const es = {
   "coverView.kb": "{n} KB",
   "coverView.mb": "{n} MB",
   "editor.clearTags": "Borrar etiquetas",
-  "editor.clearTagsTitle": "Borrar todas las etiquetas de texto de los archivos seleccionados para empezar de cero (se conservan la portada y los cue points de DJ). Se puede deshacer.",
   "editor.stageFields": "Preparar cambios de campos",
   "editor.writeNext": "Escribir y siguiente",
   "editor.writeNextTitle": "Escribe ya los campos cambiados en este archivo (se puede deshacer) y pasa al siguiente archivo de la lista",

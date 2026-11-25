@@ -225,7 +225,6 @@ export const de = {
   "coverView.kb": "{n} KB",
   "coverView.mb": "{n} MB",
   "editor.clearTags": "Tags löschen",
-  "editor.clearTagsTitle": "Alle Text-Tags der ausgewählten Dateien für einen Neuanfang löschen (Cover und DJ-Cue-Points bleiben). Lässt sich rückgängig machen.",
   "editor.stageFields": "Feldänderungen vormerken",
   "editor.writeNext": "Schreiben und weiter",
   "editor.writeNextTitle": "Die geänderten Felder sofort in diese Datei schreiben (rückgängig machbar) und zur nächsten Datei der Liste gehen",

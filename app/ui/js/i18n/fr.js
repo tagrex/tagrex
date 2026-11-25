@@ -229,7 +229,6 @@ export const fr = {
   "coverView.kb": "{n} Ko",
   "coverView.mb": "{n} Mo",
   "editor.clearTags": "Effacer les tags",
-  "editor.clearTagsTitle": "Effacer tous les tags texte des fichiers sélectionnés pour repartir de zéro (la pochette et les cue points DJ sont conservés). Réversible par annulation.",
   "editor.stageFields": "Mettre en attente les champs",
   "editor.writeNext": "Écrire et suivant",
   "editor.writeNextTitle": "Écrit tout de suite les champs modifiés dans ce fichier (annulable) et passe au fichier suivant de la liste",

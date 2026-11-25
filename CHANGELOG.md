@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   tall as the table toolbar's controls beside it, and underlined tabs when
   Settings asks for those. The Settings choice is now called Tabs and switches
   both at once ([#871](https://github.com/tagrex/tagrex/issues/871)).
+- EDITOR's footer no longer has its own Clear tags button: the same action is
+  the eraser on the table toolbar, in every mode, and in the file menu, and
+  ⇧⌘X (Ctrl+Shift+X) still runs it. Write and next and Stage field changes
+  now share one line in every language
+  ([#876](https://github.com/tagrex/tagrex/issues/876)).
 
 ### Fixed
 

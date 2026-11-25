@@ -5447,19 +5447,16 @@ td[data-field="year"],
   min-width: 0;
   text-align: start;
 }
-/* EDITOR's three actions share one row (#862), each as wide as its label:
-   Clear tags at the start, Write and next and Stage at the end. When the three do not fit, Clear tags goes up a line and
-   the pair stays on the bottom line, Stage in the corner; when the pair does
-   not fit either, Write and next goes up and Stage keeps the corner alone. */
+/* EDITOR's two actions share one row (#862), each as wide as its label:
+   Write and next and Stage at the end (Clear tags left it for the toolbar,
+   #876). When the pair does not fit, Write and next goes up and Stage
+   keeps the corner alone. */
 .panel-actions.editor-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
   gap: var(--space-3) var(--space-5);
-}
-.editor-actions > #fields-clear {
-  margin-right: auto;
 }
 .editor-actions-end {
   display: flex;

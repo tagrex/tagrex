@@ -229,7 +229,6 @@ export const en = {
   "coverView.kb": "{n} KB",
   "coverView.mb": "{n} MB",
   "editor.clearTags": "Clear tags",
-  "editor.clearTagsTitle": "Wipe every text tag from the selected files for a fresh start (cover and DJ cue points are kept). Reversible via undo.",
   "editor.stageFields": "Stage field changes",
   "editor.writeNext": "Write and next",
   "editor.writeNextTitle": "Write the changed fields to this file now (undoable) and move to the next file in the list",

@@ -32,11 +32,11 @@ box suggests fields already present in the loaded library, so you don't invent
 
 ### Clear tags
 
-**Clear tags** wipes every text tag from the selected files for a fresh start.
-Cover art and DJ cue points are kept, and it stages a preview like everything
-else, so it is both gated and undoable. The same action is on the table toolbar
-(the eraser) and on ⇧⌘X, Ctrl+Shift+X on Windows and Linux: select the files,
-press it, then ⌘↩ to apply. Clearing first and then importing a release leaves
+The eraser on the table toolbar, **Clear tags** in the file menu, or ⇧⌘X
+(Ctrl+Shift+X on Windows and Linux) wipes every text tag from the selected
+files for a fresh start. Cover art and DJ cue points are kept, and it stages a
+preview like everything else, so it is both gated and undoable: select the
+files, press it, then ⌘↩ to apply. Clearing first and then importing a release leaves
 nothing behind from whoever tagged the files before.
 
 ### Detect BPM

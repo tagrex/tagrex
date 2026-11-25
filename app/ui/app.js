@@ -3063,8 +3063,8 @@ for (const id of ["fields-new-name", "fields-new-value"]) {
 }
 el("fields-apply").addEventListener("click", applyFieldEditor);
 el("fields-write-next").addEventListener("click", writeFieldEditorAndNext);
-el("fields-clear").addEventListener("click", previewClearTags);
-// Same flow from the table toolbar, so clearing doesn't require opening EDITOR.
+// Clear tags lives on the table toolbar and in the file menu, in every mode;
+// EDITOR has no button of its own for it (#876).
 el("clear-tags").addEventListener("click", previewClearTags);
 el("export-kind").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-fmt]");

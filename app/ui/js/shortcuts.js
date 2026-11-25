@@ -75,8 +75,8 @@ const ACTIONS = [
   {
     id: "clearTags",
     combo: "Mod+Shift+KeyX",
-    buttons: ["clear-tags", "fields-clear"],
-    run: () => press("clear-tags", "fields-clear"),
+    buttons: ["clear-tags"],
+    run: () => press("clear-tags"),
   },
   { id: "detectBpm", combo: "Mod+Shift+KeyB", buttons: ["detect-bpm"], run: () => press("detect-bpm") },
   // Move the selection to the Trash (#600), the file managers' own key on Windows
