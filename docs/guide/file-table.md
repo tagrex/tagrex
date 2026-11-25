@@ -246,8 +246,8 @@ gates it, and it is undoable afterwards.
 The player is for confirming that a file is what its tags claim, not for
 listening to a collection.
 
-It appears when a track starts and leaves when playback stops; while it is down,
-the play control lives in the status bar so it is always reachable. Playback is
+It is always on screen, under the table. With nothing loaded it reads *No track
+loaded*, and Play starts the selected track. Playback is
 gapless and auto-advances through the table's visible order, stepping over group
 headers and collapsed rows.
 

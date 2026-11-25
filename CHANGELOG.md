@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   small dialogs) take the same look: the window is the panel colour with no
   lines between its parts, and the area it is about is a rounded card
   ([#883](https://github.com/tagrex/tagrex/issues/883)).
+- The player stays on screen at all times, reading No track loaded until a
+  track plays, instead of appearing only while one is loaded ([#884](https://github.com/tagrex/tagrex/issues/884)).
 
 ### Fixed
 

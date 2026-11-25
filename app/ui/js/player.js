@@ -246,20 +246,13 @@ function playerLabel(path) {
   return title || fileName(path);
 }
 
-// Show/hide the player row as a unit. #31 kept the row on screen permanently so
-// a Play control was always reachable, but that spent a whole footer row on a
-// bar reading "No track loaded"; the row now appears only while a track is
-// loaded, and the status bar carries the Play control the rest of the time, so
-// #31's intent survives without the standing cost. The reveal animation lives in
-// CSS and re-runs each time the row is displayed.
-function setPlayerVisible(on) {
-  playerBar.hidden = !on;
-  el("sb-play").hidden = on;
-}
+// The player row is on screen at all times (#884), idle with its controls
+// disabled while nothing is loaded, so the bottom of the window keeps its shape
+// when playback starts and stops. (#31 kept it up too; for a while it came and
+// went with a track, a Play stand-in taking its place in the status bar.)
 
-// Arm the player (once a library is open): the status-bar Play control becomes
-// available and status polling starts. The row itself stays down until a track
-// is actually loaded.
+// Arm the player (once a library is open): its Play button becomes available
+// and status polling starts.
 function showPlayerBar() {
   playerIdle();
   plToggle.disabled = false; // usable even when idle: starts the current track
@@ -274,6 +267,8 @@ function playerIdle() {
   plPaused = false;
   plDuration = 0;
   plTitle.textContent = t("player.noTrack");
+  // On screen while idle, so a language switch has to repaint it.
+  plTitle.dataset.i18n = "player.noTrack";
   plTitle.title = "";
   plTime.textContent = "0:00 / 0:00";
   plSeek.value = "0";
@@ -286,7 +281,6 @@ function playerIdle() {
   clearPlayerCover(); // #275
   publishNowPlaying(0); // #218: nothing is playing any more
   playerBar.classList.add("idle");
-  setPlayerVisible(false);
   setPlayerControlsEnabled(false);
   markPlayingRow();
 }
@@ -398,9 +392,9 @@ function playTrack(path) {
   playingPath = path;
   plPaused = false;
   plTitle.textContent = playerLabel(path);
+  delete plTitle.dataset.i18n;
   plTitle.title = `${path}\n${t("player.findTrack")}`;
   playerBar.classList.remove("idle");
-  setPlayerVisible(true);
   setPlayerControlsEnabled(true);
   markPlayingRow();
   beginWaveform(path); // #101 — and this is the path most tracks start on
@@ -451,9 +445,9 @@ async function pollPlayerStatus() {
 
   if (changed) {
     plTitle.textContent = playerLabel(st.path);
+    delete plTitle.dataset.i18n;
     plTitle.title = `${st.path}\n${t("player.findTrack")}`;
     playerBar.classList.remove("idle");
-    setPlayerVisible(true);
     setPlayerControlsEnabled(true);
     markPlayingRow();
     beginWaveform(st.path); // the backend advanced the queue on its own (#101)
@@ -743,5 +737,13 @@ applyVolume(storedVolume(), { persist: false });
 
 const tauriEvents = window.__TAURI__ && window.__TAURI__.event;
 if (tauriEvents) tauriEvents.listen("tagrex://media-control", (e) => onMediaControl(e.payload));
+
+// On screen from launch (#884), idle until a library is open; showPlayerBar
+// then arms its Play button.
+playerBar.classList.add("idle");
+plTitle.textContent = t("player.noTrack");
+plTitle.dataset.i18n = "player.noTrack";
+setPlayerControlsEnabled(false);
+plToggle.disabled = true;
 
 export { fmtTime, showPlayerBar, playTrack, isPlayingPath };
