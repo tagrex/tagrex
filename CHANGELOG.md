@@ -41,6 +41,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   D’UN TEXTE instead of DEPUIS LE NOM and DEPUIS UN TEXTE, so all four tabs
   fit the side panel at its default width instead of the last one being cut
   off ([#874](https://github.com/tagrex/tagrex/issues/874)).
+- The side panel can no longer be dragged narrower than TAGGER's tabs, so the
+  last tab is never cut off. The minimum follows the language and the Tabs
+  setting, and a narrower width remembered from before opens at the minimum
+  ([#875](https://github.com/tagrex/tagrex/issues/875)).
 
 ## [1.11.0] - 2026-11-22
 

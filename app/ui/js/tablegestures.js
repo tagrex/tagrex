@@ -21,6 +21,10 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
   // a reload instead of snapping back to the 480px default.
   const PANEL_WIDTH_KEY = "tagrex.panelWidthPx";
   let lastWidth = 0;
+  // The narrowest the panel may get: TAGGER's tab row in full, so no language
+  // leaves its last tab cut off (#875). 240 until the row has been measured.
+  const PANEL_MIN = 240;
+  let panelMin = PANEL_MIN;
 
   // Publish the panel column's current width so the status bar's right zone can
   // sit under it and the player's zone can track the table (#289). Reads the
@@ -44,7 +48,7 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
     // Panel width = distance from the cursor to the right edge of the work area,
     // clamped so neither column collapses.
     const rect = workarea.getBoundingClientRect();
-    const width = Math.min(Math.max(rect.right - e.clientX, 240), rect.width - 360);
+    const width = Math.min(Math.max(rect.right - e.clientX, panelMin), rect.width - 360);
     lastWidth = Math.round(width);
     modeCol.style.flexBasis = `${lastWidth}px`;
     syncPanelWidthVar();
@@ -86,11 +90,56 @@ import { COLUMN_MIN_WIDTH, fitColumn, saveColumnWidths } from "./columns.js";
     if (document.body.classList.contains("panel-collapsed")) return;
     const rect = workarea.getBoundingClientRect();
     if (rect.width === 0) return;
-    const max = Math.max(240, rect.width - 360);
+    const max = Math.max(panelMin, rect.width - 360);
     if (modeCol.getBoundingClientRect().width > max) {
       modeCol.style.flexBasis = `${Math.round(max)}px`;
     }
   }
+  // Measure TAGGER's tab row and keep the panel at least that wide (#875). The
+  // tabs never wrap and keep their full width when squeezed (the row scrolls),
+  // so first tab's left to last tab's right is the full row whatever the
+  // panel's width; add the row's padding and border and the strip's padding.
+  // (Not scrollWidth: the underlined look stretches the row across the strip,
+  // which would pin the minimum to the current width.) A row that is not on
+  // screen (another mode, a collapsed panel) keeps the last measured minimum.
+  // A remembered width below it is left in storage; min-width wins over the
+  // flex-basis.
+  const subtabs = document.querySelector(".subtabs");
+  const subtabsStrip = document.querySelector(".subtabs-strip");
+  function updatePanelMin() {
+    if (!subtabs || !subtabsStrip || !subtabs.getClientRects().length) return;
+    const tabs = subtabs.querySelectorAll(".subtab");
+    if (!tabs.length) return;
+    const tabsStyle = getComputedStyle(subtabs);
+    const stripStyle = getComputedStyle(subtabsStrip);
+    const needed =
+      tabs[tabs.length - 1].getBoundingClientRect().right -
+      tabs[0].getBoundingClientRect().left +
+      parseFloat(tabsStyle.paddingLeft) +
+      parseFloat(tabsStyle.paddingRight) +
+      parseFloat(tabsStyle.borderLeftWidth) +
+      parseFloat(tabsStyle.borderRightWidth) +
+      parseFloat(stripStyle.paddingLeft) +
+      parseFloat(stripStyle.paddingRight);
+    panelMin = Math.max(PANEL_MIN, Math.ceil(needed));
+    modeCol.style.minWidth = `${panelMin}px`;
+  }
+  if (subtabs) {
+    // A language change rewrites the labels (no resize while the row
+    // overflows); showing the row, or the Tabs setting, resizes it.
+    if (window.MutationObserver) {
+      new MutationObserver(updatePanelMin).observe(subtabs, {
+        subtree: true,
+        childList: true,
+        characterData: true,
+      });
+    }
+    if (window.ResizeObserver) new ResizeObserver(updatePanelMin).observe(subtabs);
+  }
+  updatePanelMin();
+  // The bundled font may land after this runs and widen the labels.
+  if (document.fonts) document.fonts.ready.then(updatePanelMin);
+
   window.addEventListener("resize", clampPanel);
   restorePanelWidth(); // a remembered width first (#282), then clamp it to fit
   clampPanel(); // in case the initial window is narrower than the default panel
