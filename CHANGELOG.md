@@ -50,6 +50,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   last tab is never cut off. The minimum follows the language and the Tabs
   setting, and a narrower width remembered from before opens at the minimum
   ([#875](https://github.com/tagrex/tagrex/issues/875)).
+- The picture type of each cover in EDITOR's cover list (Front cover, Back
+  cover, ...) no longer runs under the list's arrow
+  ([#877](https://github.com/tagrex/tagrex/issues/877)).
 
 ## [1.11.0] - 2026-11-22
 

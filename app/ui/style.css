@@ -3771,7 +3771,7 @@ td.unreadable-note {
 .cover-kind {
   flex: none;
   height: var(--ctl-h-sm);
-  padding: 0 var(--space-2);
+  padding: 0 24px 0 var(--space-2); /* caret room (#115, #877) */
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background-color: var(--bg);
